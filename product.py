@@ -1,26 +1,19 @@
 from osv import osv, fields
 from urllib import urlopen
-import oe_xid as xid
 from openerp.addons.product.product import sanitize_ean13
-from VSS.BBxXlate.fisData import fisData
-from VSS.utils import NameCase
+from fnx.BBxXlate.fisData import fisData
+from fnx.utils import NameCase
+from fnx import xid, check_company_settings
+from openerp import tools
 
 import time
 import logging
 
 _logger = logging.getLogger(__name__)
 
+CONFIG_ERROR = "Cannot sync products until  Settings --> Configuration --> FIS Integration --> %s  has been specified." 
 
-def _check_company_settings(obj, cr, uid, *args):
-    company = obj.pool.get('res.company')
-    company = company.browse(cr, uid, company.search(cr, uid, [(1,'=',1)]))[0]
-    values = {}
-    for setting, error_name in args:
-        values[setting] = company[setting]
-        if not values[setting]:
-            _logger.warning("Cannot sync products until  Settings --> Configuration --> FIS Integration --> %s  has been specified." % error_name)
-            raise ValueError("Cannot sync products until  Settings --> Configuration --> FIS Integration --> %s  has been specified." % error_name)
-    return values
+OWN_STOCK = 12  # Physical Locations / Your Company / Stock
 
 # Sales Category codes
 class F11(object):
@@ -48,7 +41,7 @@ class product_category(osv.Model):
 
     def fis_updates(self, cr, uid, *args):
         _logger.info("product.category.fis_updates starting...")
-        settings = _check_company_settings(self, cr, uid, ('product_integration', 'Product Module'))
+        settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
         context = {'module': settings['product_integration']}
         category_ids = self.search(cr, uid, [(1,'=',1)])
         category_recs = self.browse(cr, uid, category_ids)
@@ -112,7 +105,7 @@ class product_available_at(osv.Model):
     
     def fis_updates(self, cr, uid, *args):
         _logger.info("product.available_at.auto-update starting...")
-        settings = _check_company_settings(self, cr, uid, ('product_integration', 'Product Module'))
+        settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
         context = {'module': settings['product_integration']}
         avail_ids = self.search(cr, uid, [(1,'=',1)])
         avail_recs = self.browse(cr, uid, avail_ids)
@@ -154,6 +147,9 @@ class F135(object):
     name = 'Cn$(1,40)'
     ship_size = 'Cn$(41,8)'
     ean13 = 'Dn$(6,12)'
+    storage_location = 'Dn$(18,6)'
+    on_hand = 'I(6)'
+    wholesale = 'I(23)'
 F135 = F135()
 
 class product_product(osv.Model):
@@ -176,13 +172,13 @@ class product_product(osv.Model):
             'product.available_at',
             'Availability',
             ),
-        'spcl_ship_instr': fields.text('Special Shipping Instructions')
+        'spcl_ship_instr': fields.text('Special Shipping Instructions'),
         }
 
     def button_fis_refresh(self, cr, uid, ids, context=None):
         prod_avail = self.pool.get('product.available_at')
         prod_cat = self.pool.get('product.category')
-        settings = _check_company_settings(self, cr, uid, ('product_integration', 'Product Module'))
+        settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
         if context is None:
             context = {}
         context['module'] = settings['product_integration']
@@ -195,6 +191,9 @@ class product_product(osv.Model):
         for rec in records:
             fis_rec = nvty[rec['xml_id']]
             values = self._get_fis_values(fis_rec)
+            new_qty = values.pop('new_qty')
+            if new_qty != rec.qty_available:
+                self._change_product_qty(cr, uid, rec, new_qty, context=context)
             cat_ids = prod_cat.search(cr, uid, [('xml_id','=',values['categ_id'])])
             if not cat_ids:
                 raise ValueError("unable to locate category code %s" % values['categ_id'])
@@ -218,7 +217,7 @@ class product_product(osv.Model):
         # get the tables we'll need
         _logger.info("product.product.fis_updates starting...")
         time.sleep(300)
-        settings = _check_company_settings(self, cr, uid, ('product_integration', 'Product Module'))
+        settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
         context = {'module': settings['product_integration']}
         imd = self.pool.get('ir.model.data')
         prod_cat = self.pool.get('product.category')
@@ -246,6 +245,7 @@ class product_product(osv.Model):
         nvty = fisData(135, keymatch='%s101000    101**')
         for inv_rec in nvty:
             values = self._get_fis_values(inv_rec)
+            new_qty = values.pop('new_qty')
             key = values['xml_id']
             try:
                 values['categ_id'] = cat_codes[values['categ_id']]
@@ -264,7 +264,11 @@ class product_product(osv.Model):
                 prod_rec = unsynced_prods[key]
                 prod_items.write(cr, uid, prod_rec['id'], values, context=context)
             else:
-                prod_items.create(cr, uid, values, context=context)
+                id = prod_items.create(cr, uid, values, context=context)
+                prod_rec = prod_items.browse(cr, uid, [id], context=context)[0]
+                synced_prods[key] = prod_rec
+            if key in synced_prods and  new_qty != prod_rec.qty_available:
+                self._change_product_qty(cr, uid, prod_rec, new_qty, context=context)
         _logger.info(self._name + " done!")
         return True
     
@@ -279,6 +283,8 @@ class product_product(osv.Model):
         values['ean13'] = sanitize_ean13(fis_rec[F135.ean13])
         values['active'] = 1
         values['sale_ok'] = 1
+        values['list_price'] = fis_rec[F135.wholesale]
+        values['new_qty'] = float(fis_rec[F135.on_hand])
         values['avail'] = fis_rec[F135.avail].upper()
         shipped_as = fis_rec[F135.ship_size].strip()
         if shipped_as.lower() in ('each','1 each','1/each'):
@@ -297,4 +303,45 @@ class product_product(osv.Model):
             shipped_as = ''.join(first).strip() + ' ' + ''.join(last).strip()
         values['shipped_as'] = shipped_as
         return values
+
+    def _change_product_qty(self, cr, uid, rec, new_qty, context=None):
+        """ Changes the Product Quantity by making a Physical Inventory."""
+
+        if context is None:
+            context = {}
+
+        rec_id = rec.id
+        context['active_id'] = rec_id
+
+        inventry_obj = self.pool.get('stock.inventory')
+        inventry_line_obj = self.pool.get('stock.inventory.line')
+        prod_obj_pool = self.pool.get('product.product')
+
+        res_original = rec
+
+        inventory_id = inventry_obj.create(cr , uid, {'name': 'INV: %s' % tools.ustr(res_original.name)}, context=context)
+        line_data ={
+            'inventory_id' : inventory_id,
+            'product_qty' : new_qty,
+            'location_id' : OWN_STOCK,
+            'product_id' : rec_id,
+            'product_uom' : res_original.uom_id.id,
+            'prod_lot_id' : '',
+        }
+        inventry_line_obj.create(cr , uid, line_data, context=context)
+
+        inventry_obj.action_confirm(cr, uid, [inventory_id], context=context)
+        inventry_obj.action_done(cr, uid, [inventory_id], context=context)
+        return {}
+
+        if context is None:
+            context = {}
+        cpq = self.pool.get('stock.change.product.qty')
+        sl = self.pool.get('stock.location')
+        loc_id = sl.browse(cr, uid, [OWN_STOCK], context=context)[0]
+        cpq.create(cr, uid,
+                {'product_id': rec.id, 'new_quantity': new_qty, 'prodlot_id': '', 'location_id': loc_id.id},
+                context=context)
+        context['active_id'] = rec.id
+        cpq.change_product_qty(cr, uid, [rec.id], context=context)
 product_product()

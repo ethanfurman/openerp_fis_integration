@@ -1,21 +1,13 @@
 import logging
 import oe_xid as xid
 from osv import osv, fields
-from VSS.BBxXlate.fisData import fisData
-from VSS.utils import cszk, fix_phone, fix_date, Rise, Sift, AddrCase, NameCase, BsnsCase
+from fnx.BBxXlate.fisData import fisData
+from fnx.utils import cszk, fix_phone, fix_date, Rise, Sift, AddrCase, NameCase, BsnsCase
+from fnx import check_company_settings
 
 _logger = logging.getLogger(__name__)
 
-def _check_company_settings(obj, cr, uid, *args):
-    company = obj.pool.get('res.company')
-    company = company.browse(cr, uid, company.search(cr, uid, [(1,'=',1)]))[0]
-    values = {}
-    for setting, error_name in args:
-        values[setting] = company[setting]
-        if not values[setting]:
-            _logger.warning("Cannot sync products until  Settings --> Configuration --> FIS Integration --> %s  has been specified." % error_name)
-            raise ValueError("Cannot sync products until  Settings --> Configuration --> FIS Integration --> %s  has been specified." % error_name)
-    return values
+CONFIG_ERROR = "Cannot sync products until  Settings --> Configuration --> FIS Integration --> %s  has been specified."
 
 class F65(object):
     "Vendor Master"
@@ -114,7 +106,7 @@ class res_partner(osv.Model):
 
     def fis_updates(self, cr, uid, *args):
         _logger.info("res_partner.fis_updates starting...")
-        settings = _check_company_settings(self, cr, uid, ('supplier_integration', 'Supplier/Vendor Module'))
+        settings = check_company_settings(self, cr, uid, ('supplier_integration', 'Supplier/Vendor Module', CONFIG_ERROR))
         context = {'module': settings['supplier_integration']}
         state_table = self.pool.get('res.country.state')
         state_recs = state_table.browse(cr, uid, state_table.search(cr, uid, [(1,'=',1)]))

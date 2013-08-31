@@ -9,10 +9,10 @@
     'website': 'www.openerp.com',
     'depends': [
             "base",
+            "crm",
+            "fnx",
             "product",
-            "base_setup",
-            "base_status",
-            "base_action_rule",
+            "stock",
             ],
     'init_xml': [
             'security/ir.model.access.csv',
