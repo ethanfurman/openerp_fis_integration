@@ -146,9 +146,12 @@ class F135(object):
     categ = 'Bn$(3,2)'
     name = 'Cn$(1,40)'
     ship_size = 'Cn$(41,8)'
+    manager = 'Dn$(5,1)'
     ean13 = 'Dn$(6,12)'
     storage_location = 'Dn$(18,6)'
     on_hand = 'I(6)'
+    committed = 'I(7)'
+    on_order = 'I(8)'
     wholesale = 'I(23)'
 F135 = F135()
 
@@ -156,6 +159,23 @@ class product_product(osv.Model):
     'Adds Available column and shipped_as columns'
     _name = 'product.product'
     _inherit = 'product.product'
+
+    def _product_available(self, cr, uid, ids, field_names=None, arg=False, context=None):
+        settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
+        if context is None:
+            context = {}
+        context['module'] = settings['product_integration']
+        nvty = fisData(135, keymatch='%s101000    101**')
+        records = self.browse(cr, uid, ids, context=context)
+        values = {}
+        for rec in records:
+            fis_rec = nvty[rec['xml_id']]
+            current = values[rec.id] = {}
+            current['qty_available'] = qoh = fis_rec[F135.on_hand]
+            current['incoming_qty'] = inc = fis_rec[F135.committed]
+            current['outgoing_qty'] = out = fis_rec[F135.on_order]
+            current['virtual_available'] = qoh + inc - out
+        return values
 
     _columns = {
         'xml_id': fields.function(
@@ -173,6 +193,23 @@ class product_product(osv.Model):
             'Availability',
             ),
         'spcl_ship_instr': fields.text('Special Shipping Instructions'),
+        'fis_location': fields.char('Location', size=6),
+        'qty_available': fields.function(_product_available, multi='qty_available',
+            type='float', digits=(16,3), string='Quantity On Hand',
+            help="Current quantity of products according to FIS",
+            ),
+        'virtual_available': fields.function(_product_available, multi='qty_available',
+            type='float', digits=(16,3), string='Forecasted Quantity',
+            help="Forecast quantity (computed as Quantity On Hand - Outgoing + Incoming)",
+            ),
+        'incoming_qty': fields.function(_product_available, multi='qty_available',
+            type='float', digits=(16,3), string='Incoming',
+            help="Quantity of products that are planned to arrive according to FIS.",
+            ),
+        'outgoing_qty': fields.function(_product_available, multi='qty_available',
+            type='float', digits=(16,3), string='Outgoing',
+            help="Quantity of products that are planned to leave according to FIS.",
+            ),
         }
 
     def button_fis_refresh(self, cr, uid, ids, context=None):
@@ -190,10 +227,8 @@ class product_product(osv.Model):
         records = self.browse(cr, uid, ids, context=context)
         for rec in records:
             fis_rec = nvty[rec['xml_id']]
+            print "\n\nItem Code: %s   --   Qty on hand: %s\n" % (fis_rec[F135.item_code], fis_rec[F135.on_hand])
             values = self._get_fis_values(fis_rec)
-            new_qty = values.pop('new_qty')
-            if new_qty != rec.qty_available:
-                self._change_product_qty(cr, uid, rec, new_qty, context=context)
             cat_ids = prod_cat.search(cr, uid, [('xml_id','=',values['categ_id'])])
             if not cat_ids:
                 raise ValueError("unable to locate category code %s" % values['categ_id'])
@@ -245,7 +280,6 @@ class product_product(osv.Model):
         nvty = fisData(135, keymatch='%s101000    101**')
         for inv_rec in nvty:
             values = self._get_fis_values(inv_rec)
-            new_qty = values.pop('new_qty')
             key = values['xml_id']
             try:
                 values['categ_id'] = cat_codes[values['categ_id']]
@@ -267,8 +301,6 @@ class product_product(osv.Model):
                 id = prod_items.create(cr, uid, values, context=context)
                 prod_rec = prod_items.browse(cr, uid, [id], context=context)[0]
                 synced_prods[key] = prod_rec
-            if key in synced_prods and  new_qty != prod_rec.qty_available:
-                self._change_product_qty(cr, uid, prod_rec, new_qty, context=context)
         _logger.info(self._name + " done!")
         return True
     
@@ -284,8 +316,9 @@ class product_product(osv.Model):
         values['active'] = 1
         values['sale_ok'] = 1
         values['list_price'] = fis_rec[F135.wholesale]
-        values['new_qty'] = float(fis_rec[F135.on_hand])
         values['avail'] = fis_rec[F135.avail].upper()
+        values['fis_location'] = fis_rec[F135.storage_location]
+        #values['product_manager'] = fis_rec[F135.manager]
         shipped_as = fis_rec[F135.ship_size].strip()
         if shipped_as.lower() in ('each','1 each','1/each'):
             shipped_as = '1 each'
@@ -328,6 +361,7 @@ class product_product(osv.Model):
             'product_uom' : res_original.uom_id.id,
             'prod_lot_id' : '',
         }
+        print new_qty, '\n'
         inventry_line_obj.create(cr , uid, line_data, context=context)
 
         inventry_obj.action_confirm(cr, uid, [inventory_id], context=context)
