@@ -1,9 +1,8 @@
 import logging
-import oe_xid as xid
 from osv import osv, fields
 from fnx.BBxXlate.fisData import fisData
 from fnx.utils import cszk, fix_phone, fix_date, Rise, Sift, AddrCase, NameCase, BsnsCase
-from fnx import check_company_settings
+from fnx import xid, check_company_settings
 
 _logger = logging.getLogger(__name__)
 
