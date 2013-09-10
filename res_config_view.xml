@@ -31,6 +31,14 @@
                                 <field name="product_integration" placeholder="e.g. company_product" class="oe_inline"/>
                             </div>
                             <div>
+                                <label for="product_category_integration"/>
+                                <field name="product_category_integration" placeholder="e.g. company_product_category" class="oe_inline"/>
+                            </div>
+                            <div>
+                                <label for="product_location_integration"/>
+                                <field name="product_location_integration" placeholder="e.g. company_product_location" class="oe_inline"/>
+                            </div>
+                            <div>
                                 <label for="customer_integration"/>
                                 <field name="customer_integration" placeholder="e.g. company_customer" class="oe_inline"/>
                             </div>

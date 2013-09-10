@@ -52,12 +52,14 @@ class res_partner(osv.Model):
     _columns = {
         'xml_id': fields.function(
             xid.get_xml_ids,
+            arg=('supplier_integration', 'Supplier/Vendor Module', CONFIG_ERROR),
             fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=_name,
+            fnct_inv_arg=('supplier_integration', 'Supplier/Vendor Module', CONFIG_ERROR),
             string="External ID",
             type='char',
             method=False,
-            fnct_search=xid.search_xml_id,
+            fnct_search=lambda s, c, u, m, n, d, context=None:
+                            xid.search_xml_id(s, c, u, m, n, d, ('supplier_integration','Supplier/Vendor Integration',CONFIG_ERROR), context=context),
             ),
         'sp_tele': fields.char(
             'Telephone',

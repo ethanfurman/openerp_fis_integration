@@ -19,6 +19,7 @@ OWN_STOCK = 12  # Physical Locations / Your Company / Stock
 class F11(object):
     code = 'An$(5,2)'
     desc = 'Cn$'
+    shelf_life = 'FN'
 F11 = F11()
 
 class product_category(osv.Model):
@@ -30,12 +31,14 @@ class product_category(osv.Model):
     _columns = {
         'xml_id': fields.function(
             xid.get_xml_ids,
+            arg=('product_category_integration','FIS Product Category', CONFIG_ERROR),
             fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=_name,
+            fnct_inv_arg=('product_category_integration','FIS Product Category', CONFIG_ERROR),
             string="External ID",
             type='char',
             method=False,
-            fnct_search=xid.search_xml_id,
+            fnct_search=lambda s, c, u, m, n, d, context=None:
+                            xid.search_xml_id(s, c, u, m, n, d, ('product_category_integration','Product Category Integration',CONFIG_ERROR), context=context),
             ),
         }
 
@@ -85,16 +88,19 @@ class product_available_at(osv.Model):
     _name = 'product.available_at'
     _description = 'Product Location'
 
+
     _columns = {
         'name' : fields.char('Availability', size=50),
         'xml_id': fields.function(
             xid.get_xml_ids,
+            arg=('product_location_integration','FIS Product Location', CONFIG_ERROR),
             fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=_name,
+            fnct_inv_arg=('product_location_integration','FIS Product Location', CONFIG_ERROR),
             string="External ID",
             type='char',
             method=False,
-            fnct_search=xid.search_xml_id,
+            fnct_search=lambda s, c, u, m, n, d, context=None:
+                            xid.search_xml_id(s, c, u, m, n, d, ('product_location_integration','Product Location Integration',CONFIG_ERROR), context=context),
             ),
         'product_ids' : fields.one2many(
             'product.product',
@@ -139,19 +145,29 @@ product_available_at()
 #        }
 #product_available_at()
 
+class product_template(osv.Model):
+    _name = "product.template"
+    _inherit = 'product.template'
+
+    _columns = {
+        'warranty': fields.float("Shelf Life (mos)", digits=(16,3),),
+        }
+product_template()
+
 # Products
 class F135(object):
     item_code = 'An$(1,6)'
-    avail = 'Bn$(1,1)'
-    categ = 'Bn$(3,2)'
+    available = 'Bn$(1,1)'
+    sales_category = 'Bn$(3,2)'
+    shelf_life = 'Bn$(69,2)'
     name = 'Cn$(1,40)'
     ship_size = 'Cn$(41,8)'
     manager = 'Dn$(5,1)'
     ean13 = 'Dn$(6,12)'
     storage_location = 'Dn$(18,6)'
     on_hand = 'I(6)'
-    committed = 'I(7)'
-    on_order = 'I(8)'
+    on_order = 'I(7)'
+    committed = 'I(8)'
     wholesale = 'I(23)'
 F135 = F135()
 
@@ -164,13 +180,18 @@ class product_product(osv.Model):
         settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
         if context is None:
             context = {}
-        context['module'] = settings['product_integration']
+        module = settings['product_integration']
+        imd = self.pool.get('ir.model.data')
         nvty = fisData(135, keymatch='%s101000    101**')
         records = self.browse(cr, uid, ids, context=context)
         values = {}
         for rec in records:
-            fis_rec = nvty[rec['xml_id']]
             current = values[rec.id] = {}
+            try:
+                imd_rec = imd.get_object_from_module_model_resid(cr, uid, module, self._name, rec.id, context=context)
+            except ValueError:
+                continue
+            fis_rec = nvty[rec['xml_id']]
             current['qty_available'] = qoh = fis_rec[F135.on_hand]
             current['incoming_qty'] = inc = fis_rec[F135.committed]
             current['outgoing_qty'] = out = fis_rec[F135.on_order]
@@ -180,12 +201,14 @@ class product_product(osv.Model):
     _columns = {
         'xml_id': fields.function(
             xid.get_xml_ids,
+            arg=('product_integration','Product Module',CONFIG_ERROR),
             fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=_name,
+            fnct_inv_arg=('product_integration','Product Module',CONFIG_ERROR),
             string="External ID",
             type='char',
             method=False,
-            fnct_search=xid.search_xml_id,
+            fnct_search=lambda s, c, u, m, n, d, context=None:
+                            xid.search_xml_id(s, c, u, m, n, d, ('product_integration','Product Integration',CONFIG_ERROR), context=context),
             ),
         'shipped_as': fields.char('Shipped as', size=50),
         'avail': fields.many2one(
@@ -213,26 +236,29 @@ class product_product(osv.Model):
         }
 
     def button_fis_refresh(self, cr, uid, ids, context=None):
-        prod_avail = self.pool.get('product.available_at')
-        prod_cat = self.pool.get('product.category')
         settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
         if context is None:
             context = {}
         context['module'] = settings['product_integration']
+        prod_avail = self.pool.get('product.available_at')
+        prod_cat = self.pool.get('product.category')
+        prod_template = self.pool.get('product.template')
         #avail_ids = prod_avail_at.search(cr, uid, [(1,'=',1)])
         #avail_recs = prod_avail_at.browse(cr, uid, avail_ids, context=context)
         #avail_codes = {}
             #avail_codes[rec['xml_id']] = rec['id']
+        cnvz = fisData(11, keymatch='as10%s')
         nvty = fisData(135, keymatch='%s101000    101**')
         records = self.browse(cr, uid, ids, context=context)
         for rec in records:
-            fis_rec = nvty[rec['xml_id']]
-            print "\n\nItem Code: %s   --   Qty on hand: %s\n" % (fis_rec[F135.item_code], fis_rec[F135.on_hand])
-            values = self._get_fis_values(fis_rec)
+            fis_nvty_rec = nvty[rec['xml_id']]
+            fis_sales_rec = cnvz[fis_nvty_rec[F135.sales_category]]
+            values = self._get_fis_values(fis_nvty_rec, fis_sales_rec)
             cat_ids = prod_cat.search(cr, uid, [('xml_id','=',values['categ_id'])])
             if not cat_ids:
                 raise ValueError("unable to locate category code %s" % values['categ_id'])
             elif len(cat_ids) > 1:
+                import pdb; pdb.set_trace()
                 raise ValueError("too many matches for category code %s" % values['categ_id'])
             values['categ_id'] = prod_cat.browse(cr, uid, cat_ids)[0]['id']
             avail_ids = prod_avail.search(cr, uid, [('xml_id','=',values['avail'])])
@@ -241,7 +267,11 @@ class product_product(osv.Model):
             elif len(avail_ids) > 1:
                 raise ValueError("too many matches for availability code %s" % values['avail'])
             values['avail'] = prod_avail.browse(cr, uid, avail_ids)[0]['id']
+            #warranty = values.pop('warranty')
+            #tmpl_rec = rec.product_tmpl_id
+            print values['warranty']
             self.write(cr, uid, rec['id'], values, context=context)
+            #prod_template.write(cr, uid, [tmpl_rec.id], {'warranty':warranty}, context=context)
         return True
 
     def fis_updates(self, cr, uid, *args):
@@ -304,22 +334,26 @@ class product_product(osv.Model):
         _logger.info(self._name + " done!")
         return True
     
-    def _get_fis_values(self, fis_rec):
+    def _get_fis_values(self, fis_nvty_rec, sales_category_rec):
         values = {}
-        values['xml_id'] = values['default_code'] = fis_rec[F135.item_code]
-        values['name'] = NameCase(fis_rec[F135.name].strip())
-        categ_id = fis_rec[F135.categ].strip()
+        values['xml_id'] = values['default_code'] = fis_nvty_rec[F135.item_code]
+        values['name'] = NameCase(fis_nvty_rec[F135.name].strip())
+        categ_id = fis_nvty_rec[F135.sales_category].strip()
         if len(categ_id) == 2 and categ_id[0] in 'OISG':
             categ_id = {'O':'0', 'I':'1', 'S':'5', 'G':'6'}[categ_id[0]] + categ_id[1]
         values['categ_id'] = categ_id
-        values['ean13'] = sanitize_ean13(fis_rec[F135.ean13])
+        values['ean13'] = sanitize_ean13(fis_nvty_rec[F135.ean13])
         values['active'] = 1
         values['sale_ok'] = 1
-        values['list_price'] = fis_rec[F135.wholesale]
-        values['avail'] = fis_rec[F135.avail].upper()
-        values['fis_location'] = fis_rec[F135.storage_location]
-        #values['product_manager'] = fis_rec[F135.manager]
-        shipped_as = fis_rec[F135.ship_size].strip()
+        values['list_price'] = fis_nvty_rec[F135.wholesale]
+        values['avail'] = fis_nvty_rec[F135.available].upper()
+        values['fis_location'] = fis_nvty_rec[F135.storage_location]
+        sl = fis_nvty_rec[F135.shelf_life]
+        values['warranty'] = sl = float(fis_nvty_rec[F135.shelf_life] or 0.0)
+        if not sl:
+            values['warranty'] = float(sales_category_rec[F11.shelf_life] or 0.0)
+        #values['product_manager'] = fis_nvty_rec[F135.manager]
+        shipped_as = fis_nvty_rec[F135.ship_size].strip()
         if shipped_as.lower() in ('each','1 each','1/each'):
             shipped_as = '1 each'
         elif shipped_as:
@@ -361,7 +395,6 @@ class product_product(osv.Model):
             'product_uom' : res_original.uom_id.id,
             'prod_lot_id' : '',
         }
-        print new_qty, '\n'
         inventry_line_obj.create(cr , uid, line_data, context=context)
 
         inventry_obj.action_confirm(cr, uid, [inventory_id], context=context)
