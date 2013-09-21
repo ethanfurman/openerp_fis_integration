@@ -52,13 +52,20 @@ class res_partner(osv.Model):
         'xml_id': fields.function(
             xid.get_xml_ids,
             arg=('supplier_integration', 'Supplier/Vendor Module', CONFIG_ERROR),
-            fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=('supplier_integration', 'Supplier/Vendor Module', CONFIG_ERROR),
             string="External ID",
             type='char',
             method=False,
-            fnct_search=lambda s, c, u, m, n, d, context=None:
-                            xid.search_xml_id(s, c, u, m, n, d, ('supplier_integration','Supplier/Vendor Integration',CONFIG_ERROR), context=context),
+            fnct_search=xid.search_xml_id,
+            multi='external',
+            ),
+        'module': fields.function(
+            xid.get_xml_ids,
+            arg=('supplier_integration', 'Supplier/Vendor Module', CONFIG_ERROR),
+            string="External ID",
+            type='char',
+            method=False,
+            fnct_search=xid.search_xml_id,
+            multi='external',
             ),
         'sp_tele': fields.char(
             'Telephone',
@@ -108,17 +115,17 @@ class res_partner(osv.Model):
     def fis_updates(self, cr, uid, *args):
         _logger.info("res_partner.fis_updates starting...")
         settings = check_company_settings(self, cr, uid, ('supplier_integration', 'Supplier/Vendor Module', CONFIG_ERROR))
-        context = {'module': settings['supplier_integration']}
+        module = settings['supplier_integration']
         state_table = self.pool.get('res.country.state')
         state_recs = state_table.browse(cr, uid, state_table.search(cr, uid, [(1,'=',1)]))
         state_recs = dict([(r.name, (r.id, r.code, r.country_id.id)) for r in state_recs])
         #state_recs = dict([(r['name'], (r['id'], r['code'], r['country_id.id'])) for r in state_recs])
         country_table = self.pool.get('res.country')
         country_recs = country_table.browse(cr, uid, country_table.search(cr, uid, [(1,'=',1)]))
-        country_recs_code = dict([(r['code'], r['id']) for r in country_recs])
-        country_recs_name = dict([(r['name'], r['id']) for r in country_recs])
-        supplier_recs = self.browse(cr, uid, self.search(cr, uid, [(1,'=',1)]))
-        supplier_codes = dict([(r['xml_id'], r['id']) for r in supplier_recs])
+        country_recs_code = dict([(r.code, r.id) for r in country_recs])
+        country_recs_name = dict([(r.name, r.id) for r in country_recs])
+        supplier_recs = self.browse(cr, uid, self.search(cr, uid, [('module','=',module)]))
+        supplier_codes = dict([(r.xml_id, r.id) for r in supplier_recs])
         vnms = fisData(65, keymatch='10%s')
         posm = fisData(163, keymatch='10%s')
 
@@ -176,6 +183,7 @@ class res_partner(osv.Model):
                 self.write(cr, uid, id, result, context=context)
             else:
                 new_id = self.create(cr, uid, result, context=context)
+                supplier_codes[key] = new_id
             if ven_rec is not None:
                 contact = ven_rec[F65.contact]
                 if contact:
@@ -188,7 +196,8 @@ class res_partner(osv.Model):
                         id = supplier_codes[key]
                         self.write(cr, uid, id, result, context=context)
                     else:
-                        self.create(cr, uid, result, context=context)
+                        new_id = self.create(cr, uid, result, context=context)
+                        supplier_codes[key] = new_id
 
         _logger.info('res_partner.fis_updates done!')
         return True

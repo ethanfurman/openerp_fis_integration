@@ -1,19 +1,20 @@
-from osv import osv, fields
-from urllib import urlopen
-from openerp.addons.product.product import sanitize_ean13
+from collections import defaultdict
+from fnx import xid, check_company_settings
 from fnx.BBxXlate.fisData import fisData
 from fnx.utils import NameCase
-from fnx import xid, check_company_settings
 from openerp import tools
-
-import time
+from openerp.addons.product.product import sanitize_ean13
+from osv import osv, fields
+from urllib import urlopen
 import logging
+import time
 
 _logger = logging.getLogger(__name__)
 
 CONFIG_ERROR = "Cannot sync products until  Settings --> Configuration --> FIS Integration --> %s  has been specified." 
 
 OWN_STOCK = 12  # Physical Locations / Your Company / Stock
+
 
 # Sales Category codes
 class F11(object):
@@ -32,23 +33,30 @@ class product_category(osv.Model):
         'xml_id': fields.function(
             xid.get_xml_ids,
             arg=('product_category_integration','FIS Product Category', CONFIG_ERROR),
-            fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=('product_category_integration','FIS Product Category', CONFIG_ERROR),
-            string="External ID",
+            string="FIS ID",
             type='char',
             method=False,
-            fnct_search=lambda s, c, u, m, n, d, context=None:
-                            xid.search_xml_id(s, c, u, m, n, d, ('product_category_integration','Product Category Integration',CONFIG_ERROR), context=context),
+            fnct_search=xid.search_xml_id,
+            multi='external',
+            ),
+        'module': fields.function(
+            xid.get_xml_ids,
+            arg=('product_category_integration','FIS Product Category', CONFIG_ERROR),
+            string="FIS Module",
+            type='char',
+            method=False,
+            fnct_search=xid.search_xml_id,
+            multi='external',
             ),
         }
 
     def fis_updates(self, cr, uid, *args):
         _logger.info("product.category.fis_updates starting...")
         settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
-        context = {'module': settings['product_integration']}
-        category_ids = self.search(cr, uid, [(1,'=',1)])
+        module  = settings['product_category_integration']
+        category_ids = self.search(cr, uid, [('module','=',module)])
         category_recs = self.browse(cr, uid, category_ids)
-        category_codes = dict([(r['xml_id'], dict(name=r['name'], id=r['id'], parent_id=r['parent_id'])) for r in category_recs])
+        category_codes = dict([(r.xml_id, dict(name=r.name, id=r.id, parent_id=r.parent_id)) for r in category_recs])
         cnvz = fisData(11, keymatch='as10%s')
         for i in (1, 2):
             for category_rec in cnvz:
@@ -94,13 +102,20 @@ class product_available_at(osv.Model):
         'xml_id': fields.function(
             xid.get_xml_ids,
             arg=('product_location_integration','FIS Product Location', CONFIG_ERROR),
-            fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=('product_location_integration','FIS Product Location', CONFIG_ERROR),
-            string="External ID",
+            string="FIS ID",
             type='char',
             method=False,
-            fnct_search=lambda s, c, u, m, n, d, context=None:
-                            xid.search_xml_id(s, c, u, m, n, d, ('product_location_integration','Product Location Integration',CONFIG_ERROR), context=context),
+            fnct_search=xid.search_xml_id,
+            multi='external',
+            ),
+        'module': fields.function(
+            xid.get_xml_ids,
+            arg=('product_location_integration','FIS Product Location', CONFIG_ERROR),
+            string="FIS Module",
+            type='char',
+            method=False,
+            fnct_search=xid.search_xml_id,
+            multi='external',
             ),
         'product_ids' : fields.one2many(
             'product.product',
@@ -180,6 +195,7 @@ class product_product(osv.Model):
         settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
         if context is None:
             context = {}
+        model = self._name
         module = settings['product_integration']
         imd = self.pool.get('ir.model.data')
         nvty = fisData(135, keymatch='%s101000    101**')
@@ -188,27 +204,35 @@ class product_product(osv.Model):
         for rec in records:
             current = values[rec.id] = {}
             try:
-                imd_rec = imd.get_object_from_module_model_resid(cr, uid, module, self._name, rec.id, context=context)
-            except ValueError:
-                continue
-            fis_rec = nvty[rec['xml_id']]
-            current['qty_available'] = qoh = fis_rec[F135.on_hand]
-            current['incoming_qty'] = inc = fis_rec[F135.committed]
-            current['outgoing_qty'] = out = fis_rec[F135.on_order]
-            current['virtual_available'] = qoh + inc - out
+                imd_rec = imd.get_object_from_model_resid(cr, uid, model, rec.id, context=context)
+                fis_rec = nvty[rec['xml_id']]
+            except (ValueError, KeyError):
+                return super(product_product, self)._product_available(cr, uid, ids, field_names, arg, context)
+            else:
+                current['qty_available'] = qoh = fis_rec[F135.on_hand]
+                current['incoming_qty'] = inc = fis_rec[F135.committed]
+                current['outgoing_qty'] = out = fis_rec[F135.on_order]
+                current['virtual_available'] = qoh + inc - out
         return values
 
     _columns = {
         'xml_id': fields.function(
             xid.get_xml_ids,
             arg=('product_integration','Product Module',CONFIG_ERROR),
-            fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=('product_integration','Product Module',CONFIG_ERROR),
-            string="External ID",
+            string="FIS ID",
             type='char',
             method=False,
-            fnct_search=lambda s, c, u, m, n, d, context=None:
-                            xid.search_xml_id(s, c, u, m, n, d, ('product_integration','Product Integration',CONFIG_ERROR), context=context),
+            fnct_search=xid.search_xml_id,
+            multi='external',
+            ),
+        'module': fields.function(
+            xid.get_xml_ids,
+            arg=('product_integration','Product Module',CONFIG_ERROR),
+            string="FIS Module",
+            type='char',
+            method=False,
+            fnct_search=xid.search_xml_id,
+            multi='external',
             ),
         'shipped_as': fields.char('Shipped as', size=50),
         'avail': fields.many2one(
@@ -236,10 +260,16 @@ class product_product(osv.Model):
         }
 
     def button_fis_refresh(self, cr, uid, ids, context=None):
-        settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
         if context is None:
             context = {}
-        context['module'] = settings['product_integration']
+        settings = check_company_settings(self, cr, uid, (
+            ('product_integration', 'Product Module', CONFIG_ERROR),
+            ('product_category_integration', 'Product Category', CONFIG_ERROR),
+            ('product_location_integration', 'Product Location', CONFIG_ERROR),
+            ))
+        product_module = settings['product_integration']
+        category_module = settings['product_category_integration']
+        location_module = settings['product_location_integration']
         prod_avail = self.pool.get('product.available_at')
         prod_cat = self.pool.get('product.category')
         prod_template = self.pool.get('product.template')
@@ -251,27 +281,24 @@ class product_product(osv.Model):
         nvty = fisData(135, keymatch='%s101000    101**')
         records = self.browse(cr, uid, ids, context=context)
         for rec in records:
-            fis_nvty_rec = nvty[rec['xml_id']]
+            fis_nvty_rec = nvty.get(rec['xml_id'])
+            if fis_nvty_rec is None:
+                continue
             fis_sales_rec = cnvz[fis_nvty_rec[F135.sales_category]]
             values = self._get_fis_values(fis_nvty_rec, fis_sales_rec)
-            cat_ids = prod_cat.search(cr, uid, [('xml_id','=',values['categ_id'])])
+            cat_ids = prod_cat.search(cr, uid, [('module','=',category_module),('xml_id','=',values['categ_id'])])
             if not cat_ids:
                 raise ValueError("unable to locate category code %s" % values['categ_id'])
             elif len(cat_ids) > 1:
-                import pdb; pdb.set_trace()
                 raise ValueError("too many matches for category code %s" % values['categ_id'])
             values['categ_id'] = prod_cat.browse(cr, uid, cat_ids)[0]['id']
-            avail_ids = prod_avail.search(cr, uid, [('xml_id','=',values['avail'])])
+            avail_ids = prod_avail.search(cr, uid, [('module','=',location_module),('xml_id','=',values['avail'])])
             if not avail_ids:
                 raise ValueError("unable to locate availability code %s" % values['avail'])
             elif len(avail_ids) > 1:
                 raise ValueError("too many matches for availability code %s" % values['avail'])
             values['avail'] = prod_avail.browse(cr, uid, avail_ids)[0]['id']
-            #warranty = values.pop('warranty')
-            #tmpl_rec = rec.product_tmpl_id
-            print values['warranty']
             self.write(cr, uid, rec['id'], values, context=context)
-            #prod_template.write(cr, uid, [tmpl_rec.id], {'warranty':warranty}, context=context)
         return True
 
     def fis_updates(self, cr, uid, *args):
@@ -281,31 +308,31 @@ class product_product(osv.Model):
         """
         # get the tables we'll need
         _logger.info("product.product.fis_updates starting...")
-        time.sleep(300)
         settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
-        context = {'module': settings['product_integration']}
-        imd = self.pool.get('ir.model.data')
+        product_module = settings['product_integration']
+        category_module = settings['product_category_integration']
+        location_module = settings['product_location_integration']
         prod_cat = self.pool.get('product.category')
         prod_avail = self.pool.get('product.available_at')
         prod_items = self
         # create a mapping of id -> res_id for available_at (location)
-        avail_ids = prod_avail.search(cr, uid, [(1,'=',1)])
+        avail_ids = prod_avail.search(cr, uid, [('module','=',location_module)])
         avail_recs = prod_avail.browse(cr, uid, avail_ids)
         avail_codes = dict([(r['xml_id'], r['id']) for r in avail_recs])
         # create a mapping of id -> res_id for categories
-        cat_ids = prod_cat.search(cr, uid, [(1,'=',1)])
+        cat_ids = prod_cat.search(cr, uid, [('module','=',category_module)])
         cat_recs = prod_cat.browse(cr, uid, cat_ids)
         cat_codes = dict([(r['xml_id'], r['id']) for r in cat_recs])
         # create a mapping of id -> res_id for product items
-        prod_ids = prod_items.search(cr, uid, [(1,'=',1)])
+        prod_ids = prod_items.search(cr, uid, [('module','=',product_module)])
         prod_recs = prod_items.browse(cr, uid, prod_ids)
         synced_prods = {}
         unsynced_prods = {}
         for rec in prod_recs:
-            if rec['xml_id']:
-                synced_prods[rec['xml_id']] = rec
-            elif rec['default_code']:
-                unsynced_prods[rec['default_code']] = rec
+            if rec.xml_id:
+                synced_prods[rec.xml_id] = rec
+            #elif rec.default_code:
+            #    unsynced_prods[rec.default_code] = rec
         #products = dict([(r['xml_id'], r) for r in prod_recs])
         nvty = fisData(135, keymatch='%s101000    101**')
         for inv_rec in nvty:
@@ -324,9 +351,9 @@ class product_product(osv.Model):
             if key in synced_prods:
                 prod_rec = synced_prods[key]
                 prod_items.write(cr, uid, prod_rec['id'], values, context=context)
-            elif key in unsynced_prods:
-                prod_rec = unsynced_prods[key]
-                prod_items.write(cr, uid, prod_rec['id'], values, context=context)
+            #elif key in unsynced_prods:
+            #    prod_rec = unsynced_prods[key]
+            #    prod_items.write(cr, uid, prod_rec.id, values, context=context)
             else:
                 id = prod_items.create(cr, uid, values, context=context)
                 prod_rec = prod_items.browse(cr, uid, [id], context=context)[0]
