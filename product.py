@@ -33,6 +33,8 @@ class product_category(osv.Model):
         'xml_id': fields.function(
             xid.get_xml_ids,
             arg=('product_category_integration','FIS Product Category', CONFIG_ERROR),
+            fnct_inv=xid.update_xml_id,
+            fnct_inv_arg=('product_category_integration','FIS Product Category', CONFIG_ERROR),
             string="FIS ID",
             type='char',
             method=False,
@@ -52,7 +54,7 @@ class product_category(osv.Model):
 
     def fis_updates(self, cr, uid, *args):
         _logger.info("product.category.fis_updates starting...")
-        settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
+        settings = check_company_settings(self, cr, uid, ('product_category_integration', 'Product Module', CONFIG_ERROR))
         module  = settings['product_category_integration']
         category_ids = self.search(cr, uid, [('module','=',module)])
         category_recs = self.browse(cr, uid, category_ids)
@@ -79,7 +81,7 @@ class product_category(osv.Model):
                             result['parent_id'] = category_codes[key[:1]]['id']
                         except KeyError:
                             result['parent_id'] = category_codes['9']['id']
-                    new_id = self.create(cr, uid, result, context=context)
+                    new_id = self.create(cr, uid, result)
                     category_codes[key] = dict(name=result['name'], id=new_id, parent_id=result['parent_id'])
         _logger.info(self._name +  " done!")
         return True
@@ -102,6 +104,8 @@ class product_available_at(osv.Model):
         'xml_id': fields.function(
             xid.get_xml_ids,
             arg=('product_location_integration','FIS Product Location', CONFIG_ERROR),
+            fnct_inv=xid.update_xml_id,
+            fnct_inv_arg=('product_location_integration','FIS Product Location', CONFIG_ERROR),
             string="FIS ID",
             type='char',
             method=False,
@@ -126,20 +130,21 @@ class product_available_at(osv.Model):
     
     def fis_updates(self, cr, uid, *args):
         _logger.info("product.available_at.auto-update starting...")
-        settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
-        context = {'module': settings['product_integration']}
-        avail_ids = self.search(cr, uid, [(1,'=',1)])
+        settings = check_company_settings(self, cr, uid, ('product_location_integration', 'Product Module', CONFIG_ERROR))
+        module = settings['product_location_integration']
+        avail_ids = self.search(cr, uid, [('module','=',module)])
         avail_recs = self.browse(cr, uid, avail_ids)
-        avail_codes = dict([(r['xml_id'], r['id']) for r in avail_recs])
+        avail_codes = dict([(r.xml_id, r.id) for r in avail_recs])
         cnvz = fisData(97, keymatch='aa10%s')
         for avail_rec in cnvz:
             result = {}
             result['xml_id'] = key = avail_rec[F97.code].upper()
+            result['module'] = module
             result['name'] = avail_rec[F97.desc].title()
             if key in avail_codes:
-                self.write(cr, uid, avail_codes[key], result, context=context)
+                self.write(cr, uid, avail_codes[key], result)
             else:
-                self.create(cr, uid, result, context=context)
+                self.create(cr, uid, result)
         _logger.info(self._name + " done!")
         return True
 product_available_at()
@@ -219,6 +224,8 @@ class product_product(osv.Model):
         'xml_id': fields.function(
             xid.get_xml_ids,
             arg=('product_integration','Product Module',CONFIG_ERROR),
+            fnct_inv=xid.update_xml_id,
+            fnct_inv_arg=('product_integration','Product Module',CONFIG_ERROR),
             string="FIS ID",
             type='char',
             method=False,
@@ -262,11 +269,11 @@ class product_product(osv.Model):
     def button_fis_refresh(self, cr, uid, ids, context=None):
         if context is None:
             context = {}
-        settings = check_company_settings(self, cr, uid, (
+        settings = check_company_settings(self, cr, uid, 
             ('product_integration', 'Product Module', CONFIG_ERROR),
             ('product_category_integration', 'Product Category', CONFIG_ERROR),
             ('product_location_integration', 'Product Location', CONFIG_ERROR),
-            ))
+            )
         product_module = settings['product_integration']
         category_module = settings['product_category_integration']
         location_module = settings['product_location_integration']
@@ -308,7 +315,11 @@ class product_product(osv.Model):
         """
         # get the tables we'll need
         _logger.info("product.product.fis_updates starting...")
-        settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
+        settings = check_company_settings(self, cr, uid, 
+            ('product_integration', 'Product Module', CONFIG_ERROR),
+            ('product_category_integration', 'Product Category', CONFIG_ERROR),
+            ('product_location_integration', 'Product Location', CONFIG_ERROR),
+            )
         product_module = settings['product_integration']
         category_module = settings['product_category_integration']
         location_module = settings['product_location_integration']
@@ -322,7 +333,8 @@ class product_product(osv.Model):
         # create a mapping of id -> res_id for categories
         cat_ids = prod_cat.search(cr, uid, [('module','=',category_module)])
         cat_recs = prod_cat.browse(cr, uid, cat_ids)
-        cat_codes = dict([(r['xml_id'], r['id']) for r in cat_recs])
+        cat_codes = dict([(r.xml_id, r.id) for r in cat_recs])
+        #import pdb; pdb.set_trace()
         # create a mapping of id -> res_id for product items
         prod_ids = prod_items.search(cr, uid, [('module','=',product_module)])
         prod_recs = prod_items.browse(cr, uid, prod_ids)
@@ -335,8 +347,10 @@ class product_product(osv.Model):
             #    unsynced_prods[rec.default_code] = rec
         #products = dict([(r['xml_id'], r) for r in prod_recs])
         nvty = fisData(135, keymatch='%s101000    101**')
+        cnvz = fisData(11, keymatch='as10%s')
         for inv_rec in nvty:
-            values = self._get_fis_values(inv_rec)
+            fis_sales_rec = cnvz.get(inv_rec[F135.sales_category])
+            values = self._get_fis_values(inv_rec, fis_sales_rec)
             key = values['xml_id']
             try:
                 values['categ_id'] = cat_codes[values['categ_id']]
@@ -350,13 +364,13 @@ class product_product(osv.Model):
                 continue
             if key in synced_prods:
                 prod_rec = synced_prods[key]
-                prod_items.write(cr, uid, prod_rec['id'], values, context=context)
+                prod_items.write(cr, uid, prod_rec['id'], values)
             #elif key in unsynced_prods:
             #    prod_rec = unsynced_prods[key]
             #    prod_items.write(cr, uid, prod_rec.id, values, context=context)
             else:
-                id = prod_items.create(cr, uid, values, context=context)
-                prod_rec = prod_items.browse(cr, uid, [id], context=context)[0]
+                id = prod_items.create(cr, uid, values)
+                prod_rec = prod_items.browse(cr, uid, [id])[0]
                 synced_prods[key] = prod_rec
         _logger.info(self._name + " done!")
         return True
@@ -377,7 +391,7 @@ class product_product(osv.Model):
         values['fis_location'] = fis_nvty_rec[F135.storage_location]
         sl = fis_nvty_rec[F135.shelf_life]
         values['warranty'] = sl = float(fis_nvty_rec[F135.shelf_life] or 0.0)
-        if not sl:
+        if not sl and sales_category_rec:
             values['warranty'] = float(sales_category_rec[F11.shelf_life] or 0.0)
         #values['product_manager'] = fis_nvty_rec[F135.manager]
         shipped_as = fis_nvty_rec[F135.ship_size].strip()
@@ -439,3 +453,4 @@ class product_product(osv.Model):
         context['active_id'] = rec.id
         cpq.change_product_qty(cr, uid, [rec.id], context=context)
 product_product()
+

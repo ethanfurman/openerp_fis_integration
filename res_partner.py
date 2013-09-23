@@ -165,7 +165,7 @@ class res_partner(osv.Model):
             result['sp_gmo_exp'] = fix_date(sup_rec[F163.gmo_exp])
             result['sp_kosher'] = sup_rec[F163.kosher] in 'Y'
             result['sp_kosher_exp'] = fix_date(sup_rec[F163.kosher_exp])
-            ven_rec = vnms[sup_rec[F163.vendor]]
+            ven_rec = vnms.get(sup_rec[F163.vendor])
             if ven_rec is None:
                 result['vn_tele'] = ''
                 result['vn_fax'] = ''
