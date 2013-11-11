@@ -1,5 +1,5 @@
 from collections import defaultdict
-from fnx import xid, check_company_settings
+from fnx import xid, enum
 from fnx.BBxXlate.fisData import fisData
 from fnx.utils import NameCase
 from openerp import tools
@@ -11,17 +11,16 @@ import time
 
 _logger = logging.getLogger(__name__)
 
-CONFIG_ERROR = "Cannot sync products until  Settings --> Configuration --> FIS Integration --> %s  has been specified." 
-
 OWN_STOCK = 12  # Physical Locations / Your Company / Stock
 
+class FISenum(str, enum.Enum):
+    pass
 
 # Sales Category codes
-class F11(object):
+class F11(FISenum):
     code = 'An$(5,2)'
     desc = 'Cn$'
     shelf_life = 'FN'
-F11 = F11()
 
 class product_category(osv.Model):
     "makes external_id visible and searchable"
@@ -32,9 +31,9 @@ class product_category(osv.Model):
     _columns = {
         'xml_id': fields.function(
             xid.get_xml_ids,
-            arg=('product_category_integration','FIS Product Category', CONFIG_ERROR),
+            arg=('F11',),
             fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=('product_category_integration','FIS Product Category', CONFIG_ERROR),
+            fnct_inv_arg=('F11',),
             string="FIS ID",
             type='char',
             method=False,
@@ -43,7 +42,7 @@ class product_category(osv.Model):
             ),
         'module': fields.function(
             xid.get_xml_ids,
-            arg=('product_category_integration','FIS Product Category', CONFIG_ERROR),
+            arg=('F11',),
             string="FIS Module",
             type='char',
             method=False,
@@ -54,8 +53,7 @@ class product_category(osv.Model):
 
     def fis_updates(self, cr, uid, *args):
         _logger.info("product.category.fis_updates starting...")
-        settings = check_company_settings(self, cr, uid, ('product_category_integration', 'Product Module', CONFIG_ERROR))
-        module  = settings['product_category_integration']
+        module = 'F11'
         category_ids = self.search(cr, uid, [('module','=',module)])
         category_recs = self.browse(cr, uid, category_ids)
         category_codes = dict([(r.xml_id, dict(name=r.name, id=r.id, parent_id=r.parent_id)) for r in category_recs])
@@ -88,10 +86,9 @@ class product_category(osv.Model):
 product_category()
 
 # Inventory Availablility Code
-class F97(object):
+class F97(FISenum):
     code = 'An$(5,1)'
     desc = 'Bn$'
-F97 = F97()
 
 class product_available_at(osv.Model):
     "tracks availablility options for products"
@@ -103,9 +100,9 @@ class product_available_at(osv.Model):
         'name' : fields.char('Availability', size=50),
         'xml_id': fields.function(
             xid.get_xml_ids,
-            arg=('product_location_integration','FIS Product Location', CONFIG_ERROR),
+            arg=('F97',),
             fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=('product_location_integration','FIS Product Location', CONFIG_ERROR),
+            fnct_inv_arg=('F97',),
             string="FIS ID",
             type='char',
             method=False,
@@ -114,7 +111,7 @@ class product_available_at(osv.Model):
             ),
         'module': fields.function(
             xid.get_xml_ids,
-            arg=('product_location_integration','FIS Product Location', CONFIG_ERROR),
+            arg=('F97',),
             string="FIS Module",
             type='char',
             method=False,
@@ -130,8 +127,7 @@ class product_available_at(osv.Model):
     
     def fis_updates(self, cr, uid, *args):
         _logger.info("product.available_at.auto-update starting...")
-        settings = check_company_settings(self, cr, uid, ('product_location_integration', 'Product Module', CONFIG_ERROR))
-        module = settings['product_location_integration']
+        module = 'F97'
         avail_ids = self.search(cr, uid, [('module','=',module)])
         avail_recs = self.browse(cr, uid, avail_ids)
         avail_codes = dict([(r.xml_id, r.id) for r in avail_recs])
@@ -175,7 +171,7 @@ class product_template(osv.Model):
 product_template()
 
 # Products
-class F135(object):
+class F135(FISenum):
     item_code = 'An$(1,6)'
     available = 'Bn$(1,1)'
     sales_category = 'Bn$(3,2)'
@@ -189,7 +185,6 @@ class F135(object):
     on_order = 'I(7)'
     committed = 'I(8)'
     wholesale = 'I(23)'
-F135 = F135()
 
 class product_product(osv.Model):
     'Adds Available column and shipped_as columns'
@@ -197,11 +192,10 @@ class product_product(osv.Model):
     _inherit = 'product.product'
 
     def _product_available(self, cr, uid, ids, field_names=None, arg=False, context=None):
-        settings = check_company_settings(self, cr, uid, ('product_integration', 'Product Module', CONFIG_ERROR))
         if context is None:
             context = {}
         model = self._name
-        module = settings['product_integration']
+        module = 'F135'
         imd = self.pool.get('ir.model.data')
         nvty = fisData(135, keymatch='%s101000    101**')
         records = self.browse(cr, uid, ids, context=context)
@@ -223,9 +217,9 @@ class product_product(osv.Model):
     _columns = {
         'xml_id': fields.function(
             xid.get_xml_ids,
-            arg=('product_integration','Product Module',CONFIG_ERROR),
+            arg=('F135', ),
             fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=('product_integration','Product Module',CONFIG_ERROR),
+            fnct_inv_arg=('F135', ),
             string="FIS ID",
             type='char',
             method=False,
@@ -234,7 +228,7 @@ class product_product(osv.Model):
             ),
         'module': fields.function(
             xid.get_xml_ids,
-            arg=('product_integration','Product Module',CONFIG_ERROR),
+            arg=('F135',),
             string="FIS Module",
             type='char',
             method=False,
@@ -269,14 +263,9 @@ class product_product(osv.Model):
     def button_fis_refresh(self, cr, uid, ids, context=None):
         if context is None:
             context = {}
-        settings = check_company_settings(self, cr, uid, 
-            ('product_integration', 'Product Module', CONFIG_ERROR),
-            ('product_category_integration', 'Product Category', CONFIG_ERROR),
-            ('product_location_integration', 'Product Location', CONFIG_ERROR),
-            )
-        product_module = settings['product_integration']
-        category_module = settings['product_category_integration']
-        location_module = settings['product_location_integration']
+        product_module = 'F135'
+        category_module = 'F11'
+        location_module = 'F97'
         prod_avail = self.pool.get('product.available_at')
         prod_cat = self.pool.get('product.category')
         prod_template = self.pool.get('product.template')
@@ -315,14 +304,9 @@ class product_product(osv.Model):
         """
         # get the tables we'll need
         _logger.info("product.product.fis_updates starting...")
-        settings = check_company_settings(self, cr, uid, 
-            ('product_integration', 'Product Module', CONFIG_ERROR),
-            ('product_category_integration', 'Product Category', CONFIG_ERROR),
-            ('product_location_integration', 'Product Location', CONFIG_ERROR),
-            )
-        product_module = settings['product_integration']
-        category_module = settings['product_category_integration']
-        location_module = settings['product_location_integration']
+        product_module = 'F135'
+        category_module = 'F11'
+        location_module = 'F97'
         prod_cat = self.pool.get('product.category')
         prod_avail = self.pool.get('product.available_at')
         prod_items = self
@@ -379,6 +363,7 @@ class product_product(osv.Model):
         values = {}
         values['xml_id'] = values['default_code'] = fis_nvty_rec[F135.item_code]
         values['name'] = NameCase(fis_nvty_rec[F135.name].strip())
+        values['module'] = 'F135'
         categ_id = fis_nvty_rec[F135.sales_category].strip()
         if len(categ_id) == 2 and categ_id[0] in 'OISG':
             categ_id = {'O':'0', 'I':'1', 'S':'5', 'G':'6'}[categ_id[0]] + categ_id[1]
