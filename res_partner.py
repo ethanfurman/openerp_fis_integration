@@ -16,7 +16,7 @@ class res_partner(xid.xmlid, osv.Model):
     _columns = {
         'xml_id': fields.function(
             xid.get_xml_ids,
-            arg=('F33', 'F65', 'F163', 'FIS_now', 'FIS_unfi'),
+            arg=('F27', 'F33', 'F65', 'F163', 'FIS_now', 'FIS_unfi'),
             fnct_inv=xid.update_xml_id,
             string="FIS ID",
             type='char',
@@ -26,7 +26,7 @@ class res_partner(xid.xmlid, osv.Model):
             ),
         'module': fields.function(
             xid.get_xml_ids,
-            arg=('F33', 'F65', 'F163', 'FIS_now', 'FIS_unfi'),
+            arg=('F27', 'F33', 'F65', 'F163', 'FIS_now', 'FIS_unfi'),
             string="FIS Module",
             type='char',
             method=False,

@@ -13,7 +13,6 @@
                     <field name="supplier" position="after">
                         <field name="is_carrier" />
                         <field name="fuel_surcharge" />
-                        <field name="is_driver"/>
                     </field>
                     <field name="comment" position="before">
                         <group attrs="{'invisible': ['|',('is_company','=',False), ('supplier','=',False)]}">
