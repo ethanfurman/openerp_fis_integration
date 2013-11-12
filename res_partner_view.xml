@@ -10,6 +10,11 @@
                     <field name="website" position="after">
                         <field name="xml_id" attrs="{'readonly':True}"/>
                     </field>
+                    <field name="supplier" position="after">
+                        <field name="is_carrier" />
+                        <field name="fuel_surcharge" />
+                        <field name="is_driver"/>
+                    </field>
                     <field name="comment" position="before">
                         <group attrs="{'invisible': ['|',('is_company','=',False), ('supplier','=',False)]}">
                             <group string="Supplier Info" colspan="1"> >
@@ -47,6 +52,11 @@
                             </group>
                         </group>
                     </field>
+                    <page name="page_history" position="before">
+                        <page string="Warehouse">
+                            <field name="warehouse_comment" nolabel="1"/>
+                        </page>
+                    </page>
                 </field>
         </record>
 

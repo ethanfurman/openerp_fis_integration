@@ -1,60 +1,14 @@
 import logging
 from collections import defaultdict
 from osv import osv, fields
+from fis_integration.fis_schema import *
 from fnx.BBxXlate.fisData import fisData
 from fnx.utils import cszk, fix_phone, fix_date, Rise, Sift, AddrCase, NameCase, BsnsCase, normalize_address
-from fnx import xid, enum
+from fnx import xid
 
 _logger = logging.getLogger(__name__)
 
-class FISenum(str, enum.Enum):
-    pass
-
-class F33(FISenum):
-    'Customer Master'
-    code =      'An$(3,6)'
-    name =      'Bn$'
-    addr1 =     'Cn$'
-    addr2 =     'Dn$'
-    addr3 =     'En$'
-    postal =    'Ln$'
-    tele =      'Gn$(20,10)'
-    contact =   'Kn$'
-
-class F65(FISenum):
-    "Vendor Master"
-    company_id =    'An$(1,2)'
-    code =          'An$(3,6)'
-    name =          'Bn$'
-    addr1 =         'Cn$'
-    addr2 =         'Dn$'
-    addr3 =         'En$'
-    tele =          'Gn$'
-    org_cert =      'In$(5,1)'
-    fax =           'In$(29,10)'
-    contact =       'In$(39,15)'
-    org_cert_file = 'In$(54,1)'
-    cert_exp =      'In$(55,6)'
-
-class F163(FISenum):
-    "Supplier Master"
-    company_id =    'An$(1,2)'
-    code =          'An$(3,6)'
-    name =          'Bn$'
-    addr1 =         'Cn$'
-    addr2 =         'Dn$'
-    addr3 =         'En$'
-    tele =          'Gn$'
-    fax =           'Hn$'
-    vendor =        'In$(10,6)'
-    org_cert_file = 'Mn$(1,1)'
-    non_gmo =       'Mn$(2,1)'
-    kosher =        'Mn$(6,1)'
-    cert_exp =      'Nn$(1,6)'
-    gmo_exp =       'Nn$(7,6)'
-    kosher_exp =    'Nn$(36,6)'
-
-class res_partner(osv.Model):
+class res_partner(xid.xmlid, osv.Model):
     "Inherits partner and makes the external_id visible and modifiable"
     _name = 'res.partner'
     _inherit = 'res.partner'
@@ -64,7 +18,6 @@ class res_partner(osv.Model):
             xid.get_xml_ids,
             arg=('F33', 'F65', 'F163', 'FIS_now', 'FIS_unfi'),
             fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=('F33', 'F65', 'F163', 'FIS_now', 'FIS_unfi'),
             string="FIS ID",
             type='char',
             method=False,
@@ -74,8 +27,6 @@ class res_partner(osv.Model):
         'module': fields.function(
             xid.get_xml_ids,
             arg=('F33', 'F65', 'F163', 'FIS_now', 'FIS_unfi'),
-            fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=('F33', 'F65', 'F163', 'FIS_now', 'FIS_unfi'),
             string="FIS Module",
             type='char',
             method=False,
@@ -125,6 +76,10 @@ class res_partner(osv.Model):
         'vn_org_exp': fields.date(
             'Cert expiration',
             ),
+        'is_carrier': fields.boolean('Carrier', help='This partner is used for shipping.'),
+        'warehouse_comment': fields.text('Warehouse Notes'),
+        'fuel_surcharge': fields.boolean('Fuel surcharge'),
+
         }
 
     def fis_updates(self, cr, uid, *args):
@@ -140,7 +95,10 @@ class res_partner(osv.Model):
         supplier_recs = self.browse(cr, uid, self.search(cr, uid, [('module','=','F163')]))
         supplier_codes = dict([(r.xml_id, r.id) for r in supplier_recs])
         customer_recs = self.browse(cr, uid, self.search(cr, uid, [('module','=','F33')]))
-        customer_codes = dict([(r.iml_id, r.id) for r in customer_recs])
+        customer_codes = dict([(r.xml_id, r.id) for r in customer_recs])
+        carrier_recs = self.browse(cr, uid, self.search(cr, uid, [('module','=','F27')]))
+        carrier_codes = dict([(r.xml_id, r.id) for r in supplier_recs])
+        carrier = fisData(27, keymatch='SV10%s')
         vnms = fisData(65, keymatch='10%s')
         posm = fisData(163, keymatch='10%s')
         csms = fisData(33, keymatch='10%s ')
@@ -241,7 +199,7 @@ class res_partner(osv.Model):
             if vendor_address_score > supplier_address_score:
                 result.update(vendor_info)
             if not result['name']:
-                _logger.critical("Missing name for %s -- skipping" % (key, ))
+                _logger.critical("Missing name for vendor %s -- skipping" % (key, ))
                 continue
             if key in supplier_codes:
                 id = supplier_codes[key]
@@ -302,7 +260,7 @@ class res_partner(osv.Model):
                     result['country_id'] = country_id
             result['phone'] = fix_phone(cus_rec[F33.tele])
             if not result['name']:
-                _logger.critical("Missing name for %s -- skipping" % (key, ))
+                _logger.critical("Missing name for customer %s -- skipping" % (key, ))
                 continue
             if key in customer_codes:
                 id = customer_codes[key]
@@ -325,6 +283,49 @@ class res_partner(osv.Model):
                     new_id = self.create(cr, uid, result)
                     customer_codes[key] = new_id
 
+        for sv_rec in carrier:
+            result = {}
+            result['is_company'] = True
+            result['supplier'] = False
+            result['customer'] = False
+            result['is_carrier'] = True
+            result['use_parent_address'] = False
+            result['xml_id'] = key = sv_rec[F27.code]
+            result['module'] = 'F27'
+            result['name'] = BsnsCase(sv_rec[F27.name])
+            addr1, addr2, addr3 = Sift(sv_rec[F27.addr1], sv_rec[F27.addr2], sv_rec[F27.addr3])
+            addr2, city, state, postal, country = cszk(addr2, addr3)
+            addr3 = ''
+            if city and not (addr2 or state or postal or country):
+                addr2, city = city, addr2
+            addr1 = normalize_address(addr1)
+            addr2 = normalize_address(addr2)
+            addr1, addr2 = AddrCase(Rise(addr1, addr2))
+            city = NameCase(city)
+            state, country = NameCase(state), NameCase(country)
+            result['street'] = addr1
+            result['street2'] = addr2
+            result['city'] = city
+            result['zip'] = postal
+            result['country_id'] = False
+            result['state_id'] = False
+            if state:
+                result['state_id'] = state_recs[state][0]
+                result['country_id'] = state_recs[state][2]
+            elif country:
+                country_id = country_recs_name.get(country, None)
+                if country_id is None:
+                    _logger.critical("Carrier %s has invalid country <%r>" % (key, country))
+                else:
+                    result['country_id'] = country_id
+            result['phone'] = fix_phone(sv_rec[F27.tele])
+            result['fuel_surcharge'] = sv_rec[F27.fuel_surcharge]
+            if key in carrier_codes:
+                id = carrier_codes[key]
+                self.write(cr, uid, id, result)
+            else:
+                new_id = self.create(cr, uid, result)
+                carrier_codes[key] = new_id
 
         _logger.info('res_partner.fis_updates done!')
         return True

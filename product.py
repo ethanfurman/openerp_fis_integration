@@ -1,5 +1,5 @@
 from collections import defaultdict
-from fnx import xid, enum
+from fis_integration.fis_schema import *
 from fnx.BBxXlate.fisData import fisData
 from fnx.utils import NameCase
 from openerp import tools
@@ -13,16 +13,7 @@ _logger = logging.getLogger(__name__)
 
 OWN_STOCK = 12  # Physical Locations / Your Company / Stock
 
-class FISenum(str, enum.Enum):
-    pass
-
-# Sales Category codes
-class F11(FISenum):
-    code = 'An$(5,2)'
-    desc = 'Cn$'
-    shelf_life = 'FN'
-
-class product_category(osv.Model):
+class product_category(xid.xmlid, osv.Model):
     "makes external_id visible and searchable"
     _name = 'product.category'
     _inherit = 'product.category'
@@ -56,45 +47,42 @@ class product_category(osv.Model):
         module = 'F11'
         category_ids = self.search(cr, uid, [('module','=',module)])
         category_recs = self.browse(cr, uid, category_ids)
-        category_codes = dict([(r.xml_id, dict(name=r.name, id=r.id, parent_id=r.parent_id)) for r in category_recs])
+        category_codes = dict([(('F11', r.xml_id), dict(name=r.name, id=r.id, parent_id=r.parent_id)) for r in category_recs])
         cnvz = fisData(11, keymatch='as10%s')
         for i in (1, 2):
             for category_rec in cnvz:
                 result = {}
                 result['xml_id'] = key = category_rec[F11.code].strip()
+                result['module'] = 'F11'
+                module_key = 'F11', key
                 if len(key) != i:
                     continue
                 name = category_rec[F11.desc].title()
                 if len(key) == 1:
                     name = key + ' - ' + name.strip('- ')
                 result['name'] = name
-                if key in category_codes:
-                    result['parent_id'] = category_codes[key]['parent_id']['id']
-                    self.write(cr, uid, category_codes[key]['id'], result, context=context)
+                if module_key in category_codes:
+                    result['parent_id'] = category_codes[module_key]['parent_id']['id']
+                    self.write(cr, uid, category_codes[module_key]['id'], result, context=context)
                 else:
                     if len(key) == 1:
                         result['parent_id'] = 2
                     else:
                         try:
-                            result['parent_id'] = category_codes[key[:1]]['id']
+                            result['parent_id'] = category_codes[module_key[1][:1]]['id']
                         except KeyError:
-                            result['parent_id'] = category_codes['9']['id']
+                            result['parent_id'] = category_codes['F11','9']['id']
                     new_id = self.create(cr, uid, result)
-                    category_codes[key] = dict(name=result['name'], id=new_id, parent_id=result['parent_id'])
+                    category_codes[module_key] = dict(name=result['name'], id=new_id, parent_id=result['parent_id'])
         _logger.info(self._name +  " done!")
         return True
+
 product_category()
 
-# Inventory Availablility Code
-class F97(FISenum):
-    code = 'An$(5,1)'
-    desc = 'Bn$'
-
-class product_available_at(osv.Model):
+class product_available_at(xid.xmlid, osv.Model):
     "tracks availablility options for products"
     _name = 'product.available_at'
     _description = 'Product Location'
-
 
     _columns = {
         'name' : fields.char('Availability', size=50),
@@ -137,10 +125,12 @@ class product_available_at(osv.Model):
             result['xml_id'] = key = avail_rec[F97.code].upper()
             result['module'] = module
             result['name'] = avail_rec[F97.desc].title()
-            if key in avail_codes:
-                self.write(cr, uid, avail_codes[key], result)
+            module_key = module, key
+            if module_key in avail_codes:
+                self.write(cr, uid, avail_codes[module_key], result)
             else:
-                self.create(cr, uid, result)
+                new_id = self.create(cr, uid, result)
+                avail_codes[module, key] = new_id
         _logger.info(self._name + " done!")
         return True
 product_available_at()
@@ -170,23 +160,7 @@ class product_template(osv.Model):
         }
 product_template()
 
-# Products
-class F135(FISenum):
-    item_code = 'An$(1,6)'
-    available = 'Bn$(1,1)'
-    sales_category = 'Bn$(3,2)'
-    shelf_life = 'Bn$(69,2)'
-    name = 'Cn$(1,40)'
-    ship_size = 'Cn$(41,8)'
-    manager = 'Dn$(5,1)'
-    ean13 = 'Dn$(6,12)'
-    storage_location = 'Dn$(18,6)'
-    on_hand = 'I(6)'
-    on_order = 'I(7)'
-    committed = 'I(8)'
-    wholesale = 'I(23)'
-
-class product_product(osv.Model):
+class product_product(xid.xmlid, osv.Model):
     'Adds Available column and shipped_as columns'
     _name = 'product.product'
     _inherit = 'product.product'
@@ -206,7 +180,7 @@ class product_product(osv.Model):
                 imd_rec = imd.get_object_from_model_resid(cr, uid, model, rec.id, context=context)
                 fis_rec = nvty[rec['xml_id']]
             except (ValueError, KeyError):
-                return super(product_product, self)._product_available(cr, uid, ids, field_names, arg, context)
+                values.update(super(product_product, self)._product_available(cr, uid, ids, field_names, arg, context))
             else:
                 current['qty_available'] = qoh = fis_rec[F135.on_hand]
                 current['incoming_qty'] = inc = fis_rec[F135.committed]
@@ -277,6 +251,8 @@ class product_product(osv.Model):
         nvty = fisData(135, keymatch='%s101000    101**')
         records = self.browse(cr, uid, ids, context=context)
         for rec in records:
+            if rec.module != 'F135':
+                continue
             fis_nvty_rec = nvty.get(rec['xml_id'])
             if fis_nvty_rec is None:
                 continue
@@ -327,8 +303,8 @@ class product_product(osv.Model):
         for rec in prod_recs:
             if rec.xml_id:
                 synced_prods[rec.xml_id] = rec
-            #elif rec.default_code:
-            #    unsynced_prods[rec.default_code] = rec
+            elif rec.default_code:
+                unsynced_prods[rec.default_code] = rec
         #products = dict([(r['xml_id'], r) for r in prod_recs])
         nvty = fisData(135, keymatch='%s101000    101**')
         cnvz = fisData(11, keymatch='as10%s')
@@ -349,9 +325,9 @@ class product_product(osv.Model):
             if key in synced_prods:
                 prod_rec = synced_prods[key]
                 prod_items.write(cr, uid, prod_rec['id'], values)
-            #elif key in unsynced_prods:
-            #    prod_rec = unsynced_prods[key]
-            #    prod_items.write(cr, uid, prod_rec.id, values, context=context)
+            elif key in unsynced_prods:
+                prod_rec = unsynced_prods[key]
+                prod_items.write(cr, uid, prod_rec.id, values, context=context)
             else:
                 id = prod_items.create(cr, uid, values)
                 prod_rec = prod_items.browse(cr, uid, [id])[0]
