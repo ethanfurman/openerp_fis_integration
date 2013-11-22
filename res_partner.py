@@ -23,6 +23,7 @@ class res_partner(xid.xmlid, osv.Model):
             method=False,
             fnct_search=xid.search_xml_id,
             multi='external',
+            select=True,
             ),
         'module': fields.function(
             xid.get_xml_ids,
@@ -97,7 +98,7 @@ class res_partner(xid.xmlid, osv.Model):
         customer_recs = self.browse(cr, uid, self.search(cr, uid, [('module','=','F33')]))
         customer_codes = dict([(r.xml_id, r.id) for r in customer_recs])
         carrier_recs = self.browse(cr, uid, self.search(cr, uid, [('module','=','F27')]))
-        carrier_codes = dict([(r.xml_id, r.id) for r in supplier_recs])
+        carrier_codes = dict([(r.xml_id, r.id) for r in carrier_recs])
         carrier = fisData(27, keymatch='SV10%s')
         vnms = fisData(65, keymatch='10%s')
         posm = fisData(163, keymatch='10%s')
@@ -293,6 +294,8 @@ class res_partner(xid.xmlid, osv.Model):
             result['xml_id'] = key = sv_rec[F27.code]
             result['module'] = 'F27'
             result['name'] = BsnsCase(sv_rec[F27.name])
+            if key == '99':
+                result['name'] = '<unknown>'
             addr1, addr2, addr3 = Sift(sv_rec[F27.addr1], sv_rec[F27.addr2], sv_rec[F27.addr3])
             addr2, city, state, postal, country = cszk(addr2, addr3)
             addr3 = ''

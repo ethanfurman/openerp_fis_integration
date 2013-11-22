@@ -30,6 +30,7 @@ class product_category(xid.xmlid, osv.Model):
             method=False,
             fnct_search=xid.search_xml_id,
             multi='external',
+            select=True,
             ),
         'module': fields.function(
             xid.get_xml_ids,
@@ -63,7 +64,7 @@ class product_category(xid.xmlid, osv.Model):
                 result['name'] = name
                 if module_key in category_codes:
                     result['parent_id'] = category_codes[module_key]['parent_id']['id']
-                    self.write(cr, uid, category_codes[module_key]['id'], result, context=context)
+                    self.write(cr, uid, category_codes[module_key]['id'], result)
                 else:
                     if len(key) == 1:
                         result['parent_id'] = 2
@@ -96,6 +97,7 @@ class product_available_at(xid.xmlid, osv.Model):
             method=False,
             fnct_search=xid.search_xml_id,
             multi='external',
+            select=True,
             ),
         'module': fields.function(
             xid.get_xml_ids,
@@ -126,11 +128,11 @@ class product_available_at(xid.xmlid, osv.Model):
             result['module'] = module
             result['name'] = avail_rec[F97.desc].title()
             module_key = module, key
-            if module_key in avail_codes:
-                self.write(cr, uid, avail_codes[module_key], result)
+            if key in avail_codes:
+                self.write(cr, uid, avail_codes[key], result)
             else:
                 new_id = self.create(cr, uid, result)
-                avail_codes[module, key] = new_id
+                avail_codes[key] = new_id
         _logger.info(self._name + " done!")
         return True
 product_available_at()
@@ -199,6 +201,7 @@ class product_product(xid.xmlid, osv.Model):
             method=False,
             fnct_search=xid.search_xml_id,
             multi='external',
+            select=True,
             ),
         'module': fields.function(
             xid.get_xml_ids,
