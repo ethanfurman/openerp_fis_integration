@@ -23,7 +23,7 @@ class res_partner(xid.xmlid, osv.Model):
             method=False,
             fnct_search=xid.search_xml_id,
             multi='external',
-            select=True,
+            select=2,
             ),
         'module': fields.function(
             xid.get_xml_ids,

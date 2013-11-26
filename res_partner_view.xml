@@ -12,7 +12,7 @@
                     </field>
                     <field name="supplier" position="after">
                         <field name="is_carrier" />
-                        <field name="fuel_surcharge" />
+                        <field name="fuel_surcharge" attrs="{'invisible':[('is_carrier','=',False)]}" />
                     </field>
                     <field name="comment" position="before">
                         <group attrs="{'invisible': ['|',('is_company','=',False), ('supplier','=',False)]}">
@@ -57,6 +57,18 @@
                         </page>
                     </page>
                 </field>
+        </record>
+
+        <record id="view_partners_tree_xml_id" model="ir.ui.view">
+            <field name="name">view.res.partner.tree.xml_id</field>
+            <field name="model">res.partner</field>
+            <field name="inherit_id" ref="base.view_partner_tree"/>
+            <field eval="18" name="priority"/>
+            <field name="arch" type="xml">
+                <field name="email" position="after">
+                    <field name='xml_id'/>
+                </field>
+            </field>
         </record>
 
     <!-- Update the built-in res_partner forms to not show customers assigned to somebody else -->

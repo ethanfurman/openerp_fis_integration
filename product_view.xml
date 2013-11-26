@@ -31,6 +31,17 @@
                 </field>
         </record>
 
+        <record id="product_product_tree_view_xml_id" model="ir.ui.view">
+            <field name="name">fis_integration.product.tree</field>
+            <field name="model">product.product</field>
+            <field name="inherit_id" ref="product.product_product_tree_view"/>
+            <field name="arch" type="xml">
+                <field name="default_code" position="replace">
+                    <field name="xml_id"/>
+                </field>
+            </field>
+        </record>
+
         <record id="product_normal_action" model="ir.actions.act_window">
             <field name="name">Products</field>
             <field name="type">ir.actions.act_window</field>
