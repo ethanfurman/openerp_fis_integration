@@ -71,38 +71,6 @@
             </field>
         </record>
 
-    <!-- Update the built-in res_partner forms to not show customers assigned to somebody else -->
-
-        <record id="action_partner_form" model="ir.actions.act_window">
-            <field name="name">Partners</field>
-            <field name="res_model">res.partner</field>
-            <field name="domain">['|', ('user_id','=',uid), ('user_id','=',False)]</field>
-        </record>
-
-        <record id="action_partner_customer_form" model="ir.actions.act_window">
-            <field name="name">Customers</field>
-            <field name="res_model">res.partner</field>
-            <field name="domain">['|', ('user_id','=',uid), ('user_id','=',False)]</field>
-        </record>
-
-        <record id="action_partner_supplier_form" model="ir.actions.act_window">
-            <field name="name">Suppliers</field>
-            <field name="res_model">res.partner</field>
-            <field name="domain">['|', ('user_id','=',uid), ('user_id','=',False)]</field>
-        </record>
-
-        <record id="action_partner_employee_form" model="ir.actions.act_window">
-            <field name="name">Employees</field>
-            <field name="res_model">res.partner</field>
-            <field name="domain">['|', ('user_id','=',uid), ('user_id','=',False)]</field>
-        </record>
-
-        <record id="action_partner_other_form" model="ir.actions.act_window">
-            <field name="name">Other Partners</field>
-            <field name="res_model">res.partner</field>
-            <field name="domain">['|', ('user_id','=',uid), ('user_id','=',False)]</field>
-        </record>
-
     </data>
 
     <data noupdate="1">
