@@ -295,7 +295,7 @@ class res_partner(xid.xmlid, osv.Model):
             result['module'] = 'F27'
             result['name'] = BsnsCase(sv_rec[F27.name])
             if key == '99':
-                result['name'] = '<unknown>'
+                result['name'] = '____________'
             addr1, addr2, addr3 = Sift(sv_rec[F27.addr1], sv_rec[F27.addr2], sv_rec[F27.addr3])
             addr2, city, state, postal, country = cszk(addr2, addr3)
             addr3 = ''
