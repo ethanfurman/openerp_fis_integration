@@ -376,45 +376,5 @@ class product_product(xid.xmlid, osv.Model):
         values['shipped_as'] = shipped_as
         return values
 
-    def _change_product_qty(self, cr, uid, rec, new_qty, context=None):
-        """ Changes the Product Quantity by making a Physical Inventory."""
-
-        if context is None:
-            context = {}
-
-        rec_id = rec.id
-        context['active_id'] = rec_id
-
-        inventry_obj = self.pool.get('stock.inventory')
-        inventry_line_obj = self.pool.get('stock.inventory.line')
-        prod_obj_pool = self.pool.get('product.product')
-
-        res_original = rec
-
-        inventory_id = inventry_obj.create(cr , uid, {'name': 'INV: %s' % tools.ustr(res_original.name)}, context=context)
-        line_data ={
-            'inventory_id' : inventory_id,
-            'product_qty' : new_qty,
-            'location_id' : OWN_STOCK,
-            'product_id' : rec_id,
-            'product_uom' : res_original.uom_id.id,
-            'prod_lot_id' : '',
-        }
-        inventry_line_obj.create(cr , uid, line_data, context=context)
-
-        inventry_obj.action_confirm(cr, uid, [inventory_id], context=context)
-        inventry_obj.action_done(cr, uid, [inventory_id], context=context)
-        return {}
-
-        if context is None:
-            context = {}
-        cpq = self.pool.get('stock.change.product.qty')
-        sl = self.pool.get('stock.location')
-        loc_id = sl.browse(cr, uid, [OWN_STOCK], context=context)[0]
-        cpq.create(cr, uid,
-                {'product_id': rec.id, 'new_quantity': new_qty, 'prodlot_id': '', 'location_id': loc_id.id},
-                context=context)
-        context['active_id'] = rec.id
-        cpq.change_product_qty(cr, uid, [rec.id], context=context)
 product_product()
 
