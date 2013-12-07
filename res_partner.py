@@ -206,23 +206,27 @@ class res_partner(xid.xmlid, osv.Model):
                 id = supplier_codes[key]
                 self.write(cr, uid, id, result)
             else:
-                new_id = self.create(cr, uid, result)
-                supplier_codes[key] = new_id
+                id = self.create(cr, uid, result)
+                supplier_codes[key] = id
             if ven_rec is not None:
+                ven_id = id
                 contact = ven_rec[F65.contact]
                 if contact:
                     result = {}
                     result['name'] = NameCase(contact)
                     result['is_company'] = False
+                    result['parent_id'] = ven_id
                     result['use_parent_address'] = True
                     result['xml_id'] = key = 'cntct_' + key
                     result['module'] = 'F163'
+                    result['customer'] = False
+                    result['supplier'] = False
                     if key in supplier_codes:
                         id = supplier_codes[key]
                         self.write(cr, uid, id, result)
                     else:
-                        new_id = self.create(cr, uid, result)
-                        supplier_codes[key] = new_id
+                        id = self.create(cr, uid, result)
+                        supplier_codes[key] = id
 
         for cus_rec in csms:
             result = {}
@@ -267,22 +271,26 @@ class res_partner(xid.xmlid, osv.Model):
                 id = customer_codes[key]
                 self.write(cr, uid, id, result)
             else:
-                new_id = self.create(cr, uid, result)
-                customer_codes[key] = new_id
+                id = self.create(cr, uid, result)
+                customer_codes[key] = id
             if cus_rec[F33.contact]:
+                cus_id = id
                 contact = cus_rec[F33.contact]
                 result = {}
                 result['name'] = NameCase(contact)
                 result['is_company'] = False
+                result['parent_id'] = cus_id
                 result['use_parent_address'] = True
                 result['xml_id'] = key = 'cntct_' + key
                 result['module'] = 'F33'
+                result['customer'] = False
+                result['supplier'] = False
                 if key in customer_codes:
                     id = customer_codes[key]
                     self.write(cr, uid, id, result)
                 else:
-                    new_id = self.create(cr, uid, result)
-                    customer_codes[key] = new_id
+                    id = self.create(cr, uid, result)
+                    customer_codes[key] = id
 
         for sv_rec in carrier:
             result = {}
@@ -327,8 +335,8 @@ class res_partner(xid.xmlid, osv.Model):
                 id = carrier_codes[key]
                 self.write(cr, uid, id, result)
             else:
-                new_id = self.create(cr, uid, result)
-                carrier_codes[key] = new_id
+                id = self.create(cr, uid, result)
+                carrier_codes[key] = id
 
         _logger.info('res_partner.fis_updates done!')
         return True
