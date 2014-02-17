@@ -23,8 +23,6 @@ class product_category(xid.xmlid, osv.Model):
         'xml_id': fields.function(
             xid.get_xml_ids,
             arg=('F11',),
-            fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=('F11',),
             string="FIS ID",
             type='char',
             method=False,
@@ -90,8 +88,6 @@ class product_available_at(xid.xmlid, osv.Model):
         'xml_id': fields.function(
             xid.get_xml_ids,
             arg=('F97',),
-            fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=('F97',),
             string="FIS ID",
             type='char',
             method=False,
@@ -194,8 +190,6 @@ class product_product(xid.xmlid, osv.Model):
         'xml_id': fields.function(
             xid.get_xml_ids,
             arg=('F135', ),
-            fnct_inv=xid.update_xml_id,
-            fnct_inv_arg=('F135', ),
             string="FIS ID",
             type='char',
             method=False,

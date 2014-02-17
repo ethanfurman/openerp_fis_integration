@@ -16,8 +16,7 @@ class res_partner(xid.xmlid, osv.Model):
     _columns = {
         'xml_id': fields.function(
             xid.get_xml_ids,
-            arg=('F27', 'F33', 'F65', 'F163', 'FIS_now', 'FIS_unfi'),
-            fnct_inv=xid.update_xml_id,
+            arg=('F27', 'F33', 'F65', 'F74', 'F163', 'FIS_now', 'FIS_unfi'),
             string="FIS ID",
             type='char',
             method=False,
@@ -27,7 +26,7 @@ class res_partner(xid.xmlid, osv.Model):
             ),
         'module': fields.function(
             xid.get_xml_ids,
-            arg=('F27', 'F33', 'F65', 'F163', 'FIS_now', 'FIS_unfi'),
+            arg=('F27', 'F33', 'F65', 'F74', 'F163', 'FIS_now', 'FIS_unfi'),
             string="FIS Module",
             type='char',
             method=False,
@@ -88,7 +87,6 @@ class res_partner(xid.xmlid, osv.Model):
         state_table = self.pool.get('res.country.state')
         state_recs = state_table.browse(cr, uid, state_table.search(cr, uid, [(1,'=',1)]))
         state_recs = dict([(r.name, (r.id, r.code, r.country_id.id)) for r in state_recs])
-        #state_recs = dict([(r['name'], (r['id'], r['code'], r['country_id.id'])) for r in state_recs])
         country_table = self.pool.get('res.country')
         country_recs = country_table.browse(cr, uid, country_table.search(cr, uid, []))
         country_recs_code = dict([(r.code, r.id) for r in country_recs])
