@@ -1,7 +1,7 @@
 from collections import defaultdict
 from fis_integration.fis_schema import *
 from fnx.BBxXlate.fisData import fisData
-from fnx.utils import NameCase
+from fnx.address import NameCase
 from openerp import tools
 from openerp.addons.product.product import sanitize_ean13
 from osv import osv, fields
