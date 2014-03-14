@@ -20,27 +20,6 @@ class F27(FISenum):
     tele = 'Fn$'
     fuel_surcharge = 'Gn$'
 
-class F97(FISenum):
-    "Inventory Availablility Code"
-    code = 'An$(5,1)'
-    desc = 'Bn$'
-
-class F135(FISenum):
-    "Products"
-    item_code = 'An$(1,6)'
-    available = 'Bn$(1,1)'
-    sales_category = 'Bn$(3,2)'
-    shelf_life = 'Bn$(69,2)'
-    name = 'Cn$(1,40)'
-    ship_size = 'Cn$(41,8)'
-    manager = 'Dn$(5,1)'
-    ean13 = 'Dn$(6,12)'
-    storage_location = 'Dn$(18,6)'
-    on_hand = 'I(6)'
-    on_order = 'I(7)'
-    committed = 'I(8)'
-    wholesale = 'I(23)'
-
 class F33(FISenum):
     'Customer Master'
     code =      'An$(3,6)'
@@ -67,6 +46,27 @@ class F65(FISenum):
     org_cert_file = 'In$(54,1)'
     cert_exp =      'In$(55,6)'
 
+class F97(FISenum):
+    "Inventory Availablility Code"
+    code = 'An$(5,1)'
+    desc = 'Bn$'
+
+class F135(FISenum):
+    "Products"
+    item_code = 'An$(1,6)'
+    available = 'Bn$(1,1)'
+    sales_category = 'Bn$(3,2)'
+    shelf_life = 'Bn$(69,2)'
+    name = 'Cn$(1,40)'
+    ship_size = 'Cn$(41,8)'
+    manager = 'Dn$(5,1)'
+    ean13 = 'Dn$(6,12)'
+    storage_location = 'Dn$(18,6)'
+    on_hand = 'I(6)'
+    on_order = 'I(7)'
+    committed = 'I(8)'
+    wholesale = 'I(23)'
+
 class F163(FISenum):
     "Supplier Master"
     company_id =    'An$(1,2)'
@@ -85,4 +85,9 @@ class F163(FISenum):
     gmo_exp =       'Nn$(7,6)'
     kosher_exp =    'Nn$(36,6)'
 
-
+class F341(FISenum):
+    "Production Line Master"
+    company_id =    'An$(2,2)'
+    code =          'An$(4,2)'
+    desc =          'Bn$'
+    short_desc =    'Cn$'

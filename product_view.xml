@@ -185,5 +185,18 @@
             <field name="priority">200</field>
         </record>
 
+        <record model="ir.cron" id="production_line_update">
+            <field name="name">Production Line Update</field>
+            <field name="interval_number">1</field>
+            <field name="interval_type">days</field>
+            <field name="numbercall">-1</field>
+            <field name="doall" eval="False"/>
+            <field name="model" eval="'fis_integration.production_line'"/>
+            <field name="function" eval="'fis_updates'"/>
+            <field name="args" eval="'()'"/>
+            <field name="nextcall" eval="'2014-03-14 08:00:00'"/>
+            <field name="priority">100</field>
+        </record>
+
     </data>
 </openerp>

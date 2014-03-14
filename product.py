@@ -75,7 +75,6 @@ class product_category(xid.xmlid, osv.Model):
                     category_codes[module_key] = dict(name=result['name'], id=new_id, parent_id=result['parent_id'])
         _logger.info(self._name +  " done!")
         return True
-
 product_category()
 
 class product_available_at(xid.xmlid, osv.Model):
@@ -372,3 +371,51 @@ class product_product(xid.xmlid, osv.Model):
 
 product_product()
 
+class production_line(xid.xmlid, osv.Model):
+    "production line"
+    _name = 'fis_integration.production_line'
+
+    _columns = {
+        'xml_id': fields.function(
+            xid.get_xml_ids,
+            arg=('F341', ),
+            string="FIS ID",
+            type='char',
+            method=False,
+            fnct_search=xid.search_xml_id,
+            multi='external',
+            select=True,
+            ),
+        'module': fields.function(
+            xid.get_xml_ids,
+            arg=('F341',),
+            string="FIS Module",
+            type='char',
+            method=False,
+            fnct_search=xid.search_xml_id,
+            multi='external',
+            ),
+        'name': fields.char('Description', size=30),
+        }
+
+    def fis_updates(self, cr, uid, *args):
+        _logger.info("fis_integration.production_line.auto-update starting...")
+        module = 'F341'
+        avail_ids = self.search(cr, uid, [('module','=',module)])
+        avail_recs = self.browse(cr, uid, avail_ids)
+        avail_codes = dict([(r.xml_id, r.id) for r in avail_recs])
+        cnvz = fisData(341, keymatch='f10%s')
+        for avail_rec in cnvz:
+            result = {}
+            result['xml_id'] = key = avail_rec[F341.code].upper()
+            result['module'] = module
+            result['name'] = avail_rec[F341.desc].title()
+            module_key = module, key
+            if key in avail_codes:
+                self.write(cr, uid, avail_codes[key], result)
+            else:
+                new_id = self.create(cr, uid, result)
+                avail_codes[key] = new_id
+        _logger.info(self._name + " done!")
+        return True
+production_line()
