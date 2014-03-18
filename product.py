@@ -374,6 +374,7 @@ product_product()
 class production_line(xid.xmlid, osv.Model):
     "production line"
     _name = 'fis_integration.production_line'
+    _order = 'xml_id'
 
     _columns = {
         'xml_id': fields.function(
@@ -385,6 +386,7 @@ class production_line(xid.xmlid, osv.Model):
             fnct_search=xid.search_xml_id,
             multi='external',
             select=True,
+            store=True,
             ),
         'module': fields.function(
             xid.get_xml_ids,
