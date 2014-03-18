@@ -143,6 +143,26 @@
 
         <menuitem name="Locations" id="product.available_at" parent="product.prod_config_main" action="product_available_at_action" groups="base.group_user"/>
 
+        <record model="ir.ui.view" id="production_line_tree">
+            <field name="name">Production Lines</field>
+            <field name="model">fis_integration.production_line</field>
+            <field name="type">tree</field>
+            <field name="arch" type="xml">
+                <tree string="Production Lines" create="false">
+                    <field name="xml_id"/>
+                    <field name="name"/>
+                </tree>
+            </field>
+        </record>
+
+        <record model="ir.actions.act_window" id="production_line_tree_action">
+            <field name="name">Production Lines</field>
+            <field name="res_model">fis_integration.production_line</field>
+            <field name="view_type">tree</field>
+            <field name="view_id" ref="production_line_tree"/>
+            <field name="view_mode">tree</field>
+        </record>
+
     </data>
 
     <data noupdate="1">
