@@ -149,7 +149,6 @@
             <field name="type">tree</field>
             <field name="arch" type="xml">
                 <tree string="Production Lines" create="false">
-                    <field name="xml_id"/>
                     <field name="name"/>
                 </tree>
             </field>

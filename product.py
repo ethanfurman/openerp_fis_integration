@@ -374,7 +374,14 @@ product_product()
 class production_line(xid.xmlid, osv.Model):
     "production line"
     _name = 'fis_integration.production_line'
-    _order = 'xml_id'
+    _order = 'name'
+
+    def _get_name(self, cr, uid, ids, field_name, args, context=None):
+        values = {}
+        for id in ids:
+            current = self.browse(cr, uid, id, context=context)
+            values[id] = '%s - %s' % (current.xml_id, current.desc)
+        return values
 
     _columns = {
         'xml_id': fields.function(
@@ -386,7 +393,6 @@ class production_line(xid.xmlid, osv.Model):
             fnct_search=xid.search_xml_id,
             multi='external',
             select=True,
-            store=True,
             ),
         'module': fields.function(
             xid.get_xml_ids,
@@ -397,7 +403,17 @@ class production_line(xid.xmlid, osv.Model):
             fnct_search=xid.search_xml_id,
             multi='external',
             ),
-        'name': fields.char('Description', size=30),
+        'desc': fields.char('Description', size=30),
+        'name': fields.function(
+            _get_name,
+            arg=(),
+            string='Name',
+            type='char',
+            method=True,
+            store={
+                'fis_integration.production_line': (lambda s, c, u, ids, ctx: ids, ['desc'], 20),
+                }
+            ),
         }
 
     def fis_updates(self, cr, uid, *args):
@@ -411,7 +427,7 @@ class production_line(xid.xmlid, osv.Model):
             result = {}
             result['xml_id'] = key = avail_rec[F341.code].upper()
             result['module'] = module
-            result['name'] = avail_rec[F341.desc].title()
+            result['desc'] = avail_rec[F341.desc].title()
             module_key = module, key
             if key in avail_codes:
                 self.write(cr, uid, avail_codes[key], result)
