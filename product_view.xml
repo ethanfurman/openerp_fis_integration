@@ -4,31 +4,36 @@
 
         <!-- Add external_id and salesinq tab to product.product -->
         <record id="product_normal_form_view_xml_id" model="ir.ui.view">
-                <field name="name">view.product.product.form.xml_id</field>
-                <field name="model">product.product</field>
-                <field name="inherit_id" ref="stock.view_normal_procurement_locations_form"/>
-                <field eval="7" name="priority"/>
-                <field name="arch" type="xml">
-                    <xpath expr="//div[@name='buttons']" position="inside">
-                        <button name="button_fis_refresh" string="FIS Refresh" type="object"/>
-                    </xpath>
-                    <page string="Information" position="after">
-                        <page string="Shipping Instructions">
-                            <field name="spcl_ship_instr" nolabel="1" placeholder="Special shipping instructions here..."/>
-                        </page>
+            <field name="name">view.product.product.form.xml_id</field>
+            <field name="model">product.product</field>
+            <field name="inherit_id" ref="stock.view_normal_procurement_locations_form"/>
+            <field eval="7" name="priority"/>
+            <field name="arch" type="xml">
+                <xpath expr="//div[@name='buttons']" position="inside">
+                    <button name="button_fis_refresh" string="FIS Refresh" type="object"/>
+                </xpath>
+                <page string="Information" position="after">
+                    <page string="Shipping Instructions">
+                        <field name="spcl_ship_instr" nolabel="1" placeholder="Special shipping instructions here..."/>
                     </page>
-                    <field name="loc_rack" position="replace"/>
-                    <field name="loc_row" position="replace"/>
-                    <field name="loc_case" position="replace">
-                        <field name="fis_location"/>
-                    </field>
-                    <field name="list_price" position="after">
-                        <field name="shipped_as"/>
-                    </field>
-                    <field name="default_code" position="replace">
-                        <field name="xml_id"/>
-                    </field>
+                </page>
+                <page string="Sales" position="after">
+                    <page string="Labels">
+                        <field name="label_server_stub" nolabel="1"/>
+                    </page>
+                </page>
+                <field name="loc_rack" position="replace"/>
+                <field name="loc_row" position="replace"/>
+                <field name="loc_case" position="replace">
+                    <field name="fis_location"/>
                 </field>
+                <field name="list_price" position="after">
+                    <field name="shipped_as"/>
+                </field>
+                <field name="default_code" position="replace">
+                    <field name="xml_id"/>
+                </field>
+            </field>
         </record>
 
         <record id="product_product_tree_view_xml_id" model="ir.ui.view">

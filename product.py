@@ -2,6 +2,7 @@ from collections import defaultdict
 from fis_integration.fis_schema import *
 from fnx.BBxXlate.fisData import fisData
 from fnx.address import NameCase
+from fnx import static_page_stub
 from openerp import tools
 from openerp.addons.product.product import sanitize_ean13
 from osv import osv, fields
@@ -12,6 +13,31 @@ import time
 _logger = logging.getLogger(__name__)
 
 OWN_STOCK = 12  # Physical Locations / Your Company / Stock
+
+LabelLinks = (
+    "Plone/LabelDirectory/%s/%sB.bmp",
+    "Plone/LabelDirectory/%s/%sNI.bmp",
+    "Plone/LabelDirectory/%s/%sMK.bmp",
+    )
+
+def _label_links(obj, cr, uid, ids, field_name, arg, context=None):
+    xml_ids = [v for (k, v) in 
+            xid.get_xml_ids(
+                obj, cr, uid, ids, field_name, 
+                arg=('F135', ),
+                context=context).items()
+            ]
+    result = defaultdict(dict)
+    htmlContentList = [ ]
+    for id, d in zip(ids, xml_ids):  # there should only be one...
+        xml_id = d['xml_id']
+        htmlContentList.append('''<img src="%s" width=55%% align="left"/>''' % (LabelLinks[0] % (xml_id, xml_id)))
+        htmlContentList.append('''<img src="%s" width=35%% align="right"/><br>''' % (LabelLinks[1] % (xml_id, xml_id)))
+        htmlContentList.append('''<br><img src="%s" width=100%% /><br>''' % (LabelLinks[2] % (xml_id, xml_id)))
+        result[id] = static_page_stub % "".join(htmlContentList)
+    return result
+
+
 
 class product_category(xid.xmlid, osv.Model):
     "makes external_id visible and searchable"
@@ -227,6 +253,12 @@ class product_product(xid.xmlid, osv.Model):
         'outgoing_qty': fields.function(_product_available, multi='qty_available',
             type='float', digits=(16,3), string='Outgoing',
             help="Quantity of products that are planned to leave according to FIS.",
+            ),
+        'label_server_stub': fields.function(
+            _label_links,
+            string='Current Labels',
+            type='html',
+            method=False,
             ),
         }
 
