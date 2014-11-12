@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<openerp>
+
+    <data noupdate="0">
+
+        <record model="ir.module.category" id="fis_integration">
+            <field name="name">FIS</field>
+            <field name="sequence">99</field>
+            <field name="description">Objects to facilitate interation with the FIS system.</field>
+        </record>
+
+        <record model="res.groups" id="purchase_cost">
+            <field name="name">Purchase Cost</field>
+            <field name="category_id" ref="fis_integration"/>
+            <field name="comment">The user is able to view product costing information.</field>
+            <!-- <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/> -->
+        </record>
+
+    </data>
+
+</openerp>
