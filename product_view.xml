@@ -2,7 +2,7 @@
 <openerp>
     <data>
 
-        <!-- Add external_id and salesinq tab to product.product -->
+        <!-- Add external_id, label tab, and cost tab to product.product -->
         <record id="product_normal_form_view_xml_id" model="ir.ui.view">
             <field name="name">view.product.product.form.xml_id</field>
             <field name="model">product.product</field>
@@ -20,6 +20,9 @@
                 <page string="Sales" position="after">
                     <page string="Labels">
                         <field name="label_server_stub" nolabel="1"/>
+                    </page>
+                    <page string="Costs" groups="fis_integration.purchase_cost">
+                        <field name="cost_server_stub"/>
                     </page>
                 </page>
                 <field name="loc_rack" position="replace"/>

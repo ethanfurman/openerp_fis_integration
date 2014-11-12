@@ -2,7 +2,7 @@ from collections import defaultdict
 from fis_integration.fis_schema import *
 from fnx.BBxXlate.fisData import fisData
 from fnx.address import NameCase
-from fnx import static_page_stub
+from fnx import dynamic_page_stub, static_page_stub
 from openerp import tools
 from openerp.addons.product.product import sanitize_ean13
 from osv import osv, fields
@@ -20,6 +20,21 @@ LabelLinks = (
     "Plone/LabelDirectory/%s/%sMK.bmp",
     )
 
+def _cost_link(obj, cr, uid, ids, field_name, arg, context=None):
+    if isinstance(ids, (int, long)):
+        ids = [ids]
+    result = {}
+    htmlContentList = [ ]
+    for id in ids:
+        htmlContentList.append('''
+                <div id="cost_content"></div>
+                <script type="text/javascript">
+                    ajaxpage('http://labeltime:9000/costing/','cost_content');
+                </script>
+                ''')
+        result[id] = dynamic_page_stub % "".join(htmlContentList)
+    return result
+
 def _label_links(obj, cr, uid, ids, field_name, arg, context=None):
     xml_ids = [v for (k, v) in 
             xid.get_xml_ids(
@@ -27,7 +42,7 @@ def _label_links(obj, cr, uid, ids, field_name, arg, context=None):
                 arg=('F135', ),
                 context=context).items()
             ]
-    result = defaultdict(dict)
+    result = {}
     htmlContentList = [ ]
     for id, d in zip(ids, xml_ids):  # there should only be one...
         xml_id = d['xml_id']
@@ -36,7 +51,6 @@ def _label_links(obj, cr, uid, ids, field_name, arg, context=None):
         htmlContentList.append('''<br><img src="%s" width=100%% /><br>''' % (LabelLinks[2] % (xml_id, xml_id)))
         result[id] = static_page_stub % "".join(htmlContentList)
     return result
-
 
 
 class product_category(xid.xmlid, osv.Model):
@@ -259,6 +273,19 @@ class product_product(xid.xmlid, osv.Model):
             string='Current Labels',
             type='html',
             method=False,
+            ),
+        'cost_server_stub': fields.function(
+            _cost_link,
+            string='Item Costs',
+            type='html',
+            method=False,
+            ),
+        'cost_customer': fields.function(
+            lambda *a: {},
+            string="Customer to check costs for",
+            type='many2one',
+            method=False,
+            readonly=True,
             ),
         }
 

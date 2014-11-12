@@ -21,6 +21,7 @@
             'res_config_view.xml',
             'res_partner_view.xml',
             'product_view.xml',
+            'security/fis_security.xml',
         ],
     'test': [],
     'installable': True,
