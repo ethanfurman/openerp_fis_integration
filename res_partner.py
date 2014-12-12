@@ -83,8 +83,12 @@ class res_partner(xid.xmlid, osv.Model):
 
         }
 
-    def fis_updates(self, cr, uid, *args):
-        _logger.info("res_partner.fis_updates starting...")
+    def fis_updates(self, cr, uid, partner=None, shipper=None, *args):
+        if partner is shipper is None:
+            _logger.info("res_partner.fis_updates starting...")
+        if partner and shipper:
+            raise ValueError('only one of <partner> or <shipper> may be specified (received %r and %r)' % (partner, shipper))
+        _logger.info('res_partner.fis_updates: looking for %s' % (partner or shipper))
         state_table = self.pool.get('res.country.state')
         state_recs = state_table.browse(cr, uid, state_table.search(cr, uid, [(1,'=',1)]))
         state_recs = dict([(r.name, (r.id, r.code, r.country_id.id)) for r in state_recs])
@@ -98,10 +102,16 @@ class res_partner(xid.xmlid, osv.Model):
         customer_codes = dict([(r.xml_id, r.id) for r in customer_recs])
         carrier_recs = self.browse(cr, uid, self.search(cr, uid, [('module','=','F27')]))
         carrier_codes = dict([(r.xml_id, r.id) for r in carrier_recs])
-        carrier = fisData(27, keymatch='SV10%s')
-        vnms = fisData(65, keymatch='10%s')
-        posm = fisData(163, keymatch='10%s')
-        csms = fisData(33, keymatch='10%s ')
+        shipper_key = 'SV10%s'
+        if shipper:
+            shipper_key %= shipper
+        carrier = fisData(27, keymatch=shipper_key)
+        partner_key = '10%s'
+        if partner:
+            partner_key %= partner
+        vnms = fisData(65, keymatch=partner_key)
+        posm = fisData(163, keymatch=partner_key)
+        csms = fisData(33, keymatch='%s ' % partner_key)
 
         for sup_rec in posm:
             result = {}
@@ -196,8 +206,8 @@ class res_partner(xid.xmlid, osv.Model):
                 result['vn_org_cert'] = ven_rec[F65.org_cert] in 'Y'
                 result['vn_org_cert_file'] = ven_rec[F65.org_cert_file] in 'Y'
                 result['vn_org_exp'] = fix_date(ven_rec[F65.cert_exp])
-            if vendor_address_score > supplier_address_score:
-                result.update(vendor_info)
+                if vendor_address_score > supplier_address_score:
+                    result.update(vendor_info)
             if not result['name']:
                 _logger.critical("Missing name for vendor %s -- skipping" % (key, ))
                 continue
