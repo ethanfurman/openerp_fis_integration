@@ -5,6 +5,7 @@ from fnx.address import NameCase
 from fnx import dynamic_page_stub, static_page_stub
 from openerp import tools
 from openerp.addons.product.product import sanitize_ean13
+from osv.osv import except_osv as ERPError
 from osv import osv, fields
 from urllib import urlopen
 import logging
@@ -214,16 +215,29 @@ class product_product(xid.xmlid, osv.Model):
         for rec in records:
             current = values[rec.id] = {}
             try:
-                imd_rec = imd.get_object_from_model_resid(cr, uid, model, rec.id, context=context)
+                if not rec['xml_id']:
+                    current['qty_available'] = qoh = rec['nf_qty_available']
+                    current['incoming_qty'] = inc = rec['nf_incoming_qty']
+                    current['outgoing_qty'] = out = rec['nf_outgoing_qty']
+                    current['virtual_available'] = qoh + inc - out
+                    continue
+                # imd_rec = imd.get_object_from_model_resid(cr, uid, model, rec.id, context=context)
                 fis_rec = nvty[rec['xml_id']]
             except (ValueError, KeyError):
-                values.update(super(product_product, self)._product_available(cr, uid, ids, field_names, arg, context))
+                values.update(super(product_product, self)._product_available(cr, uid, rec.id, field_names, arg, context))
             else:
                 current['qty_available'] = qoh = fis_rec[F135.on_hand]
                 current['incoming_qty'] = inc = fis_rec[F135.committed]
                 current['outgoing_qty'] = out = fis_rec[F135.on_order]
                 current['virtual_available'] = qoh + inc - out
         return values
+
+    def _product_available_inv(self, cr, uid, id, field_name, field_value, misc=None, context=None):
+        current_record = self.browse(cr, uid, id, context=context)
+        if current_record.xml_id:
+            raise ERPError('cannot change quantity information on FIS records')
+        field_name = 'nf_' + field_name
+        return self.write(cr, uid, id, {field_name: field_value}, context=context)
 
     _columns = {
         'xml_id': fields.function(
@@ -252,21 +266,45 @@ class product_product(xid.xmlid, osv.Model):
             ),
         'spcl_ship_instr': fields.text('Special Shipping Instructions'),
         'fis_location': fields.char('Location', size=6),
-        'qty_available': fields.function(_product_available, multi='qty_available',
+        'qty_available': fields.function(
+            _product_available,
+            fnct_inv=_product_available_inv,
+            multi='qty_available',
             type='float', digits=(16,3), string='Quantity On Hand',
             help="Current quantity of products according to FIS",
             ),
-        'virtual_available': fields.function(_product_available, multi='qty_available',
+        'virtual_available': fields.function(
+            _product_available,
+            fnct_inv=_product_available_inv,
+            multi='qty_available',
             type='float', digits=(16,3), string='Forecasted Quantity',
             help="Forecast quantity (computed as Quantity On Hand - Outgoing + Incoming)",
             ),
-        'incoming_qty': fields.function(_product_available, multi='qty_available',
+        'incoming_qty': fields.function(
+            _product_available,
+            fnct_inv=_product_available_inv,
+            multi='qty_available',
             type='float', digits=(16,3), string='Incoming',
             help="Quantity of products that are planned to arrive according to FIS.",
             ),
-        'outgoing_qty': fields.function(_product_available, multi='qty_available',
+        'outgoing_qty': fields.function(
+            _product_available,
+            fnct_inv=_product_available_inv,
+            multi='qty_available',
             type='float', digits=(16,3), string='Outgoing',
             help="Quantity of products that are planned to leave according to FIS.",
+            ),
+        'nf_incoming_qty': fields.float(
+            digits=(16,3), string='non-FIS Incoming',
+            help="Quantity of products that are planned to arrive according to FIS.",
+            ),
+        'nf_outgoing_qty': fields.float(
+            digits=(16,3), string='non-FIS Outgoing',
+            help="Quantity of products that are planned to leave according to FIS.",
+            ),
+        'nf_qty_available': fields.float(
+            digits=(16,3), string='non-FIS Quantity On Hand',
+            help="Current quantity of products according to FIS",
             ),
         'label_server_stub': fields.function(
             _label_links,
@@ -410,6 +448,12 @@ class product_product(xid.xmlid, osv.Model):
         if not sl and sales_category_rec:
             values['warranty'] = float(sales_category_rec[F11.shelf_life] or 0.0)
         #values['product_manager'] = fis_nvty_rec[F135.manager]
+
+        values['qty_available'] = qoh = fis_nvty_rec[F135.on_hand]
+        values['incoming_qty'] = inc = fis_nvty_rec[F135.committed]
+        values['outgoing_qty'] = out = fis_nvty_rec[F135.on_order]
+        values['virtual_available'] = qoh + inc - out
+
         shipped_as = fis_nvty_rec[F135.ship_size].strip()
         if shipped_as.lower() in ('each','1 each','1/each'):
             shipped_as = '1 each'

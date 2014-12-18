@@ -36,6 +36,18 @@
                 <field name="default_code" position="replace">
                     <field name="xml_id"/>
                 </field>
+                <xpath expr="//field[@name='qty_available']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('xml_id','!=',False)]}</attribute>
+                </xpath>
+                <xpath expr="//field[@name='virtual_available']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('xml_id','!=',False)]}</attribute>
+                </xpath>
+                <xpath expr="//field[@name='incoming_qty']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('xml_id','!=',False)]}</attribute>
+                </xpath>
+                <xpath expr="//field[@name='outgoing_qty']" position="attributes">
+                    <attribute name="attrs">{'readonly': [('xml_id','!=',False)]}</attribute>
+                </xpath>
             </field>
         </record>
 
@@ -80,6 +92,40 @@
               </p>
             </field>
         -->
+
+        <record id="product_search_form_view_fis" model="ir.ui.view">
+            <field name="name">product.search.fis.form</field>
+            <field name="model">product.product</field>
+            <field name="inherit_id" ref="product.product_search_form_view"/>
+            <field name="arch" type="xml">
+                <field name="name" position="replace">
+                    <field name="name" string="Product" filter_domain="['|',('name','ilike',self),('default_code','ilike',self),('xml_id','!=',False)]"/>
+                </field>
+                <filter name="filter_to_sell" position="before">
+                    <filter name="fis_avail" string="Available" domain="[('avail', '=', 'Available'),('xml_id','!=',False)]"/>
+                </filter>
+            </field>
+        </record>
+
+        <record id="product_normal_action" model="ir.actions.act_window">
+            <field name="name">Products</field>
+            <field name="type">ir.actions.act_window</field>
+            <field name="res_model">product.product</field>
+            <field name="view_type">form</field>
+            <field name="view_mode">tree,form,kanban</field>
+            <field name="view_id" ref="product.product_product_tree_view"/>
+            <field name="search_view_id" ref="fis_integration.product_search_form_view_fis"/>
+            <field name="domain">[('xml_id','!=',False)]</field>
+            <field name="help" type="html">
+              <p class="oe_view_nocontent_create">
+                Click to define a new product.
+              </p><p>
+                You must define a product for everything you buy or sell,
+                whether it's a physical product, a consumable or service.
+              </p>
+            </field>
+        </record>
+
         <record id="product_category_list_view_xml_id" model="ir.ui.view">
             <field name="name">product.category.list.xml_id</field>
             <field name="model">product.category</field>
