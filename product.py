@@ -5,6 +5,7 @@ from fnx.address import NameCase
 from fnx import dynamic_page_stub, static_page_stub
 from openerp import tools
 from openerp.addons.product.product import sanitize_ean13
+from osv.osv import except_osv as ERPError
 from osv import osv, fields
 from urllib import urlopen
 import logging
@@ -202,31 +203,41 @@ class product_product(xid.xmlid, osv.Model):
     _name = 'product.product'
     _inherit = 'product.product'
 
-    # def _product_available(self, cr, uid, ids, field_names=None, arg=False, context=None):
-    #     if context is None:
-    #         context = {}
-    #     model = self._name
-    #     module = 'F135'
-    #     imd = self.pool.get('ir.model.data')
-    #     nvty = fisData(135, keymatch='%s101000    101**')
-    #     records = self.browse(cr, uid, ids, context=context)
-    #     values = {}
-    #     for rec in records:
-    #         current = values[rec.id] = {}
-    #         try:
-    #             if not rec['xml_id']:
-    #                 current['qty_available'] = rec['qty_available']
-    #                 continue
-    #             imd_rec = imd.get_object_from_model_resid(cr, uid, model, rec.id, context=context)
-    #             fis_rec = nvty[rec['xml_id']]
-    #         except (ValueError, KeyError):
-    #             values.update(super(product_product, self)._product_available(cr, uid, ids, field_names, arg, context))
-    #         else:
-    #             current['qty_available'] = qoh = fis_rec[F135.on_hand]
-    #             current['incoming_qty'] = inc = fis_rec[F135.committed]
-    #             current['outgoing_qty'] = out = fis_rec[F135.on_order]
-    #             current['virtual_available'] = qoh + inc - out
-    #     return values
+    def _product_available(self, cr, uid, ids, field_names=None, arg=False, context=None):
+        if context is None:
+            context = {}
+        model = self._name
+        module = 'F135'
+        imd = self.pool.get('ir.model.data')
+        nvty = fisData(135, keymatch='%s101000    101**')
+        records = self.browse(cr, uid, ids, context=context)
+        values = {}
+        for rec in records:
+            current = values[rec.id] = {}
+            try:
+                if not rec['xml_id']:
+                    current['qty_available'] = qoh = rec['nf_qty_available']
+                    current['incoming_qty'] = inc = rec['nf_incoming_qty']
+                    current['outgoing_qty'] = out = rec['nf_outgoing_qty']
+                    current['virtual_available'] = qoh + inc - out
+                    continue
+                # imd_rec = imd.get_object_from_model_resid(cr, uid, model, rec.id, context=context)
+                fis_rec = nvty[rec['xml_id']]
+            except (ValueError, KeyError):
+                values.update(super(product_product, self)._product_available(cr, uid, rec.id, field_names, arg, context))
+            else:
+                current['qty_available'] = qoh = fis_rec[F135.on_hand]
+                current['incoming_qty'] = inc = fis_rec[F135.committed]
+                current['outgoing_qty'] = out = fis_rec[F135.on_order]
+                current['virtual_available'] = qoh + inc - out
+        return values
+
+    def _product_available_inv(self, cr, uid, id, field_name, field_value, misc=None, context=None):
+        current_record = self.browse(cr, uid, id, context=context)
+        if current_record.xml_id:
+            raise ERPError('cannot change quantity information on FIS records')
+        field_name = 'nf_' + field_name
+        return self.write(cr, uid, id, {field_name: field_value}, context=context)
 
     _columns = {
         'xml_id': fields.function(
@@ -255,41 +266,46 @@ class product_product(xid.xmlid, osv.Model):
             ),
         'spcl_ship_instr': fields.text('Special Shipping Instructions'),
         'fis_location': fields.char('Location', size=6),
-        'qty_available': fields.float(
-            digits=(16,3), string='Quantity On Hand',
+        'qty_available': fields.function(
+            _product_available,
+            fnct_inv=_product_available_inv,
+            multi='qty_available',
+            type='float', digits=(16,3), string='Quantity On Hand',
             help="Current quantity of products according to FIS",
             ),
-        # 'qty_available': fields.function(
-        #     _product_available,
-        #     _product_available_inv,
-        #     multi='qty_available',
-        #     type='float', digits=(16,3), string='Quantity On Hand',
-        #     help="Current quantity of products according to FIS",
-        #     ),
-        'virtual_available': fields.float(
-            digits=(16,3), string='Forecasted Quantity',
+        'virtual_available': fields.function(
+            _product_available,
+            fnct_inv=_product_available_inv,
+            multi='qty_available',
+            type='float', digits=(16,3), string='Forecasted Quantity',
             help="Forecast quantity (computed as Quantity On Hand - Outgoing + Incoming)",
             ),
-        # 'virtual_available': fields.function(_product_available, multi='qty_available',
-        #     type='float', digits=(16,3), string='Forecasted Quantity',
-        #     help="Forecast quantity (computed as Quantity On Hand - Outgoing + Incoming)",
-        #     ),
-        'incoming_qty': fields.float(
-            digits=(16,3), string='Incoming',
+        'incoming_qty': fields.function(
+            _product_available,
+            fnct_inv=_product_available_inv,
+            multi='qty_available',
+            type='float', digits=(16,3), string='Incoming',
             help="Quantity of products that are planned to arrive according to FIS.",
             ),
-        # 'incoming_qty': fields.function(_product_available, multi='qty_available',
-        #     type='float', digits=(16,3), string='Incoming',
-        #     help="Quantity of products that are planned to arrive according to FIS.",
-        #     ),
-        'outgoing_qty': fields.float(
-            digits=(16,3), string='Outgoing',
+        'outgoing_qty': fields.function(
+            _product_available,
+            fnct_inv=_product_available_inv,
+            multi='qty_available',
+            type='float', digits=(16,3), string='Outgoing',
             help="Quantity of products that are planned to leave according to FIS.",
             ),
-        # 'outgoing_qty': fields.function(_product_available, multi='qty_available',
-        #     type='float', digits=(16,3), string='Outgoing',
-        #     help="Quantity of products that are planned to leave according to FIS.",
-        #     ),
+        'nf_incoming_qty': fields.float(
+            digits=(16,3), string='non-FIS Incoming',
+            help="Quantity of products that are planned to arrive according to FIS.",
+            ),
+        'nf_outgoing_qty': fields.float(
+            digits=(16,3), string='non-FIS Outgoing',
+            help="Quantity of products that are planned to leave according to FIS.",
+            ),
+        'nf_qty_available': fields.float(
+            digits=(16,3), string='non-FIS Quantity On Hand',
+            help="Current quantity of products according to FIS",
+            ),
         'label_server_stub': fields.function(
             _label_links,
             string='Current Labels',
@@ -309,7 +325,6 @@ class product_product(xid.xmlid, osv.Model):
             method=False,
             readonly=True,
             ),
-        # '_qoh': fields.integer('Quantity on Hand for non_FIS products (i.e. spare parts)'),
         }
 
     def button_fis_refresh(self, cr, uid, ids, context=None):

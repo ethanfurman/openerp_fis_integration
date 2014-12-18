@@ -40,13 +40,13 @@
                     <attribute name="attrs">{'readonly': [('xml_id','!=',False)]}</attribute>
                 </xpath>
                 <xpath expr="//field[@name='virtual_available']" position="attributes">
-                    <attribute name="attrs">{'readonly': True}</attribute>
+                    <attribute name="attrs">{'readonly': [('xml_id','!=',False)]}</attribute>
                 </xpath>
                 <xpath expr="//field[@name='incoming_qty']" position="attributes">
-                    <attribute name="attrs">{'readonly': True}</attribute>
+                    <attribute name="attrs">{'readonly': [('xml_id','!=',False)]}</attribute>
                 </xpath>
                 <xpath expr="//field[@name='outgoing_qty']" position="attributes">
-                    <attribute name="attrs">{'readonly': True}</attribute>
+                    <attribute name="attrs">{'readonly': [('xml_id','!=',False)]}</attribute>
                 </xpath>
             </field>
         </record>
@@ -77,6 +77,7 @@
         </record>
 
         <!--
+
             <field name="view_type">form</field>
             <field name="view_mode">tree,form,kanban</field>
             <field name="view_id" ref="product_product_tree_view"/>
@@ -98,7 +99,7 @@
             <field name="inherit_id" ref="product.product_search_form_view"/>
             <field name="arch" type="xml">
                 <field name="name" position="replace">
-                    <field name="name" string="Product" filter_domain="['|',('name','ilike',self),('default_code','ilike',self),('xml_id','!=',False]"/>
+                    <field name="name" string="Product" filter_domain="['|',('name','ilike',self),('default_code','ilike',self),('xml_id','!=',False)]"/>
                 </field>
                 <filter name="filter_to_sell" position="before">
                     <filter name="fis_avail" string="Available" domain="[('avail', '=', 'Available'),('xml_id','!=',False)]"/>
@@ -113,7 +114,7 @@
             <field name="view_type">form</field>
             <field name="view_mode">tree,form,kanban</field>
             <field name="view_id" ref="product.product_product_tree_view"/>
-            <field name="search_view_id" ref="product.product_search_form_view"/>
+            <field name="search_view_id" ref="fis_integration.product_search_form_view_fis"/>
             <field name="domain">[('xml_id','!=',False)]</field>
             <field name="help" type="html">
               <p class="oe_view_nocontent_create">
@@ -217,56 +218,56 @@
 
     </data>
 
-    <data noupdate="0">
+    <data noupdate="1">
         <record model="ir.cron" id="product_location_update">
             <field name="name">Product Locations Update</field>
             <field name="interval_number">1</field>
-            <field name="interval_type">hours</field>
+            <field name="interval_type">days</field>
             <field name="numbercall">-1</field>
             <field name="doall" eval="False"/>
             <field name="model" eval="'product.available_at'"/>
             <field name="function" eval="'fis_updates'"/>
             <field name="args" eval="'()'"/>
-            <field name="nextcall" eval="'2013-04-09 07:45:00'"/>
+            <field name="nextcall" eval="'2013-04-09 08:00:00'"/>
             <field name="priority">100</field>
         </record>
 
         <record model="ir.cron" id="product_category_update">
             <field name="name">Product Categories Update</field>
             <field name="interval_number">1</field>
-            <field name="interval_type">hours</field>
+            <field name="interval_type">days</field>
             <field name="numbercall">-1</field>
             <field name="doall" eval="False"/>
             <field name="model" eval="'product.category'"/>
             <field name="function" eval="'fis_updates'"/>
             <field name="args" eval="'()'"/>
-            <field name="nextcall" eval="'2013-04-09 07:47:00'"/>
+            <field name="nextcall" eval="'2013-04-09 08:00:00'"/>
             <field name="priority">100</field>
         </record>
 
         <record model="ir.cron" id="product_inventory_update">
             <field name="name">Product Inventory Update</field>
             <field name="interval_number">1</field>
-            <field name="interval_type">hours</field>
+            <field name="interval_type">days</field>
             <field name="numbercall">-1</field>
             <field name="doall" eval="False"/>
             <field name="model" eval="'product.product'"/>
             <field name="function" eval="'fis_updates'"/>
             <field name="args" eval="'()'"/>
-            <field name="nextcall" eval="'2013-04-09 07:49:00'"/>
+            <field name="nextcall" eval="'2013-04-09 08:00:00'"/>
             <field name="priority">200</field>
         </record>
 
         <record model="ir.cron" id="production_line_update">
             <field name="name">Production Line Update</field>
             <field name="interval_number">1</field>
-            <field name="interval_type">hours</field>
+            <field name="interval_type">days</field>
             <field name="numbercall">-1</field>
             <field name="doall" eval="False"/>
             <field name="model" eval="'fis_integration.production_line'"/>
             <field name="function" eval="'fis_updates'"/>
             <field name="args" eval="'()'"/>
-            <field name="nextcall" eval="'2014-03-14 07:55:00'"/>
+            <field name="nextcall" eval="'2014-03-14 08:00:00'"/>
             <field name="priority">100</field>
         </record>
 
