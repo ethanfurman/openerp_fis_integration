@@ -235,7 +235,7 @@ class product_product(xid.xmlid, osv.Model):
     def _product_available_inv(self, cr, uid, id, field_name, field_value, misc=None, context=None):
         current_record = self.browse(cr, uid, id, context=context)
         if current_record.xml_id:
-            raise ERPError('cannot change quantity information on FIS records')
+            raise ERPError('Error', 'cannot change quantity information on FIS records')
         field_name = 'nf_' + field_name
         return self.write(cr, uid, id, {field_name: field_value}, context=context)
 
@@ -449,10 +449,13 @@ class product_product(xid.xmlid, osv.Model):
             values['warranty'] = float(sales_category_rec[F11.shelf_life] or 0.0)
         #values['product_manager'] = fis_nvty_rec[F135.manager]
 
-        values['qty_available'] = qoh = fis_nvty_rec[F135.on_hand]
-        values['incoming_qty'] = inc = fis_nvty_rec[F135.committed]
-        values['outgoing_qty'] = out = fis_nvty_rec[F135.on_order]
-        values['virtual_available'] = qoh + inc - out
+        # currently these are looked up everytime, no need to save (plus saving
+        # generates an error ;)
+        #
+        # values['qty_available'] = qoh = fis_nvty_rec[F135.on_hand]
+        # values['incoming_qty'] = inc = fis_nvty_rec[F135.committed]
+        # values['outgoing_qty'] = out = fis_nvty_rec[F135.on_order]
+        # values['virtual_available'] = qoh + inc - out
 
         shipped_as = fis_nvty_rec[F135.ship_size].strip()
         if shipped_as.lower() in ('each','1 each','1/each'):
