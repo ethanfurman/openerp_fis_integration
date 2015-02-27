@@ -20,7 +20,7 @@
     'update_xml': [
             'res_config_view.xml',
             'res_partner_view.xml',
-            'product_view.xml',
+            'product_view.xaml',
             'security/fis_security.xml',
         ],
     'test': [],
