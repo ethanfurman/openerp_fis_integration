@@ -325,6 +325,7 @@ class product_product(xid.xmlid, osv.Model):
             method=False,
             readonly=True,
             ),
+        'label_text': fields.text('Label Text'),
         }
 
     def button_fis_refresh(self, cr, uid, ids, context=None):
