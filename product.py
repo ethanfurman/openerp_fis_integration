@@ -224,7 +224,7 @@ class product_product(xid.xmlid, osv.Model):
                 # imd_rec = imd.get_object_from_model_resid(cr, uid, model, rec.id, context=context)
                 fis_rec = nvty[rec['xml_id']]
             except (ValueError, KeyError):
-                values.update(super(product_product, self)._product_available(cr, uid, rec.id, field_names, arg, context))
+                values.update(super(product_product, self)._product_available(cr, uid, [rec.id], field_names, arg, context))
             else:
                 current['qty_available'] = qoh = fis_rec[F135.on_hand]
                 current['incoming_qty'] = inc = fis_rec[F135.committed]
