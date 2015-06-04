@@ -53,12 +53,29 @@ def _label_links(obj, cr, uid, ids, field_name, arg, context=None):
         result[id] = static_page_stub % "".join(htmlContentList)
     return result
 
+def _get_category_records(key_table, cr, uid, ids, context=None):
+    if isinstance(ids, (int, long)):
+        ids = [ids]
+    # first, add each record in ids
+    result = set(ids)
+    # then add all child records
+    for record in key_table.browse(cr, uid, ids, context=context):
+        children = record.child_id
+        while children:
+            child = children.pop()
+            result.add(child.id)
+            children.extend(child.child_id)
+    return list(result)
 
 class product_category(xid.xmlid, osv.Model):
     "makes external_id visible and searchable"
     _name = 'product.category'
     _inherit = 'product.category'
-    _order = 'xml_id'
+    _order = 'complete_name'
+
+    def _name_get_fnc(self, cr, uid, ids, prop, unknow_none, context=None):
+        res = self.name_get(cr, uid, ids, context=context)
+        return dict(res)
 
     _columns = {
         'xml_id': fields.function(
@@ -79,6 +96,12 @@ class product_category(xid.xmlid, osv.Model):
             method=False,
             fnct_search=xid.search_xml_id,
             multi='external',
+            ),
+        'complete_name': fields.function(
+            _name_get_fnc,
+            type="char",
+            string='Name',
+            store={ 'product.category': (_get_category_records, ['name', 'parent_id'], 10) },
             ),
         }
 
