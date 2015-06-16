@@ -308,26 +308,30 @@ class product_product(xid.xmlid, osv.Model):
             fnct_inv=_product_available_inv,
             multi='qty_available',
             type='float', digits=(16,3), string='Incoming',
-            help="Quantity of products that are planned to arrive according to FIS.",
+            help="Quantity of product that are planned to arrive according to FIS.",
             ),
         'outgoing_qty': fields.function(
             _product_available,
             fnct_inv=_product_available_inv,
             multi='qty_available',
             type='float', digits=(16,3), string='Outgoing',
-            help="Quantity of products that are planned to leave according to FIS.",
+            help="Quantity of product that are planned to leave according to FIS.",
             ),
         'nf_incoming_qty': fields.float(
             digits=(16,3), string='non-FIS Incoming',
-            help="Quantity of products that are planned to arrive according to FIS.",
+            help="Quantity of product that are planned to arrive.",
             ),
         'nf_outgoing_qty': fields.float(
             digits=(16,3), string='non-FIS Outgoing',
-            help="Quantity of products that are planned to leave according to FIS.",
+            help="Quantity of product that are planned to leave.",
             ),
         'nf_qty_available': fields.float(
             digits=(16,3), string='non-FIS Quantity On Hand',
-            help="Current quantity of products according to FIS",
+            help="Current (actual) quantity of product.",
+            ),
+        'nf_virtual_available': fields.float(
+            digits=(16,3), string='non-FIS Virtual Quantity',
+            help="Forecast quantity (computed as Quantity On Hand - Outgoing + Incoming)",
             ),
         'label_server_stub': fields.function(
             _label_links,
