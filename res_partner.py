@@ -80,7 +80,8 @@ class res_partner(xid.xmlid, osv.Model):
         'is_carrier': fields.boolean('Carrier', help='This partner is used for shipping.'),
         'warehouse_comment': fields.text('Warehouse Notes'),
         'fuel_surcharge': fields.boolean('Fuel surcharge'),
-
+        'department': fields.char('Department', size=128),
+        'email2': fields.char('Alt. Email', size=240),
         }
 
     def fis_updates(self, cr, uid, partner=None, shipper=None, *args):

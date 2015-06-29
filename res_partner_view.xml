@@ -10,10 +10,30 @@
                     <field name="website" position="after">
                         <field name="xml_id" attrs="{'readonly':True}"/>
                     </field>
+		    <field name="function" position="after">
+			<field name="department" attrs="{'invisible': [('is_company','=', True)]}"/>
+		    </field>
                     <field name="supplier" position="after">
                         <field name="is_carrier" />
                         <field name="fuel_surcharge" attrs="{'invisible':[('is_carrier','=',False)]}" />
                     </field>
+		    <xpath expr="//form[@string='Contact']/div/group/field[@name='name']" position="replace">
+			<label for="title" string="Name"/>
+			<div>
+			        <field name="title" class="oe_no_button oe_inline" options="{'no_open':True}"/>
+				<field name="name" class="oe_inline"/>
+		        </div>
+		    </xpath>
+		    <xpath expr="//form[@string='Contact']/div/group/field[@name='function']" position="after">
+			<field name="department"/>
+		    </xpath>
+		    <xpath expr="//form[@string='Contact']/div/group/field[@name='email']" position="replace">
+			<label for="email" string="Emails"/>
+			<div>
+			    <field name="email"/>
+			    <field name="email2"/>
+		        </div>
+		    </xpath>
                     <field name="comment" position="before">
                         <group attrs="{'invisible': ['|',('is_company','=',False), ('supplier','=',False)]}">
                             <group string="Supplier Info" colspan="1"> >
