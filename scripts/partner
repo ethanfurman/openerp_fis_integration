@@ -1,0 +1,542 @@
+#!/usr/bin/python
+from __future__ import print_function
+
+from antipathy import Path
+from collections import defaultdict
+from openerplib import get_connection, get_records, AttrDict
+from scription import *
+from VSS import address
+from VSS.utils import all_equal, fix_phone
+import dbf
+
+@Command(
+        filename=Spec('path/name of file to import', ),
+        type=Spec('type of file to import', choices=['now', ], default='now')
+        )
+@Alias('import')
+def import_customers(filename, type):
+    "import new customers from FILENAME into OpenERP, matching by address"
+    print('getting OpenERP data')
+    oe_data = get_oe_data()
+    if type == 'now':
+        print('getting NOW data')
+        new_customers_by_address, new_customers_by_name = get_now_customers(filename)
+    else:
+        abort('not programmed for %r' % type)
+    # oe_data.
+    #   res_country
+    #   res_partner
+    #   partner_by_id
+    #   partner_by_address[list]
+    # new_customers_by_address.
+    #   [address keys...][list]
+    for addr_key in new_customers_by_address:
+        print('\n\nprocessing', addr_key, end='')
+        records = new_customers_by_address[addr_key]
+        print(':  %d records' % len(records))
+        companies = []
+        contacts = []
+        for rec in records:
+            # skip Lori's personal records
+            # if rec.category == "LORI'S":
+            #     print("  Lori's, skipping")
+            #     continue
+            # seperate the contact from the company
+            contact, company = separate(addr_key, oe_data, rec)
+            # add and continue
+            if contact:
+                contacts.append(contact)
+            if company:
+                companies.append(company)
+        if not companies:
+            # no usable info, skip to next grouping
+            continue
+        print('  %d companies,  %d contacts' % (len(companies), len(contacts)))
+        # now check company/contact records for duplicate/unique info
+        # e.g. if company has different main phone numbers, blank them
+        company = remove_empty(merge(addr_key, contacts, companies))
+        print('  %d companies,  %d contacts' % (bool(company), len(contacts)))
+        # now we either update an existing record (possible more than one master)
+        # or create a new one
+        oe_records = oe_data.partner_by_address.get(addr_key, [])
+        res_partner = oe_data.conn.get_model('res.partner')
+        if not oe_records:
+            print('  creating record for', company.name)
+            print('  with values', dict(company))
+            print('    breaking to debugger')
+            import pdb; pdb.set_trace()
+            new_id = res_partner.create(values=dict(company))
+            oe_records = get_records(
+                oe_data.conn,
+                'res.partner',
+                ids = [new_id],
+                fields=[
+                    'id', 'parent_id', 'child_ids', 'category_id',
+                    'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
+                    'email', 'website', 'phone', 'fax', 'mobile', 'is_company', 'use_parent_address',
+                    ]
+                )
+        for oe_rec in oe_records:
+            if not oe_rec.is_company:
+                print('skipping contact')
+                continue
+            print('  updating record for', oe_rec.name)
+            print('  with values', dict(company))
+            res_partner.write(ids=[oe_rec.id], values=dict(company))
+            exists = [False] * len(contacts)
+            for child_id in oe_rec.child_ids:
+                child = oe_data.partner_by_id[child_id]
+                for i, contact in enumerate(contacts):
+                    contact = remove_empty(contact)
+                    if child.name.lower() == contact.name.lower():
+                        print('  updating contact record for', contact.name)
+                        print('  with values', dict(contact))
+                        exists[i] = True
+                        res_partner.write(ids=[child.id], values=dict(contact))
+            for updated, contact in zip(exists, contacts):
+                if updated:
+                    continue
+                contact = remove_empty(contact)
+                contact.parent_id = oe_rec.id
+                print('  creating contact record for', contact.name)
+                print('  with values', dict(contact))
+                res_partner.create(dict(contact))
+    for name_key in new_customers_by_name:
+        print('\n\nprocessing', name_key, end='')
+        records = new_customers_by_name[name_key]
+        print(':  %d records' % len(records))
+        companies = []
+        contacts = []
+        for rec in records:
+            contact, company = separate(('','','','','',''), oe_data, rec)
+            # add and continue
+            if contact:
+                contacts.append(contact)
+            if company:
+                companies.append(company)
+        if not companies:
+            # no usable info, skip to next grouping
+            continue
+        print('  %d companies,  %d contacts' % (len(companies), len(contacts)))
+        # now check company/contact records for duplicate/unique info
+        # e.g. if company has different main phone numbers, blank them
+        company = merge(('','','','','',''), contacts, companies)
+        print('  %d companies,  %d contacts' % (len(companies), len(contacts)))
+        # now we either update an existing record (possible more than one master)
+        # or create a new one
+        oe_records = oe_data.partner_by_name.get(addr_key, [])
+        res_partner = oe_data.conn.get_model('res.partner')
+        if not oe_records:
+            print('  creating record for', company.name)
+            print('  with values', dict(company))
+            new_id = res_partner.create(values=dict(company))
+            oe_records = get_records(
+                oe_data.conn,
+                'res.partner',
+                ids = [new_id],
+                fields=[
+                    'id', 'parent_id', 'child_ids', 'category_id',
+                    'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
+                    'email', 'website', 'phone', 'fax', 'mobile', 'is_company', 'use_parent_address',
+                    ]
+                )
+        for oe_rec in oe_records:
+            print('  updating record for', oe_rec.name)
+            print('  with values', dict(company))
+            res_partner.write(ids=[oe_rec.id], values=dict(company))
+            exists = [False] * len(contacts)
+            for child_id in oe_rec.child_ids:
+                child = oe_data.partner_by_id[child_id]
+                for i, contact in enumerate(contacts):
+                    if child.name.lower() == contact.name.lower():
+                        print('  updating contact record for', contact.name)
+                        print('  with values', dict(contact))
+                        exists[i] = True
+                        res_partner.write(ids=[child.id], values=dict(contact))
+            for updated, contact in zip(exists, contacts):
+                if updated:
+                    continue
+                contact.parent_id = oe_rec.id
+                print('  creating contact record for', contact.name)
+                print('  with values', dict(contact))
+                res_partner.create(dict(contact))
+
+
+@Command(
+        filename=Spec('path/name of file to import', ),
+        type=Spec('type of file to import', choices=['now', ], default='now')
+        )
+def check_duplicates(filename, type):
+    oe_data = get_oe_data()
+    if type == 'now':
+        new_customers_by_address, new_customers_by_name = get_now_customers(filename)
+    else:
+        abort('not programmed for %r' % type)
+    import pdb; pdb.set_trace()
+    for key, matches in oe_data.partner_by_address.items():
+        if len(matches) < 2:
+            continue
+        matches.sort(key=lambda r: r.is_company, reverse=True)
+        try:
+            new_matches = new_customers_by_address[key]
+        except KeyError:
+            continue
+        if not new_matches:
+            continue
+        names = []
+        is_company = []
+        for m in matches:
+            names.append(m.name)
+            is_company.append(m.is_company)
+        for m in new_matches:
+            names.append(m.company + ' / ' + m.full_name)
+            is_company.append('NOW')
+        for n in names:
+            print('%40s' % n, end='', verbose=0)
+        print(verbose=0)
+        for c in is_company:
+            print('%40s' % c, end='', verbose=0)
+        print(verbose=0)
+        for item in key:
+            print('%40s' % (item, ), verbose=0)
+        print('\n\n', verbose=0)
+        raw_input()
+    # missed = 0
+    # new_contacts = 0
+    # for key in new_customers_by_address:
+    #     for cust in new_customers_by_address[key]:
+    #         oe_cust = oe_data.partner_by_address.get(key)
+    #         if not oe_cust:
+    #             missed += len(new_customers_by_address[key])
+    #         else:
+    #             missed += len(new_customers_by_address[key]) - (1 + len(oe_cust.child_ids))
+    #         break
+    # print('customers in file:', len(new_customers_by_address)-1, verbose=0)
+    # print('possibly new records in file', missed, verbose=0)
+
+
+def remove_empty(data):
+    "remove empty keys in data (in-place operation)"
+    for key in data.keys():
+        if not data[key]:
+            del data[key]
+    return data
+
+def get_category_id(data, name):
+    try:
+        category_id = data.partner_category_by_name[name].id
+    except KeyError:
+        category_id = False
+    return category_id
+
+def get_state_and_country(data, country, state):
+    country_id = False
+    state_id = False
+    try:
+        country = data.country[country]
+        country_id = country.id
+        country_name = country.name
+        state_id = data.country_state[country_name][state].id
+    except KeyError:
+        pass
+    return state_id, country_id
+
+def get_title_id(data, abbr):
+    try:
+        title_id = data.partner_title_by_abbr[abbr].id
+    except KeyError:
+        title_id = False
+    return title_id
+
+def get_oe_data():
+    "load data from OpenERP (partners, countries, ...)"
+    oe = AttrDict()
+    conn = oe.conn = get_connection(hostname=config.host, database=config.db, login=config.user, password=config.pw)
+    oe.res_partner = get_records(
+            conn,
+            'res.partner',
+            fields=[
+                'id', 'parent_id', 'child_ids', 'category_id',
+                'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
+                'email', 'website', 'phone', 'fax', 'mobile', 'is_company', 'use_parent_address',
+                ]
+            )
+    oe.partner_by_id = {}
+    oe.partner_by_address = defaultdict(list)
+    oe.partner_by_name = defaultdict(list)
+    for p in oe.res_partner:
+        oe.partner_by_id[p.id] = p
+        address = standardize_address(
+                p.street or '',
+                p.street2 or '',
+                p.city or '',
+                p.state_id and p.state_id[1] or '',
+                p.zip or '',
+                p.country_id and p.country_id[1] or '',
+                )
+        oe.partner_by_address[address].append(p)
+    oe.res_partner_title = get_records(
+            conn,
+            'res.partner.title',
+            fields=['id', 'shortcut']
+            )
+    oe.partner_title_by_abbr = {}
+    for t in oe.res_partner_title:
+        oe.partner_title_by_abbr[t.shortcut] = t
+    oe.res_partner_category = get_records(
+            conn,
+            'res.partner.category',
+            fields=['id', 'name']
+            )
+    oe.partner_category_by_name = {}
+    for c in oe.res_partner_category:
+        oe.partner_category_by_name[c.name] = c
+    oe.res_country = get_records(
+            conn,
+            'res.country',
+            fields=['id', 'name', 'code'],
+            )
+    oe.country = {}
+    for c in oe.res_country:
+        oe.country[c.name] = c
+        oe.country[c.code] = c
+    oe.res_country_state = get_records(
+            conn,
+            'res.country.state',
+            fields=['id', 'country_id', 'name', 'code'],
+            )
+    oe.country_state = defaultdict(dict)
+    for s in oe.res_country_state:
+        oe.country_state[s.country_id[1]][s.name] = s
+        oe.country_state[s.country_id[1]][s.code] = s
+    return oe
+
+def get_now_customers(filename):
+    "get Now contacts and massage into a common format"
+    by_address = AttrDict(default=list)
+    by_name = AttrDict(default=list)
+    now_dbf = dbf.from_csv(
+            filename,
+            field_names=[
+                'first','middle','last','company','department','title','salutation',
+                'work_a1','work_a2','work_city','work_state','work_zip','work_cntry',
+                'home_a1','home_a2','home_city','home_state','home_zip','home_cntry',
+                'work_ph','home_ph','fax_ph','mobile_ph','other_ph','email1','email2','url',
+                'c1','c2','c3','c4','c5','c6','c7','c8','c9','c10','c11','c12',
+                'notes','keywords','contact_by','category','full_name','listing',
+                'street1','street2','city','state','zip','pri_phone','comments',
+                ],
+            ).open(mode='read-only')
+    for n in now_dbf[1:]:
+        n = AttrDict([(k, n[k]) for k in dbf.field_names(n)])
+        if n.category in ('SunRidge Retail Accounts', 'Headquarter/Retail Contacts', 'SunRidge Distributors', 'Private Label Account', 'SunRidge Brokers/Reps'):
+            n.is_customer = True
+        elif n.category in ('Suppliers', 'Business', 'Computer Related', 'Trade Pubs. & Assns.', 'Marketing/PR'):
+            n.is_supplier = True
+        elif n.category in ('Freight/Transport', ):
+            n.is_carrier = True 
+        elif n.category in ("LORI'S", ):
+            n.partner_type = 'personal'
+        elif n.category in ('', 'Falcon/SunRidge', 'General', "Eric's East Coast Holiday Gifts", 'Travel'):
+            pass
+        else:
+            raise ValueError('%r not a valid category' % (n.category, ))
+        addr_key = standardize_address(n.street1, n.street2, n.city, n.state, n.zip)
+        if any(addr_key[:5]):
+            by_address[addr_key].append(n)
+        elif n.company or n.full_name:
+            by_name[n.company].append(n)
+    return by_address, by_name
+
+def merge(addr_key, contacts, companies):
+    # different contacts at the same company
+    # check phone numbers
+    main_company = companies[0]
+    main_phones = [r.phone for r in companies if r.phone]
+    contact_ext_phones = [r.phone for r in contacts if 'x' in r.phone]
+    if all_equal(main_phones):
+        main_phone = main_phones and main_phones.pop() or False
+    else:
+        # search for toll-free and/or numbers that match contact's where contact's has an extension
+        for ph in sorted(main_phones):
+            if ph.startswith(('800', '822', '833', '844', '855', '866', '877', '888')):
+                main_phone = ph
+                break
+        else:
+            matches = list(filter(lambda p: any(p in c for c in contact_ext_phones), main_phones))
+            if all_equal(matches):
+                main_phone = matches and matches.pop() or False
+            else:
+                main_phone = False
+    main_company.phone = main_phone
+    # for id_field in ('country_id', 'state_id', 'category_id'):
+    for id_field in ('category_id', ):
+        if main_company[id_field]:
+            main_company[id_field] = 4, main_company[id_field]
+    for contact in contacts:
+        # for id_field in ('title', 'category_id'):
+        for id_field in ('category_id', ):
+            if contact[id_field]:
+                contact[id_field] = 4, contact[id_field]
+    return main_company
+
+def separate(addr_key, data, rec):
+    contact_name = rec.full_name
+    function = rec.title
+    department = rec.department
+    title = get_title_id(data, rec.salutation)
+    #
+    company_name = rec.company
+    street, street2, city, state, zip, country = addr_key
+    state_id, country_id = get_state_and_country(data, country, state)
+    #
+    main  = fix_phone(rec.work_ph)
+    home  = fix_phone(rec.home_ph)
+    fax   = fix_phone(rec.fax_ph)
+    cell  = fix_phone(rec.mobile_ph)
+    other = fix_phone(rec.other_ph)
+    #
+    if 'x' in main:
+        # use pre-x as company, all as contact
+        company_main_ph = main.split('x')[0]
+        contact_main_ph = main
+        contact_cell_ph = home or False
+    elif home:
+        company_main_ph = main
+        contact_main_ph = home
+        contact_cell_ph = False
+    else:
+        company_main_ph = main
+        contact_main_ph = main
+        contact_cell_ph = False
+    company_fax_ph = fax
+    contact_fax_ph = fax
+    if contact_cell_ph:
+        company_cell_ph = other
+    else:
+        company_cell_ph = False
+        contact_cell_ph = other
+    email1 = rec.email1
+    email2 = rec.email2
+    url = rec.url
+    notes = '\n'.join([
+        'custom:',
+        '-------',
+        '1: %s' % rec.c1,
+        '2: %s' % rec.c2,
+        '3: %s' % rec.c3,
+        '4: %s' % rec.c4,
+        '5: %s' % rec.c5,
+        '6: %s' % rec.c6,
+        '7: %s' % rec.c7,
+        '8: %s' % rec.c8,
+        '9: %s' % rec.c9,
+        '10: %s' % rec.c10,
+        '11: %s' % rec.c11,
+        '12: %s' % rec.c12,
+        '',
+        'notes:',
+        '------',
+        rec.notes,
+        ])
+    category_id = get_category_id(data, rec.category)
+    contact = AttrDict(
+        name = contact_name,
+        function = function,
+        department = department,
+        title = title,
+        phone = contact_main_ph,
+        fax = contact_fax_ph,
+        mobile = contact_cell_ph,
+        email = email1,
+        email2 = email2,
+        notes = notes,
+        category_id = category_id,
+        )
+    company = AttrDict(
+        name = company_name,
+        street = street,
+        street2 = street2,
+        city = city,
+        state_id = state_id,
+        zip = zip,
+        country_id = country_id,
+        phone = company_main_ph,
+        fax = company_fax_ph,
+        mobile = company_cell_ph,
+        url = url,
+        notes = notes,
+        category_id = category_id,
+        is_company = True,
+        )
+    if not company.name:
+        if contact.name:
+            company.update(remove_empty(contact))
+            company.is_company = False
+            contact = False
+        else:
+            company = False
+            contact = False
+    elif not contact.name:
+        company.update(remove_empty(contact))
+        contact = False
+    return contact, company
+
+def standardize_address(street1, street2, city, state, postal_code, country=''):
+    # each element should be a str
+    street2 = address.normalize_address(street2)
+    street1 = address.normalize_address(street1)
+    street1, street2 = address.Rise(street1, street2)
+    # if street2 is empty check if street1 should be split
+    if not street2:
+        street1, street2 = address.normalize_address_line(street1)
+    # make sure second address line starts with a number
+    if street1 and street2 and street1[0].isdigit() and not street2[0].isdigit():
+        street1, street2 = street2, street1
+    # if either line starts with a secondary unit designator, combine the lines
+    if street1 and street1.split()[0].upper() in address.usps_secondary_designator:
+        street1 = (street2 + ' ' + street1).strip()
+        street2 = ''
+    elif street2 and street2.split()[0].upper() in address.usps_secondary_designator:
+        street1 += ' ' + street2
+        street2 = ''
+    street2 = address.AddrCase(street2)
+    street1 = address.AddrCase(street1)
+    if city and not state:
+        street3, city, state, postal_code, country = address.cszk('%s, %s' % (city, state), '%s %s' % (postal_code, country))
+    else:
+        street3 = ''
+        state = address.us_ca_state_name.get(state, state)
+        state = address.us_ca_state_abbr.get(state, state)
+    if street3:
+        if not street2:
+            street2 = street3
+        else:
+            street2 += ' / ' + street3
+    city = address.NameCase(city)
+    state = address.NameCase(state)
+    postal_code = str(postal_code)
+    if not country:
+        if state.upper() in address.ca_province_name:
+            country = 'Canada'
+            state = address.ca_province_abbr[address.ca_province_name[state.upper()]]
+        else:
+            country = 'United States'
+    elif country.isdigit() or country.upper() in ('US', 'USA', 'USOA', 'UNITED STATES', 'UNITED STATES OF AMERICA'):
+        country = 'United States'
+    else:
+        country = address.NameCase(country)
+    return street1, street2, city, state, postal_code, country
+
+def search(d, target):
+    "search for target in d's keys"
+    results = []
+    for key in d:
+        for k in key:
+            if target in k:
+                results.append(key)
+    return results
+
+config = OrmFile('/etc/openerp/fnx.ini', section='openerp')
+
+Run()
