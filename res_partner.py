@@ -82,6 +82,9 @@ class res_partner(xid.xmlid, osv.Model):
         'fuel_surcharge': fields.boolean('Fuel surcharge'),
         'department': fields.char('Department', size=128),
         'email2': fields.char('Alt. Email', size=240),
+        'is_bulk': fields.boolean('Bulk Sets?', help='This partner has a bulk set installation.'),
+        'bulk_img': fields.binary('Bulk Image', help='Picture of bulk installation.'),
+        'bulk_pdf': fields.binary(string='Bulk Contract', help='PDF of contract.'),
         }
 
     def fis_updates(self, cr, uid, partner=None, shipper=None, *args):

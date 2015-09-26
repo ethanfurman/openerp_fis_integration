@@ -18,10 +18,10 @@
             'security/ir.model.access.csv',
         ],
     'update_xml': [
-            'res_config_view.xml',
-            'res_partner_view.xml',
+            'res_config_view.xaml',
+            'res_partner_view.xaml',
             'product_view.xaml',
-            'security/fis_security.xml',
+            'security/fis_security.xaml',
         ],
     'test': [],
     'installable': True,
