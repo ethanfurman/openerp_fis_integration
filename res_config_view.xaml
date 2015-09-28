@@ -36,12 +36,6 @@
                             %div
                                 %label for='employee_integration'
                                 @employee_integration .oe_inline placeholder='e.g. company_employee'
-                    %separator $Product_Traffic
-                    %group col='4'
-                        %div
-                            %div
-                                %label for='traffic_followers'
-                                @traffic_followers
 
         %record model='ir.actions.act_window' #action_fis_integration_config
             @name: Configure FIS Integration
