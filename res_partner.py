@@ -85,6 +85,7 @@ class res_partner(xid.xmlid, osv.Model):
         'is_bulk': fields.boolean('Bulk Sets?', help='This partner has a bulk set installation.'),
         'bulk_img': fields.binary('Bulk Image', help='Picture of bulk installation.'),
         'bulk_pdf': fields.binary(string='Bulk Contract', help='PDF of contract.'),
+	'bulk_pdf_filename': fields.char('Bulk PDF Filename'),
         }
 
     def fis_updates(self, cr, uid, partner=None, shipper=None, *args):

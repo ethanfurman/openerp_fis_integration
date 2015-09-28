@@ -58,8 +58,10 @@
                     %page $Warehouse
                         @warehouse_comment nolabel='1'
                     %page $Bulk_Sets attrs="{'invisible':[('is_bulk','=',False)]}"
-                        @bulk_pdf
-                        @bulk_img
+                        @bulk_pdf_filename invisible='1'
+                        @bulk_pdf filename='bulk_pdf_filename'
+                        %hr
+                        @bulk_img widget='image'
 
         %record model='ir.ui.view' #view_partners_tree_xml_id
             @name: view.res.partner.tree.xml_id
