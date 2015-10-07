@@ -13,7 +13,7 @@
                 @function position='after'
                     @department attrs="{'invisible': [('is_company','=', True)]}"
                 @customer position='after'
-                    @is_bulk
+                    @is_bulk attrs="{'invisible': [('customer','=',False)]}"
                 @supplier position='after'
                     @is_carrier
                     @fuel_surcharge attrs="{'invisible':[('is_carrier','=',False)]}"
