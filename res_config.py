@@ -46,4 +46,4 @@ class fis_integration_config_settings(osv.osv_memory):
                 'employee_integration': company.employee_integration,
             }
         return {'value': values}
-    
+

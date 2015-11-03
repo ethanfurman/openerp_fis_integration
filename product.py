@@ -3,6 +3,7 @@ from fis_integration.fis_schema import *
 from fnx.BBxXlate.fisData import fisData
 from fnx.address import NameCase
 from fnx import dynamic_page_stub, static_page_stub
+from fnx.xid import xmlid
 from openerp import tools
 from openerp.addons.product.product import sanitize_ean13
 from osv.osv import except_osv as ERPError
@@ -21,38 +22,6 @@ LabelLinks = (
     "Plone/LabelDirectory/%s/%sMK.bmp",
     )
 
-def _cost_link(obj, cr, uid, ids, field_name, arg, context=None):
-    if isinstance(ids, (int, long)):
-        ids = [ids]
-    result = {}
-    htmlContentList = [ ]
-    for id in ids:
-        htmlContentList.append('''
-                <div id="cost_content"></div>
-                <script type="text/javascript">
-                    ajaxpage('http://labeltime:9000/costing/','cost_content');
-                </script>
-                ''')
-        result[id] = dynamic_page_stub % "".join(htmlContentList)
-    return result
-
-def _label_links(obj, cr, uid, ids, field_name, arg, context=None):
-    xml_ids = [v for (k, v) in 
-            xid.get_xml_ids(
-                obj, cr, uid, ids, field_name, 
-                arg=('F135', ),
-                context=context).items()
-            ]
-    result = {}
-    htmlContentList = [ ]
-    for id, d in zip(ids, xml_ids):  # there should only be one...
-        xml_id = d['xml_id']
-        htmlContentList.append('''<img src="%s" width=55%% align="left"/>''' % (LabelLinks[0] % (xml_id, xml_id)))
-        htmlContentList.append('''<img src="%s" width=35%% align="right"/><br>''' % (LabelLinks[1] % (xml_id, xml_id)))
-        htmlContentList.append('''<br><img src="%s" width=100%% /><br>''' % (LabelLinks[2] % (xml_id, xml_id)))
-        result[id] = static_page_stub % "".join(htmlContentList)
-    return result
-
 def _get_category_records(key_table, cr, uid, ids, context=None):
     if isinstance(ids, (int, long)):
         ids = [ids]
@@ -67,7 +36,7 @@ def _get_category_records(key_table, cr, uid, ids, context=None):
             children.extend(child.child_id)
     return list(result)
 
-class product_category(xid.xmlid, osv.Model):
+class product_category(xmlid, osv.Model):
     "makes external_id visible and searchable"
     _name = 'product.category'
     _inherit = 'product.category'
@@ -79,22 +48,22 @@ class product_category(xid.xmlid, osv.Model):
 
     _columns = {
         'xml_id': fields.function(
-            xid.get_xml_ids,
+            xmlid.get_xml_ids,
             arg=('F11',),
             string="FIS ID",
             type='char',
-            method=False,
-            fnct_search=xid.search_xml_id,
+            method=True,
+            fnct_search=xmlid.search_xml_id,
             multi='external',
             select=True,
             ),
         'module': fields.function(
-            xid.get_xml_ids,
+            xmlid.get_xml_ids,
             arg=('F11',),
             string="FIS Module",
             type='char',
-            method=False,
-            fnct_search=xid.search_xml_id,
+            method=True,
+            fnct_search=xmlid.search_xml_id,
             multi='external',
             ),
         'complete_name': fields.function(
@@ -139,9 +108,9 @@ class product_category(xid.xmlid, osv.Model):
                     category_codes[module_key] = dict(name=result['name'], id=new_id, parent_id=result['parent_id'])
         _logger.info(self._name +  " done!")
         return True
-product_category()
 
-class product_available_at(xid.xmlid, osv.Model):
+
+class product_available_at(xmlid, osv.Model):
     "tracks availablility options for products"
     _name = 'product.available_at'
     _description = 'Product Location'
@@ -149,22 +118,22 @@ class product_available_at(xid.xmlid, osv.Model):
     _columns = {
         'name' : fields.char('Availability', size=50),
         'xml_id': fields.function(
-            xid.get_xml_ids,
+            xmlid.get_xml_ids,
             arg=('F97',),
             string="FIS ID",
             type='char',
-            method=False,
-            fnct_search=xid.search_xml_id,
+            method=True,
+            fnct_search=xmlid.search_xml_id,
             multi='external',
             select=True,
             ),
         'module': fields.function(
-            xid.get_xml_ids,
+            xmlid.get_xml_ids,
             arg=('F97',),
             string="FIS Module",
             type='char',
-            method=False,
-            fnct_search=xid.search_xml_id,
+            method=True,
+            fnct_search=xmlid.search_xml_id,
             multi='external',
             ),
         'product_ids' : fields.one2many(
@@ -173,7 +142,7 @@ class product_available_at(xid.xmlid, osv.Model):
             'Products',
             ),
         }
-    
+
     def fis_updates(self, cr, uid, *args):
         _logger.info("product.available_at.auto-update starting...")
         module = 'F97'
@@ -194,7 +163,7 @@ class product_available_at(xid.xmlid, osv.Model):
                 avail_codes[key] = new_id
         _logger.info(self._name + " done!")
         return True
-product_available_at()
+
 
 
 # may add this back later...
@@ -219,12 +188,44 @@ class product_template(osv.Model):
     _columns = {
         'warranty': fields.float("Shelf Life (mos)", digits=(16,3),),
         }
-product_template()
 
-class product_product(xid.xmlid, osv.Model):
+
+class product_product(xmlid, osv.Model):
     'Adds Available column and shipped_as columns'
     _name = 'product.product'
     _inherit = 'product.product'
+
+    def _cost_link(self, cr, uid, ids, field_name, arg, context=None):
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        result = {}
+        htmlContentList = [ ]
+        for id in ids:
+            htmlContentList.append('''
+                    <div id="cost_content"></div>
+                    <script type="text/javascript">
+                        ajaxpage('http://labeltime:9000/costing/','cost_content');
+                    </script>
+                    ''')
+            result[id] = dynamic_page_stub % "".join(htmlContentList)
+        return result
+
+    def _label_links(self, cr, uid, ids, field_name, arg, context=None):
+        xml_ids = [v for (k, v) in
+                self.get_xml_ids(
+                    cr, uid, ids, field_name,
+                    arg=('F135', ),
+                    ).items()
+                ]
+        result = {}
+        htmlContentList = [ ]
+        for id, d in zip(ids, xml_ids):  # there should only be one...
+            xml_id = d['xml_id']
+            htmlContentList.append('''<img src="%s" width=55%% align="left"/>''' % (LabelLinks[0] % (xml_id, xml_id)))
+            htmlContentList.append('''<img src="%s" width=35%% align="right"/><br>''' % (LabelLinks[1] % (xml_id, xml_id)))
+            htmlContentList.append('''<br><img src="%s" width=100%% /><br>''' % (LabelLinks[2] % (xml_id, xml_id)))
+            result[id] = static_page_stub % "".join(htmlContentList)
+        return result
 
     def _product_available(self, cr, uid, ids, field_names=None, arg=False, context=None):
         if context is None:
@@ -264,22 +265,22 @@ class product_product(xid.xmlid, osv.Model):
 
     _columns = {
         'xml_id': fields.function(
-            xid.get_xml_ids,
+            xmlid.get_xml_ids,
             arg=('F135', ),
             string="FIS ID",
             type='char',
-            method=False,
-            fnct_search=xid.search_xml_id,
+            method=True,
+            fnct_search=xmlid.search_xml_id,
             multi='external',
             select=True,
             ),
         'module': fields.function(
-            xid.get_xml_ids,
+            xmlid.get_xml_ids,
             arg=('F135',),
             string="FIS Module",
             type='char',
-            method=False,
-            fnct_search=xid.search_xml_id,
+            method=True,
+            fnct_search=xmlid.search_xml_id,
             multi='external',
             ),
         'shipped_as': fields.char('Shipped as', size=50),
@@ -337,13 +338,13 @@ class product_product(xid.xmlid, osv.Model):
             _label_links,
             string='Current Labels',
             type='html',
-            method=False,
+            method=True,
             ),
         'cost_server_stub': fields.function(
             _cost_link,
             string='Item Costs',
             type='html',
-            method=False,
+            method=True,
             ),
         'cost_customer': fields.function(
             lambda *a: {},
@@ -456,7 +457,7 @@ class product_product(xid.xmlid, osv.Model):
                 synced_prods[key] = prod_rec
         _logger.info(self._name + " done!")
         return True
-    
+
     def _get_fis_values(self, fis_nvty_rec, sales_category_rec):
         values = {}
         values['xml_id'] = values['default_code'] = fis_nvty_rec[F135.item_code]
@@ -504,9 +505,8 @@ class product_product(xid.xmlid, osv.Model):
         values['shipped_as'] = shipped_as
         return values
 
-product_product()
 
-class production_line(xid.xmlid, osv.Model):
+class production_line(xmlid, osv.Model):
     "production line"
     _name = 'fis_integration.production_line'
     _order = 'name'
@@ -520,22 +520,22 @@ class production_line(xid.xmlid, osv.Model):
 
     _columns = {
         'xml_id': fields.function(
-            xid.get_xml_ids,
+            xmlid.get_xml_ids,
             arg=('F341', ),
             string="FIS ID",
             type='char',
-            method=False,
-            fnct_search=xid.search_xml_id,
+            method=True,
+            fnct_search=xmlid.search_xml_id,
             multi='external',
             select=True,
             ),
         'module': fields.function(
-            xid.get_xml_ids,
+            xmlid.get_xml_ids,
             arg=('F341',),
             string="FIS Module",
             type='char',
-            method=False,
-            fnct_search=xid.search_xml_id,
+            method=True,
+            fnct_search=xmlid.search_xml_id,
             multi='external',
             ),
         'desc': fields.char('Description', size=30),
@@ -571,4 +571,3 @@ class production_line(xid.xmlid, osv.Model):
                 avail_codes[key] = new_id
         _logger.info(self._name + " done!")
         return True
-production_line()

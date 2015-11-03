@@ -5,33 +5,33 @@ from fis_integration.fis_schema import *
 from fnx.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase
 from fnx.BBxXlate.fisData import fisData
 from fnx.utils import fix_phone, fix_date
-from fnx import xid
+from fnx.xid import xmlid
 
 _logger = logging.getLogger(__name__)
 
-class res_partner(xid.xmlid, osv.Model):
+class res_partner(xmlid, osv.Model):
     "Inherits partner and makes the external_id visible and modifiable"
     _name = 'res.partner'
     _inherit = 'res.partner'
 
     _columns = {
         'xml_id': fields.function(
-            xid.get_xml_ids,
+            xmlid.get_xml_ids,
             arg=('F27', 'F33', 'F65', 'F74', 'F163', 'FIS_now', 'FIS_unfi'),
             string="FIS ID",
             type='char',
             method=False,
-            fnct_search=xid.search_xml_id,
+            fnct_search=xmlid.search_xml_id,
             multi='external',
             select=2,
             ),
         'module': fields.function(
-            xid.get_xml_ids,
+            xmlid.get_xml_ids,
             arg=('F27', 'F33', 'F65', 'F74', 'F163', 'FIS_now', 'FIS_unfi'),
             string="FIS Module",
             type='char',
             method=False,
-            fnct_search=xid.search_xml_id,
+            fnct_search=xmlid.search_xml_id,
             multi='external',
             ),
         'sp_tele': fields.char(
@@ -85,7 +85,7 @@ class res_partner(xid.xmlid, osv.Model):
         'is_bulk': fields.boolean('Bulk Sets?', help='This partner has a bulk set installation.'),
         'bulk_img': fields.binary('Bulk Image', help='Picture of bulk installation.'),
         'bulk_pdf': fields.binary(string='Bulk Contract', help='PDF of contract.'),
-	'bulk_pdf_filename': fields.char('Bulk PDF Filename'),
+        'bulk_pdf_filename': fields.char('Bulk PDF Filename'),
         }
 
     def fis_updates(self, cr, uid, partner=None, shipper=None, *args):
@@ -174,7 +174,7 @@ class res_partner(xid.xmlid, osv.Model):
                 if not result['country_id']:
                     supplier_address_score = 0
                 else:
-                    supplier_address_score = sum([1 for datum in 
+                    supplier_address_score = sum([1 for datum in
                         (result['street'], result['street2'], result['city'], result['zip'], result['state_id'], result['country_id'])
                         if datum])
                 addr1, addr2, addr3 = Sift(sup_rec[F65.addr1], sup_rec[F65.addr2], sup_rec[F65.addr3])
@@ -203,7 +203,7 @@ class res_partner(xid.xmlid, osv.Model):
                     else:
                         vendor_info['country_id'] = country_id
                 if vendor_info['country_id']:
-                    vendor_address_score = sum([1 for datum in 
+                    vendor_address_score = sum([1 for datum in
                         (result['street'], result['street2'], result['city'], result['zip'], result['state_id'], result['country_id'])
                         if datum])
                 result['vn_tele'] = fix_phone(ven_rec[F65.tele])
