@@ -61,7 +61,7 @@
                     %page $Bulk_Sets attrs="{'invisible':[('is_bulk','=',False)]}"
                         %div
                             @bulk_pdf_filename invisible='1'
-                            %label for='bulk_pdf' .oe_edit_only
+                            %label for='bulk_pdf' .oe_edit_only string='Contract (pdf file)'
                             @bulk_pdf filename='bulk_pdf_filename'
                         %hr
                         @bulk_img0 widget='image'
