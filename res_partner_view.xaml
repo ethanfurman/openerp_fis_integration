@@ -64,6 +64,16 @@
                         %hr
                         @bulk_img widget='image'
 
+        %record model='ir.ui.view' #res_partner_xml_id_kanban_view
+            @name: res.partner.xml_id.kanban.inherit
+            @model: res.partner
+            @inherit_id ref='base.res_partner_kanban_view'
+            @priority eval=10
+            @arch type='xml'
+                %xpath expr="//div[@class='oe_kanban_details']/ul" position='inside'
+                    %li t-if='record.xml_id.raw_value'
+                        @xml_id
+
         %record model='ir.ui.view' #view_partners_tree_xml_id
             @name: view.res.partner.tree.xml_id
             @model: res.partner
