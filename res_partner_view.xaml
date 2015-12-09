@@ -10,6 +10,7 @@
             @arch type='xml'
                 @website position='after'
                     @xml_id attrs="{'readonly':True}"
+                    @module groups='base.group_no_one'
                 @function position='after'
                     @department attrs="{'invisible': [('is_company','=', True)]}"
                 @customer position='after'
@@ -71,6 +72,7 @@
             @arch type='xml'
                 @email position='after'
                     @xml_id
+
     %data noupdate='1'
 
         %record model='ir.cron' #res_partner_fis_update
