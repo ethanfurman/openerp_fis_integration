@@ -62,7 +62,16 @@
                         @bulk_pdf_filename invisible='1'
                         @bulk_pdf filename='bulk_pdf_filename'
                         %hr
-                        @bulk_img widget='image'
+                        @bulk_img0 widget='image'
+                        @bulk_img1 widget='image'
+                        @bulk_img2 widget='image'
+                        @bulk_img3 widget='image'
+                        @bulk_img4 widget='image'
+                        @bulk_img5 widget='image'
+                        @bulk_img6 widget='image'
+                        @bulk_img7 widget='image'
+                        @bulk_img8 widget='image'
+                        @bulk_img9 widget='image'
 
         %record model='ir.ui.view' #res_partner_xml_id_kanban_view
             @name: res.partner.xml_id.kanban.inherit
