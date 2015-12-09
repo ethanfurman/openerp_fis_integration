@@ -59,8 +59,10 @@
                     %page $Warehouse
                         @warehouse_comment nolabel='1'
                     %page $Bulk_Sets attrs="{'invisible':[('is_bulk','=',False)]}"
-                        @bulk_pdf_filename invisible='1'
-                        @bulk_pdf filename='bulk_pdf_filename'
+                        %div
+                            @bulk_pdf_filename invisible='1'
+                            %label for='bulk_pdf' .oe_edit_only
+                            @bulk_pdf filename='bulk_pdf_filename'
                         %hr
                         @bulk_img0 widget='image'
                         @bulk_img1 widget='image'
