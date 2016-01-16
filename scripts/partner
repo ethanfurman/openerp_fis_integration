@@ -64,7 +64,6 @@ def import_customers(filename, type):
             print('  creating record for', company.name)
             print('  with values', dict(company))
             print('    breaking to debugger')
-            import pdb; pdb.set_trace()
             new_id = res_partner.create(values=dict(company))
             oe_records = get_records(
                 oe_data.conn,
@@ -172,7 +171,6 @@ def check_duplicates(filename, type):
         new_customers_by_address, new_customers_by_name = get_now_customers(filename)
     else:
         abort('not programmed for %r' % type)
-    import pdb; pdb.set_trace()
     for key, matches in oe_data.partner_by_address.items():
         if len(matches) < 2:
             continue
@@ -334,7 +332,7 @@ def get_now_customers(filename):
         elif n.category in ('Suppliers', 'Business', 'Computer Related', 'Trade Pubs. & Assns.', 'Marketing/PR'):
             n.is_supplier = True
         elif n.category in ('Freight/Transport', ):
-            n.is_carrier = True 
+            n.is_carrier = True
         elif n.category in ("LORI'S", ):
             n.partner_type = 'personal'
         elif n.category in ('', 'Falcon/SunRidge', 'General', "Eric's East Coast Holiday Gifts", 'Travel'):

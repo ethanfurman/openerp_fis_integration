@@ -1,13 +1,13 @@
 !!! xml1.0
-%openerp
-    %data noupdate='0'
+~openerp
+    ~data noupdate='0'
 
-        %record model='ir.module.category' #fis_integration
+        ~record model='ir.module.category' #fis_integration
             @name: FIS
             @sequence: 99
             @description: Objects to facilitate interation with the FIS system.
 
-        %record model='res.groups' #purchase_cost
+        ~record model='res.groups' #purchase_cost
             @name: Purchase Cost
             @category_id ref='fis_integration'
             @comment: The user is able to view product costing information.

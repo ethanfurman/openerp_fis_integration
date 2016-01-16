@@ -1,8 +1,8 @@
 !!! xml1.0
-%openerp
-    %data
+~openerp
+    ~data
 
-        %record model='ir.ui.view' #view_partners_form_xml_id
+        ~record model='ir.ui.view' #view_partners_form_xml_id
             @name: view.res.partner.form.xml_id
             @model: res.partner
             @inherit_id ref='base.view_partner_form'
@@ -18,52 +18,52 @@
                 @supplier position='after'
                     @is_carrier
                     @fuel_surcharge attrs="{'invisible':[('is_carrier','=',False)]}"
-                %xpath expr="//form[@string='Contact']/div/group/field[@name='name']" position='replace'
-                    %label $Name for='title'
-                    %div
+                ~xpath expr="//form[@string='Contact']/div/group/field[@name='name']" position='replace'
+                    ~label $Name for='title'
+                    ~div
                         @title class='oe_no_button oe_inline' options="{'no_open':True}"
                         @name .oe_inline
-                %xpath expr="//form[@string='Contact']/div/group/field[@name='function']" position='after'
+                ~xpath expr="//form[@string='Contact']/div/group/field[@name='function']" position='after'
                     @department
-                %xpath expr="//form[@string='Contact']/div/group/field[@name='email']" position='replace'
-                    %label $Emails for='email'
-                    %div
+                ~xpath expr="//form[@string='Contact']/div/group/field[@name='email']" position='replace'
+                    ~label $Emails for='email'
+                    ~div
                         @email
                         @email2
                 @comment position='before'
-                    %group attrs="{'invisible': ['|',('is_company','=',False), ('supplier','=',False)]}"
-                        %group $Supplier_Info colspan='1': >
+                    ~group attrs="{'invisible': ['|',('is_company','=',False), ('supplier','=',False)]}"
+                        ~group $Supplier_Info colspan='1': >
                             @sp_tele
                             @sp_fax
-                            %separator
-                            %separator
+                            ~separator
+                            ~separator
                             @sp_org_cert_file
                             @sp_org_exp
-                            %separator
-                            %separator
+                            ~separator
+                            ~separator
                             @sp_non_gmo
                             @sp_gmo_exp
-                            %separator
-                            %separator
+                            ~separator
+                            ~separator
                             @sp_kosher
                             @sp_kosher_exp
-                        %group $Vendor_Info colspan='1'
+                        ~group $Vendor_Info colspan='1'
                             @vn_tele
                             @vn_fax
-                            %separator
-                            %separator
+                            ~separator
+                            ~separator
                             @vn_org_cert
                             @vn_org_cert_file
                             @vn_org_exp
-                %page @page_history position='before'
-                    %page $Warehouse
+                ~page @page_history position='before'
+                    ~page $Warehouse
                         @warehouse_comment nolabel='1'
-                    %page $Bulk_Sets attrs="{'invisible':[('is_bulk','=',False)]}"
-                        %div
+                    ~page $Bulk_Sets attrs="{'invisible':[('is_bulk','=',False)]}"
+                        ~div
                             @bulk_pdf_filename invisible='1'
-                            %label for='bulk_pdf' .oe_edit_only string='Contract (pdf file)'
+                            ~label for='bulk_pdf' .oe_edit_only string='Contract (pdf file)'
                             @bulk_pdf filename='bulk_pdf_filename'
-                        %hr
+                        ~hr
                         @bulk_img0 widget='image'
                         @bulk_img1 widget='image'
                         @bulk_img2 widget='image'
@@ -75,17 +75,17 @@
                         @bulk_img8 widget='image'
                         @bulk_img9 widget='image'
 
-        %record model='ir.ui.view' #res_partner_xml_id_kanban_view
+        ~record model='ir.ui.view' #res_partner_xml_id_kanban_view
             @name: res.partner.xml_id.kanban.inherit
             @model: res.partner
             @inherit_id ref='base.res_partner_kanban_view'
             @priority eval=10
             @arch type='xml'
-                %xpath expr="//div[@class='oe_kanban_details']/ul" position='inside'
-                    %li t-if='record.xml_id.raw_value'
+                ~xpath expr="//div[@class='oe_kanban_details']/ul" position='inside'
+                    ~li t-if='record.xml_id.raw_value'
                         @xml_id
 
-        %record model='ir.ui.view' #view_partners_tree_xml_id
+        ~record model='ir.ui.view' #view_partners_tree_xml_id
             @name: view.res.partner.tree.xml_id
             @model: res.partner
             @inherit_id ref='base.view_partner_tree'
@@ -94,9 +94,9 @@
                 @email position='after'
                     @xml_id
 
-    %data noupdate='1'
+    ~data noupdate='1'
 
-        %record model='ir.cron' #res_partner_fis_update
+        ~record model='ir.cron' #res_partner_fis_update
             @name: FIS Supplier/Vendor Update
             @interval_number: 1
             @interval_type: days

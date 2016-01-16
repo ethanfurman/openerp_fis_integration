@@ -1,26 +1,26 @@
 !!!xml1.0
 
-%openerp
-    %data
+~openerp
+    ~data
 
         // Add external_id, label tab, and cost tab to product.product
 
-        %record #product_normal_form_view_xml_id model='ir.ui.view'
+        ~record #product_normal_form_view_xml_id model='ir.ui.view'
             @name: view.product.product.form.xml_id
             @model: product.product
             @inherit_id ref='stock.view_normal_procurement_locations_form'
             @priority eval='7'
             @arch type='xml'
-                %xpath expr="//div[@name='buttons']" position='inside'
-                    %button @button_fis_refresh $FIS_Refresh type='object'
-                %page $Information position='after'
-                    %page $Shipping_Instructions
+                ~xpath expr="//div[@name='buttons']" position='inside'
+                    ~button @button_fis_refresh $FIS_Refresh type='object'
+                ~page $Information position='after'
+                    ~page $Shipping_Instructions
                         @spcl_ship_instr nolabel='1' placeholder='Special shipping instructions here...'
-                %page $Sales position='after'
-                    %page $Labels
+                ~page $Sales position='after'
+                    ~page $Labels
                         @label_text nolabel='0'
                         @label_server_stub nolabel='1'
-                    // %%page $Costs groups='fis_integration.purchase_cost'
+                    // ~%page $Costs groups='fis_integration.purchase_cost'
                     //   @cost_server_stub
                 @loc_rack position='replace'
                 @loc_row position='replace'
@@ -30,16 +30,16 @@
                     @shipped_as
                 @default_code position='replace'
                     @xml_id
-                %xpath expr="//field[@name='qty_available']" position='attributes'
-                    %attribute @attrs: {'readonly': [('xml_id','!=',False)]}
-                %xpath expr="//field[@name='virtual_available']" position='attributes'
-                    %attribute @attrs: {'readonly': [('xml_id','!=',False)]}
-                %xpath expr="//field[@name='incoming_qty']" position='attributes'
-                    %attribute @attrs: {'readonly': [('xml_id','!=',False)]}
-                %xpath expr="//field[@name='outgoing_qty']" position='attributes'
-                    %attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                ~xpath expr="//field[@name='qty_available']" position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                ~xpath expr="//field[@name='virtual_available']" position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                ~xpath expr="//field[@name='incoming_qty']" position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                ~xpath expr="//field[@name='outgoing_qty']" position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
 
-        %record #product_product_tree_view_xml_id model='ir.ui.view'
+        ~record #product_product_tree_view_xml_id model='ir.ui.view'
             @name: fis_integration.product.tree
             @model: product.product
             @inherit_id ref='product.product_product_tree_view'
@@ -47,29 +47,29 @@
                 @default_code position='replace'
                     @xml_id
 
-        %record #product_normal_action model='ir.actions.act_window'
+        ~record #product_normal_action model='ir.actions.act_window'
             @name: Products
             @type: ir.actions.act_window
             @res_model: product.product
             @domain: ['|',('product_tmpl_id.product_manager','=',uid),('product_tmpl_id.product_manager','=',False)]
 
-        %record #product_normal_action_sell model='ir.actions.act_window'
+        ~record #product_normal_action_sell model='ir.actions.act_window'
             @name: Products
             @type: ir.actions.act_window
             @res_model: product.product
             @domain: ['|',('product_tmpl_id.product_manager','=',uid),('product_tmpl_id.product_manager','=',False)]
 
-        %record #product_search_form_view_fis model='ir.ui.view'
+        ~record #product_search_form_view_fis model='ir.ui.view'
             @name: product.search.fis.form
             @model: product.product
             @inherit_id ref='product.product_search_form_view'
             @arch type='xml'
                 @name position='replace'
                     @name $Product filter_domain="['|',('name','ilike',self),('default_code','ilike',self),('xml_id','!=',False)]"
-                %filter @filter_to_sell position='before'
-                    %filter @fis_avail $Available domain="[('avail', '=', 'Available'),('xml_id','!=',False)]"
+                ~filter @filter_to_sell position='before'
+                    ~filter @fis_avail $Available domain="[('avail', '=', 'Available'),('xml_id','!=',False)]"
 
-        %record #product_normal_action model='ir.actions.act_window'
+        ~record #product_normal_action model='ir.actions.act_window'
             @name: Products
             @type: ir.actions.act_window
             @res_model: product.product
@@ -79,13 +79,13 @@
             @search_view_id ref='fis_integration.product_search_form_view_fis'
             @domain: [('xml_id','!=',False)]
             @help type='html'
-              %p class='oe_view_nocontent_create'
+              ~p class='oe_view_nocontent_create'
                 Click to define a new product.
-              %p
+              ~p
                 You must define a product for everything you buy or sell,
                 whether it's a physical product, a consumable or service.
 
-        %record #product_category_list_view_xml_id model='ir.ui.view'
+        ~record #product_category_list_view_xml_id model='ir.ui.view'
             @name: product.category.list.xml_id
             @model: product.category
             @inherit_id ref='product.product_category_list_view'
@@ -93,68 +93,68 @@
                 @complete_name position='after'
                     @xml_id
 
-        %record #product_category_form_view_xml_id model='ir.ui.view'
+        ~record #product_category_form_view_xml_id model='ir.ui.view'
             @name: product.category.form.xml_id
             @model: product.category
             @inherit_id ref='product.product_category_form_view'
             @arch type='xml'
                 @parent_id position='before'
-                    %group colspan='4'
-                        %field name='xml_id'
+                    ~group colspan='4'
+                        ~field name='xml_id'
 
         // Add product available at entries
 
-        %record model='ir.ui.view' #product_available_at_form
+        ~record model='ir.ui.view' #product_available_at_form
             @name: Product Locations
             @model: product.available_at
             @type: form
             @arch type='xml'
-                %form $Locations
+                ~form $Locations
                     @xml_id attrs="{'readonly':True}"
                     @name colspan='4'
-                    %notebook colspan='4'
-                        %page $Products_at_this_location
+                    ~notebook colspan='4'
+                        ~page $Products_at_this_location
                             @product_ids nolabel='1'
-                                %tree
+                                ~tree
                                     @name
-                        %page $Notes
+                        ~page $Notes
 
-        %record model='ir.ui.view' #product_available_at_tree
+        ~record model='ir.ui.view' #product_available_at_tree
             @name: Product Locations
             @model: product.available_at
             @type: tree
             @arch type='xml'
-                %tree $Locations
+                ~tree $Locations
                     @name
                     @xml_id attrs="{'readonly':True}"
 
-        %record model='ir.actions.act_window' #product_available_at_action
+        ~record model='ir.actions.act_window' #product_available_at_action
             @name: Product Locations
             @res_model: product.available_at
             @view_type: form
             @view_id ref='product_available_at_tree'
             @view_mode: tree,form
 
-        %menuitem @Locations #product.available_at parent='product.prod_config_main' action='product_available_at_action' groups='base.group_user'
+        ~menuitem @Locations #product.available_at parent='product.prod_config_main' action='product_available_at_action' groups='base.group_user'
 
-        %record model='ir.ui.view' #production_line_tree
+        ~record model='ir.ui.view' #production_line_tree
             @name: Production Lines
             @model: fis_integration.production_line
             @type: tree
             @arch type='xml'
-                %tree $Production_Lines create='false'
+                ~tree $Production_Lines create='false'
                     @name
 
-        %record model='ir.actions.act_window' #production_line_tree_action
+        ~record model='ir.actions.act_window' #production_line_tree_action
             @name: Production Lines
             @res_model: fis_integration.production_line
             @view_type: tree
             @view_id ref='production_line_tree'
             @view_mode: tree
 
-    %data noupdate='1'
+    ~data noupdate='1'
 
-        %record model='ir.cron' #product_location_update
+        ~record model='ir.cron' #product_location_update
             @name: Product Locations Update
             @interval_number: 1
             @interval_type: days
@@ -166,7 +166,7 @@
             @nextcall eval="'2013-04-09 08:00:00'"
             @priority: 100
 
-        %record model="ir.cron" #product_category_update
+        ~record model="ir.cron" #product_category_update
             @name: Product Categories Update
             @interval_number: 1
             @interval_type: days
@@ -178,7 +178,7 @@
             @nextcall eval="'2013-04-09 08:00:00'"
             @priority: 100
 
-        %record model='ir.cron' #product_inventory_update
+        ~record model='ir.cron' #product_inventory_update
             @name: Product Inventory Update
             @interval_number: 1
             @interval_type: days
@@ -190,7 +190,7 @@
             @nextcall eval="'2013-04-09 08:00:00'"
             @priority: 200
 
-        %record model='ir.cron' #production_line_update
+        ~record model='ir.cron' #production_line_update
             @name: Production Line Update
             @interval_number: 1
             @interval_type: days

@@ -1,47 +1,47 @@
 !!! xml1.0
-%openerp
-    %data
+~openerp
+    ~data
 
-        %record model='ir.ui.view' #view_fis_integration_config_settings
+        ~record model='ir.ui.view' #view_fis_integration_config_settings
             @name: fis integration settings
             @model: fis_integration.config.settings
             @arch type='xml'
-                %form $Configure_FIS_Integration .oe_form_configuration version='7.0'
-                    %header
-                        %button @execute $Apply .oe_highlight type='object'
+                ~form $Configure_FIS_Integration .oe_form_configuration version='7.0'
+                    ~header
+                        ~button @execute $Apply .oe_highlight type='object'
                         or
-                        %button @cancel $Cancel .oe_link type='object'
-                    %group groups='base.group_multi_company'
-                        %div
-                            %label $Select_Company for='company_id'
+                        ~button @cancel $Cancel .oe_link type='object'
+                    ~group groups='base.group_multi_company'
+                        ~div
+                            ~label $Select_Company for='company_id'
                             @company_id .oe_inline on_change='onchange_company_id(company_id, context)' widget='selection'
-                    %separator $Module_names_to_use_for_integration
-                    %group col='4'
-                        %div
-                            %div
-                                %label for='product_integration'
+                    ~separator $Module_names_to_use_for_integration
+                    ~group col='4'
+                        ~div
+                            ~div
+                                ~label for='product_integration'
                                 @product_integration .oe_inline placeholder='e.g. company_product'
-                            %div
-                                %label for='product_category_integration'
+                            ~div
+                                ~label for='product_category_integration'
                                 @product_category_integration .oe_inline placeholder='e.g. company_product_category'
-                            %div
-                                %label for='product_location_integration'
+                            ~div
+                                ~label for='product_location_integration'
                                 @product_location_integration .oe_inline placeholder='e.g. company_product_location'
-                            %div
-                                %label for='customer_integration'
+                            ~div
+                                ~label for='customer_integration'
                                 @customer_integration .oe_inline placeholder='e.g. company_customer'
-                            %div
-                                %label for='supplier_integration'
+                            ~div
+                                ~label for='supplier_integration'
                                 @supplier_integration .oe_inline placeholder='e.g. company_supplier'
-                            %div
-                                %label for='employee_integration'
+                            ~div
+                                ~label for='employee_integration'
                                 @employee_integration .oe_inline placeholder='e.g. company_employee'
 
-        %record model='ir.actions.act_window' #action_fis_integration_config
+        ~record model='ir.actions.act_window' #action_fis_integration_config
             @name: Configure FIS Integration
             @type: ir.actions.act_window
             @res_model: fis_integration.config.settings
             @view_mode: form
             @target: inline
 
-        %menuitem name='FIS Integration' #menu_fis_integration_config action='action_fis_integration_config' parent='base.menu_config' sequence='14'
+        ~menuitem name='FIS Integration' #menu_fis_integration_config action='action_fis_integration_config' parent='base.menu_config' sequence='14'
