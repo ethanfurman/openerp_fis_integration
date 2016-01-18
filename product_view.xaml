@@ -20,7 +20,7 @@
                     ~page $Labels
                         @label_text nolabel='0'
                         @label_server_stub nolabel='1'
-                    // ~%page $Costs groups='fis_integration.purchase_cost'
+                    // ~page $Costs groups='fis_integration.purchase_cost'
                     //   @cost_server_stub
                 @loc_rack position='replace'
                 @loc_row position='replace'
