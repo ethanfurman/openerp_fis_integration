@@ -301,7 +301,7 @@ class product_product(xmlid, osv.Model):
             _product_available,
             fnct_inv=_product_available_inv,
             multi='qty_available',
-            type='float', digits=(16,3), string='Forecasted Quantity',
+            type='float', digits=(16,3), string='Forecasted 10-day Quantity',
             help="Forecast quantity (computed as Quantity On Hand - Outgoing + Incoming)",
             ),
         'incoming_qty': fields.function(
