@@ -30,14 +30,20 @@
                     @shipped_as
                 @default_code position='replace'
                     @xml_id
-                ~xpath expr="//field[@name='qty_available']" position='attributes'
-                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
-                ~xpath expr="//field[@name='virtual_available']" position='attributes'
-                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
-                ~xpath expr="//field[@name='incoming_qty']" position='attributes'
-                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
-                ~xpath expr="//field[@name='outgoing_qty']" position='attributes'
-                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                ~xpath expr="//group[@string='Stock and Expected Variations']/label" position='replace'
+                ~xpath expr="//group[@string='Stock and Expected Variations']/div/field" position='replace'
+                ~xpath expr="//group[@string='Stock and Expected Variations']/div" position='replace'
+                ~xpath expr="//field[@name='virtual_available']" position='replace'
+                ~xpath expr="//field[@name='incoming_qty']" position='replace'
+                ~xpath expr="//field[@name='outgoing_qty']" position='replace'
+                ~xpath expr="//group[@string='Stock and Expected Variations']" position='replace'
+                    ~group string="Stock and" attrs="{'invisible': [('type', '=', 'service')]}" groups='base.group_user'
+                        @qty_available attrs="{'readonly': [('xml_id','!=',False)]}"
+                        @makeable_qty readonly=True
+                    ~group string="Expected Variations" attrs="{'invisible': [('type', '=', 'service')]}" groups="base.group_user"
+                        @incoming_qty attrs="{'readonly': [('xml_id','!=',False)]}"
+                        @outgoing_qty attrs="{'readonly': [('xml_id','!=',False)]}"
+                        @virtual_available attrs="{'readonly': [('xml_id','!=',False)]}"
 
         ~record #product_product_tree_view_xml_id model='ir.ui.view'
             @name: fis_integration.product.tree

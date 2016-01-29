@@ -63,8 +63,8 @@ class F135(FISenum):
     ean13 = 'Dn$(6,12)'
     storage_location = 'Dn$(18,6)'
     on_hand = 'I(6)'
-    on_order = 'I(7)'
-    committed = 'I(8)'
+    committed = 'I(7)'
+    on_order = 'I(8)'
     wholesale = 'I(23)'
 
 class F163(FISenum):

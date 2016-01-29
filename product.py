@@ -9,6 +9,7 @@ from openerp.addons.product.product import sanitize_ean13
 from osv.osv import except_osv as ERPError
 from osv import osv, fields
 from urllib import urlopen
+from scripts import recipe
 import logging
 import time
 
@@ -228,8 +229,6 @@ class product_product(xmlid, osv.Model):
         return result
 
     def _product_available(self, cr, uid, ids, field_names=None, arg=False, context=None):
-        if context is None:
-            context = {}
         model = self._name
         module = 'F135'
         imd = self.pool.get('ir.model.data')
@@ -251,9 +250,10 @@ class product_product(xmlid, osv.Model):
                 values.update(super(product_product, self)._product_available(cr, uid, [rec.id], field_names, arg, context))
             else:
                 current['qty_available'] = qoh = fis_rec[F135.on_hand]
-                current['incoming_qty'] = inc = fis_rec[F135.committed]
-                current['outgoing_qty'] = out = fis_rec[F135.on_order]
+                current['outgoing_qty'] = out = fis_rec[F135.committed]
+                current['incoming_qty'] = inc = fis_rec[F135.on_order]
                 current['virtual_available'] = qoh + inc - out
+                current['makeable_qty'] = recipe.make_on_hand(rec['xml_id'])
         return values
 
     def _product_available_inv(self, cr, uid, id, field_name, field_value, misc=None, context=None):
@@ -261,7 +261,7 @@ class product_product(xmlid, osv.Model):
         if current_record.xml_id:
             raise ERPError('Error', 'cannot change quantity information on FIS records')
         field_name = 'nf_' + field_name
-        return self.write(cr, uid, id, {field_name: field_value}, context=context)
+        return super(product_product, self).write(cr, uid, id, {field_name: field_value}, context=context)
 
     _columns = {
         'xml_id': fields.function(
@@ -316,7 +316,14 @@ class product_product(xmlid, osv.Model):
             fnct_inv=_product_available_inv,
             multi='qty_available',
             type='float', digits=(16,3), string='Outgoing',
-            help="Quantity of product that are planned to leave according to FIS.",
+            help="Quantity of product that are planned to be shipped/used according to FIS.",
+            ),
+        'makeable_qty': fields.function(
+            _product_available,
+            multi='qty_available',
+            type='float', digits=[16,3], string='Produceable',
+            store=True,
+            help='Quantity that could be immediately produced.',
             ),
         'nf_incoming_qty': fields.float(
             digits=(16,3), string='non-FIS Incoming',
