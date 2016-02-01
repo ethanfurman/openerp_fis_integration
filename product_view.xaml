@@ -37,13 +37,14 @@
                 ~xpath expr="//field[@name='incoming_qty']" position='replace'
                 ~xpath expr="//field[@name='outgoing_qty']" position='replace'
                 ~xpath expr="//group[@string='Stock and Expected Variations']" position='replace'
-                    ~group string="Stock and" attrs="{'invisible': [('type', '=', 'service')]}" groups='base.group_user'
+                    ~separator $Stock_and_Expected_Variations .oe_text_center colspan=4
+                    ~group attrs="{'invisible': [('type', '=', 'service')]}" groups='base.group_user'
+                        @virtual_available attrs="{'readonly': [('xml_id','!=',False)]}"
+                        @st_makeable_qty readonly=True
+                    ~group attrs="{'invisible': [('type', '=', 'service')]}" groups="base.group_user"
                         @qty_available attrs="{'readonly': [('xml_id','!=',False)]}"
-                        @makeable_qty readonly=True
-                    ~group string="Expected Variations" attrs="{'invisible': [('type', '=', 'service')]}" groups="base.group_user"
                         @incoming_qty attrs="{'readonly': [('xml_id','!=',False)]}"
                         @outgoing_qty attrs="{'readonly': [('xml_id','!=',False)]}"
-                        @virtual_available attrs="{'readonly': [('xml_id','!=',False)]}"
 
         ~record #product_product_tree_view_xml_id model='ir.ui.view'
             @name: fis_integration.product.tree

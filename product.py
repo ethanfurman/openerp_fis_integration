@@ -237,31 +237,15 @@ class product_product(xmlid, osv.Model):
         values = {}
         for rec in records:
             current = values[rec.id] = {}
-            try:
-                if not rec['xml_id']:
-                    current['qty_available'] = qoh = rec['nf_qty_available']
-                    current['incoming_qty'] = inc = rec['nf_incoming_qty']
-                    current['outgoing_qty'] = out = rec['nf_outgoing_qty']
-                    current['virtual_available'] = qoh + inc - out
-                    continue
-                # imd_rec = imd.get_object_from_model_resid(cr, uid, model, rec.id, context=context)
-                fis_rec = nvty[rec['xml_id']]
-            except (ValueError, KeyError):
-                values.update(super(product_product, self)._product_available(cr, uid, [rec.id], field_names, arg, context))
-            else:
-                current['qty_available'] = qoh = fis_rec[F135.on_hand]
-                current['outgoing_qty'] = out = fis_rec[F135.committed]
-                current['incoming_qty'] = inc = fis_rec[F135.on_order]
-                current['virtual_available'] = qoh + inc - out
-                current['makeable_qty'] = recipe.make_on_hand(rec['xml_id'])
+            current['qty_available'] = qoh = rec['st_qty_available']
+            current['incoming_qty'] = inc = rec['st_incoming_qty']
+            current['outgoing_qty'] = out = rec['st_outgoing_qty']
+            current['virtual_available'] = qoh + inc - out
         return values
 
     def _product_available_inv(self, cr, uid, id, field_name, field_value, misc=None, context=None):
-        current_record = self.browse(cr, uid, id, context=context)
-        if current_record.xml_id:
-            raise ERPError('Error', 'cannot change quantity information on FIS records')
-        field_name = 'nf_' + field_name
-        return super(product_product, self).write(cr, uid, id, {field_name: field_value}, context=context)
+        field_name = 'st_' + field_name
+        return self.write(cr, uid, id, {field_name: field_value}, context=context)
 
     _columns = {
         'xml_id': fields.function(
@@ -295,13 +279,14 @@ class product_product(xmlid, osv.Model):
             fnct_inv=_product_available_inv,
             multi='qty_available',
             type='float', digits=(16,3), string='Quantity On Hand',
+            store=True,
             help="Current quantity of products according to FIS",
             ),
         'virtual_available': fields.function(
             _product_available,
-            fnct_inv=_product_available_inv,
             multi='qty_available',
             type='float', digits=(16,3), string='Forecasted 10-day Quantity',
+            store=True,
             help="Forecast quantity (computed as Quantity On Hand - Outgoing + Incoming)",
             ),
         'incoming_qty': fields.function(
@@ -309,6 +294,7 @@ class product_product(xmlid, osv.Model):
             fnct_inv=_product_available_inv,
             multi='qty_available',
             type='float', digits=(16,3), string='Incoming',
+            store=True,
             help="Quantity of product that are planned to arrive according to FIS.",
             ),
         'outgoing_qty': fields.function(
@@ -316,30 +302,28 @@ class product_product(xmlid, osv.Model):
             fnct_inv=_product_available_inv,
             multi='qty_available',
             type='float', digits=(16,3), string='Outgoing',
+            store=True,
             help="Quantity of product that are planned to be shipped/used according to FIS.",
             ),
-        'makeable_qty': fields.function(
-            _product_available,
-            multi='qty_available',
-            type='float', digits=[16,3], string='Produceable',
-            store=True,
+        'st_makeable_qty': fields.float(
+            digits=[16,3], string='Immediately Producible',
             help='Quantity that could be immediately produced.',
+            oldname='makeable_qty',
             ),
-        'nf_incoming_qty': fields.float(
+        'st_incoming_qty': fields.float(
             digits=(16,3), string='non-FIS Incoming',
             help="Quantity of product that are planned to arrive.",
+            oldname='nf_incoming_qty',
             ),
-        'nf_outgoing_qty': fields.float(
+        'st_outgoing_qty': fields.float(
             digits=(16,3), string='non-FIS Outgoing',
             help="Quantity of product that are planned to leave.",
+            oldname='nf_outgoing_qty',
             ),
-        'nf_qty_available': fields.float(
+        'st_qty_available': fields.float(
             digits=(16,3), string='non-FIS Quantity On Hand',
             help="Current (actual) quantity of product.",
-            ),
-        'nf_virtual_available': fields.float(
-            digits=(16,3), string='non-FIS Virtual Quantity',
-            help="Forecast quantity (computed as Quantity On Hand - Outgoing + Incoming)",
+            oldname='nf_qty_available',
             ),
         'label_server_stub': fields.function(
             _label_links,
@@ -486,13 +470,12 @@ class product_product(xmlid, osv.Model):
             values['warranty'] = float(sales_category_rec[F11.shelf_life] or 0.0)
         #values['product_manager'] = fis_nvty_rec[F135.manager]
 
-        # currently these are looked up everytime, no need to save (plus saving
-        # generates an error ;)
+        # these are no longer looked up everytime
         #
-        # values['qty_available'] = qoh = fis_nvty_rec[F135.on_hand]
-        # values['incoming_qty'] = inc = fis_nvty_rec[F135.committed]
-        # values['outgoing_qty'] = out = fis_nvty_rec[F135.on_order]
-        # values['virtual_available'] = qoh + inc - out
+        values['st_qty_available'] = qoh = fis_nvty_rec[F135.on_hand]
+        values['st_incoming_qty'] = inc = fis_nvty_rec[F135.on_order]
+        values['st_outgoing_qty'] = out = fis_nvty_rec[F135.committed]
+        values['st_makeable_qty'] = recipe.make_on_hand(fis_nvty_rec[F135.item_code])
 
         shipped_as = fis_nvty_rec[F135.ship_size].strip()
         if shipped_as.lower() in ('each','1 each','1/each'):

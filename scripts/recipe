@@ -4,43 +4,55 @@ from __future__ import print_function
 from pprint import pprint as pp
 from scription import *
 from openerplib import AttrDict
-from recipe import get_ingredient_data
+from recipe import get_ingredient_data, get_items_with_recipes
 
 
 @Command(
         item=('item to look up', ),
         )
 def recipe(item):
+    'display recipe for one item'
     print('looking up', item)
-    pp(get_ingredient_data("", item, 1)[0], depth=3, width=110)
+    print(get_ingredient_data("", item, 1), verbose=0)
 
 
 @Command(
         item=('item to look up', ),
         )
-def make(item):
+def make(item, _show_missing_ingredients=True):
+    'check one item for producibility'
     print('calculating', item)
     inventory_used = AttrDict()
     recipe = get_ingredient_data(oid="", item=item, food_only=True, inventory=inventory_used)
     qtys = []
     print('items needed for %s:' % recipe.desc)
     for ingredient in recipe.ingredients.values():
-        print('   %s %s %s' % (ingredient.qty, ingredient.item, ingredient.desc))
+        print('   %5.2f %s %s' % (ingredient.qty, ingredient.item, ingredient.desc))
         ingr_levels = inventory_used[ingredient.item]
-        buildable = ingr_levels.on_hand - ingr_levels.committed
-        if buildable < 0:
-            buildable = 0
+        available = ingr_levels.on_hand - ingr_levels.committed
+        if available < 0:
+            available = 0
         if ingredient.qty:
-            qtys.append(buildable/ingredient.qty)
-        else:
-            qtys.append(0)
-        if not buildable:
-            print('      out of %s: %s' % (ingredient.item, ingredient.desc), verbose=0)
+            qtys.append(available/ingredient.qty)
+        if not available and _show_missing_ingredients:
+            print('         out of %s: %s' % (ingredient.item, ingredient.desc), verbose=0)
     if not qtys:
-        raise SystemExit('%s (%s) is not a buildable item' % (recipe.item, recipe.desc))
+        if _show_missing_ingredients:
+            raise SystemExit('%s (%s) is not a buildable item' % (recipe.item, recipe.desc))
+        return
     buildable = min(qtys)
     if buildable:
-        print('we could produce %d %s of %s' % (buildable*recipe.yield_qty, recipe.unit_size, recipe.desc), verbose=0)
+        print('we could produce %d %s of %s:%s' % (buildable*recipe.yield_qty, recipe.unit_size, recipe.item, recipe.desc), verbose=0)
+
+@Command()
+def makeable():
+    'check for any producible item given current inventory'
+    items = get_items_with_recipes()
+    if not items:
+        raise SystemExit('no items found with recipes')
+    print('checking %d recipes...' % len(items), verbose=0)
+    for item in items:
+        make(item, _show_missing_ingredients=False)
 
 
 Main()

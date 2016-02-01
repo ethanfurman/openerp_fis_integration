@@ -71,6 +71,14 @@ def item_detail(oid, item, qty, as_ingredient, inventory, item_refs):
     item_refs[item_code] = refs
     return field
 
+def get_items_with_recipes():
+    get_fis_data()
+    recipes = []
+    for recipe in IFMS:
+        item = recipe[F320.formula_id].strip()
+        if NVTY.has_key(item):
+            recipes.append(item)
+    return recipes
 
 def get_ingredient_data(oid, item, qty=1, exdata=None, food_only=False, inventory=None, item_refs=None):
     if inventory is None:
@@ -111,18 +119,14 @@ def make_on_hand(item, inventory_used=None):
     qtys = []
     for ingredient in recipe.ingredients.values():
         ingr_levels = inventory_used[ingredient.item]
-        buildable = ingr_levels.on_hand - ingr_levels.committed
-        if buildable < 0:
-            buildable = 0
+        available = ingr_levels.on_hand - ingr_levels.committed
+        if available < 0:
+            return 0
         if ingredient.qty:
-            qtys.append(buildable/ingredient.qty)
-        else:
-            qtys.append(0)
+            qtys.append(available/ingredient.qty)
     if not qtys:
         return False
     buildable = min(qtys)
-    if not buildable:
-        return False
     return buildable * recipe.yield_qty
 
 
