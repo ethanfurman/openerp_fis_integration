@@ -2,7 +2,7 @@ from collections import defaultdict
 from fis_integration.fis_schema import *
 from fnx.BBxXlate.fisData import fisData
 from fnx.address import NameCase
-from fnx import dynamic_page_stub, static_page_stub
+from fnx.openerp import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
 from openerp import tools
 from openerp.addons.product.product import sanitize_ean13

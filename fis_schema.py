@@ -1,4 +1,4 @@
-from fnx import xid, enum
+from fnx import enum
 
 class FISenum(str, enum.Enum):
     pass
