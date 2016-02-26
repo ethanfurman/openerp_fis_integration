@@ -11,8 +11,6 @@
             @inherit_id ref='stock.view_normal_procurement_locations_form'
             @priority eval='7'
             @arch type='xml'
-                ~xpath expr="//div[@name='buttons']" position='inside'
-                    ~button @button_fis_refresh $FIS_Refresh type='object'
                 ~page $Information position='after'
                     ~page $Shipping_Instructions
                         @spcl_ship_instr nolabel='1' placeholder='Special shipping instructions here...'

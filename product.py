@@ -241,6 +241,7 @@ class product_product(xmlid, osv.Model):
             current['incoming_qty'] = inc = rec['st_incoming_qty']
             current['outgoing_qty'] = out = rec['st_outgoing_qty']
             current['virtual_available'] = qoh + inc - out
+            current['imm_available'] = qoh - out
         return values
 
     def _product_available_inv(self, cr, uid, id, field_name, field_value, misc=None, context=None):
@@ -288,6 +289,13 @@ class product_product(xmlid, osv.Model):
             type='float', digits=(16,3), string='Forecasted 10-day Quantity',
             store=True,
             help="Forecast quantity (computed as Quantity On Hand - Outgoing + Incoming)",
+            ),
+        'imm_available': fields.function(
+            _product_available,
+            multi='qty_available',
+            type='float', digits=(16,3), string='Uncommitted Quantity',
+            store=True,
+            help='Quantity on Hand less Out-going Quantity',
             ),
         'incoming_qty': fields.function(
             _product_available,

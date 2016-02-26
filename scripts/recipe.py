@@ -3,14 +3,18 @@ from enum import Enum
 from VSS.BBxXlate.fisData import fisData
 from openerplib import AttrDict
 
-def get_ingredients(item, food_only=False):
-    fulllist = [(rec[F322.ingr_id_batch_1], key, rec) for key, rec in IFDT.get_subset(item)]
+def get_ingredients(item, rev='000', food_only=False):
+    get_fis_data()
+    #ensure item is 10 chars long
+    item_ingredient, rev = '%-10s' % item, '%-3s' % rev
+    item = item[:6]
+    fulllist = [(rec[F322.ingr_id_batch_1], key, rec) for key, rec in IFDT.get_subset((item_ingredient, rev))]
     foodlist = []
     try:
-        depcode = IFMS[item][F320.dept_id]
+        depcode = IFMS[item_ingredient][F320.dept_id]
     except:
         depcode = ""
-    if NVTY[item] and depcode != "98":  # check if depcode 98 and ignore the BOM if so
+    if NVTY.has_key(item) and depcode != "98":  # check if depcode 98 and ignore the BOM if so
         for ingredient, key, rec in fulllist:
             ingredient = ingredient[:6]
             if NVTY.has_key(ingredient):
@@ -24,7 +28,7 @@ def get_ingredients(item, food_only=False):
 
 def get_fis_data():
     global IFDT, NVTY, IFMS, IFDT1
-    IFDT = fisData('IFDT', subset="10%s      0000")
+    IFDT = fisData('IFDT', subset="10%s  %s")
     NVTY = fisData('NVTY1', keymatch="%s101000    101**")
     IFMS = fisData('IFMS', keymatch="10%s      0000")
     IFDT1 = fisData('IFDT1', keymatch="10%s      000101")
@@ -61,7 +65,7 @@ def item_detail(oid, item, qty, as_ingredient, inventory, item_refs):
         'unit_size' : um,
         'unit_wght' : umdesc,
         'qty'       : qty,                          # quantity needed for parent recipe
-        'item'      : item_code,                       # item code
+        'item'      : item_code,                    # item code
         'yield_qty' : yield_qty,                    # yield of sub-recipe
         })
     refs = item_refs.get(item_code)
@@ -71,22 +75,25 @@ def item_detail(oid, item, qty, as_ingredient, inventory, item_refs):
     item_refs[item_code] = refs
     return field
 
-def get_items_with_recipes():
+def get_items_with_recipes(print_missing=False):
     get_fis_data()
     recipes = []
     for recipe in IFMS:
         item = recipe[F320.formula_id].strip()
+        rev = recipe[F320.rev_id]
         if NVTY.has_key(item):
-            recipes.append(item)
+            recipes.append((item, rev))
+        elif print_missing:
+            print('skipping recipe', item)
     return recipes
 
-def get_ingredient_data(oid, item, qty=1, exdata=None, food_only=False, inventory=None, item_refs=None):
+def get_ingredient_data(oid, item, qty=1, exdata=None, food_only=False, inventory=None, item_refs=None, level=None):
     if inventory is None:
         inventory = AttrDict()
     if item_refs is None:
         item_refs = AttrDict()
     get_fis_data()
-    bom = get_ingredients(item, food_only)
+    bom = get_ingredients(item, food_only=food_only)
     datadict = item_detail(oid, item, qty, 0, inventory, item_refs)
     datadict.ingredients = AttrDict()
     for ingredient, ky, ifdt, isself in bom:
@@ -98,7 +105,9 @@ def get_ingredient_data(oid, item, qty=1, exdata=None, food_only=False, inventor
                 inventory=inventory,
                 item_refs=item_refs,
                 )
-        if not isself and get_ingredients(ingredient, food_only):
+        if not isself and get_ingredients(ingredient, food_only=food_only) and level not in (None, 0):
+            if level is not None:
+                level -= 1
             datadict.ingredients["%s-%s" % (ky[-3:], ingredient)] = get_ingredient_data(
                     oid=ky[-3:],
                     item=ingredient,
@@ -106,6 +115,7 @@ def get_ingredient_data(oid, item, qty=1, exdata=None, food_only=False, inventor
                     food_only=food_only,
                     inventory=inventory,
                     item_refs=item_refs,
+                    level=level
                     )
     if exdata is None:
         exdata = datadict
@@ -190,7 +200,7 @@ class F320(str, Enum):
     rev_id                = 'An$(15,3)'     # Revision Number
     key_type              = 'An$(18,1)'     # Key Group = "0"
     desc                  = 'Bn$'           # Description
-    project_id            = 'Cn$'           # Project Number
+    coating               = 'Cn$'           # Project Number (mis-named)
     date_issued           = 'Dn$(1,6)'      # Date Issued
     date_revised          = 'Dn$(7,6)'      # Date Revised
     date_of_last_run      = 'Dn$(13,6)'     # Date Of Last Run
@@ -216,7 +226,7 @@ class F320(str, Enum):
     bulk_item_id          = 'Fn$(18,6)'     # Bulk Item Code
                                             # (open) Fn$(24,2)
     prod_units            = 'Fn$(26,2)'     # Production Units
-    alpha_sort_key        = 'Fn$(28,8)'     # Alpha Sort Key
+    allergens             = 'Fn$(28,8)'     # Alpha Sort Key (mis-named)
     std_batch_sizes       = 'Fn$(36,1)'     # Std Batch Sizes? (Y/N)
     tube_size             = 'Fn$(37,2)'     # Tube Size
                                             # (open) Fn$(39,2)

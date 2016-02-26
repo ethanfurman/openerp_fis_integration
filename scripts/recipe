@@ -4,7 +4,7 @@ from __future__ import print_function
 from pprint import pprint as pp
 from scription import *
 from openerplib import AttrDict
-from recipe import get_ingredient_data, get_items_with_recipes
+from recipe import get_ingredient_data, get_ingredients, get_items_with_recipes, F322
 
 
 @Command(
@@ -13,13 +13,34 @@ from recipe import get_ingredient_data, get_items_with_recipes
 def recipe(item):
     'display recipe for one item'
     print('looking up', item)
+    print(get_ingredient_data("", item, qty=1, level=1), verbose=0)
+
+
+@Command(
+        item=('item to look up', ),
+        rev=('formula revision', ),
+        )
+def ingredients(item, rev='000'):
+    ingreds = get_ingredients(item, rev, food_only=True)
+    if not ingreds:
+        abort('no ingredients found for %s-%s', (item, rev))
+    for item_id, key, ingredient, _ in ingreds:
+        print('%-10s  %-10s' % (ingredient[F322.qty_batch_1], ingredient[F322.units_batch_1]), verbose=0)
+
+
+@Command(
+        item=('item to look up', ),
+        )
+def complete_recipe(item):
+    'display recursive recipe for one item'
+    print('looking up', item)
     print(get_ingredient_data("", item, 1), verbose=0)
 
 
 @Command(
         item=('item to look up', ),
         )
-def make(item, _show_missing_ingredients=True):
+def make(item, _rev='000', _show_missing_ingredients=True):
     'check one item for producibility'
     print('calculating', item)
     inventory_used = AttrDict()
@@ -52,7 +73,12 @@ def makeable():
         raise SystemExit('no items found with recipes')
     print('checking %d recipes...' % len(items), verbose=0)
     for item in items:
-        make(item, _show_missing_ingredients=False)
+        make(*item, _show_missing_ingredients=False)
+
+@Command()
+def absent():
+    'check for non-existent recipes'
+    get_items_with_recipes(print_missing=True)
 
 
 Main()
