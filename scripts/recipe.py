@@ -27,11 +27,12 @@ def get_ingredients(item, rev='000', food_only=False):
     return foodlist
 
 def get_fis_data():
-    global IFDT, NVTY, IFMS, IFDT1
+    global IFDT, NVTY, IFMS, IFDT1, IFDT1_REV
     IFDT = fisData('IFDT', subset="10%s  %s")
     NVTY = fisData('NVTY1', keymatch="%s101000    101**")
     IFMS = fisData('IFMS', keymatch="10%s      0000")
     IFDT1 = fisData('IFDT1', keymatch="10%s      000101")
+    IFDT1_REV = fisData('IFDT1', keymatch="10%s  %s101")
 
 def title(txt):
     txt = txt.strip().title()
@@ -139,6 +140,23 @@ def make_on_hand(item, inventory_used=None):
     buildable = min(qtys)
     return buildable * recipe.yield_qty
 
+
+class F323(str, Enum):
+    """
+    IFDT1 - FORMULA DETAIL - PRODUCTION INFO
+    """
+    company_id     = 'An$(1,2)'      # Company Code
+    formula_id     = 'An$(3,10)'     # Formula Code
+                                     # (Open) An$(13,2)
+    rev_id         = 'An$(15,3)'     # Revision Number
+    key_type       = 'An$(18,1)'     # Key Group = "1"
+    batch_id       = 'An$(19,2)'     # Batch Id
+    desc           = 'Bn$'           # Description
+    comments       = 'Cn$'           # Comments
+    gross_weight   = 'An'            # Gross Weight (Lbs)
+    yield_in_units = 'Bn'            # Yield In Units
+    yield_pct      = 'Cn'            # Yield %
+    labor_hours    = 'Dn'            # Labor Hours
 
 class F322(str, Enum):
     """
