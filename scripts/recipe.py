@@ -126,7 +126,7 @@ def get_ingredient_data(oid, item, qty=1, exdata=None, food_only=False, inventor
 def make_on_hand(item, inventory_used=None):
     if inventory_used is None:
         inventory_used = AttrDict()
-    recipe = get_ingredient_data(oid="", item=item, food_only=True, inventory=inventory_used)
+    recipe = get_ingredient_data(oid="", item=item, food_only=False, inventory=inventory_used)
     qtys = []
     for ingredient in recipe.ingredients.values():
         ingr_levels = inventory_used[ingredient.item]
