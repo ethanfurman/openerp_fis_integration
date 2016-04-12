@@ -97,6 +97,21 @@ class res_partner(xmlid, osv.Model):
         'bulk_pdf_filename': fields.char('Bulk PDF Filename'),
         }
 
+    def name_get(self, cr, uid, ids, context=None):
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        res = super(res_partner, self).name_get(cr, uid, ids, context=context)
+        res = dict(res)
+        new_res = []
+        for fields in self.read(cr, uid, ids, fields=['id', 'xml_id'], context=context):
+            id = fields['id']
+            xml_id = fields['xml_id']
+            name = res[id]
+            if xml_id:
+                name = '[%s] %s' % (xml_id, name)
+            new_res.append((id, name))
+        return new_res
+
     def fis_updates(self, cr, uid, partner=None, shipper=None, *args):
         if partner is shipper is None:
             _logger.info("res_partner.fis_updates starting...")
