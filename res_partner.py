@@ -101,14 +101,17 @@ class res_partner(xmlid, osv.Model):
         if isinstance(ids, (int, long)):
             ids = [ids]
         res = super(res_partner, self).name_get(cr, uid, ids, context=context)
+        show_fis = (context or {}).get('show_fis')
         res = dict(res)
         new_res = []
-        for fields in self.read(cr, uid, ids, fields=['id', 'xml_id'], context=context):
+        for fields in self.read(cr, uid, ids, fields=['id', 'xml_id', 'user_ids'], context=context):
             id = fields['id']
             xml_id = fields['xml_id']
+            user_ids = fields['user_ids']
             name = res[id]
             if xml_id:
-                name = '[%s] %s' % (xml_id, name)
+                if not user_ids or show_fis:
+                    name = '[%s] %s' % (xml_id, name)
             new_res.append((id, name))
         return new_res
 
