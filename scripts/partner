@@ -63,7 +63,6 @@ def import_customers(filename, type):
         if not oe_records:
             print('  creating record for', company.name)
             print('  with values', dict(company))
-            print('    breaking to debugger')
             new_id = res_partner.create(values=dict(company))
             oe_records = get_records(
                 oe_data.conn,
