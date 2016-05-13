@@ -75,6 +75,15 @@
                         @bulk_img8 widget='image'
                         @bulk_img9 widget='image'
 
+        ~record model='ir.ui.view' #view_partners_xml_id_filter
+            @name: res.partner.form.xml_id.filter
+            @model: res.partner
+            @inherit_id ref='base.view_res_partner_filter'
+            @priority eval='14'
+            @arch type='xml'
+                ~search
+                    @xml_id
+
         ~record model='ir.ui.view' #res_partner_xml_id_kanban_view
             @name: res.partner.xml_id.kanban.inherit
             @model: res.partner
