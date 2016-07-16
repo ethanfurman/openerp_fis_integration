@@ -430,6 +430,7 @@ class product_product(xmlid, osv.Model):
         #products = dict([(r['xml_id'], r) for r in prod_recs])
         nvty = fisData(135, keymatch='%s101000    101**')
         cnvz = fisData(11, keymatch='as10%s')
+        # loop 1: update all the independent data
         for inv_rec in nvty:
             fis_sales_rec = cnvz.get(inv_rec[F135.sales_category])
             values = self._get_fis_values(inv_rec, fis_sales_rec)
@@ -454,6 +455,18 @@ class product_product(xmlid, osv.Model):
                 id = prod_items.create(cr, uid, values)
                 prod_rec = prod_items.browse(cr, uid, [id])[0]
                 synced_prods[key] = prod_rec
+        # loop 2: update the dependent data
+        for inv_rec in nvty:
+            values = {}
+            key = inv_rec[F135.item_code]
+            values['st_makeable_qty'] = recipe.make_on_hand(inv_rec[F135.item_code])
+            if key in synced_prods:
+                prod_rec = synced_prods[key]
+                prod_items.write(cr, uid, prod_rec['id'], values)
+            elif key in unsynced_prods:
+                prod_rec = unsynced_prods[key]
+                prod_items.write(cr, uid, prod_rec.id, values, context=context)
+        # and we're done
         _logger.info(self._name + " done!")
         return True
 
@@ -483,7 +496,7 @@ class product_product(xmlid, osv.Model):
         values['st_qty_available'] = qoh = fis_nvty_rec[F135.on_hand]
         values['st_incoming_qty'] = inc = fis_nvty_rec[F135.on_order]
         values['st_outgoing_qty'] = out = fis_nvty_rec[F135.committed]
-        values['st_makeable_qty'] = recipe.make_on_hand(fis_nvty_rec[F135.item_code])
+        values['st_makeable_qty'] = 0
 
         shipped_as = fis_nvty_rec[F135.ship_size].strip()
         if shipped_as.lower() in ('each','1 each','1/each'):
