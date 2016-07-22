@@ -9,6 +9,19 @@ from fnx.xid import xmlid
 
 _logger = logging.getLogger(__name__)
 
+
+class res_partner_keyword(osv.Model):
+    """
+    Provide keyword association for partner records.
+    """
+    _name = 'res.partner.keyword'
+
+    _columns = {
+        'name': fields.char('Keyword', size=32),
+        'partner_ids': fields.many2many('res.partner', 'res_partner_partner_keyword', 'keyword_id', 'partner_id', 'Partners')
+        }
+
+
 class res_partner(xmlid, osv.Model):
     "Inherits partner and makes the external_id visible and modifiable"
     _name = 'res.partner'
@@ -33,6 +46,12 @@ class res_partner(xmlid, osv.Model):
             method=False,
             fnct_search=xmlid.search_xml_id,
             multi='external',
+            ),
+        'keyword_ids': fields.many2many(
+            'res.partner.keyword',
+            'res_partner_partner_keyword', 'partner_id', 'keyword_id',
+            'Keywords',
+            on_delete='restrict',
             ),
         'sp_tele': fields.char(
             'Telephone',
@@ -82,6 +101,8 @@ class res_partner(xmlid, osv.Model):
         'fuel_surcharge': fields.boolean('Fuel surcharge'),
         'department': fields.char('Department', size=128),
         'email2': fields.char('Alt. Email', size=240),
+        'facebook': fields.char('Facebook', size=240),
+        'twitter': fields.char('Twitter', size=240),
         'is_bulk': fields.boolean('Bulk Sets', help='This partner has a bulk set installation.'),
         'bulk_img0': fields.binary('Bulk Image', help='Picture of bulk installation.', oldname='bulk_img'),
         'bulk_img1': fields.binary('Bulk Image', help='Picture of bulk installation.'),
@@ -95,6 +116,7 @@ class res_partner(xmlid, osv.Model):
         'bulk_img9': fields.binary('Bulk Image', help='Picture of bulk installation.'),
         'bulk_pdf': fields.binary(string='Bulk Contract', help='PDF of contract.'),
         'bulk_pdf_filename': fields.char('Bulk PDF Filename'),
+
         }
 
     def name_get(self, cr, uid, ids, context=None):

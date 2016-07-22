@@ -14,14 +14,12 @@
             "product",
             "stock",
             ],
-    'init_xml': [
-            'security/ir.model.access.csv',
-        ],
     'update_xml': [
             'res_config_view.xaml',
             'res_partner_view.xaml',
             'product_view.xaml',
             'security/fis_security.xaml',
+            'security/ir.model.access.csv',
         ],
     'test': [],
     'installable': True,

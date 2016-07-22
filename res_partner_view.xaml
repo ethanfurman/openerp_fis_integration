@@ -2,12 +2,30 @@
 ~openerp
     ~data
 
+        ~record model='ir.ui.view' #view_partner_simple_xml_id_form
+            @name: res.partner.simplified.xml_id.form
+            @model: res.partner
+            @inherit_id ref='base.view_partner_simple_form'
+            @priority eval='16'
+            @arch type='xml'
+                @email position='remove'
+                @mobile position='after'
+                    ~label $Emails for='email' attrs="{'invisible': [('is_company','=',True)]}"
+                    ~div attrs="{'invisible': [('is_company','=',True)]}"
+                        @email
+                        @email2
+                    @facebook widget='url' 
+                    @twitter widget='url' 
+
+
         ~record model='ir.ui.view' #view_partners_form_xml_id
             @name: view.res.partner.form.xml_id
             @model: res.partner
             @inherit_id ref='base.view_partner_form'
-            @priority eval='18'
+            @priority eval='16'
             @arch type='xml'
+                @category_id position='after'
+                    @keyword_ids widget='many2many_tags' placeholder='Keywords...'
                 @website position='after'
                     @xml_id attrs="{'readonly':True}"
                     @module groups='base.group_no_one'
@@ -18,18 +36,13 @@
                 @supplier position='after'
                     @is_carrier
                     @fuel_surcharge attrs="{'invisible':[('is_carrier','=',False)]}"
-                ~xpath expr="//form[@string='Contact']/div/group/field[@name='name']" position='replace'
-                    ~label $Name for='title'
-                    ~div
-                        @title class='oe_no_button oe_inline' options="{'no_open':True}"
-                        @name .oe_inline
-                ~xpath expr="//form[@string='Contact']/div/group/field[@name='function']" position='after'
-                    @department
-                ~xpath expr="//form[@string='Contact']/div/group/field[@name='email']" position='replace'
-                    ~label $Emails for='email'
-                    ~div
+                @email position='replace'
+                    ~label $Emails for='email' attrs="{'invisible': [('is_company','=',True)]}"
+                    ~div attrs="{'invisible': [('is_company','=',True)]}"
                         @email
                         @email2
+                    @facebook widget='url' 
+                    @twitter widget='url' 
                 @comment position='before'
                     ~group attrs="{'invisible': ['|',('is_company','=',False), ('supplier','=',False)]}"
                         ~group $Supplier_Info colspan='1': >
@@ -74,6 +87,14 @@
                         @bulk_img7 widget='image'
                         @bulk_img8 widget='image'
                         @bulk_img9 widget='image'
+                ~xpath expr="//page[@string='Contacts']/field/form/div/group/field[@name='email']" position='remove'
+                ~xpath expr="//page[@string='Contacts']/field/form/div/group/field[@name='mobile']" position='after'
+                    ~label $Emails for='email'
+                    ~div
+                        @email
+                        @email2
+                    @facebook widget='url' 
+                    @twitter widget='url' 
 
         ~record model='ir.ui.view' #view_partners_xml_id_filter
             @name: res.partner.form.xml_id.filter
@@ -102,6 +123,22 @@
             @arch type='xml'
                 @email position='after'
                     @xml_id
+
+        ~record model='ir.ui.view' #res_partner_keyword_tree_view
+            @name: res.partner.keyword.tree.view
+            @model: res.partner.keyword
+            @arch type='xml'
+                ~tree $Partner_Keywords
+                    @name
+
+        ~record model='ir.actions.act_window' #action_partner_keyword_form
+            @name: Partner Keywords
+            @type: ir.actions.act_window
+            @res_model: res.partner.keyword
+            @view_type: form
+            @help: Manage the partner keywords in order to better classify them for tracking and analysis purposes. A partner may have several keywords.
+
+        ~menuitem name='Partner Keywords' action='action_partner_keyword_form' sequence='5' parent='base.menu_config_address_book' groups='base.group_sale_salesman' #menu_partner_category_form
 
     ~data noupdate='1'
 
