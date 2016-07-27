@@ -51,7 +51,6 @@ class res_partner(xmlid, osv.Model):
             'res.partner.keyword',
             'res_partner_partner_keyword', 'partner_id', 'keyword_id',
             'Keywords',
-            on_delete='restrict',
             ),
         'sp_tele': fields.char(
             'Telephone',
@@ -116,7 +115,6 @@ class res_partner(xmlid, osv.Model):
         'bulk_img9': fields.binary('Bulk Image', help='Picture of bulk installation.'),
         'bulk_pdf': fields.binary(string='Bulk Contract', help='PDF of contract.'),
         'bulk_pdf_filename': fields.char('Bulk PDF Filename'),
-
         }
 
     def name_get(self, cr, uid, ids, context=None):

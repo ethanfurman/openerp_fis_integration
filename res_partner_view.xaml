@@ -14,8 +14,8 @@
                     ~div attrs="{'invisible': [('is_company','=',True)]}"
                         @email
                         @email2
-                    @facebook widget='url' 
-                    @twitter widget='url' 
+                    @facebook widget='url'
+                    @twitter widget='url'
 
 
         ~record model='ir.ui.view' #view_partners_form_xml_id
@@ -41,8 +41,8 @@
                     ~div attrs="{'invisible': [('is_company','=',True)]}"
                         @email
                         @email2
-                    @facebook widget='url' 
-                    @twitter widget='url' 
+                    @facebook widget='url'
+                    @twitter widget='url'
                 @comment position='before'
                     ~group attrs="{'invisible': ['|',('is_company','=',False), ('supplier','=',False)]}"
                         ~group $Supplier_Info colspan='1': >
@@ -93,8 +93,8 @@
                     ~div
                         @email
                         @email2
-                    @facebook widget='url' 
-                    @twitter widget='url' 
+                    @facebook widget='url'
+                    @twitter widget='url'
 
         ~record model='ir.ui.view' #view_partners_xml_id_filter
             @name: res.partner.form.xml_id.filter
