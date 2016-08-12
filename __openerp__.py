@@ -18,6 +18,7 @@
             'res_config_view.xaml',
             'res_partner_view.xaml',
             'product_view.xaml',
+            'crm_lead_view.xaml',
             'security/fis_security.xaml',
             'security/ir.model.access.csv',
         ],

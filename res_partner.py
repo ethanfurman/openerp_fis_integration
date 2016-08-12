@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 from osv import osv, fields
-from fis_integration.fis_schema import *
+from fis_integration.fis_schema import F27, F33, F65, F163
 from fnx.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase
 from fnx.BBxXlate.fisData import fisData
 from fnx.utils import fix_phone, fix_date
@@ -124,10 +124,10 @@ class res_partner(xmlid, osv.Model):
         show_fis = (context or {}).get('show_fis')
         res = dict(res)
         new_res = []
-        for fields in self.read(cr, uid, ids, fields=['id', 'xml_id', 'user_ids'], context=context):
-            id = fields['id']
-            xml_id = fields['xml_id']
-            user_ids = fields['user_ids']
+        for data in self.read(cr, uid, ids, fields=['id', 'xml_id', 'user_ids'], context=context):
+            id = data['id']
+            xml_id = data['xml_id']
+            user_ids = data['user_ids']
             name = res[id]
             if xml_id:
                 if not user_ids or show_fis:
@@ -146,7 +146,7 @@ class res_partner(xmlid, osv.Model):
         state_recs = dict([(r.name, (r.id, r.code, r.country_id.id)) for r in state_recs])
         country_table = self.pool.get('res.country')
         country_recs = country_table.browse(cr, uid, country_table.search(cr, uid, []))
-        country_recs_code = dict([(r.code, r.id) for r in country_recs])
+        # country_recs_code = dict([(r.code, r.id) for r in country_recs])
         country_recs_name = dict([(r.name, r.id) for r in country_recs])
         supplier_recs = self.browse(cr, uid, self.search(cr, uid, [('module','=','F163')]))
         supplier_codes = dict([(r.xml_id, r.id) for r in supplier_recs])
@@ -414,7 +414,6 @@ class res_partner(xmlid, osv.Model):
             key = rec.supplier, rec.customer, rec.name, street, street2, rec.city, rec.state_id, rec.country_id, rec.zip
             if rec.supplier or rec.customer:
                 dup_lists[key].append(rec)
-        total_count = 0
         removed = 0
         print "checking %d possible groups..." % len(dup_lists)
         for i, batch in enumerate(dup_lists.values()):
