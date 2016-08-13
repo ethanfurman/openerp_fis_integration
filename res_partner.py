@@ -23,7 +23,9 @@ class res_partner_keyword(osv.Model):
 
 
 class res_partner(xmlid, osv.Model):
-    "Inherits partner and makes the external_id visible and modifiable"
+    """
+    Inherits partner and makes the external_id visible and modifiable
+    """
     _name = 'res.partner'
     _inherit = 'res.partner'
 
