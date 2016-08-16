@@ -1,0 +1,12 @@
+!!! xml1.0
+~openerp
+    ~data
+
+        ~record model='ir.ui.view' #crm_case_form_view_leads
+            @name: CRM - Leads Form
+            @model: crm.lead
+            @inherit_id ref='crm.crm_case_form_view_leads'
+            @arch type='xml'
+                ~xpath expr="//form/sheet/div[@class='oe_title']" position='inside'
+                    @category_ids widget='many2many_tags' placeholder='Tags'
+                    @keyword_ids widget='many2many_tags' placeholder='Keywords...'
