@@ -49,6 +49,8 @@ class res_partner(xmlid, osv.Model):
             fnct_search=xmlid.search_xml_id,
             multi='external',
             ),
+        # 'parent_id': fields.many2one('res.partner', 'Related Company'),
+        'parent_name': fields.related('parent_id', 'name', type='char', string='Related'),
         'keyword_ids': fields.many2many(
             'res.partner.keyword',
             'res_partner_partner_keyword', 'partner_id', 'keyword_id',
