@@ -1,17 +1,12 @@
-from collections import defaultdict
-from fis_integration.fis_schema import *
+from fis_integration.fis_schema import F11, F97, F135, F341
 from fnx.BBxXlate.fisData import fisData
 from fnx.address import NameCase
 from fnx.oe import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
-from openerp import tools
 from openerp.addons.product.product import sanitize_ean13
-from osv.osv import except_osv as ERPError
 from osv import osv, fields
-from urllib import urlopen
 from scripts import recipe
 import logging
-import time
 
 _logger = logging.getLogger(__name__)
 
@@ -48,25 +43,8 @@ class product_category(xmlid, osv.Model):
         return dict(res)
 
     _columns = {
-        'xml_id': fields.function(
-            xmlid.get_xml_ids,
-            arg=('F11',),
-            string="FIS ID",
-            type='char',
-            method=True,
-            fnct_search=xmlid.search_xml_id,
-            multi='external',
-            select=True,
-            ),
-        'module': fields.function(
-            xmlid.get_xml_ids,
-            arg=('F11',),
-            string="FIS Module",
-            type='char',
-            method=True,
-            fnct_search=xmlid.search_xml_id,
-            multi='external',
-            ),
+        'xml_id': fields.char('FIS ID', size=16, readonly=True),
+        'module': fields.char('FIS Module', size=16, readonly=True),
         'complete_name': fields.function(
             _name_get_fnc,
             type="char",
@@ -78,35 +56,37 @@ class product_category(xmlid, osv.Model):
     def fis_updates(self, cr, uid, *args):
         _logger.info("product.category.fis_updates starting...")
         module = 'F11'
-        category_ids = self.search(cr, uid, [('module','=',module)])
-        category_recs = self.browse(cr, uid, category_ids)
-        category_codes = dict([(('F11', r.xml_id), dict(name=r.name, id=r.id, parent_id=r.parent_id)) for r in category_recs])
+        xml_id_map = self.get_xml_id_map(cr, uid, module=module)
+        category_recs = dict((r.id, r) for r in self.browse(cr, uid, xml_id_map.values()))
+        category_codes = {}
+        for key, id in xml_id_map.items():
+            rec = category_recs[id]
+            category_codes[key] = dict(name=rec.name, id=rec.id, parent_id=rec.parent_id)
         cnvz = fisData(11, keymatch='as10%s')
         for i in (1, 2):
             for category_rec in cnvz:
                 result = {}
                 result['xml_id'] = key = category_rec[F11.code].strip()
                 result['module'] = 'F11'
-                module_key = 'F11', key
                 if len(key) != i:
                     continue
                 name = category_rec[F11.desc].title()
                 if len(key) == 1:
                     name = key + ' - ' + name.strip('- ')
                 result['name'] = name
-                if module_key in category_codes:
-                    result['parent_id'] = category_codes[module_key]['parent_id']['id']
-                    self.write(cr, uid, category_codes[module_key]['id'], result)
+                if key in category_codes:
+                    result['parent_id'] = category_codes[key]['parent_id']['id']
+                    self.write(cr, uid, category_codes[key]['id'], result)
                 else:
                     if len(key) == 1:
                         result['parent_id'] = 2
                     else:
                         try:
-                            result['parent_id'] = category_codes[module_key[1][:1]]['id']
+                            result['parent_id'] = category_codes[key[:1]]['id']
                         except KeyError:
-                            result['parent_id'] = category_codes['F11','9']['id']
+                            result['parent_id'] = category_codes['9']['id']
                     new_id = self.create(cr, uid, result)
-                    category_codes[module_key] = dict(name=result['name'], id=new_id, parent_id=result['parent_id'])
+                    category_codes[key] = dict(name=result['name'], id=new_id, parent_id=result['parent_id'])
         _logger.info(self._name +  " done!")
         return True
 
@@ -118,25 +98,8 @@ class product_available_at(xmlid, osv.Model):
 
     _columns = {
         'name' : fields.char('Availability', size=50),
-        'xml_id': fields.function(
-            xmlid.get_xml_ids,
-            arg=('F97',),
-            string="FIS ID",
-            type='char',
-            method=True,
-            fnct_search=xmlid.search_xml_id,
-            multi='external',
-            select=True,
-            ),
-        'module': fields.function(
-            xmlid.get_xml_ids,
-            arg=('F97',),
-            string="FIS Module",
-            type='char',
-            method=True,
-            fnct_search=xmlid.search_xml_id,
-            multi='external',
-            ),
+        'xml_id': fields.char('FIS ID', size=16, readonly=True),
+        'module': fields.char('FIS Module', size=16, readonly=True),
         'product_ids' : fields.one2many(
             'product.product',
             'avail',
@@ -147,16 +110,13 @@ class product_available_at(xmlid, osv.Model):
     def fis_updates(self, cr, uid, *args):
         _logger.info("product.available_at.auto-update starting...")
         module = 'F97'
-        avail_ids = self.search(cr, uid, [('module','=',module)])
-        avail_recs = self.browse(cr, uid, avail_ids)
-        avail_codes = dict([(r.xml_id, r.id) for r in avail_recs])
+        avail_codes = self.get_xml_id_map(cr, uid, module=module)
         cnvz = fisData(97, keymatch='aa10%s')
         for avail_rec in cnvz:
             result = {}
             result['xml_id'] = key = avail_rec[F97.code].upper()
             result['module'] = module
             result['name'] = avail_rec[F97.desc].title()
-            module_key = module, key
             if key in avail_codes:
                 self.write(cr, uid, avail_codes[key], result)
             else:
@@ -165,22 +125,6 @@ class product_available_at(xmlid, osv.Model):
         _logger.info(self._name + " done!")
         return True
 
-
-
-# may add this back later...
-#class product_shipping_size(osv.Model):
-#    "tracks the shipping size options for products"
-#    _name = 'product.shipping_size'
-#
-#    _columns = {
-#        'name' : fields.char('Shipped as', size=50),
-#        'product_ids' : fields.one2many(
-#            'product.product',
-#            'shipped_as',
-#            'Products',
-#            ),
-#        }
-#product_available_at()
 
 class product_template(osv.Model):
     _name = "product.template"
@@ -212,16 +156,10 @@ class product_product(xmlid, osv.Model):
         return result
 
     def _label_links(self, cr, uid, ids, field_name, arg, context=None):
-        xml_ids = [v for (k, v) in
-                self.get_xml_ids(
-                    cr, uid, ids, field_name,
-                    arg=('F135', ),
-                    ).items()
-                ]
+        xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
         result = {}
-        htmlContentList = [ ]
-        for id, d in zip(ids, xml_ids):  # there should only be one...
-            xml_id = d['xml_id']
+        htmlContentList = []
+        for xml_id, id in xml_ids.items():
             htmlContentList.append('''<img src="%s" width=55%% align="left"/>''' % (LabelLinks[0] % (xml_id, xml_id)))
             htmlContentList.append('''<img src="%s" width=35%% align="right"/><br>''' % (LabelLinks[1] % (xml_id, xml_id)))
             htmlContentList.append('''<br><img src="%s" width=100%% /><br>''' % (LabelLinks[2] % (xml_id, xml_id)))
@@ -229,10 +167,6 @@ class product_product(xmlid, osv.Model):
         return result
 
     def _product_available(self, cr, uid, ids, field_names=None, arg=False, context=None):
-        model = self._name
-        module = 'F135'
-        imd = self.pool.get('ir.model.data')
-        nvty = fisData(135, keymatch='%s101000    101**')
         records = self.browse(cr, uid, ids, context=context)
         values = {}
         for rec in records:
@@ -249,25 +183,8 @@ class product_product(xmlid, osv.Model):
         return self.write(cr, uid, id, {field_name: field_value}, context=context)
 
     _columns = {
-        'xml_id': fields.function(
-            xmlid.get_xml_ids,
-            arg=('F135', ),
-            string="FIS ID",
-            type='char',
-            method=True,
-            fnct_search=xmlid.search_xml_id,
-            multi='external',
-            select=True,
-            ),
-        'module': fields.function(
-            xmlid.get_xml_ids,
-            arg=('F135',),
-            string="FIS Module",
-            type='char',
-            method=True,
-            fnct_search=xmlid.search_xml_id,
-            multi='external',
-            ),
+        'xml_id': fields.char('FIS ID', size=16, readonly=True),
+        'module': fields.char('FIS Module', size=16, readonly=True),
         'shipped_as': fields.char('Shipped as', size=50),
         'avail': fields.many2one(
             'product.available_at',
@@ -356,45 +273,6 @@ class product_product(xmlid, osv.Model):
         'docs': fields.html('Documents'),
         }
 
-    def button_fis_refresh(self, cr, uid, ids, context=None):
-        if context is None:
-            context = {}
-        product_module = 'F135'
-        category_module = 'F11'
-        location_module = 'F97'
-        prod_avail = self.pool.get('product.available_at')
-        prod_cat = self.pool.get('product.category')
-        prod_template = self.pool.get('product.template')
-        #avail_ids = prod_avail_at.search(cr, uid, [(1,'=',1)])
-        #avail_recs = prod_avail_at.browse(cr, uid, avail_ids, context=context)
-        #avail_codes = {}
-            #avail_codes[rec['xml_id']] = rec['id']
-        cnvz = fisData(11, keymatch='as10%s')
-        nvty = fisData(135, keymatch='%s101000    101**')
-        records = self.browse(cr, uid, ids, context=context)
-        for rec in records:
-            if rec.module != 'F135':
-                continue
-            fis_nvty_rec = nvty.get(rec['xml_id'])
-            if fis_nvty_rec is None:
-                continue
-            fis_sales_rec = cnvz[fis_nvty_rec[F135.sales_category]]
-            values = self._get_fis_values(fis_nvty_rec, fis_sales_rec)
-            cat_ids = prod_cat.search(cr, uid, [('module','=',category_module),('xml_id','=',values['categ_id'])])
-            if not cat_ids:
-                raise ValueError("unable to locate category code %s" % values['categ_id'])
-            elif len(cat_ids) > 1:
-                raise ValueError("too many matches for category code %s" % values['categ_id'])
-            values['categ_id'] = prod_cat.browse(cr, uid, cat_ids)[0]['id']
-            avail_ids = prod_avail.search(cr, uid, [('module','=',location_module),('xml_id','=',values['avail'])])
-            if not avail_ids:
-                raise ValueError("unable to locate availability code %s" % values['avail'])
-            elif len(avail_ids) > 1:
-                raise ValueError("too many matches for availability code %s" % values['avail'])
-            values['avail'] = prod_avail.browse(cr, uid, avail_ids)[0]['id']
-            self.write(cr, uid, rec['id'], values, context=context)
-        return True
-
     def fis_updates(self, cr, uid, *args):
         """
         scans FIS product table and either updates product info or
@@ -416,10 +294,9 @@ class product_product(xmlid, osv.Model):
         cat_ids = prod_cat.search(cr, uid, [('module','=',category_module)])
         cat_recs = prod_cat.browse(cr, uid, cat_ids)
         cat_codes = dict([(r.xml_id, r.id) for r in cat_recs])
-        #import pdb; pdb.set_trace()
         # create a mapping of id -> res_id for product items
-        prod_ids = prod_items.search(cr, uid, [('module','=',product_module)])
-        prod_recs = prod_items.browse(cr, uid, prod_ids)
+        prod_xml_id_map = self.get_xml_id_map(cr, uid, module=product_module)
+        prod_recs = prod_items.browse(cr, uid, prod_xml_id_map.values())
         synced_prods = {}
         unsynced_prods = {}
         for rec in prod_recs:
@@ -427,7 +304,6 @@ class product_product(xmlid, osv.Model):
                 synced_prods[rec.xml_id] = rec
             elif rec.default_code:
                 unsynced_prods[rec.default_code] = rec
-        #products = dict([(r['xml_id'], r) for r in prod_recs])
         nvty = fisData(135, keymatch='%s101000    101**')
         cnvz = fisData(11, keymatch='as10%s')
         # loop 1: update all the independent data
@@ -450,7 +326,7 @@ class product_product(xmlid, osv.Model):
                 prod_items.write(cr, uid, prod_rec['id'], values)
             elif key in unsynced_prods:
                 prod_rec = unsynced_prods[key]
-                prod_items.write(cr, uid, prod_rec.id, values, context=context)
+                prod_items.write(cr, uid, prod_rec.id, values)
             else:
                 id = prod_items.create(cr, uid, values)
                 prod_rec = prod_items.browse(cr, uid, [id])[0]
@@ -465,7 +341,7 @@ class product_product(xmlid, osv.Model):
                 prod_items.write(cr, uid, prod_rec['id'], values)
             elif key in unsynced_prods:
                 prod_rec = unsynced_prods[key]
-                prod_items.write(cr, uid, prod_rec.id, values, context=context)
+                prod_items.write(cr, uid, prod_rec.id, values)
         # and we're done
         _logger.info(self._name + " done!")
         return True
@@ -489,13 +365,9 @@ class product_product(xmlid, osv.Model):
         values['warranty'] = sl = float(fis_nvty_rec[F135.shelf_life] or 0.0)
         if not sl and sales_category_rec:
             values['warranty'] = float(sales_category_rec[F11.shelf_life] or 0.0)
-        #values['product_manager'] = fis_nvty_rec[F135.manager]
-
-        # these are no longer looked up everytime
-        #
-        values['st_qty_available'] = qoh = fis_nvty_rec[F135.on_hand]
-        values['st_incoming_qty'] = inc = fis_nvty_rec[F135.on_order]
-        values['st_outgoing_qty'] = out = fis_nvty_rec[F135.committed]
+        values['st_qty_available'] = fis_nvty_rec[F135.on_hand]
+        values['st_incoming_qty'] = fis_nvty_rec[F135.on_order]
+        values['st_outgoing_qty'] = fis_nvty_rec[F135.committed]
         values['st_makeable_qty'] = 0
 
         shipped_as = fis_nvty_rec[F135.ship_size].strip()
@@ -530,25 +402,8 @@ class production_line(xmlid, osv.Model):
         return values
 
     _columns = {
-        'xml_id': fields.function(
-            xmlid.get_xml_ids,
-            arg=('F341', ),
-            string="FIS ID",
-            type='char',
-            method=True,
-            fnct_search=xmlid.search_xml_id,
-            multi='external',
-            select=True,
-            ),
-        'module': fields.function(
-            xmlid.get_xml_ids,
-            arg=('F341',),
-            string="FIS Module",
-            type='char',
-            method=True,
-            fnct_search=xmlid.search_xml_id,
-            multi='external',
-            ),
+        'xml_id': fields.char('FIS ID', size=16, readonly=True),
+        'module': fields.char('FIS Module', size=16, readonly=True),
         'desc': fields.char('Description', size=30),
         'name': fields.function(
             _get_name,
@@ -565,16 +420,13 @@ class production_line(xmlid, osv.Model):
     def fis_updates(self, cr, uid, *args):
         _logger.info("fis_integration.production_line.auto-update starting...")
         module = 'F341'
-        avail_ids = self.search(cr, uid, [('module','=',module)])
-        avail_recs = self.browse(cr, uid, avail_ids)
-        avail_codes = dict([(r.xml_id, r.id) for r in avail_recs])
+        avail_codes = self.get_xml_id_map(cr, uid, module=module)
         cnvz = fisData(341, keymatch='f10%s')
         for avail_rec in cnvz:
             result = {}
             result['xml_id'] = key = avail_rec[F341.code].upper()
             result['module'] = module
             result['desc'] = avail_rec[F341.desc].title()
-            module_key = module, key
             if key in avail_codes:
                 self.write(cr, uid, avail_codes[key], result)
             else:

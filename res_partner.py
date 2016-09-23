@@ -30,26 +30,8 @@ class res_partner(xmlid, osv.Model):
     _inherit = 'res.partner'
 
     _columns = {
-        'xml_id': fields.function(
-            xmlid.get_xml_ids,
-            arg=('F27', 'F33', 'F65', 'F74', 'F163', 'FIS_now', 'FIS_unfi'),
-            string="FIS ID",
-            type='char',
-            method=False,
-            fnct_search=xmlid.search_xml_id,
-            multi='external',
-            select=2,
-            ),
-        'module': fields.function(
-            xmlid.get_xml_ids,
-            arg=('F27', 'F33', 'F65', 'F74', 'F163', 'FIS_now', 'FIS_unfi'),
-            string="FIS Module",
-            type='char',
-            method=False,
-            fnct_search=xmlid.search_xml_id,
-            multi='external',
-            ),
-        # 'parent_id': fields.many2one('res.partner', 'Related Company'),
+        'xml_id': fields.char('FIS ID', size=16, readonly=True),
+        'module': fields.char('FIS Module', size=16, readonly=True),
         'parent_name': fields.related('parent_id', 'name', type='char', string='Related'),
         'keyword_ids': fields.many2many(
             'res.partner.keyword',
@@ -128,14 +110,20 @@ class res_partner(xmlid, osv.Model):
         show_fis = (context or {}).get('show_fis')
         res = dict(res)
         new_res = []
-        for data in self.read(cr, uid, ids, fields=['id', 'xml_id', 'user_ids'], context=context):
+        for data in self.read(cr, uid, ids, fields=['id', 'xml_id', 'module', 'user_ids'], context=context):
             id = data['id']
             xml_id = data['xml_id']
+            module = data['module']
             user_ids = data['user_ids']
             name = res[id]
             if xml_id:
                 if not user_ids or show_fis:
-                    name = '[%s] %s' % (xml_id, name)
+                    if module in ('F33', 'F65', 'F163'):
+                        name = '[%s] %s' % (xml_id, name)
+                    elif '_' in module:
+                        name = '[%s] %s' % (module.split('_', 1)[1].upper(), name)
+                    else:
+                        name = '[%s] %s' % (module.upper(), name)
             new_res.append((id, name))
         return new_res
 
@@ -150,14 +138,10 @@ class res_partner(xmlid, osv.Model):
         state_recs = dict([(r.name, (r.id, r.code, r.country_id.id)) for r in state_recs])
         country_table = self.pool.get('res.country')
         country_recs = country_table.browse(cr, uid, country_table.search(cr, uid, []))
-        # country_recs_code = dict([(r.code, r.id) for r in country_recs])
         country_recs_name = dict([(r.name, r.id) for r in country_recs])
-        supplier_recs = self.browse(cr, uid, self.search(cr, uid, [('module','=','F163')]))
-        supplier_codes = dict([(r.xml_id, r.id) for r in supplier_recs])
-        customer_recs = self.browse(cr, uid, self.search(cr, uid, [('module','=','F33')]))
-        customer_codes = dict([(r.xml_id, r.id) for r in customer_recs])
-        carrier_recs = self.browse(cr, uid, self.search(cr, uid, [('module','=','F27')]))
-        carrier_codes = dict([(r.xml_id, r.id) for r in carrier_recs])
+        supplier_codes = self.get_xml_id_map(cr, uid, module='F163')
+        customer_codes = self.get_xml_id_map(cr, uid, module='F33')
+        carrier_codes = self.get_xml_id_map(cr, uid, module='F27')
         shipper_key = 'SV10%s'
         if shipper:
             shipper_key %= shipper
@@ -437,5 +421,3 @@ class res_partner(xmlid, osv.Model):
                 removed += 1
         print "%d duplicates removed" % removed
         return True
-
-res_partner()
