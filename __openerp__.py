@@ -21,6 +21,7 @@
             'crm_lead_view.xaml',
             'security/fis_security.xaml',
             'security/ir.model.access.csv',
+            'wizard/merge_view.xaml',
         ],
     'test': [],
     'installable': True,

@@ -1,0 +1,36 @@
+!!! xml1.0
+~openerp
+    ~data
+
+        ~record model='ir.ui.view' #view_res_partner_merge_tree
+            @name: Merge Partner Records
+            @model: fis_integration.res.partner.merge
+            @arch type='xml'
+                ~form $Merge_Records create='false' version='7.0'
+                    @possible_records nolabel='1' domain="[('active','=',True)]"
+                        ~tree $Possible_Records create='false' editable='top' version='7.0'
+                            @disposition
+                            @orig_source_id invisible='1'
+                            @source_id on_change="onchange_source(orig_source_id)"
+                            @city readonly='1'
+                            @state readonly='1'
+                            @phone readonly='1'
+
+        ~record model='ir.actions.act_window' #action_fis_res_partner_merge
+            @name: Merge Records
+            @type: ir.actions.act_window
+            @res_model: fis_integration.res.partner.merge
+            @view_type: form
+            @view_mode: form
+            @view_id ref='view_res_partner_merge_tree'
+            @target: current
+            @multi: True
+            @groups: base.group_sale_manager
+
+        ~record model='ir.values' #event_res_partner_merge
+            @name: Open res.partner Merge
+            @model_id ref='model_res_partner'
+            @value eval="'ir.actions.act_window,' + str(ref('action_fis_res_partner_merge'))"
+            @key: action
+            @key2: client_action_multi
+            @model: res.partner
