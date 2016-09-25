@@ -25,7 +25,6 @@
             @view_id ref='view_res_partner_merge_tree'
             @target: current
             @multi: True
-            @groups: base.group_sale_manager
 
         ~record model='ir.values' #event_res_partner_merge
             @name: Open res.partner Merge
