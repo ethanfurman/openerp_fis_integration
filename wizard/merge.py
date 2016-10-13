@@ -265,7 +265,7 @@ class res_partner_merge_sub(osv.TransientModel):
         'xml_id': fields.related('source_id', 'xml_id', type='char', size=16, string='FIS ID'),
         'module': fields.related('source_id', 'module', type='char', size=16, String='FIS Module'),
         'is_company': fields.related('source_id', 'is_company', type='boolean', string='Company'),
-        'child_ids': fields.related('source_id', 'child_ids', type='one2many', string='Contacts'),
+        'child_ids': fields.related('source_id', 'child_ids', type='one2many', relation='res.partner', fields_id='parent_id', string='Contacts'),
         }
 
     def onchange_source(self, cr, uid, ids, orig_source_id, context=None):

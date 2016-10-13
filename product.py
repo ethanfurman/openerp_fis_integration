@@ -262,13 +262,13 @@ class product_product(xmlid, osv.Model):
             type='html',
             method=True,
             ),
-        'cost_customer': fields.function(
-            lambda *a: {},
-            string="Customer to check costs for",
-            type='many2one',
-            method=False,
-            readonly=True,
-            ),
+        # 'cost_customer': fields.function(
+        #     lambda *a: {},
+        #     string="Customer to check costs for",
+        #     type='many2one',
+        #     method=False,
+        #     readonly=True,
+        #     ),
         'label_text': fields.text('Label Text'),
         'docs': fields.html('Documents'),
         }
