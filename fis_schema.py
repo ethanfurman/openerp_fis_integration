@@ -1,4 +1,4 @@
-from fnx import enum
+import enum
 
 class FISenum(str, enum.Enum):
     pass

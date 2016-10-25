@@ -101,7 +101,43 @@ class res_partner(xmlid, osv.Model):
         'bulk_img9': fields.binary('Bulk Image', help='Picture of bulk installation.'),
         'bulk_pdf': fields.binary(string='Bulk Contract', help='PDF of contract.'),
         'bulk_pdf_filename': fields.char('Bulk PDF Filename'),
+        'fis_data': fields.text('FIS Name & Address'),
+        'fis_data_changed': fields.boolean('FIS data has changed'),
+        'updated_by_user': fields.boolean('Updated by user'),
         }
+
+    def write(self, cr, uid, ids, values, context=None):
+        if context is None:
+            context = {}
+        if context.get('fis-updates') and values.get('is_company'):
+            # save name/addr/cszc into fis_data field
+            # if record has updated_by_user set do not update name/addr/cszc
+            # ids is a single integer
+            data = self.read(cr, uid, ids, fields=['id', 'updated_by_user', 'fis_data'], context=context)
+            state = self.pool.get('res.country.state').browse(cr, uid, values.pop('state_id'), context=context)
+            values['fis_data'] = '\n'.join([
+                    values['name'] or '',
+                    values['street'] or '',
+                    values['street2'] or '',
+                    '%s, %s  %s' % (
+                        values['city'] or '',
+                        state and state.name or '',
+                        values['zip'] or '',
+                        ),
+                    state and state.country_id.name or '',
+                    ])
+            if values['fis_data'] != data['fis_data']:
+                values['fis_data_changed'] = True
+            if data['updated_by_user']:
+                for attr in ('name', 'street', 'street2'):
+                    values.pop(attr)
+        else:
+            # not from update, check if name/address is being updated
+            for attr in ('name', 'street', 'street2'):
+                if attr in values:
+                    values['updated_by_user'] = True
+                    break
+        return super(res_partner, self).write(cr, uid, ids, values, context=context)
 
     def name_get(self, cr, uid, ids, context=None):
         if isinstance(ids, (int, long)):
@@ -128,16 +164,17 @@ class res_partner(xmlid, osv.Model):
         return new_res
 
     def fis_updates(self, cr, uid, partner=None, shipper=None, *args):
+        context = {'fis-updates': True}
         if partner is shipper is None:
             _logger.info("res_partner.fis_updates starting...")
         if partner and shipper:
             raise ValueError('only one of <partner> or <shipper> may be specified (received %r and %r)' % (partner, shipper))
         _logger.info('res_partner.fis_updates: looking for %s' % (partner or shipper))
         state_table = self.pool.get('res.country.state')
-        state_recs = state_table.browse(cr, uid, state_table.search(cr, uid, [(1,'=',1)]))
+        state_recs = state_table.browse(cr, uid, state_table.search(cr, uid, [(1,'=',1)]), context=context)
         state_recs = dict([(r.name, (r.id, r.code, r.country_id.id)) for r in state_recs])
         country_table = self.pool.get('res.country')
-        country_recs = country_table.browse(cr, uid, country_table.search(cr, uid, []))
+        country_recs = country_table.browse(cr, uid, country_table.search(cr, uid, []), context=context)
         country_recs_name = dict([(r.name, r.id) for r in country_recs])
         supplier_codes = self.get_xml_id_map(cr, uid, module='F163')
         customer_codes = self.get_xml_id_map(cr, uid, module='F33')
@@ -253,9 +290,9 @@ class res_partner(xmlid, osv.Model):
                 continue
             if key in supplier_codes:
                 id = supplier_codes[key]
-                self.write(cr, uid, id, result)
+                self.write(cr, uid, id, result, context=context)
             else:
-                id = self.create(cr, uid, result)
+                id = self.create(cr, uid, result, context=context)
                 supplier_codes[key] = id
             if ven_rec is not None:
                 ven_id = id
@@ -272,9 +309,9 @@ class res_partner(xmlid, osv.Model):
                     result['supplier'] = False
                     if key in supplier_codes:
                         id = supplier_codes[key]
-                        self.write(cr, uid, id, result)
+                        self.write(cr, uid, id, result, context=context)
                     else:
-                        id = self.create(cr, uid, result)
+                        id = self.create(cr, uid, result, context=context)
                         supplier_codes[key] = id
 
         for cus_rec in csms:
@@ -336,9 +373,9 @@ class res_partner(xmlid, osv.Model):
                 result['supplier'] = False
                 if key in customer_codes:
                     id = customer_codes[key]
-                    self.write(cr, uid, id, result)
+                    self.write(cr, uid, id, result, context=context)
                 else:
-                    id = self.create(cr, uid, result)
+                    id = self.create(cr, uid, result, context=context)
                     customer_codes[key] = id
 
         for sv_rec in carrier:
@@ -382,9 +419,9 @@ class res_partner(xmlid, osv.Model):
             result['fuel_surcharge'] = sv_rec[F27.fuel_surcharge]
             if key in carrier_codes:
                 id = carrier_codes[key]
-                self.write(cr, uid, id, result)
+                self.write(cr, uid, id, result, context=context)
             else:
-                id = self.create(cr, uid, result)
+                id = self.create(cr, uid, result, context=context)
                 carrier_codes[key] = id
 
         _logger.info('res_partner.fis_updates done!')

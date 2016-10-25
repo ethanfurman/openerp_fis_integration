@@ -30,7 +30,6 @@
                     @keyword_ids widget='many2many_tags' placeholder='Keywords...'
                 @website position='after'
                     @xml_id attrs="{'readonly':True}"
-                    @module groups='base.group_no_one'
                 @function position='after'
                     @department attrs="{'invisible': [('is_company','=', True)]}"
                 @customer position='after'
@@ -89,6 +88,14 @@
                         @bulk_img7 widget='image'
                         @bulk_img8 widget='image'
                         @bulk_img9 widget='image'
+                ~page @page_history position='after'
+                    ~page $FIS groups='base.group_sale_salesman'
+                        ~group
+                            @updated_by_user
+                            @fis_data_changed
+                            @fis_data
+                        ~group
+                            @module
                 ~xpath expr="//page[@string='Contacts']/field/form/div/group/field[@name='email']" position='remove'
                 ~xpath expr="//page[@string='Contacts']/field/form/div/group/field[@name='mobile']" position='after'
                     ~label $Emails for='email'
