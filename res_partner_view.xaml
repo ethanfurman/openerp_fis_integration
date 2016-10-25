@@ -91,11 +91,12 @@
                 ~page @page_history position='after'
                     ~page $FIS groups='base.group_sale_salesman'
                         ~group
-                            @updated_by_user
-                            @fis_data_changed
-                            @fis_data
-                        ~group
-                            @module
+                            ~group
+                                @module
+                                @updated_by_user
+                                @fis_data_changed
+                            ~group
+                                @fis_data
                 ~xpath expr="//page[@string='Contacts']/field/form/div/group/field[@name='email']" position='remove'
                 ~xpath expr="//page[@string='Contacts']/field/form/div/group/field[@name='mobile']" position='after'
                     ~label $Emails for='email'
