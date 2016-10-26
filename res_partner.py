@@ -109,28 +109,29 @@ class res_partner(xmlid, osv.Model):
     def write(self, cr, uid, ids, values, context=None):
         if context is None:
             context = {}
-        if context.get('fis-updates') and values.get('is_company'):
-            # save name/addr/cszc into fis_data field
-            # if record has updated_by_user set do not update name/addr/cszc
-            # ids is a single integer
-            data = self.read(cr, uid, ids, fields=['id', 'updated_by_user', 'fis_data'], context=context)
-            state = self.pool.get('res.country.state').browse(cr, uid, values.pop('state_id'), context=context)
-            values['fis_data'] = '\n'.join([
-                    values['name'] or '',
-                    values['street'] or '',
-                    values['street2'] or '',
-                    '%s, %s  %s' % (
-                        values['city'] or '',
-                        state and state.name or '',
-                        values['zip'] or '',
-                        ),
-                    state and state.country_id.name or '',
-                    ])
-            if values['fis_data'] != data['fis_data']:
-                values['fis_data_changed'] = True
-            if data['updated_by_user']:
-                for attr in ('name', 'street', 'street2'):
-                    values.pop(attr)
+        if context.get('fis-updates'):
+            if values.get('is_company'):
+                # save name/addr/cszc into fis_data field
+                # if record has updated_by_user set do not update name/addr/cszc
+                # ids is a single integer
+                data = self.read(cr, uid, ids, fields=['id', 'updated_by_user', 'fis_data'], context=context)
+                state = self.pool.get('res.country.state').browse(cr, uid, values.pop('state_id'), context=context)
+                values['fis_data'] = '\n'.join([
+                        values['name'] or '',
+                        values['street'] or '',
+                        values['street2'] or '',
+                        '%s, %s  %s' % (
+                            values['city'] or '',
+                            state and state.name or '',
+                            values['zip'] or '',
+                            ),
+                        state and state.country_id.name or '',
+                        ])
+                if values['fis_data'] != data['fis_data']:
+                    values['fis_data_changed'] = True
+                if data['updated_by_user']:
+                    for attr in ('name', 'street', 'street2'):
+                        values.pop(attr)
         else:
             # not from update, check if name/address is being updated
             for attr in ('name', 'street', 'street2'):
@@ -355,9 +356,9 @@ class res_partner(xmlid, osv.Model):
                 continue
             if key in customer_codes:
                 id = customer_codes[key]
-                self.write(cr, uid, id, result)
+                self.write(cr, uid, id, result, context=context)
             else:
-                id = self.create(cr, uid, result)
+                id = self.create(cr, uid, result, context=context)
                 customer_codes[key] = id
             if cus_rec[F33.contact]:
                 cus_id = id
