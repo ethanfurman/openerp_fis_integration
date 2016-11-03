@@ -145,6 +145,8 @@ class res_partner(xmlid, osv.Model):
             ids = [ids]
         res = super(res_partner, self).name_get(cr, uid, ids, context=context)
         show_fis = (context or {}).get('show_fis')
+        if not show_fis:
+            return res
         res = dict(res)
         new_res = []
         for data in self.read(cr, uid, ids, fields=['id', 'xml_id', 'module', 'user_ids'], context=context):
