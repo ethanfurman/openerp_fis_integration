@@ -105,7 +105,7 @@ class res_partner_merge(osv.TransientModel):
                         convert.append(prec)
                     else:
                         prec['disposition'] = 'ignore'
-                elif prec.disposition == 'delete':
+                elif prec['disposition'] == 'delete':
                     delete.append(prec)
                 else:
                     # shouldn't happen
@@ -131,7 +131,7 @@ class res_partner_merge(osv.TransientModel):
                             'Cannot merge FIS contact %r to %r' % (srec.xml_id, master.xml_id),
                             )
                 if source_recs[prec['source_id']].is_company:
-                    merge_companies[prec.source_id] = prec
+                    merge_companies[prec['source_id']] = prec
                 else:
                     merge_contacts[prec['source_id']] = prec
             # segregate deleting companies / contacts
@@ -146,7 +146,7 @@ class res_partner_merge(osv.TransientModel):
                             'Cannot delete FIS contact %r' % srec.xml_id,
                             )
                 if source_recs[prec['source_id']].is_company:
-                    delete_companies[prec.source_id] = prec
+                    delete_companies[prec['source_id']] = prec
                 else:
                     delete_contacts[prec['source_id']] = prec
             # start merge
