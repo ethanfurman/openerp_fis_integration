@@ -9,6 +9,7 @@ from fnx.xid import xmlid
 
 _logger = logging.getLogger(__name__)
 
+ADDRESS_FIELDS = 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id'
 
 class res_partner_keyword(osv.Model):
     """
@@ -106,38 +107,85 @@ class res_partner(xmlid, osv.Model):
         'updated_by_user': fields.boolean('Updated by user'),
         }
 
+    def create(self, cr, uid, values, context=None):
+        if context is None:
+            context = {}
+        if 'xml_id' in values and 'module' in values and values['xml_id'] and values['module']:
+            # we have an FIS record -- add appropriate fields
+            # save name/addr/cszc into fis_data field
+            state = self.pool.get('res.country.state').browse(cr, uid, values.get('state_id'), context=context)
+            country = self.pool.get('res.country').browse(cr, uid, values.get('country_id'), context=context)
+            values['fis_data'] = '\n'.join([
+                    values['name'] or '',
+                    values['street'] or '',
+                    values['street2'] or '',
+                    '%s, %s  %s' % (
+                        values['city'] or '',
+                        state and state.name or '',
+                        values['zip'] or '',
+                        ),
+                    country and country.name or '',
+                    ])
+        return super(res_partner, self).create(cr, uid, values, context=context)
+
     def write(self, cr, uid, ids, values, context=None):
         if context is None:
             context = {}
-        if context.get('fis-updates'):
-            if values.get('is_company'):
-                # save name/addr/cszc into fis_data field
-                # if record has updated_by_user set do not update name/addr/cszc
-                # ids is a single integer
-                data = self.read(cr, uid, ids, fields=['id', 'updated_by_user', 'fis_data'], context=context)
-                state = self.pool.get('res.country.state').browse(cr, uid, values.pop('state_id'), context=context)
-                values['fis_data'] = '\n'.join([
-                        values['name'] or '',
-                        values['street'] or '',
-                        values['street2'] or '',
-                        '%s, %s  %s' % (
-                            values['city'] or '',
-                            state and state.name or '',
-                            values['zip'] or '',
-                            ),
-                        state and state.country_id.name or '',
-                        ])
-                if values['fis_data'] != data['fis_data']:
+        context = context.copy()
+        updating_from_fis = context.pop('fis-updates', False)
+        data = self.read(cr, uid, ids, fields=['id', 'updated_by_user', 'fis_data'], context=context)
+        if updating_from_fis:
+            # save name/addr/cszc into fis_data field
+            # if record has updated_by_user set do not update name/addr/cszc
+            # ids is a single integer
+            state = self.pool.get('res.country.state').browse(cr, uid, values.get('state_id'), context=context)
+            country = self.pool.get('res.country').browse(cr, uid, values.get('country_id'), context=context)
+            values['fis_data'] = '\n'.join([
+                    values['name'] or '',
+                    values.get('street', ''),
+                    values.get('street2', ''),
+                    '%s, %s  %s' % (
+                        values.get('city', ''),
+                        state and state.name or '',
+                        values.get('zip', ''),
+                        ),
+                    country and country.name or '',
+                    ])
+            if data['updated_by_user']:
+                if data['fis_data'] and values['fis_data'] != data['fis_data']:
                     values['fis_data_changed'] = True
-                if data['updated_by_user']:
-                    for attr in ('name', 'street', 'street2'):
-                        values.pop(attr)
+                for attr in ADDRESS_FIELDS:
+                    values.pop(attr, None)
         else:
-            # not from update, check if name/address is being updated
-            for attr in ('name', 'street', 'street2'):
-                if attr in values:
-                    values['updated_by_user'] = True
+            # at this point data is either a dict or a list of dicts
+            # we only care if an address field is being updated
+            check_if_fis = False
+            for field in ADDRESS_FIELDS:
+                if field in values:
+                    check_if_fis = True
                     break
+            if check_if_fis:
+                # an address field is being updated -- is the record(s) an FIS record?
+                if isinstance(ids, (int, long)):
+                    # only one record, data is a dict
+                    if data['fis_data']:
+                        data['updated_by_user'] = True
+                else:
+                    # list of dicts
+                    fis_ids = []
+                    ids = []
+                    for d in data:
+                        target = (ids, fis_ids)[bool(d['fis_data'])]
+                        target.append(d['id'])
+                    success = True
+                    if ids:
+                        # write non-fis records
+                        success = super(res_partner, self).write(cr, uid, ids, values, context=context)
+                    if fis_ids and success:
+                        # update and write fis records
+                        values['updated_by_user'] = True
+                        success = super(res_partner, self).write(cr, uid, fis_ids, values, context=context)
+                    return success
         return super(res_partner, self).write(cr, uid, ids, values, context=context)
 
     def name_get(self, cr, uid, ids, context=None):
@@ -197,7 +245,6 @@ class res_partner(xmlid, osv.Model):
             result = {}
             result['is_company'] = True
             result['supplier'] = True
-            result['customer'] = False
             result['use_parent_address'] = False
             result['xml_id'] = key = sup_rec[F163.code]
             result['module'] = 'F163'
@@ -320,7 +367,6 @@ class res_partner(xmlid, osv.Model):
         for cus_rec in csms:
             result = {}
             result['is_company'] = True
-            result['supplier'] = False
             result['customer'] = True
             result['use_parent_address'] = False
             result['xml_id'] = key = cus_rec[F33.code]
@@ -384,8 +430,6 @@ class res_partner(xmlid, osv.Model):
         for sv_rec in carrier:
             result = {}
             result['is_company'] = True
-            result['supplier'] = False
-            result['customer'] = False
             result['is_carrier'] = True
             result['use_parent_address'] = False
             result['xml_id'] = key = sv_rec[F27.code]
