@@ -117,12 +117,12 @@ class res_partner(xmlid, osv.Model):
             country = self.pool.get('res.country').browse(cr, uid, values.get('country_id'), context=context)
             values['fis_data'] = '\n'.join([
                     values['name'] or '',
-                    values['street'] or '',
-                    values['street2'] or '',
+                    values.get('street', ''),
+                    values.get('street2', ''),
                     '%s, %s  %s' % (
-                        values['city'] or '',
+                        values.get('city', ''),
                         state and state.name or '',
-                        values['zip'] or '',
+                        values.get('zip', ''),
                         ),
                     country and country.name or '',
                     ])
