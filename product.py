@@ -271,7 +271,35 @@ class product_product(xmlid, osv.Model):
         #     ),
         'label_text': fields.text('Label Text'),
         'docs': fields.html('Documents'),
+        'trademark': fields.boolean(string='Trademark'),
+        'trademark_expiry': fields.date(string='Trademark Expires'),
+        'trademark_days_left': fields.integer('Days until trademark expires'),
         }
+
+    def update_time_remaining(self, cr, uid, ids=None, arg=None, context=None):
+        if context is None:
+            context = {}
+        if ids is None:
+            ids = self.search(cr, uid, [('trademark','!=',False)], context=context)
+        records = self.read(cr, uid, ids, context=context)
+        dates = defaultdict(list)
+        for rec in records:
+            dates[rec['trademark_expiry']].append(rec['id'])
+        today = Date.strptime(
+                fields.date.context_today(self, cr, uid, context=context),
+                DEFAULT_SERVER_DATE_FORMAT,
+                )
+        for expiry_date, ids in dates.items():
+            try:
+                expiry_date = Date.strptime(expiry_date, DEFAULT_SERVER_DATA_FORMAT)
+            except ValueError:
+                days_left = 0
+            else:
+                days_left = max((expiry_date - today).days, 0)
+            success = self.write(cr, uid, ids, {'trademark_days_left': days_left}, context=context)
+            if not success:
+                return success
+        return True
 
     def fis_updates(self, cr, uid, *args):
         """

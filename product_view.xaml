@@ -28,6 +28,8 @@
                     @shipped_as
                 @default_code position='replace'
                     @xml_id
+                    @trademark
+                    @trademark_expiry attrs="{'invisible': [('trademark','=',False)]}"
                 ~xpath expr="//group[@string='Stock and Expected Variations']/label" position='replace'
                 ~xpath expr="//group[@string='Stock and Expected Variations']/div/field" position='replace'
                 ~xpath expr="//group[@string='Stock and Expected Variations']/div" position='replace'
@@ -106,6 +108,41 @@
                 @parent_id position='before'
                     ~group colspan='4'
                         ~field name='xml_id'
+
+        // add trademark
+
+        ~record #product_trademark_list_view model='ir.ui.view'
+            @name: Product Trademark
+            @model: product.product
+            @arch type='xml'
+                ~tree $Trademark_Products colors="red:trademark == True and trademark_days_left<=30;purple:trademark == True and trademark_days_left<=90;green:trademark_days_left>90"
+                    @xml_id
+                    @name
+                    @trademark invisible='1'
+                    @trademark_expiry
+                    @trademark_days_left
+
+        ~record #product_trademark_search model='ir.ui.view'
+            @name: Product Trademark Search
+            @model: product.product
+            @arch type='xml'
+                ~search $Search_Trademark
+                    ~filter $All_Trademarked @type_trademark_all domain="[('trademark','=',True)]"
+                    ~filter $Active_Trademarked @type_trademark_active domain="[('trademark','=',True),('trademark_days_left','>',0)]"
+                    ~filter $Expiring_Trademarked @type_trademark_expiring domain="[('trademark','=',True),('trademark_days_left','<',31),('trademark_days_left','>',0)]"
+                    ~filter $Inactive_Trademarked @type_trademark_inactive domain="[('trademark','=',True),('trademark_days_left','=',0)]"
+
+        ~record #product_trademark_action model='ir.actions.act_window'
+            @name: Product Trademark
+            @type: ir.actions.act_window
+            @res_model: product.product
+            @view_type: form
+            @view_mode: tree,form,kanban
+            @view_id ref='fis_integration.product_trademark_list_view'
+            @search_view_id ref='product_trademark_search'
+            @context eval="{'search_default_type_trademark_all':1}"
+
+        ~menuitem @Trademarks #product_trademarked parent='base.menu_product' action='product_trademark_action' groups='base.group_sale_salesman'
 
         // Add product available at entries
 
