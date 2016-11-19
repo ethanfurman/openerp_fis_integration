@@ -1,9 +1,12 @@
+from collections import defaultdict
+from dbf import Date
 from fis_integration.fis_schema import F11, F97, F135, F341
 from fnx.BBxXlate.fisData import fisData
 from fnx.address import NameCase
 from fnx.oe import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
 from openerp.addons.product.product import sanitize_ean13
+from openerp.tools import DEFAULT_SERVER_DATE_FORMAT
 from osv import osv, fields
 from scripts import recipe
 import logging
@@ -140,6 +143,32 @@ class product_product(xmlid, osv.Model):
     _name = 'product.product'
     _inherit = 'product.product'
 
+    def _calc_days_left(self, cr, uid, ids, field_names, arg, context):
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        res = {}
+        records = self.read(cr, uid, ids, context=context)
+        dates = defaultdict(list)
+        for rec in records:
+            dates[rec['trademark_expiry']].append(rec['id'])
+        today = Date.strptime(
+                fields.date.context_today(self, cr, uid, context=context),
+                DEFAULT_SERVER_DATE_FORMAT,
+                )
+        for expiry_date, ids in dates.items():
+            try:
+                expiry_date = Date.strptime(expiry_date, DEFAULT_SERVER_DATE_FORMAT)
+            except ValueError:
+                days_left = 0
+            else:
+                days_left = max((expiry_date - today).days, 0)
+            if arg == 'bulk':
+                res[days_left] = ids
+            else:
+                for id in ids:
+                    res[id] = days_left
+        return res
+
     def _cost_link(self, cr, uid, ids, field_name, arg, context=None):
         if isinstance(ids, (int, long)):
             ids = [ids]
@@ -181,6 +210,12 @@ class product_product(xmlid, osv.Model):
     def _product_available_inv(self, cr, uid, id, field_name, field_value, misc=None, context=None):
         field_name = 'st_' + field_name
         return self.write(cr, uid, id, {field_name: field_value}, context=context)
+
+    def _set_days_left(self, cr, uid, ids, field_name, field_value, context=None):
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        cr.execute('UPDATE %s SET %s=%s WHERE id in %s', (self._table, field_name, field_value, tuple(ids)))
+        return True
 
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
@@ -273,29 +308,24 @@ class product_product(xmlid, osv.Model):
         'docs': fields.html('Documents'),
         'trademark': fields.boolean(string='Trademark'),
         'trademark_expiry': fields.date(string='Trademark Expires'),
-        'trademark_days_left': fields.integer('Days until trademark expires'),
+        'trademark_days_left': fields.function(
+                _calc_days_left,
+                # funct_inv=_set_days_left,
+                method=True,
+                type='integer',
+                string='Days until trademark expires',
+                store={
+                    'product.product': (lambda table, cr, uid, ids, ctx: ids, ['trademark', 'trademark_expiry'], 10),
+                    },
+                ),
         }
 
     def update_time_remaining(self, cr, uid, ids=None, arg=None, context=None):
-        if context is None:
-            context = {}
         if ids is None:
             ids = self.search(cr, uid, [('trademark','!=',False)], context=context)
-        records = self.read(cr, uid, ids, context=context)
-        dates = defaultdict(list)
-        for rec in records:
-            dates[rec['trademark_expiry']].append(rec['id'])
-        today = Date.strptime(
-                fields.date.context_today(self, cr, uid, context=context),
-                DEFAULT_SERVER_DATE_FORMAT,
-                )
-        for expiry_date, ids in dates.items():
-            try:
-                expiry_date = Date.strptime(expiry_date, DEFAULT_SERVER_DATA_FORMAT)
-            except ValueError:
-                days_left = 0
-            else:
-                days_left = max((expiry_date - today).days, 0)
+        res = self._calc_days_left(cr, uid, ids, arg='bulk', context=context)
+        # res = {days_left: [ids], ...}
+        for days_left, ids in res.items():
             success = self.write(cr, uid, ids, {'trademark_days_left': days_left}, context=context)
             if not success:
                 return success

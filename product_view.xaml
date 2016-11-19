@@ -128,6 +128,7 @@
             @arch type='xml'
                 ~search $Search_Trademark
                     ~filter $All_Trademarked @type_trademark_all domain="[('trademark','=',True)]"
+                    ~separator
                     ~filter $Active_Trademarked @type_trademark_active domain="[('trademark','=',True),('trademark_days_left','>',0)]"
                     ~filter $Expiring_Trademarked @type_trademark_expiring domain="[('trademark','=',True),('trademark_days_left','<',31),('trademark_days_left','>',0)]"
                     ~filter $Inactive_Trademarked @type_trademark_inactive domain="[('trademark','=',True),('trademark_days_left','=',0)]"
@@ -205,7 +206,7 @@
             @model eval="'product.available_at'"
             @function eval="'fis_updates'"
             @args eval="'()'"
-            @nextcall eval="'2013-04-09 08:00:00'"
+            @nextcall eval="'2013-04-09 20:00:00'"
             @priority: 100
 
         ~record model="ir.cron" #product_category_update
@@ -217,7 +218,7 @@
             @model eval="'product.category'"
             @function eval="'fis_updates'"
             @args eval="'()'"
-            @nextcall eval="'2013-04-09 08:00:00'"
+            @nextcall eval="'2013-04-09 20:15:00'"
             @priority: 100
 
         ~record model='ir.cron' #product_inventory_update
@@ -229,7 +230,7 @@
             @model eval="'product.product'"
             @function eval="'fis_updates'"
             @args eval="'()'"
-            @nextcall eval="'2013-04-09 08:00:00'"
+            @nextcall eval="'2013-04-09 21:00:00'"
             @priority: 200
 
         ~record model='ir.cron' #production_line_update
@@ -241,5 +242,17 @@
             @model eval="'fis_integration.production_line'"
             @function eval="'fis_updates'"
             @args eval="'()'"
-            @nextcall eval="'2014-03-14 08:00:00'"
+            @nextcall eval="'2014-03-14 20:30:00'"
+            @priority: 100
+
+        ~record model='ir.cron' #production_trademark_days_remaining_update
+            @name: Trademark Days Remaining Update
+            @interval_number: 1
+            @interval_type: days
+            @numbercall: -1
+            @doall eval="False"
+            @model eval="'product.product'"
+            @function eval="'update_time_remaining'"
+            @args eval="'()'"
+            @nextcall eval="'2016-11-18 23:00:00'"
             @priority: 100
