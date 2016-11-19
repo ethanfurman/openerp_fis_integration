@@ -143,7 +143,7 @@ class product_product(xmlid, osv.Model):
     _name = 'product.product'
     _inherit = 'product.product'
 
-    def _calc_days_left(self, cr, uid, ids, field_names, arg, context):
+    def _calc_days_left(self, cr, uid, ids, field_names, arg, context=None):
         if isinstance(ids, (int, long)):
             ids = [ids]
         res = {}
@@ -210,12 +210,6 @@ class product_product(xmlid, osv.Model):
     def _product_available_inv(self, cr, uid, id, field_name, field_value, misc=None, context=None):
         field_name = 'st_' + field_name
         return self.write(cr, uid, id, {field_name: field_value}, context=context)
-
-    def _set_days_left(self, cr, uid, ids, field_name, field_value, context=None):
-        if isinstance(ids, (int, long)):
-            ids = [ids]
-        cr.execute('UPDATE %s SET %s=%s WHERE id in %s', (self._table, field_name, field_value, tuple(ids)))
-        return True
 
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
@@ -310,7 +304,6 @@ class product_product(xmlid, osv.Model):
         'trademark_expiry': fields.date(string='Trademark Expires'),
         'trademark_days_left': fields.function(
                 _calc_days_left,
-                # funct_inv=_set_days_left,
                 method=True,
                 type='integer',
                 string='Days until trademark expires',
@@ -323,7 +316,7 @@ class product_product(xmlid, osv.Model):
     def update_time_remaining(self, cr, uid, ids=None, arg=None, context=None):
         if ids is None:
             ids = self.search(cr, uid, [('trademark','!=',False)], context=context)
-        res = self._calc_days_left(cr, uid, ids, arg='bulk', context=context)
+        res = self._calc_days_left(cr, uid, ids, field_names=None, arg='bulk', context=context)
         # res = {days_left: [ids], ...}
         for days_left, ids in res.items():
             success = self.write(cr, uid, ids, {'trademark_days_left': days_left}, context=context)
