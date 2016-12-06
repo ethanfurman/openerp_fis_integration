@@ -158,7 +158,7 @@ class product_product(xmlid, osv.Model):
         for expiry_date, ids in dates.items():
             try:
                 expiry_date = Date.strptime(expiry_date, DEFAULT_SERVER_DATE_FORMAT)
-            except ValueError:
+            except (TypeError, ValueError):
                 days_left = 0
             else:
                 days_left = max((expiry_date - today).days, 0)
