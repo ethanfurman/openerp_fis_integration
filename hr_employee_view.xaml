@@ -1,0 +1,22 @@
+!!! xml1.0
+~openerp
+    ~data
+
+        ~record model='ir.ui.view' #fis_integration_view_employee_form
+            @name: fis_integration.hr.employee.form
+            @model: hr.employee
+            @inherit_id ref='hr.view_employee_form'
+            @priority eval='15'
+            @arch type='xml'
+                @otherid position='replace'
+                    @ssnid
+                @marital position='after'
+                    @status_flag
+                    ~label for='pay_type' $Rate
+                    @pay_type nolabel='1'
+                    @hourly_rate
+                    @federal_exemptions
+                    @state_exemptions
+                    @hire_date
+                    @fire_date
+

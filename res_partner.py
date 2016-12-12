@@ -1,7 +1,7 @@
 import logging
 from collections import defaultdict
 from osv import osv, fields
-from fis_integration.fis_schema import F27, F33, F65, F163
+from fis_integration.fis_schema import F27, F33, F65, F74, F163
 from fnx.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase
 from fnx.BBxXlate.fisData import fisData
 from fnx.utils import fix_phone, fix_date
@@ -230,6 +230,7 @@ class res_partner(xmlid, osv.Model):
         supplier_codes = self.get_xml_id_map(cr, uid, module='F163')
         customer_codes = self.get_xml_id_map(cr, uid, module='F33')
         carrier_codes = self.get_xml_id_map(cr, uid, module='F27')
+        employee_codes = self.get_xml_id_map(cr, uid, module='F74')
         shipper_key = 'SV10%s'
         if shipper:
             shipper_key %= shipper
@@ -240,6 +241,7 @@ class res_partner(xmlid, osv.Model):
         vnms = fisData(65, keymatch=partner_key)
         posm = fisData(163, keymatch=partner_key)
         csms = fisData(33, keymatch='%s ' % partner_key)
+        emp1 = fisData(74, keymatch='10%s')
 
         for sup_rec in posm:
             result = {}
@@ -470,6 +472,89 @@ class res_partner(xmlid, osv.Model):
             else:
                 id = self.create(cr, uid, result, context=context)
                 carrier_codes[key] = id
+
+        context = {'hr_welcome': False}
+        hr_employee = self.pool.get('hr.employee')
+        res_partner = self.pool.get('res.partner')
+        hr_employees = dict([
+            (e.identification_id, e)
+            for e in hr_employee.browse(cr, uid, context=context)
+            ])
+        for fis_emp_rec in emp1:
+            result = {}
+            result['name'] = emp_name = NameCase(fis_emp_rec[F74.name])
+            result['identification_id'] = emp_num = fis_emp_rec[F74.emp_num].strip()
+            addr1, addr2, addr3 = Sift(fis_emp_rec[F74.addr1], fis_emp_rec[F74.addr2], fis_emp_rec[F74.addr3])
+            addr2, city, state, postal, country = cszk(addr2, addr3)
+            addr3 = ''
+            if city and not (addr2 or state or postal or country):
+                addr2, city = city, addr2
+            addr1 = normalize_address(addr1)
+            addr2 = normalize_address(addr2)
+            addr1, addr2 = AddrCase(Rise(addr1, addr2))
+            city = NameCase(city)
+            state, country = NameCase(state), NameCase(country)
+            result['home_street'] = addr1
+            result['home_street2'] = addr2
+            result['home_city'] = city
+            result['home_zip'] = postal
+            result['home_country_id'] = False
+            result['home_state_id'] = False
+            if state:
+                result['home_state_id'] = state_recs[state][0]
+                result['home_country_id'] = state_recs[state][2]
+            elif country:
+                country_id = country_recs_name.get(country, None)
+                if country_id is None:
+                    _logger.critical("Employee %s has invalid country <%r>" % (emp_num, country))
+                else:
+                    result['home_country_id'] = country_id
+            result['home_phone'] = fix_phone(fis_emp_rec[F74.tele])
+            # result['department']
+            result['ssnid'] = fis_emp_rec[F74.ssn]
+            result['hire_date'] = fix_date(fis_emp_rec[F74.date_hired])
+            result['fire_date'] = fix_date(fis_emp_rec[F74.date_terminated])
+            result['birth_date'] = fix_date(fis_emp_rec[F74.birth_date])
+            result['status_flag'] = fis_emp_rec[F74.status_flag]
+            result['pay_type'] = fis_emp_rec[F74.pay_type]
+            result['marital'] = ('single', 'married')[fis_emp_rec[F74.marital_status] == 'M']
+            # fleet_hr has this
+            result['driver_license_num'] = fis_emp_rec[F74.driver_license]
+            result['emergency_contact'] = NameCase(fis_emp_rec[F74.emergency_contact])
+            result['emergency_number'] = fix_phone(fis_emp_rec[F74.emergency_phone])
+            result['federal_exemptions'] = int(fis_emp_rec[F74.exempt_fed] or 0)
+            result['state_exemptions'] = int(fis_emp_rec[F74.exempt_state] or 0)
+            result['hourly_rate'] = fis_emp_rec[F74.exempt_state]
+            he_employee = hr_employees.get(emp_num)
+            if he_employee is None:
+                hr_employee_id = hr_employee.create(cr, uid, result, context=context)
+                hr_employees[emp_num] = he_employee = hr_employee.browse(cr, uid, hr_employee_id, context=context)
+            else:
+                hr_employee.write(cr, uid, he_employee.id, result, context=context)
+            # when to create an employee partner record, and which one to use
+            #   ep        up      create?     use?
+            #  ---       ---      -------     ----
+            #  yes       yes         no        up
+            #  yes        no         no        ep
+            #   no        no        yes       new
+            #   no       yes         no        up
+            rp_partner_id = employee_codes.get(emp_num)
+            if rp_partner_id is None and not he_employee.partner_id:
+                rp_partner_id = res_partner.create(
+                        cr, uid,
+                        {'name': emp_name, 'xml_id': emp_num, 'module': 'F74'},
+                        context=context,
+                        )
+            rp_partner = res_partner.browse(cr, uid, rp_partner_id, context=context)
+            if he_employee.partner_id and he_employee.partner_id != rp_partner:
+                # two partner records exist -- deactivate the one not tied to a user account
+                res_partner.write(cr, uid, he_employee.partner_id.id, {'active': False}, context=context)
+            # and update partner record with link to employee record
+            if he_employee.partner_id != rp_partner:
+                values = {'partner_id': rp_partner_id, 'user_id': False}
+                if rp_partner.user_ids:
+                    values['user_id'] = rp_partner.user_ids[0]
+                hr_employee.write(cr, uid, he_employee.id, values, context=context)
 
         _logger.info('res_partner.fis_updates done!')
         return True

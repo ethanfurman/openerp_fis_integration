@@ -46,6 +46,30 @@ class F65(FISenum):
     org_cert_file = 'In$(54,1)'
     cert_exp =      'In$(55,6)'
 
+class F74(FISenum):
+    "EMP1 - P/R EMPLOYEE MASTER BASIC RECORD MAINT/INQUIRY"
+    company_id        = 'An$(1,2)'       # COMPANY CODE
+    emp_num           = 'An$(3,5)'       # EMPLOYEE NO.
+    name              = 'Bn$'            # EMPLOYEE NAME
+    addr1             = 'Cn$'            # ADDRESS 1
+    addr2             = 'Dn$'            # ADDRESS 2
+    addr3             = 'En$'            # ADDRESS 3
+    ssn               = 'Fn$'            # SOC.SEC.NO.
+    tele              = 'Gn$'            # TELEPHONE NO.
+    date_hired        = 'In$(1,6)'       # DATE HIRED
+    date_terminated   = 'In$(7,6)'       # DATE TERMINATED
+    birth_date        = 'In$(19,6)'      # BIRTHDATE
+    home_dept         = 'Jn$(1,2)'       # HOME DEPARTMENT
+    status_flag       = 'Kn$(1,1)'       # STATUS FLAG
+    pay_type          = 'Kn$(2,1)'       # PAY TYPE
+    marital_status    = 'Kn$(4,1)'       # MARITAL STATUS
+    driver_license    = 'Kn$(26,10)'     # Driver's Lic #
+    emergency_contact = 'Kn$(36,18)'     # Emerg Contact
+    emergency_phone   = 'Kn$(54,10)'     # Emerg Phone
+    exempt_fed        = 'X(0)'           # # EXEMPT-FED
+    exempt_state      = 'X(1)'           # # EXEMPT-STATE
+    hourly_rate       = 'R(0)'           # HOURLY RATE
+
 class F97(FISenum):
     "Inventory Availablility Code"
     code = 'An$(5,1)'

@@ -11,10 +11,12 @@
             "base",
             "crm",
             "fnx",
+            "hr",
             "product",
             "stock",
             ],
     'update_xml': [
+            'hr_employee_view.xaml',
             'res_config_view.xaml',
             'res_partner_view.xaml',
             'product_view.xaml',
