@@ -28,8 +28,9 @@
                     @shipped_as
                 @default_code position='replace'
                     @xml_id
-                    @trademark
-                    @trademark_expiry attrs="{'invisible': [('trademark','=',False)]}"
+                    @trademark_state
+                    @trademark_expiry_year attrs="{'invisible': [('trademark','=',False)]}"
+                    @trademark_renewal_date attrs="{'invisible': [('trademark','=',False)]}"
                 ~xpath expr="//group[@string='Stock and Expected Variations']/label" position='replace'
                 ~xpath expr="//group[@string='Stock and Expected Variations']/div/field" position='replace'
                 ~xpath expr="//group[@string='Stock and Expected Variations']/div" position='replace'
@@ -115,23 +116,23 @@
             @name: Product Trademark
             @model: product.product
             @arch type='xml'
-                ~tree $Trademark_Products colors="red:trademark == True and trademark_days_left<=30;purple:trademark == True and trademark_days_left<=90;green:trademark_days_left>90"
+                ~tree $Trademark_Products colors="red:trademark_state == 'dead';orange:trademark_state == 'dying' or trademark_state == 'renewing';green:trademark_state == 'healthy'"
                     @xml_id
                     @name
-                    @trademark invisible='1'
-                    @trademark_expiry
-                    @trademark_days_left
+                    @trademark_state invisible='1'
+                    @trademark_expiry_year
+                    @trademark_renewal_date
 
         ~record #product_trademark_search model='ir.ui.view'
             @name: Product Trademark Search
             @model: product.product
             @arch type='xml'
                 ~search $Search_Trademark
-                    ~filter $All_Trademarked @type_trademark_all domain="[('trademark','=',True)]"
+                    ~filter $All_Trademarked @type_trademark_all domain="[('trademark_expiry_year','!=',False)]"
                     ~separator
-                    ~filter $Active_Trademarked @type_trademark_active domain="[('trademark','=',True),('trademark_days_left','>',0)]"
-                    ~filter $Expiring_Trademarked @type_trademark_expiring domain="[('trademark','=',True),('trademark_days_left','<',31),('trademark_days_left','>',0)]"
-                    ~filter $Inactive_Trademarked @type_trademark_inactive domain="[('trademark','=',True),('trademark_days_left','=',0)]"
+                    ~filter $Active_Trademarked @type_trademark_active domain="[('trademark_state','!=','dead')]"
+                    ~filter $Expiring_Trademarked @type_trademark_expiring domain="[('trademark_state','in',['dying','renewing'])]"
+                    ~filter $Inactive_Trademarked @type_trademark_inactive domain="[('trademark_state','=','dead')]"
 
         ~record #product_trademark_action model='ir.actions.act_window'
             @name: Product Trademark

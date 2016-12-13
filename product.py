@@ -6,7 +6,7 @@ from fnx.address import NameCase
 from fnx.oe import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
 from openerp.addons.product.product import sanitize_ean13
-from openerp.tools import DEFAULT_SERVER_DATE_FORMAT
+from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period
 from osv import osv, fields
 from scripts import recipe
 import logging
@@ -143,30 +143,63 @@ class product_product(xmlid, osv.Model):
     _name = 'product.product'
     _inherit = 'product.product'
 
-    def _calc_days_left(self, cr, uid, ids, field_names, arg, context=None):
+    # trademark_expiry_year
+    # trademark_state
+    # trademark_renewal_date
+    def _calc_trademark_state(self, cr, uid, ids, field_names, arg, context=None):
         if isinstance(ids, (int, long)):
             ids = [ids]
         res = {}
-        records = self.read(cr, uid, ids, context=context)
+        records = self.read(
+                cr, uid, ids,
+                fields=['id', 'trademark_expiry_year', 'trademark_renewal_date'],
+                context=context,
+                )
         dates = defaultdict(list)
+        renewals = {}
         for rec in records:
-            dates[rec['trademark_expiry']].append(rec['id'])
+            dates[rec['trademark_expiry_year']].append(rec['id'])
+            renewals[rec['id']] = rec['trademark_renewal_date']
+        # convert list of records to dict of id -> renewal
+        records = dict([(r['id'], r['trademark_renewal_date']) for r in records])
         today = Date.strptime(
                 fields.date.context_today(self, cr, uid, context=context),
                 DEFAULT_SERVER_DATE_FORMAT,
                 )
-        for expiry_date, ids in dates.items():
-            try:
-                expiry_date = Date.strptime(expiry_date, DEFAULT_SERVER_DATE_FORMAT)
-            except (TypeError, ValueError):
-                days_left = 0
+        for expiry_year, ids in dates.items():
+            renewal_ids = []
+            # try:
+            #     expiry_date = Date.strptime(expiry_date, DEFAULT_SERVER_DATE_FORMAT)
+            # except ValueError:
+            #     days_left = 0
+            # else:
+            #     days_left = max((expiry_date - today).days, 0)
+            if expiry_year < today.year:
+                # all green and good to go!
+                state = 'healthy'
+            elif expiry_year > today.year:
+                # all dead
+                state = 'dead'
             else:
-                days_left = max((expiry_date - today).days, 0)
+                # either dying or renewing
+                state = 'dying'
+                ids, original_ids = [], ids
+                for id in original_ids:
+                    renewal = records[id]
+                    if renewal and today - Date.strptime(renewal, DEFAULT_SERVER_DATE_FORMAT) < Period.Week7:
+                        # if renewal date is in the last 13 weeks
+                        renewal_ids.append(id)
+                    else:
+                        # otherwise it's dying
+                        ids.append(id)
             if arg == 'bulk':
-                res[days_left] = ids
+                res[state] = ids
+                res['renewing'] = renewal_ids
             else:
                 for id in ids:
-                    res[id] = days_left
+                    res[id] = state
+                for id in renewal_ids:
+                    res[id] = 'renewing'
         return res
 
     def _cost_link(self, cr, uid, ids, field_name, arg, context=None):
@@ -300,20 +333,40 @@ class product_product(xmlid, osv.Model):
         #     ),
         'label_text': fields.text('Label Text'),
         'docs': fields.html('Documents'),
-        'trademark': fields.boolean(string='Trademark'),
-        'trademark_expiry': fields.date(string='Trademark Expires'),
-        'trademark_days_left': fields.function(
-                _calc_days_left,
-                method=True,
-                type='integer',
-                string='Days until trademark expires',
+        'trademark_expiry_year': fields.integer('Trademark Expires', help="Expiry Year"),
+        'trademark_state': fields.function(
+                _calc_trademark_state,
+                type='selection',
+                string='Trademark Status',
+                sort_order='definition',
+                selection = (
+                    ('healthy', 'Healhy'),
+                    ('dying', 'Dying'),
+                    ('renewing', 'Renewing'),
+                    ('dead', 'Dead'),
+                    ),
                 store={
-                    'product.product': (lambda table, cr, uid, ids, ctx: ids, ['trademark', 'trademark_expiry'], 10),
-                    },
+                    'product.product': (
+                        lambda table, cr, uid, ids, ctx: ids,
+                        ['trademark_expiry_year', 'trademark_renewal_date'],
+                        10,
+                    )},
                 ),
+        'trademark_renewal_date': fields.date('Trademark renewal submitted'),
+        # 'trademark': fields.boolean(string='Trademark'),
+        # 'trademark_expiry': fields.date(string='Trademark Expires'),
+        # 'trademark_days_left': fields.function(
+        #         _calc_days_left,
+        #         method=True,
+        #         type='integer',
+        #         string='Days until trademark expires',
+        #         store={
+        #             'product.product': (lambda table, cr, uid, ids, ctx: ids, ['trademark', 'trademark_expiry'], 10),
+        #             },
+        #         ),
         }
 
-    def update_time_remaining(self, cr, uid, ids=None, arg=None, context=None):
+    def update_trademark_state(self, cr, uid, ids=None, arg=None, context=None):
         if ids is None:
             ids = self.search(cr, uid, [('trademark','!=',False)], context=context)
         res = self._calc_days_left(cr, uid, ids, field_names=None, arg='bulk', context=context)

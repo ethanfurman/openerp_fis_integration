@@ -28,6 +28,7 @@ class F33(FISenum):
     addr2 =     'Dn$'
     addr3 =     'En$'
     postal =    'Ln$'
+    salesrep =  'Gn$(4,3)'
     tele =      'Gn$(20,10)'
     contact =   'Kn$'
 
@@ -81,6 +82,7 @@ class F135(FISenum):
     available = 'Bn$(1,1)'
     sales_category = 'Bn$(3,2)'
     shelf_life = 'Bn$(69,2)'
+    trademark_expiry_year = 'Bn$(117,2)'
     name = 'Cn$(1,40)'
     ship_size = 'Cn$(41,8)'
     manager = 'Dn$(5,1)'

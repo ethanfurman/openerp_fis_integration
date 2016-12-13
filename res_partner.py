@@ -553,7 +553,8 @@ class res_partner(xmlid, osv.Model):
             if he_employee.partner_id != rp_partner:
                 values = {'partner_id': rp_partner_id, 'user_id': False}
                 if rp_partner.user_ids:
-                    values['user_id'] = rp_partner.user_ids[0]
+                    values['user_id'] = rp_partner.user_ids[0].id
+                print 'fis.integration', he_employee.id, values
                 hr_employee.write(cr, uid, he_employee.id, values, context=context)
 
         _logger.info('res_partner.fis_updates done!')
