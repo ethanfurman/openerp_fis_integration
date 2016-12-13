@@ -176,7 +176,7 @@ class product_product(xmlid, osv.Model):
             #     days_left = max((expiry_date - today).days, 0)
             if expiry_year < today.year:
                 # all green and good to go!
-                state = 'healthy'
+                state = 'active'
             elif expiry_year > today.year:
                 # all dead
                 state = 'dead'
@@ -333,6 +333,7 @@ class product_product(xmlid, osv.Model):
         #     ),
         'label_text': fields.text('Label Text'),
         'docs': fields.html('Documents'),
+        'trademark': fields.boolean(string='Trademark'),
         'trademark_expiry_year': fields.integer('Trademark Expires', help="Expiry Year"),
         'trademark_state': fields.function(
                 _calc_trademark_state,
@@ -340,8 +341,8 @@ class product_product(xmlid, osv.Model):
                 string='Trademark Status',
                 sort_order='definition',
                 selection = (
-                    ('healthy', 'Healhy'),
-                    ('dying', 'Dying'),
+                    ('active', 'Active'),
+                    ('dying', 'Expiring'),
                     ('renewing', 'Renewing'),
                     ('dead', 'Dead'),
                     ),
@@ -353,17 +354,6 @@ class product_product(xmlid, osv.Model):
                     )},
                 ),
         'trademark_renewal_date': fields.date('Trademark renewal submitted'),
-        # 'trademark': fields.boolean(string='Trademark'),
-        # 'trademark_expiry': fields.date(string='Trademark Expires'),
-        # 'trademark_days_left': fields.function(
-        #         _calc_days_left,
-        #         method=True,
-        #         type='integer',
-        #         string='Days until trademark expires',
-        #         store={
-        #             'product.product': (lambda table, cr, uid, ids, ctx: ids, ['trademark', 'trademark_expiry'], 10),
-        #             },
-        #         ),
         }
 
     def update_trademark_state(self, cr, uid, ids=None, arg=None, context=None):

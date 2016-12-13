@@ -28,9 +28,10 @@
                     @shipped_as
                 @default_code position='replace'
                     @xml_id
-                    @trademark_state
-                    @trademark_expiry_year attrs="{'invisible': [('trademark_expiry_year','=',0)]}"
-                    @trademark_renewal_date attrs="{'invisible': [('trademark_expiry_year','=',0)]}"
+                    @trademark invisible='1'
+                    @trademark_state attrs="{'invisible': [('trademark','=',False)]}"
+                    @trademark_expiry_year attrs="{'invisible': [('trademark','=',False)]}"
+                    @trademark_renewal_date attrs="{'invisible': [('trademark','=',False)]}"
                 ~xpath expr="//group[@string='Stock and Expected Variations']/label" position='replace'
                 ~xpath expr="//group[@string='Stock and Expected Variations']/div/field" position='replace'
                 ~xpath expr="//group[@string='Stock and Expected Variations']/div" position='replace'
