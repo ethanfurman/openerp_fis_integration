@@ -511,12 +511,17 @@ class res_partner(xmlid, osv.Model):
                     result['home_country_id'] = country_id
             result['home_phone'] = fix_phone(fis_emp_rec[F74.tele])
             # result['department']
-            result['ssnid'] = fis_emp_rec[F74.ssn]
-            result['hire_date'] = fix_date(fis_emp_rec[F74.date_hired])
-            result['fire_date'] = fix_date(fis_emp_rec[F74.date_terminated])
+            ssn = fis_emp_rec[F74.ssn]
+            if len(ssn) == 9:
+                ssn = '%s-%s-%s' % (ssn[:3], ssn[3:5], ssn[5:])
+            result['ssnid'] = ssn
+            result['hire_date'] = hired = fix_date(fis_emp_rec[F74.date_hired])
+            result['fire_date'] = fired = fix_date(fis_emp_rec[F74.date_terminated])
+            result['active'] = (not fired or hired > fired)
             result['birth_date'] = fix_date(fis_emp_rec[F74.birth_date])
             result['status_flag'] = fis_emp_rec[F74.status_flag]
-            result['pay_type'] = fis_emp_rec[F74.pay_type]
+            result['pay_type'] = ('salary', 'hourly')[fis_emp_rec[F74.pay_type].upper() == 'H']
+            result['hourly_rate'] = fis_emp_rec[F74.hourly_rate]
             result['marital'] = ('single', 'married')[fis_emp_rec[F74.marital_status] == 'M']
             # fleet_hr has this
             result['driver_license_num'] = fis_emp_rec[F74.driver_license]
@@ -524,7 +529,6 @@ class res_partner(xmlid, osv.Model):
             result['emergency_number'] = fix_phone(fis_emp_rec[F74.emergency_phone])
             result['federal_exemptions'] = int(fis_emp_rec[F74.exempt_fed] or 0)
             result['state_exemptions'] = int(fis_emp_rec[F74.exempt_state] or 0)
-            result['hourly_rate'] = fis_emp_rec[F74.exempt_state]
             he_employee = hr_employees.get(emp_num)
             if he_employee is None:
                 hr_employee_id = hr_employee.create(cr, uid, result, context=context)
@@ -554,7 +558,6 @@ class res_partner(xmlid, osv.Model):
                 values = {'partner_id': rp_partner_id, 'user_id': False}
                 if rp_partner.user_ids:
                     values['user_id'] = rp_partner.user_ids[0].id
-                print 'fis.integration', he_employee.id, values
                 hr_employee.write(cr, uid, he_employee.id, values, context=context)
 
         _logger.info('res_partner.fis_updates done!')

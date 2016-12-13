@@ -12,9 +12,8 @@
                     @ssnid
                 @marital position='after'
                     @status_flag
-                    ~label for='pay_type' $Rate
-                    @pay_type nolabel='1'
-                    @hourly_rate
+                    @pay_type
+                    @hourly_rate attrs="{'invisible': [('pay_type','=','salary')]}"
                     @federal_exemptions
                     @state_exemptions
                     @hire_date
