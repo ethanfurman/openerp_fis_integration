@@ -32,6 +32,15 @@ class F33(FISenum):
     tele =      'Gn$(20,10)'
     contact =   'Kn$'
 
+class F47(FISenum):
+    "CNVZZ - CBS SALESMAN MASTER FILE"
+    key_type                  = 'An$(1,1)'      # KEY TYPE = 'Z'
+    salesperson_id            = 'An$(2,3)'      # SALESPERSON CODE
+    salesperson_name          = 'Bn$'           # SALESPERSON NAME
+    company_id                = 'Fn$(1,2)'      # COMPANY CODE
+    phone_no                  = 'Fn$(3,10)'     # PHONE NUMBER
+    salesinq_access           = 'Hn$'           # SalesInq Access
+
 class F65(FISenum):
     "Vendor Master"
     company_id =    'An$(1,2)'

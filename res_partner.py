@@ -1,10 +1,10 @@
 import logging
 from collections import defaultdict
 from osv import osv, fields
-from fis_integration.fis_schema import F27, F33, F65, F74, F163
+from fis_integration.fis_schema import F27, F33, F47, F65, F74, F163
 from fnx.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase
 from fnx.BBxXlate.fisData import fisData
-from fnx.utils import fix_phone, fix_date
+from fnx.utils import fix_phone, fix_date, var
 from fnx.xid import xmlid
 
 _logger = logging.getLogger(__name__)
@@ -215,12 +215,13 @@ class res_partner(xmlid, osv.Model):
         return new_res
 
     def fis_updates(self, cr, uid, partner=None, shipper=None, *args):
-        context = {'fis-updates': True}
         if partner is shipper is None:
             _logger.info("res_partner.fis_updates starting...")
+        else:
+            _logger.info('res_partner.fis_updates: looking for %s' % (partner or shipper))
         if partner and shipper:
             raise ValueError('only one of <partner> or <shipper> may be specified (received %r and %r)' % (partner, shipper))
-        _logger.info('res_partner.fis_updates: looking for %s' % (partner or shipper))
+        context = {}
         state_table = self.pool.get('res.country.state')
         state_recs = state_table.browse(cr, uid, state_table.search(cr, uid, [(1,'=',1)]), context=context)
         state_recs = dict([(r.name, (r.id, r.code, r.country_id.id)) for r in state_recs])
@@ -243,6 +244,145 @@ class res_partner(xmlid, osv.Model):
         csms = fisData(33, keymatch='%s ' % partner_key)
         emp1 = fisData(74, keymatch='10%s')
 
+        # first update the employees, then create a salesperson <-> code mapping
+        context = {'hr_welcome': False}
+        hr_employee = self.pool.get('hr.employee')
+        res_partner = self.pool.get('res.partner')
+        hr_employees = dict([
+            (e.identification_id, e)
+            for e in hr_employee.browse(cr, uid, context=context)
+            ])
+        sales_people = defaultdict(list)
+        for fis_emp_rec in emp1:
+            result = {}
+            result['name'] = emp_name = NameCase(fis_emp_rec[F74.name])
+            result['identification_id'] = emp_num = fis_emp_rec[F74.emp_num].strip()
+            addr1, addr2, addr3 = Sift(fis_emp_rec[F74.addr1], fis_emp_rec[F74.addr2], fis_emp_rec[F74.addr3])
+            addr2, city, state, postal, country = cszk(addr2, addr3)
+            addr3 = ''
+            if city and not (addr2 or state or postal or country):
+                addr2, city = city, addr2
+            addr1 = normalize_address(addr1)
+            addr2 = normalize_address(addr2)
+            addr1, addr2 = AddrCase(Rise(addr1, addr2))
+            city = NameCase(city)
+            state, country = NameCase(state), NameCase(country)
+            result['home_street'] = addr1
+            result['home_street2'] = addr2
+            result['home_city'] = city
+            result['home_zip'] = postal
+            result['home_country_id'] = False
+            result['home_state_id'] = False
+            if state:
+                result['home_state_id'] = state_recs[state][0]
+                result['home_country_id'] = state_recs[state][2]
+            elif country:
+                country_id = country_recs_name.get(country, None)
+                if country_id is None:
+                    _logger.critical("Employee %s has invalid country <%r>" % (emp_num, country))
+                else:
+                    result['home_country_id'] = country_id
+            result['home_phone'] = fix_phone(fis_emp_rec[F74.tele])
+            # result['department']
+            ssn = fis_emp_rec[F74.ssn]
+            if len(ssn) == 9:
+                ssn = '%s-%s-%s' % (ssn[:3], ssn[3:5], ssn[5:])
+            result['ssnid'] = ssn
+            result['hire_date'] = hired = fix_date(fis_emp_rec[F74.date_hired])
+            result['fire_date'] = fired = fix_date(fis_emp_rec[F74.date_terminated])
+            result['active'] = (not fired or hired > fired)
+            result['birth_date'] = fix_date(fis_emp_rec[F74.birth_date])
+            result['status_flag'] = fis_emp_rec[F74.status_flag]
+            result['pay_type'] = ('salary', 'hourly')[fis_emp_rec[F74.pay_type].upper() == 'H']
+            result['hourly_rate'] = fis_emp_rec[F74.hourly_rate]
+            result['marital'] = ('single', 'married')[fis_emp_rec[F74.marital_status] == 'M']
+            # fleet_hr has this
+            result['driver_license_num'] = fis_emp_rec[F74.driver_license]
+            result['emergency_contact'] = NameCase(fis_emp_rec[F74.emergency_contact])
+            result['emergency_number'] = fix_phone(fis_emp_rec[F74.emergency_phone])
+            result['federal_exemptions'] = int(fis_emp_rec[F74.exempt_fed] or 0)
+            result['state_exemptions'] = int(fis_emp_rec[F74.exempt_state] or 0)
+            he_employee = hr_employees.get(emp_num)
+            if he_employee is None:
+                hr_employee_id = hr_employee.create(cr, uid, result, context=context)
+                hr_employees[emp_num] = he_employee = hr_employee.browse(cr, uid, hr_employee_id, context=context)
+            else:
+                hr_employee.write(cr, uid, he_employee.id, result, context=context)
+            # when to create an employee partner record, and which one to use
+            #   ep        up      create?     use?
+            #  ---       ---      -------     ----
+            #  yes       yes         no        up
+            #  yes        no         no        ep
+            #   no        no        yes       new
+            #   no       yes         no        up
+            rp_partner_id = employee_codes.get(emp_num)
+            if rp_partner_id is None and not he_employee.partner_id:
+                rp_partner_id = res_partner.create(
+                        cr, uid,
+                        {'name': emp_name, 'xml_id': emp_num, 'module': 'F74'},
+                        context=context,
+                        )
+            rp_partner = res_partner.browse(cr, uid, rp_partner_id, context=context)
+            if he_employee.partner_id and he_employee.partner_id != rp_partner:
+                # two partner records exist -- deactivate the one not tied to a user account
+                res_partner.write(cr, uid, he_employee.partner_id.id, {'active': False}, context=context)
+            # and update partner record with link to employee record
+            if he_employee.partner_id != rp_partner:
+                values = {'partner_id': rp_partner_id, 'user_id': False}
+                if rp_partner.user_ids:
+                    values['user_id'] = rp_partner.user_ids[0].id
+                hr_employee.write(cr, uid, he_employee.id, values, context=context)
+            # housekeeping for salesperson mapping
+            names = emp_name.lower().split()
+            sales_user_id = rp_partner.user_ids and rp_partner.user_ids[0].id or False
+            if sales_user_id:
+                sales_people[names[0]].append(sales_user_id)
+                if len(names) > 1:
+                    sales_people[names[-1]].append(sales_user_id)
+                    sales_people[' '.join([names[0], names[-1]])].append(sales_user_id)
+
+        # now the mapping
+        cnvzz = fisData(47)
+        failed_match = set()
+        for rec in cnvzz:
+            sales_id = rec[F47.salesperson_id].upper()
+            sales_name = rec[F47.salesperson_name]
+            company_id = rec[F47.company_id]
+            if company_id != '10':
+                continue
+            if '-' in sales_name:
+                sales_name, extra = sales_name.split('-')
+                if not extra.isdigit():
+                    continue
+            names = sales_name.lower().split()
+            if len(names) > 1:
+                sales_name = ' '.join([names[0], names[-1]])
+            else:
+                sales_name = sales_name.lower()
+            if sales_name in failed_match:
+                # this name already failed to match
+                continue
+            if var(sales_people.get(sales_name)) is not None and len(var()) == 1:
+                # full-name match
+                sales_people[sales_id] = var()[0]
+            elif len(names) == 1:
+                # if it didn't match before, it's not going to match now
+                sales_people[sales_id] = None
+                failed_match.add(sales_name)
+            elif var(sales_people.get(names[-1])) and len(var()) == 1:
+                # last name match
+                sales_people[sales_id] = var()[0]
+            elif var(sales_people.get(names[0])) and len(var()) == 1:
+                # first name match
+                sales_people[sales_id] = var()[0]
+            else:
+                # no match at all
+                _logger.error('unable to match %s: %r', sales_name, var())
+                sales_people[sales_id] = None
+                failed_match.add(sales_name)
+
+        # the order of the remainder is unimportant
+        context = {'fis-updates': True}
         for sup_rec in posm:
             result = {}
             result['is_company'] = True
@@ -367,7 +507,10 @@ class res_partner(xmlid, osv.Model):
                         supplier_codes[key] = id
 
         for cus_rec in csms:
+            rep = cus_rec[F33.salesrep]
+            rep = sales_people.get(rep, False)
             result = {}
+            result['user_id'] = rep
             result['is_company'] = True
             result['customer'] = True
             result['use_parent_address'] = False
@@ -472,93 +615,6 @@ class res_partner(xmlid, osv.Model):
             else:
                 id = self.create(cr, uid, result, context=context)
                 carrier_codes[key] = id
-
-        context = {'hr_welcome': False}
-        hr_employee = self.pool.get('hr.employee')
-        res_partner = self.pool.get('res.partner')
-        hr_employees = dict([
-            (e.identification_id, e)
-            for e in hr_employee.browse(cr, uid, context=context)
-            ])
-        for fis_emp_rec in emp1:
-            result = {}
-            result['name'] = emp_name = NameCase(fis_emp_rec[F74.name])
-            result['identification_id'] = emp_num = fis_emp_rec[F74.emp_num].strip()
-            addr1, addr2, addr3 = Sift(fis_emp_rec[F74.addr1], fis_emp_rec[F74.addr2], fis_emp_rec[F74.addr3])
-            addr2, city, state, postal, country = cszk(addr2, addr3)
-            addr3 = ''
-            if city and not (addr2 or state or postal or country):
-                addr2, city = city, addr2
-            addr1 = normalize_address(addr1)
-            addr2 = normalize_address(addr2)
-            addr1, addr2 = AddrCase(Rise(addr1, addr2))
-            city = NameCase(city)
-            state, country = NameCase(state), NameCase(country)
-            result['home_street'] = addr1
-            result['home_street2'] = addr2
-            result['home_city'] = city
-            result['home_zip'] = postal
-            result['home_country_id'] = False
-            result['home_state_id'] = False
-            if state:
-                result['home_state_id'] = state_recs[state][0]
-                result['home_country_id'] = state_recs[state][2]
-            elif country:
-                country_id = country_recs_name.get(country, None)
-                if country_id is None:
-                    _logger.critical("Employee %s has invalid country <%r>" % (emp_num, country))
-                else:
-                    result['home_country_id'] = country_id
-            result['home_phone'] = fix_phone(fis_emp_rec[F74.tele])
-            # result['department']
-            ssn = fis_emp_rec[F74.ssn]
-            if len(ssn) == 9:
-                ssn = '%s-%s-%s' % (ssn[:3], ssn[3:5], ssn[5:])
-            result['ssnid'] = ssn
-            result['hire_date'] = hired = fix_date(fis_emp_rec[F74.date_hired])
-            result['fire_date'] = fired = fix_date(fis_emp_rec[F74.date_terminated])
-            result['active'] = (not fired or hired > fired)
-            result['birth_date'] = fix_date(fis_emp_rec[F74.birth_date])
-            result['status_flag'] = fis_emp_rec[F74.status_flag]
-            result['pay_type'] = ('salary', 'hourly')[fis_emp_rec[F74.pay_type].upper() == 'H']
-            result['hourly_rate'] = fis_emp_rec[F74.hourly_rate]
-            result['marital'] = ('single', 'married')[fis_emp_rec[F74.marital_status] == 'M']
-            # fleet_hr has this
-            result['driver_license_num'] = fis_emp_rec[F74.driver_license]
-            result['emergency_contact'] = NameCase(fis_emp_rec[F74.emergency_contact])
-            result['emergency_number'] = fix_phone(fis_emp_rec[F74.emergency_phone])
-            result['federal_exemptions'] = int(fis_emp_rec[F74.exempt_fed] or 0)
-            result['state_exemptions'] = int(fis_emp_rec[F74.exempt_state] or 0)
-            he_employee = hr_employees.get(emp_num)
-            if he_employee is None:
-                hr_employee_id = hr_employee.create(cr, uid, result, context=context)
-                hr_employees[emp_num] = he_employee = hr_employee.browse(cr, uid, hr_employee_id, context=context)
-            else:
-                hr_employee.write(cr, uid, he_employee.id, result, context=context)
-            # when to create an employee partner record, and which one to use
-            #   ep        up      create?     use?
-            #  ---       ---      -------     ----
-            #  yes       yes         no        up
-            #  yes        no         no        ep
-            #   no        no        yes       new
-            #   no       yes         no        up
-            rp_partner_id = employee_codes.get(emp_num)
-            if rp_partner_id is None and not he_employee.partner_id:
-                rp_partner_id = res_partner.create(
-                        cr, uid,
-                        {'name': emp_name, 'xml_id': emp_num, 'module': 'F74'},
-                        context=context,
-                        )
-            rp_partner = res_partner.browse(cr, uid, rp_partner_id, context=context)
-            if he_employee.partner_id and he_employee.partner_id != rp_partner:
-                # two partner records exist -- deactivate the one not tied to a user account
-                res_partner.write(cr, uid, he_employee.partner_id.id, {'active': False}, context=context)
-            # and update partner record with link to employee record
-            if he_employee.partner_id != rp_partner:
-                values = {'partner_id': rp_partner_id, 'user_id': False}
-                if rp_partner.user_ids:
-                    values['user_id'] = rp_partner.user_ids[0].id
-                hr_employee.write(cr, uid, he_employee.id, values, context=context)
 
         _logger.info('res_partner.fis_updates done!')
         return True
