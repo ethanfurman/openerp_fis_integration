@@ -2,9 +2,9 @@ import logging
 from collections import defaultdict
 from osv import osv, fields
 from fis_integration.fis_schema import F27, F33, F47, F65, F74, F163
-from fnx.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase
-from fnx.BBxXlate.fisData import fisData
-from fnx.utils import fix_phone, fix_date, var
+from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase
+from VSS.BBxXlate.fisData import fisData
+from VSS.utils import fix_phone, fix_date, var
 from fnx.xid import xmlid
 
 _logger = logging.getLogger(__name__)

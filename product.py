@@ -1,8 +1,8 @@
 from collections import defaultdict
 from dbf import Date
 from fis_integration.fis_schema import F11, F97, F135, F341
-from fnx.BBxXlate.fisData import fisData
-from fnx.address import NameCase
+from VSS.BBxXlate.fisData import fisData
+from VSS.address import NameCase
 from fnx.oe import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
 from openerp.addons.product.product import sanitize_ean13
