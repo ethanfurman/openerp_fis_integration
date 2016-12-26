@@ -246,13 +246,17 @@ class res_partner(xmlid, osv.Model):
 
         # first update the employees, then create a salesperson <-> code mapping
         context = {'hr_welcome': False}
+        inactive_too = {'active_test': False}
         hr_employee = self.pool.get('hr.employee')
         res_partner = self.pool.get('res.partner')
+        res_users = self.pool.get('res.users')
+        all_users = res_users.browse(cr, uid, context=inactive_too)
         hr_employees = dict([
             (e.identification_id, e)
-            for e in hr_employee.browse(cr, uid, context=context)
+            for e in hr_employee.browse(cr, uid, context=inactive_too)
             ])
-        sales_people = defaultdict(list)
+        potential_sales_people = defaultdict(list)
+        sales_people = {}
         for fis_emp_rec in emp1:
             result = {}
             result['name'] = emp_name = NameCase(fis_emp_rec[F74.name])
@@ -322,7 +326,7 @@ class res_partner(xmlid, osv.Model):
                         {'name': emp_name, 'xml_id': emp_num, 'module': 'F74'},
                         context=context,
                         )
-            rp_partner = res_partner.browse(cr, uid, rp_partner_id, context=context)
+            rp_partner = res_partner.browse(cr, uid, rp_partner_id, context=inactive_too)
             if he_employee.partner_id and he_employee.partner_id != rp_partner:
                 # two partner records exist -- deactivate the one not tied to a user account
                 res_partner.write(cr, uid, he_employee.partner_id.id, {'active': False}, context=context)
@@ -336,10 +340,10 @@ class res_partner(xmlid, osv.Model):
             names = emp_name.lower().split()
             sales_user_id = rp_partner.user_ids and rp_partner.user_ids[0].id or False
             if sales_user_id:
-                sales_people[names[0]].append(sales_user_id)
+                potential_sales_people[names[0]].append(sales_user_id)
                 if len(names) > 1:
-                    sales_people[names[-1]].append(sales_user_id)
-                    sales_people[' '.join([names[0], names[-1]])].append(sales_user_id)
+                    potential_sales_people[names[-1]].append(sales_user_id)
+                    potential_sales_people[' '.join([names[0], names[-1]])].append(sales_user_id)
 
         # now the mapping
         cnvzz = fisData(47)
@@ -349,12 +353,17 @@ class res_partner(xmlid, osv.Model):
             sales_name = rec[F47.salesperson_name]
             company_id = rec[F47.company_id]
             if company_id != '10':
+                _logger.warning('skipping %s (%s): not company id 10', sales_name, sales_id)
                 continue
+
             if '-' in sales_name:
                 sales_name, extra = sales_name.split('-')
-                if not extra.isdigit():
+                if not extra.strip().isdigit() and sales_id != 'BAD':
+                    _logger.warning('skipping %s (%s): unknown format', sales_name, sales_id)
                     continue
-            names = sales_name.lower().split()
+
+            sales_full_name = sales_name.lower()
+            names = sales_full_name.split()
             if len(names) > 1:
                 sales_name = ' '.join([names[0], names[-1]])
             else:
@@ -362,24 +371,63 @@ class res_partner(xmlid, osv.Model):
             if sales_name in failed_match:
                 # this name already failed to match
                 continue
-            if var(sales_people.get(sales_name)) is not None and len(var()) == 1:
+            if var(potential_sales_people.get(sales_name)) is not None and len(var()) == 1:
                 # full-name match
                 sales_people[sales_id] = var()[0]
-            elif len(names) == 1:
-                # if it didn't match before, it's not going to match now
-                sales_people[sales_id] = None
-                failed_match.add(sales_name)
-            elif var(sales_people.get(names[-1])) and len(var()) == 1:
+            # elif len(names) == 1:
+            #     # if it didn't match before, it's not going to match now
+            #     pass
+            #     # potential_sales_people[sales_id] = None
+            #     # failed_match.add(sales_name)
+            elif var(potential_sales_people.get(names[-1])) and len(var()) == 1:
                 # last name match
                 sales_people[sales_id] = var()[0]
-            elif var(sales_people.get(names[0])) and len(var()) == 1:
+            elif var(potential_sales_people.get(names[0])) and len(var()) == 1:
                 # first name match
                 sales_people[sales_id] = var()[0]
             else:
                 # no match at all
-                _logger.error('unable to match %s: %r', sales_name, var())
-                sales_people[sales_id] = None
-                failed_match.add(sales_name)
+                # look for user matches and previously created dummy user accounts
+                all_users = res_users.browse(cr, uid, context=inactive_too)
+                all_users.sort(key=lambda r: not r.active)
+                if len(names) > 1:
+                    # try to match sales name with beginning of user name
+                    # e.g. "billy bob" with "billy bob joe"
+                    user = [u for u in all_users if u.name.lower().startswith(sales_name)]
+                    if user:
+                        if len(user) == 1:
+                            sales_people[sales_id] = user[0].id
+                            continue
+                        else:
+                            _logger.warning('unable to match %s (%s): too many possibles', sales_name, sales_id)
+                            failed_match.add(sales_name)
+                            continue
+
+                    login = names[0][0] + names[1]
+                else:
+                    login = names[0]
+                # try to match against login
+                # e.g. "billy bob" with "bbob"
+                for user in all_users:
+                    if login == user.login:
+                        sales_people[sales_id] = user.id
+                        continue
+
+                # if we make it this far, no matches -- so let's create a new (inactive)
+                # user so we can properly categorize customers
+                _logger.warning('unable to match %s: creating dummy user', sales_name)
+                id = res_users.create(
+                        cr, uid,
+                        {
+                            'name': NameCase(sales_name),
+                            'login': login,
+                            'active': False,
+                            },
+                        context=context)
+                sales_people[sales_id] = id
+                all_users.append(res_users.browse(cr, uid, id, context=inactive_too))
+                continue
+                # failed_match.add(sales_name)
 
         # the order of the remainder is unimportant
         context = {'fis-updates': True}
