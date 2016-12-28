@@ -7,7 +7,9 @@ from filecmp import cmp as fce
 from xmlrpclib import Fault
 from antipathy import Path
 from openerplib import get_connection, get_records, SchroedingerFile, AttrDict
-from scription import Command, Execute, Run, Script, error, print, stderr, OPTION, FLAG, MULTI, OrmFile
+from pandaemonium import PidLockFile, AlreadyLocked
+from scription import *
+from scription import error
 from urllib2 import urlopen, URLError
 from VSS.address import NameCase
 from VSS.utils import crc32
@@ -16,48 +18,59 @@ from VSS.utils import crc32
 module = config = localhost = res_users = res_partner = res_groups = groups = None
 user_map = partners = partner_map = users = force_update = reset_photos = None
 
+LOCKFILE = '/var/run/oe-users.pid'
+
 @Script(
         config=('config file to use', OPTION),
         )
 def main(config=Path('/etc/openerp/fnx.ini')):
-    module.config = config = OrmFile(config, types={'_path':Path})
-    module.localhost = get_connection(
-            hostname=config.openerp.host,
-            database=config.openerp.db,
-            login=config.openerp.user,
-            password=config.openerp.pw,
-            )
-    print('getting res.users')
-    module.res_users = localhost.get_model('res.users')
-    print('getting res.groups')
-    module.res_groups = localhost.get_model('res.groups')
-    print('retrieving users')
-    module.users = res_users.search_read(
-            domain=['|', ('active','=',True), ('active','=',False)],
-            fields=['email', 'groups_id', 'id', 'login', 'image'],
-            )
-    module.user_map = dict([(u.login, u) for u in users])
-    print('retrieving groups')
-    module.groups = res_groups.search_read(
-            domain=[('id','!=',0)],
-            fields=['category_id', 'full_name', 'id', 'name'],
-            )
-    module.res_partner = localhost.get_model('res.partner')
-    module.partners = res_partner.search_read(
-            domain=[('module','=','F74')],
-            fields=['id', 'user_ids', 'xml_id'],
-            )
-    module.partner_map = dict([(p.xml_id, p) for p in partners])
-    if config.users.force_update.exists():
-        module.force_update = True
-        config.users.force_update.unlink()
+    lock = PidLockFile(LOCKFILE)
+    try:
+        lock.seal(timeout=30)
+    except AlreadyLocked:
+        error('oe-users is already running')
     else:
-        module.force_update = False
-    if config.users.reset_photos.exists():
-        module.reset_photos = True
-        config.users.reset_photos.unlink()
-    else:
-        module.reset_photos = False
+        module.config = config = OrmFile(config, types={'_path':Path})
+        module.localhost = get_connection(
+                hostname=config.openerp.host,
+                database=config.openerp.db,
+                login=config.openerp.user,
+                password=config.openerp.pw,
+                )
+        print('getting res.users')
+        module.res_users = localhost.get_model('res.users')
+        print('getting res.groups')
+        module.res_groups = localhost.get_model('res.groups')
+        print('retrieving users')
+        module.users = res_users.search_read(
+                domain=['|', ('active','=',True), ('active','=',False)],
+                fields=['email', 'groups_id', 'id', 'login', 'image'],
+                )
+        module.user_map = dict([(u.login, u) for u in users])
+        print('retrieving groups')
+        module.groups = res_groups.search_read(
+                domain=[('id','!=',0)],
+                fields=['category_id', 'full_name', 'id', 'name'],
+                )
+        module.res_partner = localhost.get_model('res.partner')
+        module.partners = res_partner.search_read(
+                domain=[('module','=','F74')],
+                fields=['id', 'user_ids', 'xml_id'],
+                )
+        module.partner_map = dict([(p.xml_id, p) for p in partners])
+        if config.users.force_update.exists():
+            module.force_update = True
+            config.users.force_update.unlink()
+        else:
+            module.force_update = False
+        if config.users.reset_photos.exists():
+            module.reset_photos = True
+            config.users.reset_photos.unlink()
+        else:
+            module.reset_photos = False
+    finally:
+        if lock.is_locked():
+            lock.release()
 
 
 @Command(
