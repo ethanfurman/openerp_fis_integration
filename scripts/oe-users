@@ -1,0 +1,370 @@
+#!/usr/bin/python
+from __future__ import print_function
+
+import dbf
+from base64 import b64encode
+from filecmp import cmp as fce
+from xmlrpclib import Fault
+from antipathy import Path
+from openerplib import get_connection, get_records, SchroedingerFile, AttrDict
+from scription import Command, Execute, Run, Script, error, print, stderr, OPTION, FLAG, MULTI, OrmFile
+from urllib2 import urlopen, URLError
+from VSS.address import NameCase
+from VSS.utils import crc32
+
+# will be set in main
+module = config = localhost = res_users = res_partner = res_groups = groups = None
+user_map = partners = partner_map = users = force_update = reset_photos = None
+
+@Script(
+        config=('config file to use', OPTION),
+        )
+def main(config=Path('/etc/openerp/fnx.ini')):
+    module.config = config = OrmFile(config, types={'_path':Path})
+    module.localhost = get_connection(
+            hostname=config.openerp.host,
+            database=config.openerp.db,
+            login=config.openerp.user,
+            password=config.openerp.pw,
+            )
+    print('getting res.users')
+    module.res_users = localhost.get_model('res.users')
+    print('getting res.groups')
+    module.res_groups = localhost.get_model('res.groups')
+    print('retrieving users')
+    module.users = res_users.search_read(
+            domain=['|', ('active','=',True), ('active','=',False)],
+            fields=['email', 'groups_id', 'id', 'login', 'image'],
+            )
+    module.user_map = dict([(u.login, u) for u in users])
+    print('retrieving groups')
+    module.groups = res_groups.search_read(
+            domain=[('id','!=',0)],
+            fields=['category_id', 'full_name', 'id', 'name'],
+            )
+    module.res_partner = localhost.get_model('res.partner')
+    module.partners = res_partner.search_read(
+            domain=[('module','=','F74')],
+            fields=['id', 'user_ids', 'xml_id'],
+            )
+    module.partner_map = dict([(p.xml_id, p) for p in partners])
+    if config.users.force_update.exists():
+        module.force_update = True
+        config.users.force_update.unlink()
+    else:
+        module.force_update = False
+    if config.users.reset_photos.exists():
+        module.reset_photos = True
+        config.users.reset_photos.unlink()
+    else:
+        module.reset_photos = False
+
+
+@Command(
+        force=('force creation of new files', FLAG),
+        users=('only include these users', MULTI),
+        )
+def create(force, users):
+    "create files needed by openerp_user_update"
+    force = force or force_update
+    # get last archived files
+    arch_dept = Path('/var/openerp/archive/empsWithDepts.*').glob()
+    arch_user = Path('/var/openerp/archive/falconUsersImport.*').glob()
+    last_arch_dept = sorted(arch_dept, key=lambda a: a.ext)[-1]
+    last_arch_user = sorted(arch_user, key=lambda a: a.ext)[-1]
+    with dbf.Table(config.users.emp_table, default_data_types={'C':dbf.Char}) as employees:
+        login_index = employees.create_index(lambda rec: rec.login)
+        # check that all users in the dbf file are present in OpenERP
+        for employee in employees:
+            if employee.login not in user_map:
+                print('%s is missing from OpenERP' % employee.login)
+                force = True
+    if not force and fce(config.users.raw_dept, last_arch_dept) and fce(config.users.raw_user, last_arch_user):
+        print('nothing new, exiting')
+        raise SystemExit
+    with employees:
+        emp_num_index = employees.create_index(lambda rec: rec.emp_num)
+        record = employees.create_template()
+        with open(config.users.raw_user) as user:
+            for line in user:
+                line = line.strip().split()
+                record.login, record.password, record.active, record.emp_num  = line[0], line[1], line[2] == 'true', int(line[3])
+                record.name = NameCase(' '.join(line[4:]).strip('"'))
+                record.email = record.login + '@sunridgefarms.com'
+                if record.emp_num:
+                    # active employee
+                    if record in emp_num_index:
+                        [old_record] = emp_num_index[record]
+                        record.old_login = old_record.login
+                        dbf.gather(old_record, record)
+                    else:
+                        record.old_login = record.login
+                        employees.append(record)
+                elif record in login_index:
+                    # inactive employee
+                    temp = login_index[record]
+                    for old_record in temp:
+                        if old_record.active:
+                            print('deactivating %s  (%s)' % (old_record.name, old_record.emp_num), file=stderr)
+                        record.emp_num = old_record.emp_num
+                        record.name = old_record.name
+                        record.old_login = old_record.login
+                        dbf.gather(old_record, record)
+        with open(config.users.raw_dept) as dept:
+            for line in dept:
+                emp_num, departments, _ = line.split(',', 2)
+                emp_num = int(emp_num)
+                [old_record] = emp_num_index[(emp_num,)]
+                record = dbf.create_template(old_record)
+                if departments == 'Marketing':
+                    record.groups = 'sales_project'
+                elif departments.startswith('Manuf'):
+                    record.groups = 'project'
+                else:
+                    record.groups = 'project'   # 'none' -- allow all into 'project' for now
+                dbf.gather(old_record, record)
+        # TODO: handle case where emp_num is not found
+        with open(config.users.updates, 'w') as updates:
+            for record in emp_num_index:
+                if users and record.login.strip() not in users:
+                    continue
+                print('adding', record.name)
+                updates.write('%s %s %s %s %s %s %s %s\n' %
+                        (record.emp_num, record.old_login, record.login, record.password,
+                         record.active, record.groups, record.email, record.name))
+    new_ext = ".%03d" % (int(last_arch_dept.ext[1:]) + 1)
+    next_arch_dept = last_arch_dept.strip_ext() + new_ext
+    next_arch_user = last_arch_user.strip_ext() + new_ext
+    config.users.raw_dept.copy(next_arch_dept)
+    config.users.raw_user.copy(next_arch_user)
+    Execute(['chown', 'openerp:', next_arch_dept, next_arch_user])
+
+
+@Command(
+        reset=('reset creation of new files', FLAG),
+        users=('only include these users', MULTI),
+        )
+def photos(reset, users):
+    reset = reset or reset_photos
+    with dbf.Table(config.users.emp_table, default_data_types={'C':dbf.Char}) as employees:
+        for record in employees:
+            try:
+                user = user_map[record.login]
+            except KeyError:
+                print('%s is missing from OpenERP' % record.login)
+                continue
+            if not reset and record.image_crc != crc32(user.image):
+                continue
+            try:
+                pic = urlopen(config.users.photo_location % record.emp_num).read()
+            except URLError:
+                continue
+            image = b64encode(pic)
+            try:
+                res_users.write(user.id, dict(image=image))
+            except Fault:
+                continue
+            # not sure what next line is supposed to do
+            # user.update(res_users.read(user.id))
+            dbf.write(record, image_crc=crc32(user.image))
+
+
+@Command()
+def update():
+    "update OpenERP with the new user info"
+    print('loading employee records')
+    employees = dbf.Table(config.users.emp_table, default_data_types={'C':dbf.Char})
+    monitored_groups = AttrDict(default=list)
+    all_groups = dict()
+    default_groups = AttrDict(
+            sales='User: Own Leads Only',
+            project='User',
+            human_resources='Employee',
+            )
+    monitored = ''.join(
+            [line.title() for line in open(config.users.modules) if not line[0] == '#']
+            ).split()
+    monitored.append('Human Resources')
+    for group in module.groups:
+        all_groups[group.id] = group.full_name
+        if group.category_id and group.category_id[1] in monitored:
+            cname = group.category_id[1].lower().replace(' ', '_')
+            monitored_groups[cname].append(group.id)
+            if group.name == default_groups[cname]:
+                monitored_groups[cname + '_default'].append(group.id)
+    data = list()
+    not_found = list()
+    failed = list()
+    logins = set()
+    print('users:', len(users))
+    for line in SchroedingerFile(config.users.updates):
+        if line.strip() == 'end':
+            break
+        line = line.split()
+        line = [
+                line[0],                        # employee #
+                line[1],                        # old login
+                line[2],                        # new login
+                line[3],                        # password
+                line[4] == 'True',              # active
+                line[5].split('_'),             # allowed groups (or 'none')
+                line[6],                        # email
+                ' '.join(line[7:]).strip('"'),  # full_name
+                ]
+        if line[2] in logins:
+            continue
+        line[5].append('human_resources')
+        logins.add(line[2])
+        data.append(line)
+    for row in data:
+        print('checking', row[6], verbose=2)
+        try:
+            # groups is which groups this user is allowed to be in (strings)
+            # permissions is which groups the user is actually in (list of ints)
+            # monitored_groups links group names with group categories (dict of name:[int, int, ...] and name_default:[int])
+            # 
+            # for each name in monitored_groups if that name is not in groups, remove all ints that belong to that name from permissions
+            # if that name is in groups, make sure that at least one of the ints is present in permissions, if not then add name_default to permissions
+
+            emp_num, old_login, login, password, active, groups, email, name = row
+            user = [user for user in users if user.login == old_login][0]
+        except IndexError:
+            not_found.append(row)
+        else:
+            # monitored_groups is the groups we care about
+            # groups are the groups the user can belong to that we care about
+            # user is the user record
+            before = set(user.groups_id)
+            permissions = adjust_permissions(monitored_groups, groups, user)
+            target = set(permissions)
+            group_change = False
+            if before != target:
+                group_change = True
+                print('changing group assignment for %s: ' % user.login)
+                for id in (before - target):
+                    print('   should lose: %3d -- %s' % (id, all_groups[id]))
+                for id in (target - before):
+                    print('      will add: %3d -- %s' % (id, all_groups[id]))
+                permissions = list(before | set(permissions))
+            email = user.email or email
+            values = dict(
+                        xml_id=emp_num,
+                        module='F74',
+                        login=login,
+                        password=password,
+                        active=active,
+                        name=name,
+                        email=email,
+                        employee=True,
+                        )
+            try:
+                res_users.write(user.id, values)
+            except:
+                error('error trying to update user: %r\n' % values)
+                raise
+            if group_change:
+                res_users.write(user.id, dict(groups_id=[(6, 0, permissions)]))
+                # now check to see if it took
+                user = get_records(res_users, ids=user.id)
+                actual = set(user.groups_id)
+                if actual != target:
+                    print('      * FAILED *')
+                    for id in target - actual:
+                        print('         not added: %3d -- %s' % (id, all_groups[id]))
+                    # currently not removing any group associations;
+                    # leaving in in case we do later
+                    # for id in (actual & (before - target)):
+                    #     print('       not removed: %3d -- %s' % (id, all_groups[id]))
+                    for id in (actual - (before | target)):
+                        print('        also added: %3d -- %s' % (id, all_groups[id]))
+                    print()
+    with employees:
+        emp_ndx = employees.create_index(lambda rec: rec.login)
+        for row in not_found:
+            try:
+                # add user
+                emp_num, old_login, login, password, active, groups, email, name = row
+                # check to see of partner record already exists
+                partner_link = partner_map.get(emp_num)
+                if partner_link:
+                    partner_link = partner_link.id
+                try:
+                    values = dict(xml_id=emp_num, module='F74', login=login, password=password, active=active, name=name, email=email, employee=True)
+                    if partner_link:
+                        values['partner_id'] = partner_link
+                        del values['xml_id']
+                        del values['module']
+                    print('creating user: %s\n\twith: %s' % (login, values))
+                    id = res_users.create(values)
+                except Exception, exc:
+                    error(str(exc).replace('\\n','\n'))
+                    row = row + ['unable to create user']
+                    failed.append(row)
+                    continue
+                user = get_records(res_users, ids=id)
+                users.append(user)
+                # adjust permissions
+                before = set(user.groups_id)
+                permissions = adjust_permissions(monitored_groups, groups, user)
+                target = set(permissions)
+                group_change = False
+                if before != target:
+                    group_change = True
+                    print('adding group assignment for %s: ' % user.login)
+                    for id in (before - target):
+                        print('   losing: %3d -- %s' % (id, all_groups[id]))
+                    for id in (target - before):
+                        print('   adding: %3d -- %s' % (id, all_groups[id]))
+                if group_change:
+                    res_users.write(user.id, dict(groups_id=[(6, 0, permissions)]))
+                    # now check to see if it took
+                    user = get_records(res_users, ids=user.id)
+                    actual = set(user.groups_id)
+                    if actual != target:
+                        print('      * FAILED *')
+                        for id in target - actual:
+                            print('         not added: %3d -- %s' % (id, all_groups[id]))
+                        not_removed = actual & (before - target)
+                        not_removed
+                        for id in (actual & (before - target)):
+                            print('       not removed: %3d -- %s' % (id, all_groups[id]))
+                        for id in (actual - (before | target)):
+                            print('        also added: %3d -- %s' % (id, all_groups[id]))
+                        print()
+                # grab crc of current image and store in employee db
+                crc = crc32(user.image) # hex mask is for Py3k compatibility
+                dbf.write(emp_ndx[login][0], image_crc=crc)
+            except Fault, exc:
+                error(str(exc).replace('\\n','\n'))
+                row = row + [exc.faultCode.replace('\n\n', ':  ')]
+                failed.append(row)
+            except IndexError, exc:
+                error(str(exc).replace('\\n','\n'))
+                row = row + [exc.message or 'index failure']
+                failed.append(row)
+    if failed:
+        with open(config.users.failed, 'a') as csv:
+            csv.write('old_login,new_login,password,active,groups,name,error\n')
+
+            for row in failed:
+                print(row)
+                csv.write('%s, %s, %s, %s, %s, %r, %s, %s, %s\n' % tuple(row))
+
+
+def adjust_permissions(oe_groups, allowed_groups, user):
+    permissions = set(user.groups_id)
+    for group_name, ints in oe_groups.items():
+        if group_name.endswith('_default'):
+            continue
+        ints = set(ints)
+        if group_name in allowed_groups:
+            if not ints & permissions:
+                # add default if nothing already there
+                permissions.add(oe_groups[group_name + '_default'][0])
+        else:
+            # remove all priveleges for this group
+            permissions -= ints
+    return list(permissions)
+
+
+Run()
