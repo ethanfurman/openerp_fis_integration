@@ -1,6 +1,6 @@
 import logging
 from osv import osv, fields
-from osv.osv import except_osv as ERPError
+from openerp.exceptions import ERPError
 
 _logger = logging.getLogger(__name__)
 
