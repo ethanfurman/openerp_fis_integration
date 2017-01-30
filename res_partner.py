@@ -295,7 +295,7 @@ class res_partner(xmlid, osv.Model):
             result['hire_date'] = hired = fix_date(fis_emp_rec[F74.date_hired])
             result['fire_date'] = fired = fix_date(fis_emp_rec[F74.date_terminated])
             result['active'] = (not fired or hired > fired)
-            result['birth_date'] = fix_date(fis_emp_rec[F74.birth_date])
+            result['birthday'] = fix_date(fis_emp_rec[F74.birth_date])
             result['status_flag'] = fis_emp_rec[F74.status_flag]
             result['pay_type'] = ('salary', 'hourly')[fis_emp_rec[F74.pay_type].upper() == 'H']
             result['hourly_rate'] = fis_emp_rec[F74.hourly_rate]

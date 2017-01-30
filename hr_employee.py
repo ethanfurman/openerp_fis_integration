@@ -16,7 +16,7 @@ class hr_employee(osv.Model):
     _columns = {
         'hire_date': fields.date('Date Hired'),
         'fire_date': fields.date('Date Terminated'),
-        'birth_date': fields.date('Date of Birth'),
+        # 'birth_date': fields.date('Date of Birth'),
         'status_flag': fields.char('Status Flag', size=1),
         'pay_type': fields.selection((('hourly','Hourly'),('salary','Salary')), 'Pay Type'),
         'federal_exemptions': fields.integer('Federal Exemptions'),
