@@ -1,0 +1,176 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+from collections import defaultdict
+from scription import *
+from antipathy import Path
+from openerplib import get_connection, get_records, AttrDict
+from VSS.utils import all_equal
+
+OE = AttrDict()
+CONFIG = Path('/etc/openerp/fnx.ini')
+
+try:
+    settings = OrmFile(CONFIG, section='openerp')
+except Exception:
+    echo('WARNING: unable to process configfile; all parameters must be specified', verbose=0)
+    HOST = ''
+    USER = ''
+    DB = ''
+    PW = ''
+else:
+    HOST = settings.host
+    USER = settings.user
+    DB = settings.db
+    PW = settings.pw
+
+@Script(
+        host=('host where OpenERP instance is running', OPTION),
+        db=('database to use', OPTION),
+        user=('login name to use', OPTION),
+        pw=('password for login name', OPTION),
+        )
+def main(host, db, user, pw):
+    if host:
+        module.HOST = host
+    if db:
+        module.DB = db
+    if user:
+        module.USER = user
+    if pw:
+        module.PW = pw
+    for req in ('HOST', 'USER', 'DB', 'PW'):
+        if not module[req]:
+            raise SystemExit('%r required; use --help for more info' % req)
+
+
+@Command()
+def dedupe():
+    connect_oe()
+    oe = get_oe_data()
+    persons = defaultdict(list)
+    for person in oe.hr_employee:
+        persons[person.identification_id].append(person)
+    removed = subset = disjoint = 0
+    for ident, records in persons.items():
+        dupes, subsets, disjoints = sort(records[:])
+        if subsets or disjoints:
+            subset += len(subsets)
+            disjoint += len(disjoints)
+            print('%-25s %3d %3d %3d' % (records[0].name_related, len(dupes), len(subsets), len(disjoints)))
+            if disjoints:
+                for k in person.keys():
+                    print('-' * 10, k, '-' * 30)
+                    for r in disjoints:
+                        print(r[k])
+        dupes = sorted([p.id for p in dupes])
+        # echo(dupes)
+        dupes.pop(0)
+        if dupes:
+            removed += len(dupes)
+            OE.hr_employee.unlink(dupes)
+    print('%d records removed, %d disjoint records, %d subset records' % (removed, disjoint, subset))
+
+def person_equality_key(record):
+    return [v for (k, v) in record.items() if k not in ('id', 'resource_id')]
+
+def person_sort_key(record):
+    return (sum([1 for v in record.values() if v]), record.id)
+
+def sort(records):
+    '''
+    sort records list into lists of dupes, subsets, & disjoints
+    '''
+    same, subset, disjoint = [], [], []
+    if all_equal(records, person_equality_key):
+        same = records
+        return same, subset, disjoint
+    records.sort(key=person_sort_key)
+    while records:
+        first = records.pop(0)
+        remaining = []
+        for rec in records:
+            if rec == first:
+                same.append(rec)
+            else:
+                remaining.append(rec)
+        if same:
+            same.insert(0, first)
+        else:
+            disjoint.append(first)
+        records = remaining
+    return same, subset, disjoint
+
+
+def connect_oe(hostname=HOST, database=DB, user=USER, password=PW):
+    OE.conn = conn = get_connection(hostname=hostname, database=database, login=user, password=password)
+    OE.res_partner = conn.get_model('res.partner')
+    OE.res_users = conn.get_model('res.users')
+    OE.hr_employee = conn.get_model('hr.employee')
+
+
+def get_oe_data():
+    "load data from OpenERP (partners, countries, ...)"
+    oe = AttrDict()
+    # conn = OE.conn
+    # oe.res_partner = get_records(
+    #         OE.res_partner,
+    #         fields=[
+    #             'id', 'parent_id', 'child_ids', 'category_id',
+    #             'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
+    #             'email', 'website', 'phone', 'fax', 'mobile', 'is_company', 'use_parent_address',
+    #             ]
+    #         )
+    oe.hr_employee = get_records(
+            OE.hr_employee,
+            domain=['|',('active','=',True),('active','=',False)],
+            fields=[
+                'id', 'marital', 'identification_id', 'work_phone', 'country_id',
+                'parent_id', 'notes', 'department_id', 'otherid', 'mobile_phone', 'birthday',
+                'sinid', 'work_email', 'work_location', 'name_related', 'ssnid', 'gender',
+                'home_email', 'home_zip', 'partner_id', 'emergency_number', 'emergency_contact',
+                'home_street', 'home_city', 'home_phone', 'home_street2', 'home_country_id',
+                'home_state_id', 'driver_medical_exp', 'driver_license_state',
+                'driver_license_class', 'driver_license_num', 'driver_license_exp', 'ach_amount',
+                'ach_date', 'ach_routing', 'ach_verified', 'ach_account', 'ach_type',
+                'hourly_rate', 'state_exemptions', 'hire_date', 'federal_exemptions', 'pay_type',
+                'fire_date', 'status_flag', 'birth_date',
+                ],
+            )
+    return oe
+
+def merge(addr_key, contacts, companies):
+    # different contacts at the same company
+    # check phone numbers
+    main_company = companies[0]
+    main_phones = [r.phone for r in companies if r.phone]
+    contact_ext_phones = [r.phone for r in contacts if 'x' in r.phone]
+    if all_equal(main_phones):
+        main_phone = main_phones and main_phones.pop() or False
+    else:
+        # search for toll-free and/or numbers that match contact's where contact's has an extension
+        for ph in sorted(main_phones):
+            if ph.startswith(('800', '822', '833', '844', '855', '866', '877', '888')):
+                main_phone = ph
+                break
+        else:
+            matches = list(filter(lambda p: any(p in c for c in contact_ext_phones), main_phones))
+            if all_equal(matches):
+                main_phone = matches and matches.pop() or False
+            else:
+                main_phone = False
+    main_company.phone = main_phone
+    # for id_field in ('country_id', 'state_id', 'category_id'):
+    for id_field in ('category_id', ):
+        if main_company[id_field]:
+            main_company[id_field] = 4, main_company[id_field]
+    for contact in contacts:
+        # for id_field in ('title', 'category_id'):
+        for id_field in ('category_id', ):
+            if contact[id_field]:
+                contact[id_field] = 4, contact[id_field]
+    return main_company
+
+config = OrmFile('/etc/openerp/fnx.ini', section='openerp')
+
+Run()
