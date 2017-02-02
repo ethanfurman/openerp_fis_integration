@@ -8,7 +8,9 @@
             @inherit_id ref='hr.view_employee_form'
             @priority eval='15'
             @arch type='xml'
-                @otherid position='replace'
+                ~xpath expr="//field[@name='otherid']" position='attributes'
+                    invisible='1'
+                @otherid position='after'
                     @ssnid
                 @marital position='after'
                     @status_flag
@@ -19,3 +21,21 @@
                     @hire_date
                     @fire_date
 
+        ~record model='ir.ui.view' #fis_integration_view_employee_tree
+            @name: fis_integration.hr.employee.form
+            @model: hr.employee
+            @inherit_id ref='hr.view_employee_tree'
+            @priority eval='15'
+            @arch type='xml'
+               @parent_id position='replace'
+                    @identification_id $FIS_ID
+
+
+        ~record model='ir.ui.view' #fis_integration_veiw_employee_filter
+            @name: Employees
+            @model: hr.employee
+            @inherit_id ref='hr.view_employee_filter'
+            @arch type='xml'
+                @name position='before'
+                    @identification_id $FIS_ID
+                @category_ids position='remove'
