@@ -9,13 +9,12 @@ from antipathy import Path
 from openerplib import get_connection, get_records, SchroedingerFile, AttrDict
 from pandaemonium import PidLockFile, AlreadyLocked
 from scription import *
-from scription import error
 from urllib2 import urlopen, URLError
 from VSS.address import NameCase
 from VSS.utils import crc32
 
 # will be set in main
-module = config = localhost = res_users = res_partner = res_groups = groups = None
+config = localhost = res_users = res_partner = res_groups = groups = None
 user_map = partners = partner_map = users = force_update = reset_photos = None
 
 LOCKFILE = '/var/run/oe-users.pid'
@@ -24,11 +23,11 @@ LOCKFILE = '/var/run/oe-users.pid'
         config=('config file to use', OPTION),
         )
 def main(config=Path('/etc/openerp/fnx.ini')):
-    lock = PidLockFile(LOCKFILE)
+    lock = PidLockFile(LOCKFILE, timeout=30)
     try:
-        lock.seal(timeout=30)
+        lock.seal()
     except AlreadyLocked:
-        error('oe-users is already running')
+        abort('oe-users is already running')
     else:
         module.config = config = OrmFile(config, types={'_path':Path})
         module.localhost = get_connection(
@@ -69,7 +68,7 @@ def main(config=Path('/etc/openerp/fnx.ini')):
         else:
             module.reset_photos = False
     finally:
-        if lock.is_locked():
+        if lock.am_i_locking():
             lock.release()
 
 
