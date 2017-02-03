@@ -8,9 +8,7 @@
             @inherit_id ref='hr.view_employee_form'
             @priority eval='15'
             @arch type='xml'
-                ~xpath expr="//field[@name='otherid']" position='attributes'
-                    invisible='1'
-                @otherid position='after'
+                @otherid position='replace'
                     @ssnid
                 @marital position='after'
                     @status_flag
@@ -20,6 +18,8 @@
                     @state_exemptions
                     @hire_date
                     @fire_date
+                @country_id position='replace'
+                    @race
 
         ~record model='ir.ui.view' #fis_integration_view_employee_tree
             @name: fis_integration.hr.employee.form

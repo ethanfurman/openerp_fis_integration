@@ -16,11 +16,22 @@ class hr_employee(osv.Model):
     _columns = {
         'hire_date': fields.date('Date Hired'),
         'fire_date': fields.date('Date Terminated'),
-        # 'birth_date': fields.date('Date of Birth'),
         'status_flag': fields.char('Status Flag', size=1),
-        'pay_type': fields.selection((('hourly','Hourly'),('salary','Salary')), 'Pay Type'),
+        'pay_type': fields.selection([('hourly','Hourly'),('salary','Salary')], 'Pay Type'),
         'federal_exemptions': fields.integer('Federal Exemptions'),
         'state_exemptions': fields.integer('State Exemptions'),
         'hourly_rate': fields.float('Hourly Rate'),
+        'race': fields.selection([
+            ('white', 'White'),
+            ('black', 'Black / African American'),
+            ('latino', 'Hispanic / Latino'),
+            ('indian', 'American Indian / Alaskan Native'),
+            ('asian', 'Asian'),
+            ('islander', 'Native Hawaiian / Pacific Islander'),
+            ('multiple', 'Two or more races'),
+            ],
+            'Race/Ethnicity',
+            sort_order='definition',
+            ),
         }
 
