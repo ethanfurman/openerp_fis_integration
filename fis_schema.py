@@ -73,6 +73,7 @@ class F74(FISenum):
     status_flag       = 'Kn$(1,1)'       # STATUS FLAG
     pay_type          = 'Kn$(2,1)'       # PAY TYPE
     marital_status    = 'Kn$(4,1)'       # MARITAL STATUS
+    gender            = 'Kn$(21,1)'      # GENDER
     driver_license    = 'Kn$(26,10)'     # Driver's Lic #
     emergency_contact = 'Kn$(36,18)'     # Emerg Contact
     emergency_phone   = 'Kn$(54,10)'     # Emerg Phone

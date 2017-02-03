@@ -299,7 +299,8 @@ class res_partner(xmlid, osv.Model):
             result['status_flag'] = fis_emp_rec[F74.status_flag]
             result['pay_type'] = ('salary', 'hourly')[fis_emp_rec[F74.pay_type].upper() == 'H']
             result['hourly_rate'] = fis_emp_rec[F74.hourly_rate]
-            result['marital'] = ('single', 'married')[fis_emp_rec[F74.marital_status] == 'M']
+            result['marital'] = ('single', 'married')[fis_emp_rec[F74.marital_status].upper() == 'M']
+            result['gender'] = ('male', 'female')[fis_emp_rec[F74.gender].upper() == 'F']
             # fleet_hr has this
             result['driver_license_num'] = fis_emp_rec[F74.driver_license]
             result['emergency_contact'] = NameCase(fis_emp_rec[F74.emergency_contact])
