@@ -261,6 +261,11 @@ class res_partner(xmlid, osv.Model):
             result = {}
             result['name'] = emp_name = NameCase(fis_emp_rec[F74.name])
             result['identification_id'] = emp_num = fis_emp_rec[F74.emp_num].strip()
+            try:
+                if int(emp_num) >= 9000:
+                    continue
+            except (ValueError, TypeError):
+                continue
             addr1, addr2, addr3 = Sift(fis_emp_rec[F74.addr1], fis_emp_rec[F74.addr2], fis_emp_rec[F74.addr3])
             addr2, city, state, postal, country = cszk(addr2, addr3)
             addr3 = ''
