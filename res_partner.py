@@ -417,22 +417,22 @@ class res_partner(xmlid, osv.Model):
                 for user in all_users:
                     if login == user.login:
                         sales_people[sales_id] = user.id
-                        continue
-
-                # if we make it this far, no matches -- so let's create a new (inactive)
-                # user so we can properly categorize customers
-                _logger.warning('unable to match %s: creating dummy user', sales_name)
-                id = res_users.create(
-                        cr, uid,
-                        {
-                            'name': NameCase(sales_name),
-                            'login': login,
-                            'active': False,
-                            },
-                        context=context)
-                sales_people[sales_id] = id
-                all_users.append(res_users.browse(cr, uid, id, context=inactive_too))
-                continue
+                        break
+                else:
+                    # if we make it this far, no matches -- so let's create a new (inactive)
+                    # user so we can properly categorize customers
+                    _logger.warning('unable to match %s: creating dummy user', sales_name)
+                    id = res_users.create(
+                            cr, uid,
+                            {
+                                'name': NameCase(sales_name),
+                                'login': login,
+                                'active': False,
+                                },
+                            context=context)
+                    sales_people[sales_id] = id
+                    all_users.append(res_users.browse(cr, uid, id, context=inactive_too))
+                # continue
                 # failed_match.add(sales_name)
 
         # the order of the remainder is unimportant
