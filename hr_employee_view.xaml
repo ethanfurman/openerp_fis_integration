@@ -8,6 +8,8 @@
             @inherit_id ref='hr.view_employee_form'
             @priority eval='15'
             @arch type='xml'
+                ~xpath expr="//form[@string='Employee']" position='attributes'
+                    ~attribute @create: false
                 ~xpath expr="//field[@name='otherid']" position='attributes'
                     ~attribute @invisible: True
                 @otherid position='after'
@@ -26,20 +28,206 @@
                     @race
 
         ~record model='ir.ui.view' #fis_integration_view_employee_tree
-            @name: fis_integration.hr.employee.form
+            @name: fis_integration.hr.employee.tree
             @model: hr.employee
             @inherit_id ref='hr.view_employee_tree'
             @priority eval='15'
             @arch type='xml'
+                ~xpath expr="//tree[@string='Employees']" position='attributes'
+                    ~attribute @create: false
                @parent_id position='replace'
                     @identification_id $FIS_ID
+                    @parent_id invisible='1'
+                    @status_flag invisible='1'
 
+        ~record model='ir.ui.view' #fis_integration_view_employee_kanban
+            @name: fis_integration.hr.employee.kanban
+            @model: hr.employee
+            @inherit_id ref='hr.hr_kanban_view_employees'
+            @priority eval='15'
+            @arch type='xml'
+                ~xpath expr="//kanban" position='attributes'
+                    ~attribute @create: false
 
         ~record model='ir.ui.view' #fis_integration_veiw_employee_filter
             @name: Employees
             @model: hr.employee
             @inherit_id ref='hr.view_employee_filter'
             @arch type='xml'
+                @category_ids position='remove'
                 @name position='before'
                     @identification_id $FIS_ID
-                @category_ids position='remove'
+                @name position='after'
+                    @pay_type invisible='1'
+                    @race invisible='1'
+                    ~separator $Pay_Type
+                    ~filter $Hourly @type_hourly domain="[('pay_type','=','hourly')]"
+                    ~filter $Salary @type_salary domain="[('pay_type','=','salary')]"
+                    ~separator $Race
+                    ~filter string='White / European' @type_race_white domain="[('race','=','white')]"
+                    ~filter string='Black / African' @type_race_black domain="[('race','=','black')]"
+                    ~filter string='Hispanic / Latino' @type_race_latino domain="[('race','=','latino')]"
+                    ~filter string='Indian / Alaskan Native' @type_race_indian domain="[('race','=','indian')]"
+                    ~filter string='Asian' @type_race_asian domain="[('race','=','asian')]"
+                    ~filter string='Hawaiian / Pacific Islander' @type_race_islander domain="[('race','=','islander')]"
+                    ~filter string='Two or more / Other' @type_race_multiple domain="[('race','=','multiple')]"
+                    ~group $Group_by... expand='0'
+                        ~filter $Status context="{'group_by':'status_flag'}" domain="[]" icon='terp-personal+'
+
+        ~record model='ir.actions.act_window' id='hr.open_view_employee_list_my'
+            @domain: [('identification_id','!=',False)]
+
+        // temporary employee form view
+        ~record model='ir.ui.view' #view_temp_employee_form
+            @name: hr.temp_employee.form
+            @model: hr.employee
+            @priority eval='20'
+            @arch type='xml'
+                ~form string='Temporary / Contract Employee' version='7.0'
+                    ~sheet
+                        @image_medium class='oe_left oe_avatar' widget='image'
+                        ~div .oe_title
+                            ~label .oe_edit_only for='name'
+                            ~h1
+                                @name
+                            ~label .oe_edit_only for='category_ids' groups='base.group_hr_user'
+                            @category_ids groups='base.group_hr_user' placeholder='e.g. Part Time' widget='many2many_tags' nolabel='1'
+                        ~div @button_box class='oe_right oe_button_box'
+                        ~notebook
+                            ~page @Public $Public
+                                ~group
+                                    ~group $Contact_Information
+                                        @partner_id context="{'show_address':1, 'default_customer':0, 'default_employee':1}" on_change='onchange_partner_id(partner_id, name)' options='{"always_reload": True, "highlight_first_line": True}'
+                                        @work_email widget='email'
+                                        @work_phone
+                                        @mobile_phone
+                                        @work_location
+                                    ~group $Position
+                                        @department_id on_change='onchange_department_id(department_id)'
+                                        @job_id context="{'form_view_ref': 'hr.view_hr_job_employee_form'}" domain="[('state','!=','old')]" options='{"no_open": True}'
+                                        @parent_id
+                                        @coach_id
+                                        ~label $Employee_No for='identification_id'
+                                        @identification_id groups='' nolabel='1'
+                                    ~group
+                                        @company_id groups='base.group_multi_company'
+                                        @user_id $User_Record invisible='1'
+                                @notes colspan='4' placeholder='Other Information ...'
+                            ~page @Personal $Confidential groups='base.group_hr_manager'
+                                ~group
+                                    ~group string='Citizenship & Other Info'
+                                        @passport_id groups=''
+                                        @country_id options='{"no_open": True}'
+                                        @birthday
+                                        @gender
+                                        @otherid groups=''
+                                        ~separator $Status colspan='2'
+                                        @marital
+                                    ~group $Contact_Information
+                                        @home_phone
+                                        @home_email
+                                        ~label $Address for='home_street'
+                                        ~div
+                                            @home_street placeholder='Street...'
+                                            @home_street2
+                                            ~div .address_format
+                                                @home_city placeholder='City' style='width: 40%%'
+                                                @home_state_id .oe_no_button on_change='onchange_state(home_state_id)' options='{"no_open": True}' placeholder='State' style='width: 37%%'
+                                                @home_zip placeholder='ZIP' style='width: 20%%'
+                                            @home_country_id .oe_no_button options='{"no_open": True}' placeholder='Country'
+                                        ~separator $Emergency_Contact colspan='2'
+                                        @emergency_contact $Name
+                                        @emergency_number $Phone
+                            // Claims will become visible when extended by other HR modules
+                            ~page @Claims $Claims groups='base.group_hr_manager' invisible='1'
+                            ~page @Settings $HR_Settings groups='base.group_hr_user'
+                                ~group
+                                    ~group @active_group $Active
+                                        @active
+
+        ~record model='ir.ui.view' #view_temp_employee_tree
+            @name: hr.temp_employee.tree
+            @model: hr.employee
+            @priority eval='20'
+            @arch type='xml'
+                ~tree $Employees default_order='name'
+                    @name
+                    @work_phone
+                    @work_email
+                    @company_id groups='base.group_multi_company'
+                    @department_id
+                    @job_id
+                    @parent_id
+                    @coach_id invisible='1'
+
+        ~record model='ir.ui.view' #view_temp_employee_kanban
+            @name: hr.temp_employee.kanban
+            @model: hr.employee
+            @priority eval='20'
+            @arch type='xml'
+                ~kanban default_order='name'
+                    @last_login
+                    ~templates
+                        ~t t-name='kanban-box'
+                            ~div .oe_employee_vignette
+                                ~div .oe_employee_image
+                                    ~a type='open'
+                                        ~img .oe_employee_picture t-att-src="kanban_image('hr.employee', 'image_medium', record.id.value)"
+                                ~div .oe_employee_details
+                                    ~h4
+                                        ~a type='open'
+                                            @name
+                                            ~t t-if='record.login.raw_value': (
+                                                @login
+                                                )
+                                    ~ul
+                                        ~li #last_login
+                                            ~span .oe_kanban_button style='font-size: 100%%' t-if='record.last_login.raw_value && record.last_login.raw_value.is().today()'
+                                                ~t t-esc="record.last_login.raw_value.toString('HH:mm')"
+                                        ~li t-if='record.job_id.raw_value'
+                                            @job_id
+                                        ~li t-if='record.work_location.raw_value'
+                                            @work_location
+                                        ~li t-if='record.work_phone.raw_value': Tel:
+                                            @work_phone
+                                        ~li t-if='record.mobile_phone.raw_value': Mobile:
+                                            @mobile_phone
+                                        ~li t-if='record.work_email.raw_value'
+                                            ~a t-attf-href='mailto:#{record.work_email.value}'
+                                                @work_email
+                            ~script: $('.oe_employee_picture').load(function() { if($(this).width() > $(this).height()) { $(this).addClass('oe_employee_picture_wide') } });
+
+        ~record model='ir.actions.act_window' #action_temp_employee_view
+            @name: Temp / Contract
+            @res_model: hr.employee
+            @view_type: form
+            @view_mode: kanban,tree,form
+            @domain: [('identification_id','=',False)]
+            @context: {}
+            @search_view_id ref='hr.view_employee_filter'
+            @help type='html'
+                ~p .oe_view_nocontent_create
+                    Click to add a new temporary employee.
+                ~p
+                    With just a quick glance on the OpenERP employee screen, you can easily find all the information you need for each person; contact data, job position, availability, etc.
+
+        ~record model='ir.actions.act_window.view' #act_temp_emloyee_kanban_view
+            @sequence eval='1'
+            @view_mode: kanban
+            @view_id ref='view_temp_employee_kanban'
+            @act_window_id ref='action_temp_employee_view'
+
+        ~record model='ir.actions.act_window.view' #act_temp_emloyee_tree_view
+            @sequence eval='2'
+            @view_mode: tree
+            @view_id ref='view_temp_employee_tree'
+            @act_window_id ref='action_temp_employee_view'
+
+        ~record model='ir.actions.act_window.view' #act_temp_emloyee_form_view
+            @sequence eval='3'
+            @view_mode: form
+            @view_id ref='view_temp_employee_form'
+            @act_window_id ref='action_temp_employee_view'
+
+        ~menuitem #menu_open_view_employee_list_temp action='action_temp_employee_view' parent='hr.menu_hr_main' sequence='4'
+
