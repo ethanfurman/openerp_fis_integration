@@ -33,5 +33,6 @@ class hr_employee(osv.Model):
             'Race/Ethnicity',
             sort_order='definition',
             ),
+        # TODO: make agency a many2one field
+        'agency': fields.char('Agency', size=128),
         }
-

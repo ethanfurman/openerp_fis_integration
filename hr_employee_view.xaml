@@ -2,6 +2,8 @@
 ~openerp
     ~data
 
+        // regular employees
+
         ~record model='ir.ui.view' #fis_integration_view_employee_form
             @name: fis_integration.hr.employee.form
             @model: hr.employee
@@ -117,13 +119,15 @@
                                 ~group
                                     ~group string='Citizenship & Other Info'
                                         @passport_id groups=''
-                                        @country_id options='{"no_open": True}'
+                                        @country_id options='{"no_open": True}' invisible='1'
+                                        @race
                                         @birthday
                                         @gender
                                         @otherid groups=''
                                         ~separator $Status colspan='2'
                                         @marital
                                     ~group $Contact_Information
+                                        @agency $Referring_Agency
                                         @home_phone
                                         @home_email
                                         ~label $Address for='home_street'
@@ -157,7 +161,7 @@
                     @company_id groups='base.group_multi_company'
                     @department_id
                     @job_id
-                    @parent_id
+                    @parent_id invisible='1'
                     @coach_id invisible='1'
 
         ~record model='ir.ui.view' #view_temp_employee_kanban
