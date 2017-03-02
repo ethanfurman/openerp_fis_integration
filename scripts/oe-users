@@ -15,6 +15,7 @@ from VSS.utils import crc32
 
 # will be set in main
 config = localhost = res_users = res_partner = res_groups = groups = None
+hr_employee = employees = employee_map = None
 user_map = partners = partner_map = users = force_update = reset_photos = None
 
 LOCKFILE = '/var/run/oe-users.pid'
@@ -57,6 +58,11 @@ def main(config=Path('/etc/openerp/fnx.ini')):
                 fields=['id', 'user_ids', 'xml_id'],
                 )
         module.partner_map = dict([(p.xml_id, p) for p in partners])
+        module.hr_employee = localhost.get_model('hr.employee')
+        module.employees = hr_employee.search_read(
+                fields=['id', 'identification_no'],
+                )
+        module.employee_map = dict([(e.id, e.identification_no) for e in employees])
         if config.users.force_update.exists():
             module.force_update = True
             config.users.force_update.unlink()
@@ -158,8 +164,9 @@ def create(force, users):
         )
 def photos(reset, users):
     reset = reset or reset_photos
-    with dbf.Table(config.users.emp_table, default_data_types={'C':dbf.Char}) as employees:
-        for record in employees:
+    # handle users
+    with dbf.Table(config.users.emp_table, default_data_types={'C':dbf.Char}) as table:
+        for record in table:
             try:
                 user = user_map[record.login]
             except KeyError:
@@ -179,6 +186,17 @@ def photos(reset, users):
             # not sure what next line is supposed to do
             # user.update(res_users.read(user.id))
             dbf.write(record, image_crc=crc32(user.image))
+    # handle employees
+    for xmlid, id in employees:
+        try:
+            pic = urlopen(config.users.photo_location % xmlid).read()
+        except URLError:
+            continue
+        image = b64encode(pic)
+        try:
+            hr_employee.write(id, dict(image=image))
+        except Fault:
+            continue
 
 
 @Command()
