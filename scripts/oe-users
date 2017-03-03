@@ -60,9 +60,9 @@ def main(config=Path('/etc/openerp/fnx.ini')):
         module.partner_map = dict([(p.xml_id, p) for p in partners])
         module.hr_employee = localhost.get_model('hr.employee')
         module.employees = hr_employee.search_read(
-                fields=['id', 'identification_no'],
+                fields=['id', 'identification_id'],
                 )
-        module.employee_map = dict([(e.id, e.identification_no) for e in employees])
+        module.employee_map = dict([(e.identification_id, e.id) for e in employees])
         if config.users.force_update.exists():
             module.force_update = True
             config.users.force_update.unlink()
@@ -187,15 +187,20 @@ def photos(reset, users):
             # user.update(res_users.read(user.id))
             dbf.write(record, image_crc=crc32(user.image))
     # handle employees
-    for xmlid, id in employees:
+    for xmlid, id in employee_map.items():
+        print('checking', config.users.photo_location % xmlid, '. . . ', end='')
         try:
             pic = urlopen(config.users.photo_location % xmlid).read()
         except URLError:
+            print('not found on photo server')
             continue
         image = b64encode(pic)
         try:
             hr_employee.write(id, dict(image=image))
+            print('updated')
         except Fault:
+            raise
+            print('unable to update on OpenERP')
             continue
 
 
