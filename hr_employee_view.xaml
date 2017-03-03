@@ -79,7 +79,8 @@
         ~record model='ir.actions.act_window' id='hr.open_view_employee_list_my'
             @domain: [('identification_id','!=',False)]
 
-        // temporary employee form view
+        // temporary employees
+
         ~record model='ir.ui.view' #view_temp_employee_form
             @name: hr.temp_employee.form
             @model: hr.employee
@@ -156,12 +157,13 @@
             @arch type='xml'
                 ~tree $Employees default_order='name'
                     @name
-                    @work_phone
-                    @work_email
+                    @work_phone invisible='1'
+                    @work_email invisible='1'
                     @company_id groups='base.group_multi_company'
                     @department_id
                     @job_id
-                    @parent_id invisible='1'
+                    @parent_id
+                    @agency
                     @coach_id invisible='1'
 
         ~record model='ir.ui.view' #view_temp_employee_kanban
