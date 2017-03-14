@@ -4,7 +4,7 @@ from osv import osv, fields
 from fis_integration.fis_schema import F27, F33, F47, F65, F74, F163
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase
 from VSS.BBxXlate.fisData import fisData
-from VSS.utils import fix_phone, fix_date, var
+from VSS.utils import fix_phone, fix_date, var, Date
 from fnx.xid import xmlid
 
 _logger = logging.getLogger(__name__)
@@ -243,6 +243,7 @@ class res_partner(xmlid, osv.Model):
         posm = fisData(163, keymatch=partner_key)
         csms = fisData(33, keymatch='%s ' % partner_key)
         emp1 = fisData(74, keymatch='10%s')
+        today = Date.today()
 
         # first update the employees, then create a salesperson <-> code mapping
         context = {'hr_welcome': False}
@@ -300,7 +301,11 @@ class res_partner(xmlid, osv.Model):
             result['hire_date'] = hired = fix_date(fis_emp_rec[F74.date_hired])
             result['fire_date'] = fired = fix_date(fis_emp_rec[F74.date_terminated])
             result['active'] = (not fired or hired > fired)
-            result['birthday'] = fix_date(fis_emp_rec[F74.birth_date])
+            result['birthday'] = birthday = fix_date(fis_emp_rec[F74.birth_date])
+            # fix birthday
+            if birthday > today:
+                _logger.critical('Employee %s has bad birthdate on FIS' % (emp_num, ))
+                result['birthday'] = birthday = birthday.replace(delta_year=-100)
             result['status_flag'] = fis_emp_rec[F74.status_flag]
             result['pay_type'] = ('salary', 'hourly')[fis_emp_rec[F74.pay_type].upper() == 'H']
             result['hourly_rate'] = fis_emp_rec[F74.hourly_rate]
