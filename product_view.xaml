@@ -129,10 +129,10 @@
             @model: product.product
             @arch type='xml'
                 ~search $Search_Trademark
-                    ~filter $All_Trademarked @type_trademark_all domain="[('trademark_expiry_year','!=',0)]"
+                    ~filter $All_Trademarked @type_trademark_all domain="[('trademark_expiry_year','!=',False)]"
                     ~separator
-                    ~filter $Active_Trademarked @type_trademark_active domain="[('trademark_expiry_year','!=',0),('trademark_state','!=','dead')]"
-                    ~filter $Expiring_Trademarked @type_trademark_expiring domain="[(('trademark_expiry_year','!=',0),('trademark_state','in',['dying','renewing'])]"
+                    ~filter $Active_Trademarked @type_trademark_active domain="[('trademark_state','!=','dead')]"
+                    ~filter $Expiring_Trademarked @type_trademark_expiring domain="[('trademark_state','in',['dying','renewing'])]"
                     ~filter $Inactive_Trademarked @type_trademark_inactive domain="[('trademark_state','=','dead')]"
 
         ~record #product_trademark_action model='ir.actions.act_window'
