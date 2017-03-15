@@ -380,6 +380,9 @@ class product_product(xmlid, osv.Model):
         prod_cat = self.pool.get('product.category')
         prod_avail = self.pool.get('product.available_at')
         prod_items = self
+        ir_model_data = self.pool.get('ir.model.data')
+        # and the cleaning category
+        cleaning_cat = ir_model_data.get_object_reference(cr, uid, 'fnx_pd', 'pd_cleaning')
         # create a mapping of id -> res_id for available_at (location)
         avail_ids = prod_avail.search(cr, uid, [('module','=',location_module)])
         avail_recs = prod_avail.browse(cr, uid, avail_ids)
@@ -405,16 +408,20 @@ class product_product(xmlid, osv.Model):
             fis_sales_rec = cnvz.get(inv_rec[F135.sales_category])
             values = self._get_fis_values(inv_rec, fis_sales_rec)
             key = values['xml_id']
-            try:
-                values['categ_id'] = cat_codes[values['categ_id']]
-            except KeyError:
-                _logger.warning("Unable to add/update product %s because of missing category %r" % (key, values['categ_id']))
-                continue
-            try:
-                values['avail'] = avail_codes[values['avail']]
-            except KeyError:
-                _logger.warning("Unable to add/update product %s because of missing location %r" % (key, values['avail']))
-                continue
+            if key.startswith('90000'):
+                values['categ_id'] = cleaning_cat
+                values['sale_ok'] = False
+            else:
+                try:
+                    values['categ_id'] = cat_codes[values['categ_id']]
+                except KeyError:
+                    _logger.warning("Unable to add/update product %s because of missing category %r" % (key, values['categ_id']))
+                    continue
+                try:
+                    values['avail'] = avail_codes[values['avail']]
+                except KeyError:
+                    _logger.warning("Unable to add/update product %s because of missing location %r" % (key, values['avail']))
+                    continue
             if key in synced_prods:
                 prod_rec = synced_prods[key]
                 prod_items.write(cr, uid, prod_rec['id'], values)
