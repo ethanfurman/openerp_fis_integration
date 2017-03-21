@@ -127,6 +127,8 @@
                                         @otherid groups=''
                                         ~separator $Status colspan='2'
                                         @marital
+                                        @hire_date $Start_Date
+                                        @fire_date $End_Date
                                     ~group $Contact_Information
                                         @agency $Referring_Agency
                                         @home_phone
@@ -157,6 +159,9 @@
             @arch type='xml'
                 ~tree $Employees default_order='name'
                     @name
+                    @category_ids
+                    @hire_date
+                    @fire_date
                     @work_phone invisible='1'
                     @work_email invisible='1'
                     @company_id groups='base.group_multi_company'
