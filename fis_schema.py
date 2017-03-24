@@ -21,16 +21,42 @@ class F27(FISenum):
     fuel_surcharge = 'Gn$'
 
 class F33(FISenum):
-    'Customer Master'
-    code =      'An$(3,6)'
-    name =      'Bn$'
-    addr1 =     'Cn$'
-    addr2 =     'Dn$'
-    addr3 =     'En$'
-    postal =    'Ln$'
-    salesrep =  'Gn$(4,3)'
-    tele =      'Gn$(20,10)'
-    contact =   'Kn$'
+    """
+    CSMS - CUSTOMER MASTER FILE - BASIC RECORD
+    """
+    company_id            = 'An$(1,2)'       # COMPANY CODE
+    code                  = 'An$(3,6)'       # CUSTOMER NO.
+    name                  = 'Bn$'            # NAME
+    addr1                 = 'Cn$'            # ADDR LINE 1
+    addr2                 = 'Dn$'            # ADDR LINE 2
+    addr3                 = 'En$'            # ADDR LINE 3
+    postal                = 'Ln$'            # ZIP CODE
+    contract_prices       = 'Fn$(1,1)'       # Contract Prices?
+    price_list_id         = 'Fn$(2,1)'       # Price List Code
+    catalog_category      = 'Fn$(8,1)'       # Catalog Category
+    back_ord_ind          = 'Fn$(9,1)'       # BACK ORD IND
+    link_to_ship_to       = 'Fn$(10,1)'      # Link to Ship-to
+    rebate_category_id    = 'Fn$(15,1)'      # Rebate category code(sp=none)
+    price_chg_days_notice = 'Fn$(16,3)'      # Price Chg Days Notice
+    bol_required          = 'Fn$(19,1)'      # BOL Required?
+    outstand_orders       = 'Hn'             # OUTSTAND ORDERS
+    this_year_sales       = 'In'             # M-T-D SALES
+    last_year_sales       = 'Pn'             # Prev Year Sales
+    broker_id             = 'Gn$(1,3)'       # Broker Code
+    salesrep              = 'Gn$(4,3)'       # Salesrep Code
+    tele                  = 'Gn$(20,10)'     # Telephone Number
+    bulk_cust_type        = 'Gn$(38,2)'      # Bulk Customer Type
+    update_s_a            = 'Gn$(40,1)'      # Update S/A?
+    cust_type_id          = 'Hn$(1,2)'       # Customer Type Code
+    sales_class_id        = 'Hn$(3,4)'       # Sales Class Code
+    pricing_method        = 'Hn$(7,2)'       # Pricing Method
+    reseller_no           = 'Hn$(9,14)'      # Reseller Number
+    fuel_surcharge        = 'Hn$(23,6)'      # Fuel Surcharge
+    available             = 'Hn$(30,1)'      # available
+    expiredt_on_docs      = 'Hn$(31,1)'      # ExpireDt on Docs
+    alpha_sort_key        = 'In$'            # Alpha Sort Key
+    comments              = 'Jn$'            # Accntg Comments
+    contact               = 'Kn$'            # Acctg Contact
 
 class F47(FISenum):
     "CNVZZ - CBS SALESMAN MASTER FILE"

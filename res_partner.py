@@ -1,6 +1,7 @@
 import logging
 from collections import defaultdict
 from osv import osv, fields
+# from tools.misc import EnumNoAlias
 from fis_integration.fis_schema import F27, F33, F47, F65, F74, F163
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase
 from VSS.BBxXlate.fisData import fisData
@@ -10,6 +11,13 @@ from fnx.xid import xmlid
 _logger = logging.getLogger(__name__)
 
 ADDRESS_FIELDS = 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id'
+
+class Specials(fields.SelectionEnum):
+    empty     = '', ''
+    catalog   = 'C', 'Catalog'
+    specials  = 'S', 'Specials Sheet'
+    both      = 'B', 'Both'
+
 
 class res_partner_keyword(osv.Model):
     """
@@ -33,6 +41,9 @@ class res_partner(xmlid, osv.Model):
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
+        'fis_valid': fields.boolean('Valid FIS code?'),
+        'fis_active': fields.boolean('Active Partner?'),
+        'special_notifications': fields.selection(Specials, 'Special Notifications'),
         'parent_name': fields.related('parent_id', 'name', type='char', string='Related'),
         'keyword_ids': fields.many2many(
             'res.partner.keyword',
@@ -215,8 +226,13 @@ class res_partner(xmlid, osv.Model):
         return new_res
 
     def fis_updates(self, cr, uid, partner=None, shipper=None, *args):
+        context = {'hr_welcome': False}
+        inactive_too = {'active_test': False}
         if partner is shipper is None:
             _logger.info("res_partner.fis_updates starting...")
+            # reset valid fields to False
+            # all_ids = self.search(cr, uid, [], context=inactive_too)
+            # self.write(cr, uid, all_ids, {'fis_valid': False})
         else:
             _logger.info('res_partner.fis_updates: looking for %s' % (partner or shipper))
         if partner and shipper:
@@ -246,8 +262,6 @@ class res_partner(xmlid, osv.Model):
         today = Date.today()
 
         # first update the employees, then create a salesperson <-> code mapping
-        context = {'hr_welcome': False}
-        inactive_too = {'active_test': False}
         hr_employee = self.pool.get('hr.employee')
         res_partner = self.pool.get('res.partner')
         res_users = self.pool.get('res.users')
@@ -443,12 +457,15 @@ class res_partner(xmlid, osv.Model):
         # the order of the remainder is unimportant
         context = {'fis-updates': True}
         for sup_rec in posm:
-            result = {}
+            result = {'active': True}
             result['is_company'] = True
             result['supplier'] = True
             result['use_parent_address'] = False
             result['xml_id'] = key = sup_rec[F163.code]
             result['module'] = 'F163'
+            # valid supplier code? active account?
+            if len(key) == 6 and key.isdigit():
+                result['fis_valid'] = True
             result['name'] = BsnsCase(sup_rec[F163.name])
             addr1, addr2, addr3 = Sift(sup_rec[F163.addr1], sup_rec[F163.addr2], sup_rec[F163.addr3])
             addr2, city, state, postal, country = cszk(addr2, addr3)
@@ -565,16 +582,32 @@ class res_partner(xmlid, osv.Model):
                         id = self.create(cr, uid, result, context=context)
                         supplier_codes[key] = id
 
+        # 'fis_valid': fields.boolean('Valid FIS code?'),
+        # 'fis_active': fields.boolean('Active Partner?'),
+        # 'special_notifications': fields.char('Special Notifications', size=1),
+
         for cus_rec in csms:
             rep = cus_rec[F33.salesrep]
             rep = sales_people.get(rep, False)
-            result = {}
+            result = {'active': False}
             result['user_id'] = rep
             result['is_company'] = True
             result['customer'] = True
             result['use_parent_address'] = False
             result['xml_id'] = key = cus_rec[F33.code]
             result['module'] = 'F33'
+            # valid customer code? active account?
+            if len(key) == 5:
+                result['fis_valid'] = True
+            if (
+                    cus_rec[F33.this_year_sales]
+                 or cus_rec[F33.last_year_sales]
+                ):
+                result['active'] = True
+            else:
+                # TODO check for open orders
+                pass
+            result['special_notifications'] = Specials.get_member(cus_rec[F33.catalog_category], '').db
             result['name'] = BsnsCase(cus_rec[F33.name])
             addr1, addr2, addr3 = Sift(cus_rec[F33.addr1], cus_rec[F33.addr2], cus_rec[F33.addr3])
             addr2, city, state, postal, country = cszk(addr2, addr3)
