@@ -1,0 +1,8 @@
+!!! xml1.0
+~openerp
+    ~data
+
+        ~record model='ir.actions.act_window' #project.open_view_project_all
+            @inherit_id ref='project.open_view_project_all'
+            @context: {'search_default_Current': 1, 'search_default_Member': 1}
+
