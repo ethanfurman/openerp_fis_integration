@@ -10,14 +10,14 @@
             @arch type='xml'
                 @category_id position='after'
                     @keyword_ids widget='many2many_tags' placeholder='Keywords...'
-                @email position='remove'
-                @mobile position='after'
+                @email position='replace'
                     ~label $Emails for='email' attrs="{'invisible': [('is_company','=',True)]}"
                     ~div attrs="{'invisible': [('is_company','=',True)]}"
                         @email
                         @email2
                     @facebook widget='url'
                     @twitter widget='url'
+                    @special_notifications
 
 
         ~record model='ir.ui.view' #view_partners_form_xml_id
@@ -99,14 +99,20 @@
                                 @fis_data_changed
                             ~group
                                 @fis_data
-                ~xpath expr="//page[@string='Contacts']/field/form/div/group/field[@name='email']" position='remove'
-                ~xpath expr="//page[@string='Contacts']/field/form/div/group/field[@name='mobile']" position='after'
+                ~xpath expr="//page[@string='Contacts']/field/form/div/group/field[@name='email']" position='replace'
                     ~label $Emails for='email'
                     ~div
                         @email
                         @email2
+                ~xpath expr="//page[@string='Contacts']/field/form/div/group/field[@name='mobile']" position='after'
                     @facebook widget='url'
                     @twitter widget='url'
+                    @special_notifications
+                @child_ids position='inside'
+                    ~attribute @context: "{'default_parent_id': active_id, 'default_customer': customer, 'default_supplier': supplier, 'default_is_carrier': is_carrier, 'default_fis_valid': fis_valid, 'default_special_notifications': special_notifications}"
+                ~xpath expr="//div[@name='fax']" position='replace'
+                    ~div @special_notifications t-if="record.special_notifications.raw_value": Special notifications:
+                        @special_notifications
 
         ~record model='ir.ui.view' #view_partners_xml_id_filter
             @name: res.partner.form.xml_id.filter
@@ -116,6 +122,14 @@
             @arch type='xml'
                 ~search
                     @xml_id
+                ~filter @customer position='before'
+                    ~filter $FIS @type_fis_account domain="[('fis_valid','=',True)]"
+                    ~separator
+                ~filter @type_company position='after'
+                    ~separator
+                    ~filter $Notified_by_catalog @type_notify_by_catalog domain="[('special_notifications','in',['C','B'])]"
+                    ~filter $Notified_by_sheet @type_notify_by_sheet domain="[('special_notifications','in',['S','B'])]"
+                    ~separator
 
         ~record model='ir.ui.view' #res_partner_xml_id_kanban_view
             @name: res.partner.xml_id.kanban.inherit
@@ -137,6 +151,12 @@
                     @parent_name
                 @email position='after'
                     @xml_id
+
+        ~record model='ir.actions.act_window' id='base.action_partner_customer_form'
+            @context: {'default_customer': 1, 'search_default_type_fis_account': 1, 'search_default_type_company': 1}
+
+        ~record model='ir.actions.act_window' id='base.action_partner_supplier_form'
+            @context: {'default_supplier': 1, 'search_default_type_fis_account': 1, 'search_default_type_company': 1}
 
         ~record model='ir.ui.view' #res_partner_keyword_tree_view
             @name: res.partner.keyword.tree.view
