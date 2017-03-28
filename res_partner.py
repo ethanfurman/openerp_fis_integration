@@ -13,7 +13,6 @@ _logger = logging.getLogger(__name__)
 ADDRESS_FIELDS = 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id'
 
 class Specials(fields.SelectionEnum):
-    empty     = '', ''
     catalog   = 'C', 'Catalog'
     specials  = 'S', 'Specials Sheet'
     both      = 'B', 'Both'
@@ -464,8 +463,7 @@ class res_partner(xmlid, osv.Model):
             result['xml_id'] = key = sup_rec[F163.code]
             result['module'] = 'F163'
             # valid supplier code? active account?
-            if len(key) == 6 and key.isdigit():
-                result['fis_valid'] = True
+            result['fis_valid'] = len(key) == 6 and key.isdigit()
             result['name'] = BsnsCase(sup_rec[F163.name])
             addr1, addr2, addr3 = Sift(sup_rec[F163.addr1], sup_rec[F163.addr2], sup_rec[F163.addr3])
             addr2, city, state, postal, country = cszk(addr2, addr3)
@@ -566,15 +564,14 @@ class res_partner(xmlid, osv.Model):
                 ven_id = id
                 contact = ven_rec[F65.contact]
                 if contact:
-                    result = {}
+                    result = {'fis_valid': result['fis_valid']}
                     result['name'] = NameCase(contact)
                     result['is_company'] = False
+                    result['supplier'] = True
                     result['parent_id'] = ven_id
                     result['use_parent_address'] = True
                     result['xml_id'] = key = 'cntct_' + key
                     result['module'] = 'F163'
-                    result['customer'] = False
-                    result['supplier'] = False
                     if key in supplier_codes:
                         id = supplier_codes[key]
                         self.write(cr, uid, id, result, context=context)
@@ -597,8 +594,7 @@ class res_partner(xmlid, osv.Model):
             result['xml_id'] = key = cus_rec[F33.code]
             result['module'] = 'F33'
             # valid customer code? active account?
-            if len(key) == 5:
-                result['fis_valid'] = True
+            result['fis_valid'] = len(key) == 5
             if (
                     cus_rec[F33.this_year_sales]
                  or cus_rec[F33.last_year_sales]
@@ -607,7 +603,8 @@ class res_partner(xmlid, osv.Model):
             else:
                 # TODO check for open orders
                 pass
-            result['special_notifications'] = Specials.get_member(cus_rec[F33.catalog_category], '').db
+            notify_by = Specials.get_member(cus_rec[F33.catalog_category].upper(), None)
+            result['special_notifications'] = notify_by and notify_by.db or False
             result['name'] = BsnsCase(cus_rec[F33.name])
             addr1, addr2, addr3 = Sift(cus_rec[F33.addr1], cus_rec[F33.addr2], cus_rec[F33.addr3])
             addr2, city, state, postal, country = cszk(addr2, addr3)
@@ -648,15 +645,17 @@ class res_partner(xmlid, osv.Model):
             if cus_rec[F33.contact]:
                 cus_id = id
                 contact = cus_rec[F33.contact]
-                result = {}
+                result = {
+                        'fis_valid': result['fis_valid'],
+                        'special_notifications': result['special_notifications'],
+                        }
                 result['name'] = NameCase(contact)
                 result['is_company'] = False
+                result['customer'] = True
                 result['parent_id'] = cus_id
                 result['use_parent_address'] = True
                 result['xml_id'] = key = 'cntct_' + key
                 result['module'] = 'F33'
-                result['customer'] = False
-                result['supplier'] = False
                 if key in customer_codes:
                     id = customer_codes[key]
                     self.write(cr, uid, id, result, context=context)
