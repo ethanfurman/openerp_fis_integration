@@ -57,9 +57,8 @@
             @inherit_id ref='hr.view_employee_filter'
             @arch type='xml'
                 @category_ids position='remove'
-                @name position='before'
-                    @identification_id $FIS_ID
                 @name position='after'
+                    @identification_id $FIS_ID
                     @pay_type invisible='1'
                     @race invisible='1'
                     ~separator $Pay_Type
