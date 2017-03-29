@@ -1,4 +1,5 @@
 import logging
+import re
 from collections import defaultdict
 from osv import osv, fields
 # from tools.misc import EnumNoAlias
@@ -273,7 +274,7 @@ class res_partner(xmlid, osv.Model):
         sales_people = {}
         for fis_emp_rec in emp1:
             result = {}
-            result['name'] = emp_name = NameCase(fis_emp_rec[F74.name])
+            result['name'] = emp_name = re.sub('sunridge', 'SunRidge', NameCase(fis_emp_rec[F74.name]), flags=re.I)
             result['identification_id'] = emp_num = fis_emp_rec[F74.emp_num].strip()
             try:
                 if int(emp_num) >= 9000:
@@ -464,7 +465,7 @@ class res_partner(xmlid, osv.Model):
             result['module'] = 'F163'
             # valid supplier code? active account?
             result['fis_valid'] = len(key) == 6 and key.isdigit()
-            result['name'] = BsnsCase(sup_rec[F163.name])
+            result['name'] = re.sub('sunridge', 'SunRidge', BsnsCase(sup_rec[F163.name]), flags=re.I)
             addr1, addr2, addr3 = Sift(sup_rec[F163.addr1], sup_rec[F163.addr2], sup_rec[F163.addr3])
             addr2, city, state, postal, country = cszk(addr2, addr3)
             addr3 = ''
@@ -508,7 +509,7 @@ class res_partner(xmlid, osv.Model):
                 result['vn_org_cert_file'] = ''
                 result['vn_org_exp'] = None
             else:
-                result['name'] = result['name'] or BsnsCase(ven_rec[F65.name])
+                result['name'] = result['name'] or re.sub('sunridge', 'SunRidge', BsnsCase(ven_rec[F65.name]), flags=re.I)
                 if not result['country_id']:
                     supplier_address_score = 0
                 else:
@@ -565,7 +566,7 @@ class res_partner(xmlid, osv.Model):
                 contact = ven_rec[F65.contact]
                 if contact:
                     result = {'fis_valid': result['fis_valid']}
-                    result['name'] = NameCase(contact)
+                    result['name'] = re.sub('sunridge', 'SunRidge', NameCase(contact), flags=re.I)
                     result['is_company'] = False
                     result['supplier'] = True
                     result['parent_id'] = ven_id
@@ -605,7 +606,7 @@ class res_partner(xmlid, osv.Model):
                 pass
             notify_by = Specials.get_member(cus_rec[F33.catalog_category].upper(), None)
             result['special_notifications'] = notify_by and notify_by.db or False
-            result['name'] = BsnsCase(cus_rec[F33.name])
+            result['name'] = re.sub('sunridge', 'SunRidge', BsnsCase(cus_rec[F33.name]), flags=re.I)
             addr1, addr2, addr3 = Sift(cus_rec[F33.addr1], cus_rec[F33.addr2], cus_rec[F33.addr3])
             addr2, city, state, postal, country = cszk(addr2, addr3)
             addr3 = ''
@@ -649,7 +650,7 @@ class res_partner(xmlid, osv.Model):
                         'fis_valid': result['fis_valid'],
                         'special_notifications': result['special_notifications'],
                         }
-                result['name'] = NameCase(contact)
+                result['name'] = re.sub('sunridge', 'SunRidge', NameCase(contact), flags=re.I)
                 result['is_company'] = False
                 result['customer'] = True
                 result['parent_id'] = cus_id
@@ -670,7 +671,7 @@ class res_partner(xmlid, osv.Model):
             result['use_parent_address'] = False
             result['xml_id'] = key = sv_rec[F27.code]
             result['module'] = 'F27'
-            result['name'] = BsnsCase(sv_rec[F27.name])
+            result['name'] = re.sub('sunridge', 'SunRidge', BsnsCase(sv_rec[F27.name]), flags=re.I)
             if key == '99':
                 result['name'] = '____________'
             addr1, addr2, addr3 = Sift(sv_rec[F27.addr1], sv_rec[F27.addr2], sv_rec[F27.addr3])

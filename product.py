@@ -10,6 +10,7 @@ from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period
 from osv import osv, fields
 from scripts import recipe
 import logging
+import re
 
 _logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ class product_category(xmlid, osv.Model):
                 result['module'] = 'F11'
                 if len(key) != i:
                     continue
-                name = category_rec[F11.desc].title()
+                name = re.sub('sunridge', 'SunRidge', category_rec[F11.desc].title(), flags=re.I)
                 if len(key) == 1:
                     name = key + ' - ' + name.strip('- ')
                 result['name'] = name
@@ -119,7 +120,7 @@ class product_available_at(xmlid, osv.Model):
             result = {}
             result['xml_id'] = key = avail_rec[F97.code].upper()
             result['module'] = module
-            result['name'] = avail_rec[F97.desc].title()
+            result['name'] = re.sub('sunridge', 'SunRidge', avail_rec[F97.desc].title(), flags=re.I)
             if key in avail_codes:
                 self.write(cr, uid, avail_codes[key], result)
             else:
@@ -451,7 +452,9 @@ class product_product(xmlid, osv.Model):
     def _get_fis_values(self, fis_nvty_rec, sales_category_rec):
         values = {}
         values['xml_id'] = values['default_code'] = fis_nvty_rec[F135.item_code]
-        values['name'] = NameCase(fis_nvty_rec[F135.name].strip())
+        name = NameCase(fis_nvty_rec[F135.name].strip())
+        name = re.sub('sunridge', 'SunRidge', name, flags=re.I)
+        values['name'] = name
         values['module'] = 'F135'
         categ_id = fis_nvty_rec[F135.sales_category].strip()
         if len(categ_id) == 2 and categ_id[0] in 'OISG':
@@ -528,7 +531,7 @@ class production_line(xmlid, osv.Model):
             result = {}
             result['xml_id'] = key = avail_rec[F341.code].upper()
             result['module'] = module
-            result['desc'] = avail_rec[F341.desc].title()
+            result['desc'] = re.sub('sunridge', 'SunRidge', avail_rec[F341.desc].title(), flags=re.I)
             if key in avail_codes:
                 self.write(cr, uid, avail_codes[key], result)
             else:
