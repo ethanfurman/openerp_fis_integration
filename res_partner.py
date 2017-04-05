@@ -464,7 +464,7 @@ class res_partner(xmlid, osv.Model):
             result['xml_id'] = key = sup_rec[F163.code]
             result['module'] = 'F163'
             # valid supplier code? active account?
-            result['fis_valid'] = len(key) == 6 and key.isdigit()
+            result['fis_valid'] = fis_valid = len(key) == 6 and key.isdigit()
             result['name'] = re.sub('sunridge', 'SunRidge', BsnsCase(sup_rec[F163.name]), flags=re.I)
             addr1, addr2, addr3 = Sift(sup_rec[F163.addr1], sup_rec[F163.addr2], sup_rec[F163.addr3])
             addr2, city, state, postal, country = cszk(addr2, addr3)
@@ -557,6 +557,8 @@ class res_partner(xmlid, osv.Model):
                 continue
             if key in supplier_codes:
                 id = supplier_codes[key]
+                # leave fis_valid alone
+                del result['fis_valid']
                 self.write(cr, uid, id, result, context=context)
             else:
                 id = self.create(cr, uid, result, context=context)
@@ -565,7 +567,7 @@ class res_partner(xmlid, osv.Model):
                 ven_id = id
                 contact = ven_rec[F65.contact]
                 if contact:
-                    result = {'fis_valid': result['fis_valid']}
+                    result = {'fis_valid': fis_valid}
                     result['name'] = re.sub('sunridge', 'SunRidge', NameCase(contact), flags=re.I)
                     result['is_company'] = False
                     result['supplier'] = True
@@ -575,6 +577,8 @@ class res_partner(xmlid, osv.Model):
                     result['module'] = 'F163'
                     if key in supplier_codes:
                         id = supplier_codes[key]
+                        # leave fis_valid alone
+                        del result['fis_valid']
                         self.write(cr, uid, id, result, context=context)
                     else:
                         id = self.create(cr, uid, result, context=context)
@@ -595,7 +599,7 @@ class res_partner(xmlid, osv.Model):
             result['xml_id'] = key = cus_rec[F33.code]
             result['module'] = 'F33'
             # valid customer code? active account?
-            result['fis_valid'] = len(key) == 5
+            result['fis_valid'] = fis_valid = len(key) == 5
             if (
                     cus_rec[F33.this_year_sales]
                  or cus_rec[F33.last_year_sales]
@@ -639,6 +643,8 @@ class res_partner(xmlid, osv.Model):
                 continue
             if key in customer_codes:
                 id = customer_codes[key]
+                # leave fis_valid alone
+                del result['fis_valid']
                 self.write(cr, uid, id, result, context=context)
             else:
                 id = self.create(cr, uid, result, context=context)
@@ -647,7 +653,7 @@ class res_partner(xmlid, osv.Model):
                 cus_id = id
                 contact = cus_rec[F33.contact]
                 result = {
-                        'fis_valid': result['fis_valid'],
+                        'fis_valid': fis_valid,
                         'special_notifications': result['special_notifications'],
                         }
                 result['name'] = re.sub('sunridge', 'SunRidge', NameCase(contact), flags=re.I)
@@ -659,6 +665,8 @@ class res_partner(xmlid, osv.Model):
                 result['module'] = 'F33'
                 if key in customer_codes:
                     id = customer_codes[key]
+                    # leave fis_valid alone
+                    del result['fis_valid']
                     self.write(cr, uid, id, result, context=context)
                 else:
                     id = self.create(cr, uid, result, context=context)
