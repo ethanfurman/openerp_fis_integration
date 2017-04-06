@@ -28,10 +28,10 @@
                     @shipped_as
                 @default_code position='replace'
                     @xml_id
-                    @trademark invisible='1'
-                    @trademark_state attrs="{'invisible': [('trademark','=',False)]}"
-                    @trademark_expiry_year attrs="{'invisible': [('trademark','=',False)]}"
-                    @trademark_renewal_date attrs="{'invisible': [('trademark','=',False)]}"
+                    @trademark readonly='1'
+                    @trademark_state readonly='1' attrs="{'invisible': [('trademark','=',False)]}"
+                    @trademark_expiry_year on_change="onchange_trademark(trademark_expiry_year, trademark_renewal_date)" attrs="{'invisible': [('trademark','=',False)]}"
+                    @trademark_renewal_date on_change="onchange_trademark(trademark_expiry_year, trademark_renewal_date)" attrs="{'invisible': [('trademark','=',False)]}"
                 ~xpath expr="//group[@string='Stock and Expected Variations']/label" position='replace'
                 ~xpath expr="//group[@string='Stock and Expected Variations']/div/field" position='replace'
                 ~xpath expr="//group[@string='Stock and Expected Variations']/div" position='replace'
@@ -129,11 +129,13 @@
             @model: product.product
             @arch type='xml'
                 ~search $Search_Trademark
-                    ~filter $All_Trademarked @type_trademark_all domain="[('trademark_expiry_year','!=',False)]"
+                    ~filter $All_Trademarked @type_trademark_all domain="[('trademark','!=',False)]"
                     ~separator
-                    ~filter $Active_Trademarked @type_trademark_active domain="[('trademark_state','!=','dead')]"
+                    ~filter $Active_Trademarked @type_trademark_active domain="[('trademark_state','in',['active','dying','renewing'])]"
                     ~filter $Expiring_Trademarked @type_trademark_expiring domain="[('trademark_state','in',['dying','renewing'])]"
                     ~filter $Inactive_Trademarked @type_trademark_inactive domain="[('trademark_state','=','dead')]"
+                    ~separator
+                    ~filter $All_Not_Trademarked @type_trademark_none domain="[('trademark','=',False)]"
 
         ~record #product_trademark_action model='ir.actions.act_window'
             @name: Product Trademark

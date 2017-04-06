@@ -3,6 +3,7 @@ from dbf import Date
 from fis_integration.fis_schema import F11, F97, F135, F341
 from VSS.BBxXlate.fisData import fisData
 from VSS.address import NameCase
+from fnx import date
 from fnx.oe import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
 from openerp.addons.product.product import sanitize_ean13
@@ -147,7 +148,7 @@ class product_product(xmlid, osv.Model):
     # trademark_expiry_year
     # trademark_state
     # trademark_renewal_date
-    def _calc_trademark_state(self, cr, uid, ids, field_names, arg, context=None):
+    def _trademark_state(self, cr, uid, ids, field_names, arg, context=None):
         if isinstance(ids, (int, long)):
             ids = [ids]
         res = {}
@@ -175,10 +176,10 @@ class product_product(xmlid, osv.Model):
             #     days_left = 0
             # else:
             #     days_left = max((expiry_date - today).days, 0)
-            if expiry_year < today.year:
+            if expiry_year > today.year:
                 # all green and good to go!
                 state = 'active'
-            elif expiry_year > today.year:
+            elif expiry_year < today.year:
                 # all dead
                 state = 'dead'
             else:
@@ -187,7 +188,7 @@ class product_product(xmlid, osv.Model):
                 ids, original_ids = [], ids
                 for id in original_ids:
                     renewal = records[id]
-                    if renewal and today - Date.strptime(renewal, DEFAULT_SERVER_DATE_FORMAT) < Period.Week7:
+                    if renewal and (today - date(renewal)) < Period.Week7:
                         # if renewal date is in the last 13 weeks
                         renewal_ids.append(id)
                     else:
@@ -334,10 +335,11 @@ class product_product(xmlid, osv.Model):
         #     ),
         'label_text': fields.text('Label Text'),
         'docs': fields.html('Documents'),
-        'trademark': fields.boolean(string='Trademark'),
+        'trademark': fields.char(string='Trademark', size=2),
         'trademark_expiry_year': fields.integer('Trademark Expires', help="Expiry Year"),
         'trademark_state': fields.function(
-                _calc_trademark_state,
+                _trademark_state,
+                fnct_inv=True,
                 type='selection',
                 string='Trademark Status',
                 sort_order='definition',
@@ -358,15 +360,38 @@ class product_product(xmlid, osv.Model):
         }
 
     def update_trademark_state(self, cr, uid, ids=None, arg=None, context=None):
+        print repr(ids)
         if ids is None:
             ids = self.search(cr, uid, [('trademark','!=',False)], context=context)
-        res = self._calc_days_left(cr, uid, ids, field_names=None, arg='bulk', context=context)
+        print repr(ids)
+        res = self._trademark_state(cr, uid, ids, field_names=None, arg='bulk', context=context)
+        from pprint import pprint; pprint(res)
         # res = {days_left: [ids], ...}
-        for days_left, ids in res.items():
-            success = self.write(cr, uid, ids, {'trademark_days_left': days_left}, context=context)
+        for state, ids in res.items():
+            print '%s: %r' % (state, ids)
+            success = self.write(cr, uid, ids, {'trademark_state': state}, context=context)
             if not success:
                 return success
+        print 'done'
         return True
+
+    def onchange_trademark(self, cr, uid, ids, year, renewal, context=None):
+        today = date(fields.date.context_today(self, cr, uid, context=context))
+        result = {}
+        result['value'] = values = {}
+        if year > today.year:
+            values['trademark_state'] = 'active'
+        elif year < today.year:
+            values['trademark_state'] = 'dead'
+        else:
+            # either dying or renewing
+            if renewal and (today - date(renewal)) < Period.Week7:
+                # if renewal date is in the last 13 weeks
+                values['trademark_state'] = 'renewing'
+            else:
+                # otherwise it's dying
+                values['trademark_state'] = 'dying'
+        return result
 
     def fis_updates(self, cr, uid, *args):
         """
@@ -432,6 +457,7 @@ class product_product(xmlid, osv.Model):
                 prod_items.write(cr, uid, prod_rec.id, values)
             else:
                 id = prod_items.create(cr, uid, values)
+                values['trademark_state'] = 'dead'
                 prod_rec = prod_items.browse(cr, uid, [id])[0]
                 synced_prods[key] = prod_rec
         # loop 2: update the dependent data
@@ -474,6 +500,9 @@ class product_product(xmlid, osv.Model):
         values['st_incoming_qty'] = fis_nvty_rec[F135.on_order]
         values['st_outgoing_qty'] = fis_nvty_rec[F135.committed]
         values['st_makeable_qty'] = 0
+        values['trademark'] = fis_nvty_rec[F135.trademark_expiry_year].strip() or False
+        if not values['trademark']:
+            values['trademark_state'] = ''
 
         shipped_as = fis_nvty_rec[F135.ship_size].strip()
         if shipped_as.lower() in ('each','1 each','1/each'):
