@@ -4,6 +4,7 @@ from collections import defaultdict
 from osv import osv, fields
 # from tools.misc import EnumNoAlias
 from fis_integration.fis_schema import F27, F33, F47, F65, F74, F163
+from fnx.oe import mail
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase
 from VSS.BBxXlate.fisData import fisData
 from VSS.utils import fix_phone, fix_date, var, Date
@@ -272,6 +273,7 @@ class res_partner(xmlid, osv.Model):
             ])
         potential_sales_people = defaultdict(list)
         sales_people = {}
+        bad_birthdays = {}
         for fis_emp_rec in emp1:
             result = {}
             result['name'] = emp_name = re.sub('sunridge', 'SunRidge', NameCase(fis_emp_rec[F74.name]), flags=re.I)
@@ -318,7 +320,8 @@ class res_partner(xmlid, osv.Model):
             result['birthday'] = birthday = fix_date(fis_emp_rec[F74.birth_date])
             # fix birthday
             if birthday > today:
-                _logger.critical('Employee %s has bad birthdate on FIS' % (emp_num, ))
+                bad_birthdays[emp_num] = emp_name
+                # _logger.critical('Employee %s has a future birthdate on FIS' % (emp_num, ))
                 result['birthday'] = birthday = birthday.replace(delta_year=-100)
             result['status_flag'] = fis_emp_rec[F74.status_flag]
             result['pay_type'] = ('salary', 'hourly')[fis_emp_rec[F74.pay_type].upper() == 'H']
@@ -369,7 +372,23 @@ class res_partner(xmlid, osv.Model):
                 if len(names) > 1:
                     potential_sales_people[names[-1]].append(sales_user_id)
                     potential_sales_people[' '.join([names[0], names[-1]])].append(sales_user_id)
-
+        if bad_birthdays:
+            _logger.critical('%d employees have a future birthdate on FIS' % (len(bad_birthdays), ))
+            user_list = [
+                    "%5s -- %s" % (id, name)
+                    for id, name in sorted(
+                        bad_birthdays.items(), key=lambda p: int(p[0])
+                        )
+                    ]
+            mail(
+                    self, cr, uid,
+                    "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
+                    "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
+                    "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
+                    "Subject: employees with future birthdates in FIS\n"
+                    "\n"
+                    + '\n'.join(user_list),
+                    )
         # now the mapping
         cnvzz = fisData(47)
         failed_match = set()
