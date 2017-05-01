@@ -374,21 +374,22 @@ class res_partner(xmlid, osv.Model):
                     potential_sales_people[' '.join([names[0], names[-1]])].append(sales_user_id)
         if bad_birthdays:
             _logger.critical('%d employees have a future birthdate on FIS' % (len(bad_birthdays), ))
-            user_list = [
-                    "%5s -- %s" % (id, name)
-                    for id, name in sorted(
-                        bad_birthdays.items(), key=lambda p: int(p[0])
+            if today.day == 1:
+                user_list = [
+                        "%5s -- %s" % (id, name)
+                        for id, name in sorted(
+                            bad_birthdays.items(), key=lambda p: int(p[0])
+                            )
+                        ]
+                mail(
+                        self, cr, uid,
+                        "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
+                        "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
+                        "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
+                        "Subject: employees with future birthdates in FIS\n"
+                        "\n"
+                        + '\n'.join(user_list),
                         )
-                    ]
-            mail(
-                    self, cr, uid,
-                    "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
-                    "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
-                    "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
-                    "Subject: employees with future birthdates in FIS\n"
-                    "\n"
-                    + '\n'.join(user_list),
-                    )
         # now the mapping
         cnvzz = fisData(47)
         failed_match = set()
