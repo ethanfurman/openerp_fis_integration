@@ -159,8 +159,8 @@
                 ~tree $Employees default_order='name'
                     @name
                     @category_ids
-                    @hire_date
-                    @fire_date
+                    @hire_date $Start_Date
+                    @fire_date $End_Date
                     @work_phone invisible='1'
                     @work_email invisible='1'
                     @company_id groups='base.group_multi_company'
