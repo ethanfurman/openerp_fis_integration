@@ -36,3 +36,8 @@ class hr_employee(osv.Model):
         # TODO: make agency a many2one field
         'agency': fields.char('Agency', size=128),
         }
+
+    fields.apply_groups(
+            _columns,
+            {'base.group_hr_manager': ['.*']},
+            )

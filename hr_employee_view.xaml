@@ -110,7 +110,7 @@
                                         @parent_id
                                         @coach_id
                                         ~label $Employee_No for='identification_id'
-                                        @identification_id groups='' nolabel='1'
+                                        @identification_id nolabel='1'
                                     ~group
                                         @company_id groups='base.group_multi_company'
                                         @user_id $User_Record invisible='1'
@@ -118,12 +118,12 @@
                             ~page @Personal $Confidential groups='base.group_hr_manager'
                                 ~group
                                     ~group string='Citizenship & Other Info'
-                                        @passport_id groups=''
+                                        @passport_id
                                         @country_id options='{"no_open": True}' invisible='1'
                                         @race
                                         @birthday
                                         @gender
-                                        @otherid groups=''
+                                        @otherid
                                         ~separator $Status colspan='2'
                                         @marital
                                         @hire_date $Start_Date
@@ -159,8 +159,8 @@
                 ~tree $Employees default_order='name'
                     @name
                     @category_ids
-                    @hire_date $Start_Date
-                    @fire_date $End_Date
+                    @hire_date
+                    @fire_date
                     @work_phone invisible='1'
                     @work_email invisible='1'
                     @company_id groups='base.group_multi_company'
