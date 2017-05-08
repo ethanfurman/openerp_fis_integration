@@ -40,7 +40,7 @@ class F33(FISenum):
     price_chg_days_notice = 'Fn$(16,3)'      # Price Chg Days Notice
     bol_required          = 'Fn$(19,1)'      # BOL Required?
     outstand_orders       = 'Hn'             # OUTSTAND ORDERS
-    this_year_sales       = 'In'             # M-T-D SALES
+    this_year_sales       = 'Ln'             # M-T-D SALES
     last_year_sales       = 'Pn'             # Prev Year Sales
     broker_id             = 'Gn$(1,3)'       # Broker Code
     salesrep              = 'Gn$(4,3)'       # Salesrep Code
