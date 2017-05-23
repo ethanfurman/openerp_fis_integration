@@ -1,12 +1,13 @@
 import logging
 from osv import osv, fields
+from fnx.xid import xmlid
 
 _logger = logging.getLogger(__name__)
 
 ADDRESS_FIELDS = 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id'
 
 
-class hr_employee(osv.Model):
+class hr_employee(xmlid, osv.Model):
     """
     Add fields being mirrored from FIS.
     """
@@ -14,6 +15,8 @@ class hr_employee(osv.Model):
     _inherit = 'hr.employee'
 
     _columns = {
+        'xml_id': fields.char('FIS ID', size=16, readonly=True),
+        'module': fields.char('FIS Module', size=16, readonly=True),
         'hire_date': fields.date('Date Hired'),
         'fire_date': fields.date('Date Terminated'),
         'status_flag': fields.char('Status Flag', size=1),
