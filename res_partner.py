@@ -277,7 +277,8 @@ class res_partner(xmlid, osv.Model):
         for fis_emp_rec in emp1:
             result = {}
             result['name'] = emp_name = re.sub('sunridge', 'SunRidge', NameCase(fis_emp_rec[F74.name]), flags=re.I)
-            result['xml_id'] = result['employee_id'] = emp_num = fis_emp_rec[F74.emp_num].strip()
+            result['xml_id'] = result['identification_id'] = emp_num = fis_emp_rec[F74.emp_num].strip()
+            result['module'] = 'F74-emp'
             try:
                 if int(emp_num) >= 9000:
                     continue
