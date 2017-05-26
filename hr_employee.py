@@ -1,6 +1,7 @@
 import logging
 from osv import osv, fields
 from fnx.xid import xmlid
+from hr.selections import EmploymentType as ET
 
 _logger = logging.getLogger(__name__)
 
@@ -44,3 +45,20 @@ class hr_employee(xmlid, osv.Model):
             _columns,
             {'base.group_hr_manager': ['.*']},
             )
+
+    def change_employment_type(self, cr, uid, ids, employment, xml_id, context=None):
+        print employment
+        res = {}
+        if ET[employment] is ET.standard and not xml_id:
+            res['warning'] = {
+                    'title': 'Not Allowed',
+                    'message': 'Permanent employees can only be created in FIS',
+                    }
+            res['value'] = {'employment_type': 'temporary'}
+        elif employment == '':
+            res['warning'] = {
+                    'title': 'Not Allowed',
+                    'message': 'Employment Status can not be blank.',
+                    }
+            res['value'] = {'employment_type': 'temporary'}
+        return res

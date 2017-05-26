@@ -14,19 +14,26 @@
                     ~attribute @create: false
                 ~xpath expr="//field[@name='otherid']" position='attributes'
                     ~attribute @invisible: True
-                @identification_id position='remove'
                 @otherid position='after'
                     @ssnid
-                    @identification_id $Employee_No attrs="{'invisible': [('xml_id','!=',False)]}"
+                @identification_id position='attributes'
+                    ~attribute @attrs: {'invisible': [('xml_id','!=',False)]}
+                @identification_id position='after'
                     @xml_id $FIS_Employee_No attrs="{'invisible': [('xml_id','=',False)]}"
+                @employment_type position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False),('employment_type','=','standard')]}
+                    ~attribute @on_change: change_employment_type(employment_type, xml_id)
+                @employment_agency_id position='after'
+                    @hire_date
+                    @fire_date
+                @marital position='before'
+                    ~separator $Tax_Information colspan='2'
                 @marital position='after'
                     @status_flag
                     @pay_type
                     @hourly_rate attrs="{'invisible': [('pay_type','=','salary')]}"
                     @federal_exemptions
                     @state_exemptions
-                    @hire_date
-                    @fire_date
                 ~xpath expr="//field[@name='country_id']" position='attributes'
                     ~attribute @invisible: True
                 @country_id position='after'
@@ -39,7 +46,7 @@
             @priority eval='15'
             @arch type='xml'
                 ~xpath expr="//tree[@string='Employees']" position='attributes'
-                    ~attribute @create: false
+                    ~attribute @create: true
                 @parent_id position='replace'
                     @identification_id $Employee_No
                     @parent_id invisible='1'
@@ -52,7 +59,7 @@
             @priority eval='15'
             @arch type='xml'
                 ~xpath expr="//kanban" position='attributes'
-                    ~attribute @create: false
+                    ~attribute @create: true
 
         ~record model='ir.ui.view' #fis_integration_veiw_employee_filter
             @name: Employees
