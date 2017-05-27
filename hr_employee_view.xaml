@@ -15,7 +15,7 @@
                 ~xpath expr="//field[@name='otherid']" position='attributes'
                     ~attribute @invisible: True
                 @otherid position='after'
-                    @ssnid
+                    @ssnid attrs="{'readonly': [('xml_id','!=',False)]}"
                 @identification_id position='attributes'
                     ~attribute @attrs: {'invisible': [('xml_id','!=',False)]}
                 @identification_id position='after'
@@ -24,20 +24,51 @@
                     ~attribute @attrs: {'readonly': [('xml_id','!=',False),('employment_type','=','standard')]}
                     ~attribute @on_change: change_employment_type(employment_type, xml_id)
                 @employment_agency_id position='after'
-                    @hire_date
-                    @fire_date
+                    @hire_date attrs="{'readonly': [('xml_id','!=',False)]}"
+                    @fire_date attrs="{'readonly': [('xml_id','!=',False)]}"
                 @marital position='before'
+                    @status_flag attrs="{'readonly': [('xml_id','!=',False)]}"
                     ~separator $Tax_Information colspan='2'
                 @marital position='after'
-                    @status_flag
-                    @pay_type
-                    @hourly_rate attrs="{'invisible': [('pay_type','=','salary')]}"
-                    @federal_exemptions
-                    @state_exemptions
+                    @pay_type attrs="{'readonly': [('xml_id','!=',False)]}"
+                    @hourly_rate attrs="{'invisible': [('pay_type','=','salary')], 'readonly': [('xml_id','!=',False)]}"
+                    @federal_exemptions attrs="{'readonly': [('xml_id','!=',False)]}"
+                    @state_exemptions attrs="{'readonly': [('xml_id','!=',False)]}"
+                ~xpath expr="//field[@name='passport_id']" position='attributes'
+                    ~attribute @invisible: True
                 ~xpath expr="//field[@name='country_id']" position='attributes'
                     ~attribute @invisible: True
                 @country_id position='after'
-                    @race
+                    @race attrs="{'readonly': [('xml_id','!=',False)]}"
+                @birthday position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                @gender position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                @home_phone position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                @home_street position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                @home_street2 position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                @home_city position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                @home_state_id position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                @home_zip position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                @home_country_id position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                @emergency_contact position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                @emergency_number position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                @blueshield_id position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                @marital position='attributes'
+                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+                // @xxx position='attributes'
+                //     ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
+
 
         ~record model='ir.ui.view' #fis_integration_view_employee_tree
             @name: fis_integration.hr.employee.tree
