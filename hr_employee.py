@@ -37,7 +37,8 @@ class hr_employee(xmlid, osv.Model):
             'Race/Ethnicity',
             sort_order='definition',
             ),
-        # TODO: make agency a many2one field
+        'pension_plan': fields.boolean('Pension Plan'),
+        # XXX: moved into hr
         'agency': fields.char('Agency', size=128),
         }
 
@@ -47,7 +48,6 @@ class hr_employee(xmlid, osv.Model):
             )
 
     def change_employment_type(self, cr, uid, ids, employment, xml_id, context=None):
-        print employment
         res = {}
         if ET[employment] is ET.standard and not xml_id:
             res['warning'] = {

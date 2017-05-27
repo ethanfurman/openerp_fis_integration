@@ -28,6 +28,7 @@
                     @fire_date attrs="{'readonly': [('xml_id','!=',False)]}"
                 @marital position='before'
                     @status_flag attrs="{'readonly': [('xml_id','!=',False)]}"
+                    @pension_plan attrs="{'readonly': [('xml_id','!=',False)]}"
                     ~separator $Tax_Information colspan='2'
                 @marital position='after'
                     @pay_type attrs="{'readonly': [('xml_id','!=',False)]}"

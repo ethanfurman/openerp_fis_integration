@@ -326,6 +326,7 @@ class res_partner(xmlid, osv.Model):
                 # _logger.critical('Employee %s has a future birthdate on FIS' % (emp_num, ))
                 result['birthday'] = birthday = birthday.replace(delta_year=-100)
             result['status_flag'] = fis_emp_rec[F74.status_flag]
+            result['pension_plan'] = fis_emp_rec[F74.pension_status].upper() == 'Y'
             result['pay_type'] = ('salary', 'hourly')[fis_emp_rec[F74.pay_type].upper() == 'H']
             result['hourly_rate'] = fis_emp_rec[F74.hourly_rate]
             result['marital'] = ('single', 'married')[fis_emp_rec[F74.marital_status].upper() == 'M']
