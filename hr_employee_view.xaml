@@ -40,7 +40,7 @@
                 ~xpath expr="//field[@name='country_id']" position='attributes'
                     ~attribute @invisible: True
                 @country_id position='after'
-                    @race attrs="{'readonly': [('xml_id','!=',False)]}"
+                    @race
                 @birthday position='attributes'
                     ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
                 @gender position='attributes'
@@ -62,8 +62,6 @@
                 @emergency_contact position='attributes'
                     ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
                 @emergency_number position='attributes'
-                    ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
-                @blueshield_id position='attributes'
                     ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
                 @marital position='attributes'
                     ~attribute @attrs: {'readonly': [('xml_id','!=',False)]}
