@@ -29,6 +29,7 @@
                 @category_id position='after'
                     @keyword_ids widget='many2many_tags' placeholder='Keywords...'
                 @website position='after'
+                    @active groups="base.group_sale_manager"
                     @xml_id attrs="{'readonly':True}"
                     @fis_valid
                     @special_notifications
