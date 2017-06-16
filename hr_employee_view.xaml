@@ -33,6 +33,7 @@
                 @marital position='after'
                     @pay_type attrs="{'readonly': [('xml_id','!=',False)]}"
                     @hourly_rate attrs="{'invisible': [('pay_type','=','salary')], 'readonly': [('xml_id','!=',False)]}"
+                    @last_raise attrs="{'readonly': [('xml_id','!=',False)]}"
                     @federal_exemptions attrs="{'readonly': [('xml_id','!=',False)]}"
                     @state_exemptions attrs="{'readonly': [('xml_id','!=',False)]}"
                 ~xpath expr="//field[@name='passport_id']" position='attributes'

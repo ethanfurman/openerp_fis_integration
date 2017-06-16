@@ -329,6 +329,7 @@ class res_partner(xmlid, osv.Model):
             result['pension_plan'] = fis_emp_rec[F74.pension_status].upper() == 'Y'
             result['pay_type'] = ('salary', 'hourly')[fis_emp_rec[F74.pay_type].upper() == 'H']
             result['hourly_rate'] = fis_emp_rec[F74.hourly_rate]
+            result['last_raise'] = fix_date(fis_emp_rec[F74.last_raise])
             result['marital'] = ('single', 'married')[fis_emp_rec[F74.marital_status].upper() == 'M']
             result['gender'] = ('male', 'female')[fis_emp_rec[F74.gender].upper() == 'F']
             # fleet_hr has this
@@ -470,6 +471,7 @@ class res_partner(xmlid, osv.Model):
                                 'name': NameCase(sales_name),
                                 'login': login,
                                 'active': False,
+                                'tz': 'America/Los_Angeles',
                                 },
                             context=context)
                     sales_people[sales_id] = id

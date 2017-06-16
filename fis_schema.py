@@ -95,6 +95,7 @@ class F74(FISenum):
     date_hired        = 'In$(1,6)'       # DATE HIRED
     date_terminated   = 'In$(7,6)'       # DATE TERMINATED
     birth_date        = 'In$(19,6)'      # BIRTHDATE
+    last_raise        = 'In$(43,6)'      # Last Raise
     home_dept         = 'Jn$(1,2)'       # HOME DEPARTMENT
     status_flag       = 'Kn$(1,1)'       # STATUS FLAG
     pay_type          = 'Kn$(2,1)'       # PAY TYPE

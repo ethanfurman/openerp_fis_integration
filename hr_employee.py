@@ -25,6 +25,7 @@ class hr_employee(xmlid, osv.Model):
         'federal_exemptions': fields.integer('Federal Exemptions'),
         'state_exemptions': fields.integer('State Exemptions'),
         'hourly_rate': fields.float('Hourly Rate'),
+        'last_raise': fields.date('Last Raise'),
         'race': fields.selection([
             ('white', 'White'),
             ('black', 'Black / African American'),
