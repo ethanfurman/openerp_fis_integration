@@ -55,6 +55,8 @@
             @arch type='xml'
                 @default_code position='replace'
                     @xml_id
+                @name position='after'
+                    @shipped_as
 
         ~record #product_normal_action model='ir.actions.act_window'
             @name: Products
