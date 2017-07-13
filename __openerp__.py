@@ -14,6 +14,7 @@
             "hr",
             "product",
             "project",
+            "sample",
             "stock",
             ],
     'update_xml': [
