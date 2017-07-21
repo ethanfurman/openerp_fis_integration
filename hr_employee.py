@@ -45,8 +45,10 @@ class hr_employee(xmlid, osv.Model):
 
     fields.apply_groups(
             _columns,
-            {'base.group_hr_manager': ['.*']},
-            )
+            {
+                'base.group_user': ['xml_id', 'module'],
+                'base.group_hr_manager': ['.*'],
+                })
 
     def change_employment_type(self, cr, uid, ids, employment, xml_id, context=None):
         res = {}
