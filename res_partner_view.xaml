@@ -18,6 +18,8 @@
                     @facebook widget='url'
                     @twitter widget='url'
                     @special_notifications
+                    @sn_catalog_type $Catalog_By attrs="{'invisible': [('special_notifications','not in',['C','B'])]}"
+                    @sn_special_type $Specials_Sheet_By attrs="{'invisible': [('special_notifications','not in',['S','B'])]}"
 
 
         ~record model='ir.ui.view' #view_partners_form_xml_id
@@ -33,6 +35,8 @@
                     @xml_id attrs="{'readonly':True}"
                     @fis_valid
                     @special_notifications
+                    @sn_catalog_type $Catalog_By attrs="{'invisible': [('special_notifications','not in',['C','B'])]}"
+                    @sn_special_type $Specials_Sheet_By attrs="{'invisible': [('special_notifications','not in',['S','B'])]}"
                 @function position='after'
                     @department attrs="{'invisible': [('is_company','=', True)]}"
                 @customer position='after'
@@ -109,11 +113,17 @@
                     @facebook widget='url'
                     @twitter widget='url'
                     @special_notifications
+                    @sn_catalog_type $Catalog_By attrs="{'invisible': [('special_notifications','not in',['C','B'])]}"
+                    @sn_special_type $Specials_Sheet_By attrs="{'invisible': [('special_notifications','not in',['S','B'])]}"
                 @child_ids position='inside'
                     ~attribute @context: "{'default_parent_id': active_id, 'default_customer': customer, 'default_supplier': supplier, 'default_is_carrier': is_carrier, 'default_fis_valid': fis_valid, 'default_special_notifications': special_notifications}"
                 ~xpath expr="//div[@name='fax']" position='replace'
-                    ~div @special_notifications t-if="record.special_notifications.raw_value": Special notifications:
+                    ~div @special_notifications t-if="record.special_notifications.raw_value": Specials notifications:
                         @special_notifications
+                    ~div @special_notifications t-if="record.special_notifications.raw_value=='C' or record.special_notifications.raw_value=='B'": Catalog by:
+                        @sn_catalog_type
+                    ~div @special_notifications t-if="record.special_notifications.raw_value=='S' or record.special_notifications.raw_value=='B'": Specials Sheet by:
+                        @sn_special_type
 
         ~record model='ir.ui.view' #view_partners_xml_id_filter
             @name: res.partner.form.xml_id.filter

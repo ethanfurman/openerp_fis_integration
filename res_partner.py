@@ -15,10 +15,16 @@ _logger = logging.getLogger(__name__)
 ADDRESS_FIELDS = 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id'
 
 class Specials(fields.SelectionEnum):
+    _order_ = 'neither catalog specials both'
+    neither   = 'N', 'None'
     catalog   = 'C', 'Catalog'
     specials  = 'S', 'Specials Sheet'
     both      = 'B', 'Both'
 
+class SpecialsType(fields.SelectionEnum):
+    _order_ = 'soft hard'
+    soft = 'Email'
+    hard = 'Hardcopy'
 
 class res_partner_keyword(osv.Model):
     """
@@ -44,7 +50,9 @@ class res_partner(xmlid, osv.Model):
         'module': fields.char('FIS Module', size=16, readonly=True),
         'fis_valid': fields.boolean('Valid FIS code?'),
         'fis_active': fields.boolean('Active Partner?'),
-        'special_notifications': fields.selection(Specials, 'Special Notifications'),
+        'special_notifications': fields.selection(Specials, 'Specials Notifications'),
+        'sn_catalog_type': fields.selection(SpecialsType, 'Catalog Type'),
+        'sn_special_type': fields.selection(SpecialsType, 'Specials Type'),
         'parent_name': fields.related('parent_id', 'name', type='char', string='Related'),
         'keyword_ids': fields.many2many(
             'res.partner.keyword',
@@ -117,6 +125,10 @@ class res_partner(xmlid, osv.Model):
         'fis_data': fields.text('FIS Name & Address'),
         'fis_data_changed': fields.boolean('FIS data has changed'),
         'updated_by_user': fields.boolean('Updated by user'),
+        }
+
+    _defaults = {
+        'special_notifications': Specials.neither,
         }
 
     def create(self, cr, uid, values, context=None):
@@ -633,8 +645,8 @@ class res_partner(xmlid, osv.Model):
             else:
                 # TODO check for open orders
                 pass
-            notify_by = Specials.get_member(cus_rec[F33.catalog_category].upper(), None)
-            result['special_notifications'] = notify_by and notify_by.db or False
+            notify_by = Specials.get_member(cus_rec[F33.catalog_category].upper(), Specials.neither)
+            result['special_notifications'] = notify_by.db
             result['name'] = re.sub('sunridge', 'SunRidge', BsnsCase(cus_rec[F33.name]), flags=re.I)
             addr1, addr2, addr3 = Sift(cus_rec[F33.addr1], cus_rec[F33.addr2], cus_rec[F33.addr3])
             addr2, city, state, postal, country = cszk(addr2, addr3)
