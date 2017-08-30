@@ -138,8 +138,8 @@
                     ~separator
                 ~filter @type_company position='after'
                     ~separator
-                    ~filter $Notified_by_catalog @type_notify_by_catalog domain="[('special_notifications','in',['C','B'])]"
-                    ~filter $Notified_by_sheet @type_notify_by_sheet domain="[('special_notifications','in',['S','B'])]"
+                    ~filter $Notified_for_catalogs @type_notify_by_catalog domain="[('special_notifications','in',['C','B'])]"
+                    ~filter $Notified_for_specials_sheets @type_notify_by_sheet domain="[('special_notifications','in',['S','B'])]"
                     ~separator
 
         ~record model='ir.ui.view' #res_partner_xml_id_kanban_view
