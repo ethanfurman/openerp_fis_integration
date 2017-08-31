@@ -128,7 +128,7 @@ class res_partner(xmlid, osv.Model):
         }
 
     _defaults = {
-        'special_notifications': Specials.neither,
+        'special_notifications': Specials.neither.db,
         }
 
     def create(self, cr, uid, values, context=None):
@@ -645,7 +645,7 @@ class res_partner(xmlid, osv.Model):
             else:
                 # TODO check for open orders
                 pass
-            notify_by = Specials.get_member(cus_rec[F33.catalog_category].upper(), Specials.neither)
+            notify_by = Specials.get_member(cus_rec[F33.catalog_category].upper(), Specials.neither.db)
             result['special_notifications'] = notify_by.db
             result['name'] = re.sub('sunridge', 'SunRidge', BsnsCase(cus_rec[F33.name]), flags=re.I)
             addr1, addr2, addr3 = Sift(cus_rec[F33.addr1], cus_rec[F33.addr2], cus_rec[F33.addr3])
