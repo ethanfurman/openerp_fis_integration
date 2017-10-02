@@ -7,75 +7,56 @@ from filecmp import cmp as fce
 from xmlrpclib import Fault
 from antipathy import Path
 from openerplib import get_connection, get_records, SchroedingerFile, AttrDict
-from pandaemonium import PidLockFile, AlreadyLocked
 from scription import *
 from urllib2 import urlopen, URLError
 from VSS.address import NameCase
 from VSS.utils import crc32
 
-# will be set in main
-config = localhost = res_users = res_partner = res_groups = groups = None
-hr_employee = employees = employee_map = None
-user_map = partners = partner_map = users = force_update = reset_photos = None
-
-LOCKFILE = '/var/run/oe-users.pid'
 
 @Script(
         config=('config file to use', OPTION),
         )
 def main(config=Path('/etc/openerp/fnx.ini')):
-    lock = PidLockFile(LOCKFILE, timeout=30)
-    try:
-        lock.seal()
-    except AlreadyLocked:
-        abort('oe-users is already running')
+    global config, localhost, res_users, res_groups, users, groups, res_partner, partners
+    global user_map, partner_map, force_update, reset_photos
+    config = config = OrmFile(config, types={'_path':Path})
+    localhost = get_connection(
+            hostname=config.openerp.host,
+            database=config.openerp.db,
+            login=config.openerp.user,
+            password=config.openerp.pw,
+            )
+    print('getting res.users')
+    res_users = localhost.get_model('res.users')
+    print('getting res.groups')
+    res_groups = localhost.get_model('res.groups')
+    print('retrieving users')
+    users = res_users.search_read(
+            domain=['|', ('active','=',True), ('active','=',False)],
+            fields=['email', 'groups_id', 'id', 'login', 'image'],
+            )
+    user_map = dict([(u.login, u) for u in users])
+    print('retrieving groups')
+    groups = res_groups.search_read(
+            domain=[('id','!=',0)],
+            fields=['category_id', 'full_name', 'id', 'name'],
+            )
+    res_partner = localhost.get_model('res.partner')
+    partners = res_partner.search_read(
+            domain=[('module','=','F74')],
+            fields=['id', 'user_ids', 'xml_id'],
+            )
+    partner_map = dict([(p.xml_id, p) for p in partners])
+    if config.users.force_update.exists():
+        force_update = True
+        config.users.force_update.unlink()
     else:
-        module.config = config = OrmFile(config, types={'_path':Path})
-        module.localhost = get_connection(
-                hostname=config.openerp.host,
-                database=config.openerp.db,
-                login=config.openerp.user,
-                password=config.openerp.pw,
-                )
-        print('getting res.users')
-        module.res_users = localhost.get_model('res.users')
-        print('getting res.groups')
-        module.res_groups = localhost.get_model('res.groups')
-        print('retrieving users')
-        module.users = res_users.search_read(
-                domain=['|', ('active','=',True), ('active','=',False)],
-                fields=['email', 'groups_id', 'id', 'login', 'image'],
-                )
-        module.user_map = dict([(u.login, u) for u in users])
-        print('retrieving groups')
-        module.groups = res_groups.search_read(
-                domain=[('id','!=',0)],
-                fields=['category_id', 'full_name', 'id', 'name'],
-                )
-        module.res_partner = localhost.get_model('res.partner')
-        module.partners = res_partner.search_read(
-                domain=[('module','=','F74')],
-                fields=['id', 'user_ids', 'xml_id'],
-                )
-        module.partner_map = dict([(p.xml_id, p) for p in partners])
-        module.hr_employee = localhost.get_model('hr.employee')
-        module.employees = hr_employee.search_read(
-                fields=['id', 'identification_id'],
-                )
-        module.employee_map = dict([(e.identification_id, e.id) for e in employees])
-        if config.users.force_update.exists():
-            module.force_update = True
-            config.users.force_update.unlink()
-        else:
-            module.force_update = False
-        if config.users.reset_photos.exists():
-            module.reset_photos = True
-            config.users.reset_photos.unlink()
-        else:
-            module.reset_photos = False
-    finally:
-        if lock.am_i_locking():
-            lock.release()
+        force_update = False
+    if config.users.reset_photos.exists():
+        reset_photos = True
+        config.users.reset_photos.unlink()
+    else:
+        reset_photos = False
 
 
 @Command(
@@ -164,9 +145,8 @@ def create(force, users):
         )
 def photos(reset, users):
     reset = reset or reset_photos
-    # handle users
-    with dbf.Table(config.users.emp_table, default_data_types={'C':dbf.Char}) as table:
-        for record in table:
+    with dbf.Table(config.users.emp_table, default_data_types={'C':dbf.Char}) as employees:
+        for record in employees:
             try:
                 user = user_map[record.login]
             except KeyError:
@@ -186,22 +166,6 @@ def photos(reset, users):
             # not sure what next line is supposed to do
             # user.update(res_users.read(user.id))
             dbf.write(record, image_crc=crc32(user.image))
-    # handle employees
-    for xmlid, id in employee_map.items():
-        print('checking', config.users.photo_location % xmlid, '. . . ', end='')
-        try:
-            pic = urlopen(config.users.photo_location % xmlid).read()
-        except URLError:
-            print('not found on photo server')
-            continue
-        image = b64encode(pic)
-        try:
-            hr_employee.write(id, dict(image=image))
-            print('updated')
-        except Fault:
-            raise
-            print('unable to update on OpenERP')
-            continue
 
 
 @Command()
@@ -291,6 +255,7 @@ def update():
                         name=name,
                         email=email,
                         employee=True,
+                        tz='America/Los_Angeles',
                         )
             try:
                 res_users.write(user.id, values)
@@ -324,7 +289,17 @@ def update():
                 if partner_link:
                     partner_link = partner_link.id
                 try:
-                    values = dict(xml_id=emp_num, module='F74', login=login, password=password, active=active, name=name, email=email, employee=True)
+                    values = dict(
+                            xml_id=emp_num,
+                            module='F74',
+                            login=login,
+                            password=password,
+                            active=active,
+                            name=name,
+                            email=email,
+                            employee=True,
+                            tz='America/Los_Angeles',
+                            )
                     if partner_link:
                         values['partner_id'] = partner_link
                         del values['xml_id']
@@ -332,6 +307,7 @@ def update():
                     print('creating user: %s\n\twith: %s' % (login, values))
                     id = res_users.create(values)
                 except Exception, exc:
+                    error('unable to create user:\n----------------------')
                     error(str(exc).replace('\\n','\n'))
                     row = row + ['unable to create user']
                     failed.append(row)
@@ -360,10 +336,10 @@ def update():
                         for id in target - actual:
                             print('         not added: %3d -- %s' % (id, all_groups[id]))
                         not_removed = actual & (before - target)
-                        not_removed
-                        for id in (actual & (before - target)):
+                        for id in not_removed:
                             print('       not removed: %3d -- %s' % (id, all_groups[id]))
-                        for id in (actual - (before | target)):
+                        added = actual - (before | target)
+                        for id in added:
                             print('        also added: %3d -- %s' % (id, all_groups[id]))
                         print()
                 # grab crc of current image and store in employee db
