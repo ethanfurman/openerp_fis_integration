@@ -1,13 +1,13 @@
-#!/usr/bin/python
+#!/usr/local/sbin/suid-python --virtualenv
 from __future__ import print_function
 
-from antipathy import Path
 from collections import defaultdict
 from openerplib import get_connection, get_records, AttrDict
 from scription import *
 from VSS import address
 from VSS.utils import all_equal, fix_phone
 import dbf
+import os
 
 @Command(
         filename=Spec('path/name of file to import', ),
@@ -534,6 +534,6 @@ def search(d, target):
                 results.append(key)
     return results
 
-config = OrmFile('/etc/openerp/fnx.ini', section='openerp')
+config = OrmFile('%s/config/fnx.ini' % os.environ['VIRTUAL_ENV'], section='openerp')
 
 Run()

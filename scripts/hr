@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/local/sbin/suid-python --virtualenv
 from __future__ import print_function
 
 from collections import defaultdict
@@ -6,9 +6,10 @@ from scription import *
 from antipathy import Path
 from openerplib import get_connection, get_records, AttrDict
 from VSS.utils import all_equal
+import os
 
 OE = AttrDict()
-CONFIG = Path('/etc/openerp/fnx.ini')
+CONFIG = Path('%s/config/fnx.ini' % os.environ['VIRTUAL_ENV'])
 
 try:
     settings = OrmFile(CONFIG, section='openerp')
@@ -170,7 +171,5 @@ def merge(addr_key, contacts, companies):
             if contact[id_field]:
                 contact[id_field] = 4, contact[id_field]
     return main_company
-
-config = OrmFile('/etc/openerp/fnx.ini', section='openerp')
 
 Run()
