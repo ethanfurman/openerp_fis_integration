@@ -1,9 +1,8 @@
-#!/usr/bin/env python
 from enum import Enum
 from VSS.BBxXlate.fisData import fisData
 from openerplib import AttrDict
 
-def get_ingredients(item, rev='000', food_only=False):
+def get_item_ingredients(item, rev='000', food_only=False):
     get_fis_data()
     #ensure item is 10 chars long
     item_ingredient, rev = '%-10s' % item, '%-3s' % rev
@@ -17,6 +16,8 @@ def get_ingredients(item, rev='000', food_only=False):
     if NVTY.has_key(item) and depcode != "98":  # check if depcode 98 and ignore the BOM if so
         for ingredient, key, rec in fulllist:
             ingredient = ingredient[:6]
+            if ingredient in ignored_ingredients:
+                continue
             if NVTY.has_key(ingredient):
                 if item == ingredient:
                     foodlist.append((ingredient, key, rec, 1)) # the 1 means don't eplode (isself=1)
@@ -26,13 +27,39 @@ def get_ingredients(item, rev='000', food_only=False):
                     foodlist.append((ingredient, key, rec, 0))
     return foodlist
 
+def get_order_ingredients(order, food_only=False):
+    get_fis_data()
+    # get the order record from 328
+    order, order_no = IFPP0[order], order
+    item = order[F328.prod_no].strip()
+    # then the ingredients
+    fulllist = [(rec[F329.ingr_id_batch_1], key, rec) for key, rec in IFPP1.get_subset(order_no)]
+    # import pdb; pdb.set_trace()
+    foodlist = []
+    # for i in sorted(ingredients, key=lambda r: r[F329.formula_line_no]):
+    for ingredient, key, rec in fulllist:
+        ingredient = ingredient[:6]
+        if ingredient in ignored_ingredients:
+            continue
+        if NVTY.has_key(ingredient):
+            if item == ingredient:
+                foodlist.append((ingredient, key, rec, 1)) # the 1 means don't eplode (isself=1)
+                ingredient = "x" + ingredient # XXX this line should be above the previous one, or removed
+            elif not food_only or NVTY[ingredient][F135.net_un_wt] > 0:
+                # net_un_wt > 0 means it's an item that contributes wght (food ingredient?)
+                foodlist.append((ingredient, key, rec, 0))
+    return item, foodlist
+
+
 def get_fis_data():
-    global IFDT, NVTY, IFMS, IFDT1, IFDT1_REV
-    IFDT = fisData('IFDT', subset="10%s  %s")
-    NVTY = fisData('NVTY1', keymatch="%s101000    101**")
-    IFMS = fisData('IFMS', keymatch="10%s      0000")
-    IFDT1 = fisData('IFDT1', keymatch="10%s      000101")
-    IFDT1_REV = fisData('IFDT1', keymatch="10%s  %s101")
+    global IFDT, NVTY, IFMS, IFDT1, IFDT1_REV, IFPP0, IFPP1
+    IFDT = fisData('IFDT', subset="10%s  %s")               # 322
+    NVTY = fisData('NVTY1', keymatch="%s101000    101**")   # 135
+    IFMS = fisData('IFMS', keymatch="10%s      0000")       # 320
+    IFDT1 = fisData('IFDT1', keymatch="10%s      000101")   # 323
+    IFDT1_REV = fisData('IFDT1', keymatch="10%s  %s101")    # 323
+    IFPP0 = fisData('IFPP0', keymatch="10%s000010000")      # 328
+    IFPP1 = fisData('IFPP1', subset="10%s")                 # 329
 
 def title(txt):
     txt = txt.strip().title()
@@ -50,6 +77,8 @@ def item_detail(oid, item, qty, as_ingredient, inventory, item_refs):
     if nvty:
         desc = title(nvty[F135.desc])
         um, umdesc = nvty[F135.inv_units], nvty[F135.size]
+        um = ' '.join(um.split())
+        umdesc = ' '.join(umdesc.split())
         inventory[item_code] = AttrDict({
                 'on_hand':  nvty[F135.qty_on_hand],
                 'committed': nvty[F135.ic_units_committed],
@@ -62,7 +91,7 @@ def item_detail(oid, item, qty, as_ingredient, inventory, item_refs):
     field = AttrDict({
         'id'        : oid,
         'desc'      : desc,                         # item description
-        'um'        : "%s @ %s" % (um, umdesc),
+        'um'        : "<%s %s>" % (umdesc, um),
         'unit_size' : um,
         'unit_wght' : umdesc,
         'qty'       : qty,                          # quantity needed for parent recipe
@@ -88,40 +117,47 @@ def get_items_with_recipes(print_missing=False):
             print('skipping recipe', item)
     return recipes
 
-def get_ingredient_data(oid, item, qty=1, exdata=None, food_only=False, inventory=None, item_refs=None, level=None):
+def get_ingredient_data(oid, item, qty=1, exdata=None, food_only=False, inventory=None, item_refs=None, level=None, use_production=False):
+    # bom = bill of materials
     if inventory is None:
         inventory = AttrDict()
     if item_refs is None:
         item_refs = AttrDict()
     get_fis_data()
-    bom = get_ingredients(item, food_only=food_only)
+    if use_production:
+        item, bom = get_order_ingredients(item)
+        F = F329
+    else:
+        bom = get_item_ingredients(item, food_only=food_only)
+        F = F322
+    # import pdb; pdb.set_trace()
     datadict = item_detail(oid, item, qty, 0, inventory, item_refs)
     datadict.ingredients = AttrDict()
     for ingredient, ky, ifdt, isself in bom:
         datadict.ingredients["%s-%s" % (ky[-3:], ingredient)] = item_detail(
                 oid=ky[-3:],
                 item=ingredient,
-                qty=ifdt[F322.qty_batch_1],
+                qty=ifdt[F.qty_batch_1],
                 as_ingredient=True,
                 inventory=inventory,
                 item_refs=item_refs,
                 )
-        if not isself and get_ingredients(ingredient, food_only=food_only) and level not in (None, 0):
+        if not isself and get_item_ingredients(ingredient, food_only=food_only) and level not in (None, 0):
             if level is not None:
                 level -= 1
             datadict.ingredients["%s-%s" % (ky[-3:], ingredient)] = get_ingredient_data(
                     oid=ky[-3:],
                     item=ingredient,
-                    qty=ifdt[F322.qty_batch_1],
+                    qty=ifdt[F.qty_batch_1],
                     food_only=food_only,
                     inventory=inventory,
                     item_refs=item_refs,
-                    level=level
+                    level=level,
+                    use_production=use_production,
                     )
     if exdata is None:
         exdata = datadict
     return exdata
-
 
 def make_on_hand(item, inventory_used=None):
     if inventory_used is None:
@@ -140,6 +176,14 @@ def make_on_hand(item, inventory_used=None):
     buildable = min(qtys)
     return buildable * recipe.yield_qty
 
+
+ignored_ingredients = set([
+        # nutritional info
+        '910000', '910001', '910002', '910003', '910004',
+        '910005', '910006', '910007', '910008', 
+        # freight charges
+        '967001',
+        ])
 
 class F323(str, Enum):
     """
@@ -205,6 +249,42 @@ class F322(str, Enum):
                                                   # (open) C(2)
                                                   # (open) C(3)
                                                   # (open) C(4)
+
+class F329(str, Enum):
+    """
+    IFPP1 - SALES ORDER PRODUCTION PENDING - DETAIL
+    """
+    company_id             = 'An$(1,2)'      #   0: Company Code
+    order_no               = 'An$(3,6)'      #   1: Order Number
+    release_no             = 'An$(9,2)'      #   2: Release No
+    sales_order_seq        = 'An$(11,3)'     #   3: Sales Order Seq
+    key_type               = 'An$(14,1)'     #   4: Key Type = "1"
+    formula_line_no        = 'An$(15,3)'     #   5: Formula Line No
+    ingr_id_batch_1      = 'Bn$(1,8)'      #   6: Ingredient Code - Batch 1
+    ingr_id_batch_2      = 'Bn$(9,8)'      #   7: Ingredient Code - Batch 2
+    item_type_batch_1      = 'Cn$(1,1)'      #   8: Item Type - Batch 1
+    item_type_batch_2      = 'Cn$(2,1)'      #   9: Item Type - Batch 2
+                                             # (open) Cn$(3,2)
+    units_batch_1          = 'Dn$(1,2)'      #  11: Units - Batch 1
+    units_batch_2          = 'Dn$(3,2)'      #  12: Units - Batch 2
+                                             # (open) Dn$(5,2)
+                                             # (open) Dn$(7,2)
+    desc                   = 'En$'           #  15: Description (Item Or Msg)
+    label_claim            = 'Fn$'           #  16: Label Claim
+    over                   = 'Gn$'           #  17: % Over
+                                             # (open) Hn$
+    pct_in_formula_batch_1 = 'A(1)'          #  19: Pct In Formula - Batch 1
+    pct_in_formula_batch_2 = 'A(2)'          #  20: Pct In Formula - Batch 2
+                                             # (open) A(3)
+                                             # (open) A(4)
+    qty_batch_1            = 'B(1)'          #  23: Quantity - Batch 1
+    qty_batch_2            = 'B(2)'          #  24: Quantity - Batch 2
+    qty_committed_batch_1  = 'B(3)'          #  25: Qty Committed - Batch 1
+    qty_committed_batch_2  = 'B(4)'          #  26: Qty Committed - Batch 2
+                                             # (open) C(1)
+                                             # (open) C(2)
+    wip_qty_batch_1        = 'C(3)'          #  29: WIP Qty - Batch 1
+                                             # (open) C(4)
 
 
 
@@ -388,3 +468,72 @@ class F135(str, Enum):
     new_whlsle               = 'I(23)'            # New Whlsle
     new_landed               = 'I(24)'            # New Landed
     new_fob_cost             = 'I(25)'            # New FOB Cost
+
+class F328(str, Enum):
+    """
+    IFPP0 - SALES ORDER PRODUCTION PENDING - HEADER
+    """
+    company_id              = 'An$(1,2)'        #   0: Company Code
+    order_no                = 'An$(3,6)'        #   1: Order Number
+    release_no              = 'An$(9,2)'        #   2: Release No
+    seq_no                  = 'An$(11,3)'       #   3: Sequence No
+    record_type_0000        = 'An$(14,4)'       #   4: Record Type = '0000'
+    batch_id_a              = 'Bn$(1,1)'        #   5: Batch Id - A
+    formula_type            = 'Bn$(2,1)'        #   6: Formula Type (P/L/T/X/V/K)
+    prod_order_printed      = 'Bn$(3,1)'        #   7: Prod Order Printed? (Y/N)
+    packaging_order_printed = 'Bn$(4,1)'        #   8: Packaging Order Printed (Y/N)
+    lot_nos_assigned        = 'Bn$(5,1)'        #   9: Lot Numbers Assigned (Y/N)
+    batching_auto_manual    = 'Bn$(6,1)'        #  10: Batching Auto/Manual (A/M)
+    recommit_necessary      = 'Bn$(7,1)'        #  11: Recommit Necessary (Y/N)
+    produced                = 'Bn$(8,1)'        #  12: Produced (Y/N/P/X)
+    type                    = 'Bn$(9,1)'        #  13: Type (S/M/X)
+    spec_prod_changes       = 'Bn$(10,1)'       #  14: Spec Prod Changes (Y/N)
+                                                # (open) Bn$(11,2)
+    order_confirmed         = 'Bn$(13,1)'       #  16: Order Confirmed?
+                                                # (open) Bn$(14,7)
+    prod_no                 = 'Cn$(1,8)'        #  18: Product Number
+    label                   = 'Cn$(9,6)'        #  19: Label
+    pallets                 = 'Cn$(15,4)'       #  20: Pallets
+    formula_id              = 'Cn$(19,10)'      #  21: Formula Code
+    formula_rev             = 'Cn$(29,3)'       #  22: Formula Revision
+    prod_color              = 'Cn$(32,18)'      #  23: Product Color
+    tablet_type             = 'Cn$(50,3)'       #  24: Tablet Type
+    hardness_range          = 'Cn$(53,8)'       #  25: Hardness Range
+    thickness               = 'Cn$(61,13)'      #  26: Thickness
+    label_claim             = 'Cn$(74,5)'       #  27: Label Claim
+    current_status          = 'Cn$(79,2)'       #  28: Current Status
+    requested_date          = 'Cn$(81,6)'       #  29: Requested Date
+    addl_so_refs            = 'Cn$(87,24)'      #  30: Addl S/O Refs
+    label_name              = 'Cn$(111,40)'     #  31: Label Name
+    serving_size_units      = 'Cn$(151,2)'      #  32: Serving Size Units
+    bult_item_units         = 'Cn$(153,2)'      #  33: Bult Item Units
+    fingoods_units          = 'Cn$(155,2)'      #  34: Fin.Goods Units
+    dept_id                 = 'Cn$(157,2)'      #  35: Department Code
+    prod_line               = 'Cn$(159,2)'      #  36: Production Line
+                                                # (open) Cn$(161,2)
+    instruction_line_1      = 'Dn$'             #  38: Instruction Line 1
+    instruction_line_2      = 'En$'             #  39: Instruction Line 2
+    prod_scheduled_date     = 'Fn$(1,6)'        #  40: Production Scheduled Date
+    date_lot_no_assgnd      = 'Fn$(7,6)'        #  41: Date Lot No Assgnd
+    prod_date               = 'Fn$(13,6)'       #  42: Production Date
+    scheduled_date          = 'Fn$(19,6)'       #  43: Scheduled Date
+    warning_ids             = 'Gn$'             #  44: Warning Codes
+    item_key                = 'Hn$'             #  45: Item Key (Inventory)
+    lot_no_range_1          = 'In$'             #  46: Lot No Range 1
+    lot_no_range_2          = 'Jn$'             #  47: Lot No Range 2
+    lot_no_range_3          = 'Kn$'             #  48: Lot No Range 3
+    lot_nos_produced        = 'Ln$'             #  49: Lot Nos Produced
+    units_ordered           = 'An'              #  50: Units Ordered
+    prod_qty                = 'Bn'              #  51: Production Qty
+    no_of_batches_a         = 'Cn'              #  52: Number Of Batches - A
+    no_of_batches_b         = 'Dn'              #  53: Number Of Batches - B
+    batch_weight_a          = 'En'              #  54: Batch Weight - A
+    batch_weight_b          = 'Fn'              #  55: Batch Weight - B
+    batch_size              = 'Gn'              #  56: Batch Size (Units) - A
+    batch_size              = 'Hn'              #  57: Batch Size (Units) - B
+    weight_10               = 'In'              #  58: Weight/10
+                                                # (open) Jn
+    fg_qty_to_use           = 'Kn'              #  60: F.G. Qty To Use
+    units_produced          = 'Ln'              #  61: Units Produced
+    no_of_lots_produced     = 'Mn'              #  62: No Of Lots Produced
+    qty_on_order            = 'Nn'              #  63: Qty On Order

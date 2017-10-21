@@ -1,19 +1,38 @@
 #!/usr/bin/env python
 from __future__ import print_function
 
-from pprint import pprint as pp
 from scription import *
 from openerplib import AttrDict
-from recipe import get_ingredient_data, get_ingredients, get_items_with_recipes, F322
+from recipe import get_item_ingredients, get_ingredient_data, get_items_with_recipes, F322
 
 
 @Command(
-        item=('item to look up', ),
+        item=('item to look up', OPTION),
+        order=('order to look up', OPTION),
+        line=('1 line per ingredient', FLAG),
         )
-def recipe(item):
-    'display recipe for one item'
-    print('looking up', item)
-    print(get_ingredient_data("", item, qty=1, level=1), verbose=0)
+def recipe(item, order, line):
+    'display recipe for one item (using: 322 (IFDT) Formula Detail file)'
+    print('\nitem -> %r\norder -> %r\n' % (item, order))
+    if not (item or order):
+        help('one of ITEM or ORDER must be specified')
+    if item:
+        print('looking up', item)
+        data = get_ingredient_data("", item, qty=1, level=1)
+    elif order:
+        data = get_ingredient_data('', order, qty=1, level=1, use_production=True)
+    else:
+        abort('neither ITEM nor ORDER specified')
+    if not line:
+        echo(data)
+    else:
+        echo('----------\n[%s] %s --> %s %s' % (data.item, data.desc, data.yield_qty, data.um))
+        for k, v in sorted(data.items()):
+            if k != 'ingredients':
+                print('%-10s: %s' % (k, v), verbose=2)
+        echo('----------\n')
+        for _, i in sorted(data.ingredients.items()):
+            echo('[%s] %s (%s %s)' % (i.item, i.desc, i.qty, i.um))
 
 
 @Command(
@@ -21,11 +40,11 @@ def recipe(item):
         rev=('formula revision', ),
         )
 def ingredients(item, rev='000'):
-    ingreds = get_ingredients(item, rev, food_only=True)
+    ingreds = get_item_ingredients(item, rev, food_only=True)
     if not ingreds:
         abort('no ingredients found for %s-%s', (item, rev))
     for item_id, key, ingredient, _ in ingreds:
-        print('%-10s  %-10s' % (ingredient[F322.qty_batch_1], ingredient[F322.units_batch_1]), verbose=0)
+        echo('%-10s  %-10s' % (ingredient[F322.qty_batch_1], ingredient[F322.units_batch_1]))
 
 
 @Command(
@@ -34,7 +53,7 @@ def ingredients(item, rev='000'):
 def complete_recipe(item):
     'display recursive recipe for one item'
     print('looking up', item)
-    print(get_ingredient_data("", item, 1), verbose=0)
+    echo(get_ingredient_data("", item, 1))
 
 
 @Command(
@@ -56,14 +75,14 @@ def make(item, _rev='000', _show_missing_ingredients=True):
         if ingredient.qty:
             qtys.append(available/ingredient.qty)
         if not available and _show_missing_ingredients:
-            print('         out of %s: %s' % (ingredient.item, ingredient.desc), verbose=0)
+            echo('         out of %s: %s' % (ingredient.item, ingredient.desc))
     if not qtys:
         if _show_missing_ingredients:
             raise SystemExit('%s (%s) is not a buildable item' % (recipe.item, recipe.desc))
         return
     buildable = min(qtys)
     if buildable:
-        print('we could produce %d %s of %s:%s' % (buildable*recipe.yield_qty, recipe.unit_size, recipe.item, recipe.desc), verbose=0)
+        echo('we could produce %d %s of %s:%s' % (buildable*recipe.yield_qty, recipe.unit_size, recipe.item, recipe.desc))
 
 @Command()
 def makeable():
@@ -71,7 +90,7 @@ def makeable():
     items = get_items_with_recipes()
     if not items:
         raise SystemExit('no items found with recipes')
-    print('checking %d recipes...' % len(items), verbose=0)
+    echo('checking %d recipes...' % len(items))
     for item in items:
         make(*item, _show_missing_ingredients=False)
 
