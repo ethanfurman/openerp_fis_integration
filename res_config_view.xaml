@@ -19,6 +19,11 @@
                     ~group col='4'
                         ~div
                             ~div
+                                ~label for='traffic_followers'
+                                @traffic_followers
+                   ~group col='4'
+                        ~div
+                            ~div
                                 ~label for='product_integration'
                                 @product_integration .oe_inline placeholder='e.g. company_product'
                             ~div

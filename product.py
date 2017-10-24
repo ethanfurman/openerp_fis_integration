@@ -6,6 +6,7 @@ from VSS.address import NameCase
 from fnx import date
 from fnx.oe import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
+from openerp import SUPERUSER_ID
 from openerp.addons.product.product import sanitize_ean13
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period
 from osv import osv, fields
@@ -568,3 +569,117 @@ class production_line(xmlid, osv.Model):
                 avail_codes[key] = new_id
         _logger.info(self._name + " done!")
         return True
+
+class product_traffic(osv.Model):
+    _name = 'fis_integration.product_traffic'
+    _description = 'low product'
+    _order = 'date desc'
+    _inherit = ['mail.thread']
+    _mirrors = {'product_id': ['description', 'categ_id']}
+
+    def _check_already_open(self, cr, uid, ids):
+        products = set()
+        for rec in self.browse(cr, SUPERUSER_ID, [None]):
+            if rec.state in (False, 'done'):
+                continue
+            if rec.product_id in products:
+                return False
+            products.add(rec.product_id)
+        return True
+
+    def _delete_stale_entries(self, cr, uid, arg=None, context=None):
+        'zombifies entries that have been in the seen state for longer than 20 days'
+        today = Date.today()
+        cart = []
+        for rec in self.browse(cr, uid, context=context):
+            if (
+                rec.purchase_comment_date and
+                ((today - Date(rec.purchase_comment_date)).days > 20)
+                ):
+                cart.append(rec.id)
+        if cart:
+            self.write(cr, uid, cart, {'state': False}, context=context)
+        return True
+
+    _columns = {
+        'date': fields.date('Date Created'),
+        'product_id': fields.many2one('product.product', 'Product', required=True),
+        'sales_comment': fields.selection(
+            (('low', 'getting low'), ('out', 'sold out')),
+            'Sales Comment',
+            track_visibility='change_only',
+            ),
+        'purchase_comment': fields.text('Purchase Comment', track_visibility='change_only'),
+        'state': fields.selection(
+            (('new','New'), ('seen', 'Seen'), ('ordered','On Order'), ('done', 'Received')),
+            'Status',
+            track_visibility='change_only',
+            ),
+        'purchase_comment_available': fields.selection(
+            (('no',''), ('yes','Yes')),
+            'Purchasing comment available?',
+            ),
+        'purchase_comment_date': fields.date('Purchasing updated'),
+        }
+
+    _defaults = {
+        'date': lambda s, c, u, ctx=None: fields.date.today(s, c),
+        'state': lambda *a: 'new'
+        }
+
+    _constraints = [
+        (lambda s, *a: s._check_already_open(*a), '\nOpen item already exists', ['product_id']),
+        ]
+
+    def create(self, cr, uid, values, context=None):
+        if context is None:
+            context = {}
+        ctx = context.copy()
+        ctx['mail_track_initial'] = True
+        if values.get('purchase_comment'):
+            values['purchase_comment_available'] = 'yes'
+            values['purchase_comment_date'] = fields.date.today(self, cr)
+            values['state'] = 'seen'
+        user = self.pool.get('res.users').browse(cr, uid, uid, context=context)
+        follower_ids = [u.id for u in user.company_id.traffic_followers_ids]
+        if follower_ids:
+            values['message_follower_user_ids'] = follower_ids
+        return super(product_traffic, self).create(cr, uid, values, context=ctx)
+
+    def mark_as(self, cr, uid, ids, state, context=None):
+        return self.write(cr, uid, ids, {'state': state}, context=context)
+
+    def name_get(self, cr, uid, ids, context=None):
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        res = []
+        for record in self.browse(cr, uid, ids, context=context):
+            res.append((record.id, record.product_id.name))
+        return res
+
+    def write(self, cr, uid, ids, values, context=None):
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        if ('purchase_comment' in values or 'state' in values) and ids:
+            pc = values.get('purchase_comment')
+            s = values.get('state')
+            for rec in self.browse(cr, uid, ids, context=context):
+                vals = values.copy()
+                if pc is not None:
+                    if pc:
+                        vals['purchase_comment_available'] = 'yes'
+                        vals['purchase_comment_date'] = fields.date.today(self, cr)
+                        if rec.state == 'new':
+                            vals['state'] = 'seen'
+                    else:
+                        vals['purchase_comment_available'] = 'no'
+                        vals['purchase_comment_date'] = False
+                        if rec.state == 'seen':
+                            vals['state'] = 'new'
+                if s not in (None, 'new', 'seen'):
+                    vals['purchase_comment_date'] = fields.date.today(self, cr)
+                if not super(product_traffic, self).write(cr, uid, rec.id, vals, context=context):
+                    return False
+            return True
+        return super(product_traffic, self).write(cr, uid, ids, values, context=context)
+

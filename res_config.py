@@ -11,6 +11,12 @@ class fis_integration_config_settings(osv.osv_memory):
             'employee_integration': fields.related('company_id', 'employee_integration', type='char', string='FIS Employee Module', size=64, help='Module name used for employee external ids.'),
             'customer_integration': fields.related('company_id', 'customer_integration', type='char', string='FIS Customer Module', size=64, help='Module name used for customer external ids.'),
             'supplier_integration': fields.related('company_id', 'supplier_integration', type='char', string='FIS Supplier/Vendor Module', size=64, help='Module name used for supplier/vendor external ids.'),
+            'traffic_followers': fields.related(
+                'company_id', 'traffic_followers_ids',
+                type='many2many',
+                string='Traffic Report Auto-Followers',
+                relation='res.users',
+                ),
     }
 
     def create(self, cr, uid, values, context=None):
@@ -44,6 +50,7 @@ class fis_integration_config_settings(osv.osv_memory):
                 'customer_integration': company.customer_integration,
                 'supplier_integration': company.supplier_integration,
                 'employee_integration': company.employee_integration,
+                'traffic_followers': [r.id for r in company.traffic_followers_ids],
             }
         return {'value': values}
 
