@@ -9,9 +9,9 @@ from recipe import get_item_ingredients, get_ingredient_data, get_items_with_rec
 @Command(
         item=('item to look up', OPTION),
         order=('order to look up', OPTION),
-        line=('1 line per ingredient', FLAG),
+        null=('show zeroed ingredients', FLAG),
         )
-def recipe(item, order, line):
+def recipe(item, order, null):
     'display recipe for one item (using: 322 (IFDT) Formula Detail file)'
     print('\nitem -> %r\norder -> %r\n' % (item, order))
     if not (item or order):
@@ -23,14 +23,19 @@ def recipe(item, order, line):
         data = get_ingredient_data('', order, qty=1, level=1, use_production=True)
     else:
         abort('neither ITEM nor ORDER specified')
-    if not line:
+    if not null:
+        for ingred_name, ingred_data in list(data.ingredients.items()):
+            if not ingred_data.qty:
+                del data.ingredients[ingred_name]
+    if script_verbosity:
+        # info dump
         echo(data)
     else:
         echo('----------\n[%s] %s --> %s %s' % (data.item, data.desc, data.yield_qty, data.um))
         for k, v in sorted(data.items()):
             if k != 'ingredients':
                 print('%-10s: %s' % (k, v), verbose=2)
-        echo('----------\n')
+        echo('----------')
         for _, i in sorted(data.ingredients.items()):
             echo('[%s] %s (%s %s)' % (i.item, i.desc, i.qty, i.um))
 
