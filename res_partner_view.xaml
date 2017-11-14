@@ -13,13 +13,14 @@
                 @email position='replace'
                     ~label $Emails for='email' attrs="{'invisible': [('is_company','=',True)]}"
                     ~div attrs="{'invisible': [('is_company','=',True)]}"
-                        @email
-                        @email2
+                        @email widget='email'
+                        @email2 widget='email'
                     @facebook widget='url'
                     @twitter widget='url'
-                    @special_notifications
-                    @sn_catalog_type $Catalog_By attrs="{'invisible': [('special_notifications','not in',['C','B'])]}"
-                    @sn_special_type $Specials_Sheet_By attrs="{'invisible': [('special_notifications','not in',['S','B'])]}"
+                    @parent_specials_notification invisible='1'
+                    @specials_notification on_change="onchange_specials_notification(specials_notification, parent_id)" attrs="{'readonly':[('is_company','=',True),('xml_id','!=',False)]}"
+                    @sn_catalog_type $Catalog_By attrs="{'invisible': ['|',('specials_notification','in',['N','S',False]),'&',('specials_notification','=','D'),('parent_specials_notification','in',['N','S',False])], 'viewonly':[('specials_notification','=','D')]}"
+                    @sn_specials_type $Specials_Sheet_By attrs="{'invisible': ['|',('specials_notification','in',['N','C',False]),'&',('specials_notification','=','D'),('parent_specials_notification','in',['N','C',False])], 'viewonly':[('specials_notification','=','D')]}"
 
 
         ~record model='ir.ui.view' #view_partners_form_xml_id
@@ -28,15 +29,18 @@
             @inherit_id ref='base.view_partner_form'
             @priority eval='16'
             @arch type='xml'
+                @is_company position='attributes'
+                    ~attribute @on_change: onchange_type(is_company, specials_notification, sn_catalog_type, sn_specials_type)
                 @category_id position='after'
                     @keyword_ids widget='many2many_tags' placeholder='Keywords...'
                 @website position='after'
                     @active groups="base.group_sale_manager"
-                    @xml_id attrs="{'readonly':True}"
-                    @fis_valid
-                    @special_notifications
-                    @sn_catalog_type $Catalog_By attrs="{'invisible': [('special_notifications','not in',['C','B'])]}"
-                    @sn_special_type $Specials_Sheet_By attrs="{'invisible': [('special_notifications','not in',['S','B'])]}"
+                    @xml_id readonly='1'
+                    @fis_valid readonly='1'
+                    @specials_notification on_change="onchange_specials_notification(specials_notification, parent_id)" attrs="{'readonly':[('is_company','=',True),('xml_id','!=',False)]}"
+                    @parent_specials_notification invisible='1'
+                    @sn_catalog_type $Catalog_By attrs="{'invisible': ['|',('specials_notification','in',['N','S',False]),'&',('specials_notification','=','D'),('parent_specials_notification','in',['N','S',False])], 'viewonly':[('specials_notification','=','D')]}"
+                    @sn_specials_type $Specials_Sheet_By attrs="{'invisible': ['|',('specials_notification','in',['N','C',False]),'&',('specials_notification','=','D'),('parent_specials_notification','in',['N','C',False])], 'viewonly':[('specials_notification','=','D')]}"
                 @function position='after'
                     @department attrs="{'invisible': [('is_company','=', True)]}"
                 @customer position='after'
@@ -53,7 +57,7 @@
                     @twitter widget='url'
                 @comment position='before'
                     ~group attrs="{'invisible': ['|',('is_company','=',False), ('supplier','=',False)]}"
-                        ~group $Supplier_Info colspan='1': >
+                        ~group $Supplier_Info colspan='1'
                             @sp_tele
                             @sp_fax
                             ~separator
@@ -100,30 +104,32 @@
                         ~group
                             ~group
                                 @module
-                                @updated_by_user
-                                @fis_data_changed
+                                @fis_updated_by_user
+                                @fis_data_address_changed
                             ~group
-                                @fis_data
+                                @fis_data_address
                 ~xpath expr="//page[@string='Contacts']/field/form/div/group/field[@name='email']" position='replace'
                     ~label $Emails for='email'
                     ~div
-                        @email
-                        @email2
+                        @email widget='email'
+                        @email2 widget='email'
                 ~xpath expr="//page[@string='Contacts']/field/form/div/group/field[@name='mobile']" position='after'
                     @facebook widget='url'
                     @twitter widget='url'
-                    @special_notifications
-                    @sn_catalog_type $Catalog_By attrs="{'invisible': [('special_notifications','not in',['C','B'])]}"
-                    @sn_special_type $Specials_Sheet_By attrs="{'invisible': [('special_notifications','not in',['S','B'])]}"
-                @child_ids position='inside'
-                    ~attribute @context: "{'default_parent_id': active_id, 'default_customer': customer, 'default_supplier': supplier, 'default_is_carrier': is_carrier, 'default_fis_valid': fis_valid, 'default_special_notifications': special_notifications}"
-                ~xpath expr="//div[@name='fax']" position='replace'
-                    ~div @special_notifications t-if="record.special_notifications.raw_value": Specials notifications:
-                        @special_notifications
-                    ~div @special_notifications t-if="record.special_notifications.raw_value=='C' or record.special_notifications.raw_value=='B'": Catalog by:
+                    @parent_id invisible='1'
+                    @parent_specials_notification invisible='1'
+                    @specials_notification on_change="onchance_specials_notification(specials_notification, parent_id)"
+                    @sn_catalog_type $Catalog_By attrs="{'invisible': ['|',('specials_notification','in',['N','S',False]),'&',('specials_notification','=','D'),('parent_specials_notification','in',['N','S',False])], 'viewonly':[('specials_notification','=','D')]}"
+                    @sn_specials_type $Specials_Sheet_By attrs="{'invisible': ['|',('specials_notification','in',['N','C',False]),'&',('specials_notification','=','D'),('parent_specials_notification','in',['N','C',False])], 'viewonly':[('specials_notification','=','D')]}"
+                @child_ids position='attributes'
+                    ~attribute @context: {'default_parent_id': active_id, 'default_customer': customer, 'default_supplier': supplier, 'default_is_carrier': is_carrier, 'default_fis_valid': fis_valid}
+                ~xpath expr="//div[@name='fax']" position='after'
+                    ~div @specials_notification t-if="record.specials_notification.raw_value": Notifications:
+                        @specials_notification
+                    ~div @specials_notification t-if="record.specials_notification.raw_value!='D' and record.sn_catalog_type.raw_value": Catalog:
                         @sn_catalog_type
-                    ~div @special_notifications t-if="record.special_notifications.raw_value=='S' or record.special_notifications.raw_value=='B'": Specials Sheet by:
-                        @sn_special_type
+                    ~div @specials_notification t-if="record.specials_notification.raw_value!='D' and record.sn_specials_type.raw_value": Specials:
+                        @sn_specials_type
 
         ~record model='ir.ui.view' #view_partners_xml_id_filter
             @name: res.partner.form.xml_id.filter
@@ -138,8 +144,8 @@
                     ~separator
                 ~filter @type_company position='after'
                     ~separator
-                    ~filter $Notified_for_catalogs @type_notify_by_catalog domain="[('special_notifications','in',['C','B'])]"
-                    ~filter $Notified_for_specials_sheets @type_notify_by_sheet domain="[('special_notifications','in',['S','B'])]"
+                    ~filter $Notified_for_catalogs @type_notify_by_catalog domain="[('specials_notification','in',['C','B'])]"
+                    ~filter $Notified_for_specials_sheets @type_notify_by_sheet domain="[('specials_notification','in',['S','B'])]"
                     ~separator
 
         ~record model='ir.ui.view' #res_partner_xml_id_kanban_view

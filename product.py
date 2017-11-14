@@ -570,6 +570,7 @@ class production_line(xmlid, osv.Model):
         _logger.info(self._name + " done!")
         return True
 
+
 class product_traffic(osv.Model):
     _name = 'fis_integration.product_traffic'
     _description = 'low product'

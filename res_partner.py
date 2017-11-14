@@ -1,6 +1,7 @@
 import logging
 import re
 from collections import defaultdict
+from itertools import groupby
 from osv import osv, fields
 # from tools.misc import EnumNoAlias
 from fis_integration.fis_schema import F27, F33, F47, F65, F74, F163
@@ -15,11 +16,13 @@ _logger = logging.getLogger(__name__)
 ADDRESS_FIELDS = 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id'
 
 class Specials(fields.SelectionEnum):
-    _order_ = 'neither catalog specials both'
+    _order_ = 'neither catalog specials both default'
     neither   = 'N', 'None'
     catalog   = 'C', 'Catalog'
     specials  = 'S', 'Specials Sheet'
     both      = 'B', 'Both'
+    default   = 'D', 'Company'
+    company   = default
 
 class SpecialsType(fields.SelectionEnum):
     _order_ = 'soft hard'
@@ -45,14 +48,73 @@ class res_partner(xmlid, osv.Model):
     _name = 'res.partner'
     _inherit = 'res.partner'
 
+    def _get_specials_type(self, cr, uid, ids, field_names, args, context=None):
+        res = {}
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        children = self.browse(cr, uid, ids, context=context)
+        children.sort(key=lambda r: r.parent_id.id)
+        for parent, children in groupby(children, lambda c: c.parent_id):
+            for child in children:
+                if child.specials_notification == Specials.default:
+                    res[child.id] = {}
+                    for field in ('sn_catalog_type', 'sn_specials_type'):
+                        if field in field_names:
+                            res[child.id][field] = parent[field]
+        return res
+
+    def _get_child_ids(self, cr, uid, ids, context=None):
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        children_ids = []
+        for partner in self.read(
+                cr, uid, ids,
+                fields=['is_company', 'child_ids', 'specials_notification', 'sn_catalog_type', 'sn_specials_type'],
+                ):
+            children_ids.extend(partner['child_ids'])
+        return children_ids
+
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
         'fis_valid': fields.boolean('Valid FIS code?'),
         'fis_active': fields.boolean('Active Partner?'),
-        'special_notifications': fields.selection(Specials, 'Specials Notifications'),
-        'sn_catalog_type': fields.selection(SpecialsType, 'Catalog Type'),
-        'sn_special_type': fields.selection(SpecialsType, 'Specials Type'),
+        'specials_notification': fields.selection(
+            Specials,
+            string='Pricing Notifications',
+            help='FIS Specials Notifications',
+            oldname='special_notifications',
+            ),
+        'parent_specials_notification': fields.related(
+            'parent_id', 'specials_notification',
+            type='selection',
+            selection=Specials,
+            string='Company Pricing Notifications',
+            help='FIS Specials Notifications',
+            ),
+        'sn_catalog_type': fields.function(
+            _get_specials_type,
+            fnct_inv=True,
+            type='selection',
+            selection=SpecialsType,
+            string='Catalog',
+            multi='specials',
+            store={
+                'res.partner': (_get_child_ids, ['specials_notification', 'sn_catalog_type', 'sn_specials_type'], 10),
+                },
+            ),
+        'sn_specials_type': fields.function(
+            _get_specials_type,
+            fnct_inv=True,
+            type='selection',
+            selection=SpecialsType,
+            string='Specials',
+            multi='specials',
+            store={
+                'res.partner': (_get_child_ids, ['specials_notification', 'sn_catalog_type', 'sn_specials_type'], 10),
+                },
+            oldname='sn_special_type',
+            ),
         'parent_name': fields.related('parent_id', 'name', type='char', string='Related'),
         'keyword_ids': fields.many2many(
             'res.partner.keyword',
@@ -122,13 +184,13 @@ class res_partner(xmlid, osv.Model):
         'bulk_img9': fields.binary('Bulk Image', help='Picture of bulk installation.'),
         'bulk_pdf': fields.binary(string='Bulk Contract', help='PDF of contract.'),
         'bulk_pdf_filename': fields.char('Bulk PDF Filename'),
-        'fis_data': fields.text('FIS Name & Address'),
-        'fis_data_changed': fields.boolean('FIS data has changed'),
-        'updated_by_user': fields.boolean('Updated by user'),
+        'fis_data_address': fields.text('FIS Name & Address', oldname='fis_data'),
+        'fis_data_address_changed': fields.boolean('FIS data has changed', oldname='fis_data_changed'),
+        'fis_updated_by_user': fields.char('Updated by user', size=12, oldname='updated_by_user'),
         }
 
     _defaults = {
-        'special_notifications': Specials.neither.db,
+        'specials_notification': Specials.neither.db,
         }
 
     def create(self, cr, uid, values, context=None):
@@ -136,10 +198,10 @@ class res_partner(xmlid, osv.Model):
             context = {}
         if 'xml_id' in values and 'module' in values and values['xml_id'] and values['module']:
             # we have an FIS record -- add appropriate fields
-            # save name/addr/cszc into fis_data field
+            # save name/addr/cszc into fis_data_address field
             state = self.pool.get('res.country.state').browse(cr, uid, values.get('state_id'), context=context)
             country = self.pool.get('res.country').browse(cr, uid, values.get('country_id'), context=context)
-            values['fis_data'] = '\n'.join([
+            values['fis_data_address'] = '\n'.join([
                     values['name'] or '',
                     values.get('street', ''),
                     values.get('street2', ''),
@@ -150,6 +212,11 @@ class res_partner(xmlid, osv.Model):
                         ),
                     country and country.name or '',
                     ])
+        if 'child_ids' in values:
+            for _, _, cvals in values['child_ids']:
+                if cvals['specials_notification'] == Specials.company:
+                    cvals['sn_catalog_type'] = values.get('sn_catalog_type', False)
+                    cvals['sn_specials_type'] = values.get('sn_specials_type', False)
         return super(res_partner, self).create(cr, uid, values, context=context)
 
     def write(self, cr, uid, ids, values, context=None):
@@ -157,14 +224,21 @@ class res_partner(xmlid, osv.Model):
             context = {}
         context = context.copy()
         updating_from_fis = context.pop('fis-updates', False)
-        data = self.read(cr, uid, ids, fields=['id', 'updated_by_user', 'fis_data'], context=context)
+        data = self.read(
+                cr, uid, ids,
+                fields=['id', 'fis_updated_by_user', 'fis_data_address', 'is_company',
+                        'specials_notification', 'sn_catalog_type', 'sn_specials_type',
+                        ],
+                context=context,
+                )
         if updating_from_fis:
-            # save name/addr/cszc into fis_data field
-            # if record has updated_by_user set do not update name/addr/cszc
+            # save name/addr/cszc into fis_data_address field
+            # if record has fis_updated_by_user set do not update name/addr/cszc
             # ids is a single integer
+            updated_by_user = data['fis_updated_by_user'] or ''
             state = self.pool.get('res.country.state').browse(cr, uid, values.get('state_id'), context=context)
             country = self.pool.get('res.country').browse(cr, uid, values.get('country_id'), context=context)
-            values['fis_data'] = '\n'.join([
+            values['fis_data_address'] = '\n'.join([
                     values['name'] or '',
                     values.get('street', ''),
                     values.get('street2', ''),
@@ -175,40 +249,73 @@ class res_partner(xmlid, osv.Model):
                         ),
                     country and country.name or '',
                     ])
-            if data['updated_by_user']:
-                if data['fis_data'] and values['fis_data'] != data['fis_data']:
-                    values['fis_data_changed'] = True
+            if 'A' in updated_by_user:
+                if data['fis_data_address'] and values['fis_data_address'] != data['fis_data_address']:
+                    values['fis_data_address_changed'] = True
                 for attr in ADDRESS_FIELDS:
                     values.pop(attr, None)
+            if 'S' in updated_by_user:
+                values.pop('specials_notification', None)
         else:
             # at this point data is either a dict or a list of dicts
             # we only care if an address field is being updated
-            check_if_fis = False
+            check_fis = ''
             for field in ADDRESS_FIELDS:
                 if field in values:
-                    check_if_fis = True
+                    check_fis += 'A'
                     break
-            if check_if_fis:
+            if 'specials_notification' in values:
+                check_fis += 'S'
+            if check_fis:
                 # an address field is being updated -- is the record(s) an FIS record?
                 if isinstance(ids, (int, long)):
+                    updated_by_user = data['updated_by_user'] or ''
                     # only one record, data is a dict
-                    if data['fis_data']:
-                        data['updated_by_user'] = True
+                    if data['fis_data_address']:
+                        # definitely an FIS record
+                        if 'A' in check_fis:
+                            updated_by_user += 'A'
+                        if 'S' in check_fis:
+                            updated_by_user += 'S'
+                        values['fis_updated_by_user'] = ''.join(sorted(set(updated_by_user)))
                 else:
                     # list of dicts
+                    A_fis_ids = []
+                    S_fis_ids = []
+                    AS_fis_ids = []
                     fis_ids = []
                     ids = []
                     for d in data:
-                        target = (ids, fis_ids)[bool(d['fis_data'])]
-                        target.append(d['id'])
+                        updated_by_user = d['fis_updated_by_user']
+                        id = d['id']
+                        if not d['fis_data_address']:
+                            ids.append(id)
+                        elif updated_by_user == 'AS':
+                            AS_fis_ids.append(id)
+                        elif updated_by_user == 'A':
+                            A_fis_ids.append(id)
+                        elif updated_by_user == 'S':
+                            S_fis_ids.append(id)
+                        else:
+                            fis_ids.append(id)
                     success = True
                     if ids:
                         # write non-fis records
                         success = super(res_partner, self).write(cr, uid, ids, values, context=context)
-                    if fis_ids and success:
-                        # update and write fis records
-                        values['updated_by_user'] = True
-                        success = super(res_partner, self).write(cr, uid, fis_ids, values, context=context)
+                    if success:
+                        # update and write any fis records
+                        if success and fis_ids:
+                            values['fis_updated_by_user'] = check_fis
+                            success = super(res_partner, self).write(cr, uid, fis_ids, values, context=context)
+                        if success and A_fis_ids:
+                            values['fis_updated_by_user'] = ''.join(sorted(set(check_fis + 'A')))
+                            success = super(res_partner, self).write(cr, uid, fis_ids, values, context=context)
+                        if success and S_fis_ids:
+                            values['fis_updated_by_user'] = ''.join(sorted(set(check_fis + 'S')))
+                            success = super(res_partner, self).write(cr, uid, fis_ids, values, context=context)
+                        if success and AS_fis_ids:
+                            values['fis_updated_by_user'] = 'AS'
+                            success = super(res_partner, self).write(cr, uid, fis_ids, values, context=context)
                     return success
         return super(res_partner, self).write(cr, uid, ids, values, context=context)
 
@@ -237,6 +344,45 @@ class res_partner(xmlid, osv.Model):
                         name = '[%s] %s' % (module.upper(), name)
             new_res.append((id, name))
         return new_res
+
+    def onchange_type(self, cr, uid, ids, is_company, notify, catalog, specials, context=None):
+        res = super(res_partner, self).onchange_type(cr, uid, ids, is_company, context=context)
+        if is_company and notify == Specials.company:
+            # just promoted to company status, but currently set to follow old company's
+            # notification policy
+            value = res.setdefault('value', {})
+            if catalog and specials:
+                value['specials_notification'] = Specials.both
+            elif catalog:
+                value['specials_notification'] = Specials.catalog
+            elif specials:
+                value['specials_notification'] = Specials.special
+            else:
+                value['specials_notification'] = Specials.none
+        return res
+
+    def onchange_specials_notification(self, cr, uid, ids, notify, parent_id, context=None):
+        res = {'value': {}, 'domain':{}}
+        if notify == Specials.catalog:
+            # remove specials
+            res['value']['sn_specials_type'] = False
+        elif notify == Specials.specials:
+            # remove catalog
+            res['value']['sn_catalog_type'] = False
+        elif notify == Specials.company:
+            # does this contact have a company?
+            if not parent_id:
+                res['warning'] = warning = {}
+                warning['title'] = 'Invalid selection'
+                warning['message'] = "Cannot choose 'Company'."
+                res['value']['specials_notification'] = False
+            # follow parent (or null parent)
+            parent = self.browse(cr, uid, parent_id, context=context)
+            res['value']['sn_specials_type'] = parent.sn_specials_type
+            res['value']['sn_catalog_type'] = parent.sn_catalog_type
+            if not parent_id:
+                res['value']['specials_notification'] = Specials.neither
+        return res
 
     def fis_updates(self, cr, uid, partner=None, shipper=None, *args):
         context = {'hr_welcome': False}
@@ -623,7 +769,7 @@ class res_partner(xmlid, osv.Model):
 
         # 'fis_valid': fields.boolean('Valid FIS code?'),
         # 'fis_active': fields.boolean('Active Partner?'),
-        # 'special_notifications': fields.char('Special Notifications', size=1),
+        # 'specials_notification': fields.char('Special Notifications', size=1),
 
         for cus_rec in csms:
             rep = cus_rec[F33.salesrep]
@@ -646,7 +792,7 @@ class res_partner(xmlid, osv.Model):
                 # TODO check for open orders
                 pass
             notify_by = Specials.get_member(cus_rec[F33.catalog_category].upper(), Specials.neither.db)
-            result['special_notifications'] = notify_by.db
+            result['specials_notification'] = notify_by.db
             result['name'] = re.sub('sunridge', 'SunRidge', BsnsCase(cus_rec[F33.name]), flags=re.I)
             addr1, addr2, addr3 = Sift(cus_rec[F33.addr1], cus_rec[F33.addr2], cus_rec[F33.addr3])
             addr2, city, state, postal, country = cszk(addr2, addr3)
@@ -691,7 +837,7 @@ class res_partner(xmlid, osv.Model):
                 contact = cus_rec[F33.contact]
                 result = {
                         'fis_valid': fis_valid,
-                        'special_notifications': result['special_notifications'],
+                        'specials_notification': Specials.company,
                         }
                 result['name'] = re.sub('sunridge', 'SunRidge', NameCase(contact), flags=re.I)
                 result['is_company'] = False
