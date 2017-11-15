@@ -12,21 +12,17 @@ from recipe import get_item_ingredients, get_ingredient_data, get_items_with_rec
         null=('show zeroed ingredients', FLAG),
         )
 def recipe(item, order, null):
-    'display recipe for one item (using: 322 (IFDT) Formula Detail file)'
+    'display recipe for one item (using: 322 IFDT ) or for one order (using: 329 IFPP1)'
     print('\nitem -> %r\norder -> %r\n' % (item, order))
     if not (item or order):
         help('one of ITEM or ORDER must be specified')
     if item:
         print('looking up', item)
-        data = get_ingredient_data("", item, qty=1, level=1)
+        data = get_ingredient_data("", item, qty=1, level=1, include_null=null)
     elif order:
-        data = get_ingredient_data('', order, qty=1, level=1, use_production=True)
+        data = get_ingredient_data('', order, qty=1, level=1, use_production=True, include_null=null)
     else:
         abort('neither ITEM nor ORDER specified')
-    if not null:
-        for ingred_name, ingred_data in list(data.ingredients.items()):
-            if not ingred_data.qty:
-                del data.ingredients[ingred_name]
     if script_verbosity:
         # info dump
         echo(data)

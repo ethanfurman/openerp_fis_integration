@@ -27,7 +27,7 @@ def get_item_ingredients(item, rev='000', food_only=False):
                     foodlist.append((ingredient, key, rec, 0))
     return foodlist
 
-def get_order_ingredients(order, food_only=False):
+def get_order_ingredients(order, food_only=False, include_null=True):
     get_fis_data()
     # get the order record from 328
     order, order_no = IFPP0[order], order
@@ -41,13 +41,14 @@ def get_order_ingredients(order, food_only=False):
         ingredient = ingredient[:6]
         if ingredient in ignored_ingredients:
             continue
-        if NVTY.has_key(ingredient):
-            if item == ingredient:
-                foodlist.append((ingredient, key, rec, 1)) # the 1 means don't eplode (isself=1)
-                ingredient = "x" + ingredient # XXX this line should be above the previous one, or removed
-            elif not food_only or NVTY[ingredient][F135.net_un_wt] > 0:
-                # net_un_wt > 0 means it's an item that contributes wght (food ingredient?)
-                foodlist.append((ingredient, key, rec, 0))
+        if rec[F329.qty_batch_1] or include_null:
+            if NVTY.has_key(ingredient):
+                if item == ingredient:
+                    foodlist.append((ingredient, key, rec, 1)) # the 1 means don't eplode (isself=1)
+                    ingredient = "x" + ingredient # XXX this line should be above the previous one, or removed
+                elif not food_only or NVTY[ingredient][F135.net_un_wt] > 0:
+                    # net_un_wt > 0 means it's an item that contributes wght (food ingredient?)
+                    foodlist.append((ingredient, key, rec, 0))
     return item, foodlist
 
 
@@ -117,7 +118,10 @@ def get_items_with_recipes(print_missing=False):
             print('skipping recipe', item)
     return recipes
 
-def get_ingredient_data(oid, item, qty=1, exdata=None, food_only=False, inventory=None, item_refs=None, level=None, use_production=False):
+def get_ingredient_data(
+        oid, item, qty=1, exdata=None, food_only=False, inventory=None,
+        item_refs=None, level=None, use_production=False, include_null=True,
+        ):
     # bom = bill of materials
     if inventory is None:
         inventory = AttrDict()
@@ -134,27 +138,28 @@ def get_ingredient_data(oid, item, qty=1, exdata=None, food_only=False, inventor
     datadict = item_detail(oid, item, qty, 0, inventory, item_refs)
     datadict.ingredients = AttrDict()
     for ingredient, ky, ifdt, isself in bom:
-        datadict.ingredients["%s-%s" % (ky[-3:], ingredient)] = item_detail(
-                oid=ky[-3:],
-                item=ingredient,
-                qty=ifdt[F.qty_batch_1],
-                as_ingredient=True,
-                inventory=inventory,
-                item_refs=item_refs,
-                )
-        if not isself and get_item_ingredients(ingredient, food_only=food_only) and level not in (None, 0):
-            if level is not None:
-                level -= 1
-            datadict.ingredients["%s-%s" % (ky[-3:], ingredient)] = get_ingredient_data(
+        if ifdt[F.qty_batch_1] or include_null:
+            datadict.ingredients["%s-%s" % (ky[-3:], ingredient)] = item_detail(
                     oid=ky[-3:],
                     item=ingredient,
                     qty=ifdt[F.qty_batch_1],
-                    food_only=food_only,
+                    as_ingredient=True,
                     inventory=inventory,
                     item_refs=item_refs,
-                    level=level,
-                    use_production=use_production,
                     )
+            if not isself and get_item_ingredients(ingredient, food_only=food_only) and level not in (None, 0):
+                if level is not None:
+                    level -= 1
+                datadict.ingredients["%s-%s" % (ky[-3:], ingredient)] = get_ingredient_data(
+                        oid=ky[-3:],
+                        item=ingredient,
+                        qty=ifdt[F.qty_batch_1],
+                        food_only=food_only,
+                        inventory=inventory,
+                        item_refs=item_refs,
+                        level=level,
+                        use_production=use_production,
+                        )
     if exdata is None:
         exdata = datadict
     return exdata
@@ -184,166 +189,6 @@ ignored_ingredients = set([
         # freight charges
         '967001',
         ])
-
-class F323(str, Enum):
-    """
-    IFDT1 - FORMULA DETAIL - PRODUCTION INFO
-    """
-    company_id     = 'An$(1,2)'      # Company Code
-    formula_id     = 'An$(3,10)'     # Formula Code
-                                     # (Open) An$(13,2)
-    rev_id         = 'An$(15,3)'     # Revision Number
-    key_type       = 'An$(18,1)'     # Key Group = "1"
-    batch_id       = 'An$(19,2)'     # Batch Id
-    desc           = 'Bn$'           # Description
-    comments       = 'Cn$'           # Comments
-    gross_weight   = 'An'            # Gross Weight (Lbs)
-    yield_in_units = 'Bn'            # Yield In Units
-    yield_pct      = 'Cn'            # Yield %
-    labor_hours    = 'Dn'            # Labor Hours
-
-class F322(str, Enum):
-    """
-    IFDT - FORMULA DETAIL - INGREDIENT DETAIL
-    """
-    company_id                = 'An$(1,2)'        # Company Code
-    formula_id                = 'An$(3,10)'       # Formula Code
-                                                  # (Open) An$(13,2)
-    rev_id                    = 'An$(15,3)'       # Revision Number
-    key_type                  = 'An$(18,1)'       # Key Group = "0"
-    line_id                   = 'An$(19,3)'       # Line Number
-    ingr_id_batch_1           = 'Bn$(1,8)'        # Ingredient Code - Batch 1
-    ingr_id_batch_2           = 'Bn$(9,8)'        # Ingredient Code - Batch 2
-    ingr_id_batch_3           = 'Bn$(17,8)'       # Ingredient Code - Batch 3
-    ingr_id_batch_temp        = 'Bn$(25,8)'       # Ingredient Code - Batch Temp
-    item_type_batch_1         = 'Cn$(1,1)'        # Item Type - Batch 1
-    item_type_batch_2         = 'Cn$(2,1)'        # Item Type - Batch 2
-    item_type_batch_3         = 'Cn$(3,1)'        # Item Type - Batch 3
-    item_type_batch_temp      = 'Cn$(4,1)'        # Item Type - Batch Temp
-    units_batch_1             = 'Dn$(1,2)'        # Units - Batch 1
-    units_batch_2             = 'Dn$(3,2)'        # Units - Batch 2
-    units_batch_3             = 'Dn$(5,2)'        # Units - Batch 3
-    units_batch_temp          = 'Dn$(7,2)'        # Units - Batch Temp
-                                                  # (open) En$
-    desc_batch_1              = 'Fn$(1,48)'       # Desc - Batch 1
-    desc_batch_2              = 'Fn$(49,48)'      # Desc - Batch 2
-    desc_batch_3              = 'Fn$(97,40)'      # Desc - Batch 3
-    desc_batch_temp           = 'Fn$(121,40)'     # Desc - Batch Temp
-    lbl_claim_batch_1         = 'Gn$(1,8)'        # Lbl Claim - Batch 1
-    lbl_claim_batch_2         = 'Gn$(9,8)'        # Lbl Claim - Batch 2
-    lbl_claim_batch_3         = 'Gn$(17,8)'       # Lbl Claim - Batch 3
-    lbl_claim_batch_temp      = 'Gn$(25,8)'       # Lbl Claim - Batch Temp
-    pct_over_batch_1          = 'Hn$(1,2)'        # Pct Over - Batch 1
-    pct_over_batch_2          = 'Hn$(3,2)'        # Pct Over - Batch 2
-    pct_over_batch_3          = 'Hn$(5,2)'        # Pct Over - Batch 3
-    pct_over_batch_temp       = 'Hn$(7,2)'        # Pct Over - Batch Temp
-    pct_in_formula_batch_1    = 'A(1)'            # Pct In Formula - Batch 1
-    pct_in_formula_batch_2    = 'A(2)'            # Pct In Formula - Batch 2
-    pct_in_formula_batch_3    = 'A(3)'            # Pct In Formula - Batch 3
-    pct_in_formula_batch_temp = 'A(4)'            # Pct In Formula - Batch Temp
-    qty_batch_1               = 'B(1)'            # Qty - Batch 1
-    qty_batch_2               = 'B(2)'            # Qty - Batch 2
-    qty_batch_3               = 'B(3)'            # Qty - Batch 3
-    qty_batch_temp            = 'B(4)'            # Qty - Batch Temp
-                                                  # (open) C(1)
-                                                  # (open) C(2)
-                                                  # (open) C(3)
-                                                  # (open) C(4)
-
-class F329(str, Enum):
-    """
-    IFPP1 - SALES ORDER PRODUCTION PENDING - DETAIL
-    """
-    company_id             = 'An$(1,2)'      #   0: Company Code
-    order_no               = 'An$(3,6)'      #   1: Order Number
-    release_no             = 'An$(9,2)'      #   2: Release No
-    sales_order_seq        = 'An$(11,3)'     #   3: Sales Order Seq
-    key_type               = 'An$(14,1)'     #   4: Key Type = "1"
-    formula_line_no        = 'An$(15,3)'     #   5: Formula Line No
-    ingr_id_batch_1      = 'Bn$(1,8)'      #   6: Ingredient Code - Batch 1
-    ingr_id_batch_2      = 'Bn$(9,8)'      #   7: Ingredient Code - Batch 2
-    item_type_batch_1      = 'Cn$(1,1)'      #   8: Item Type - Batch 1
-    item_type_batch_2      = 'Cn$(2,1)'      #   9: Item Type - Batch 2
-                                             # (open) Cn$(3,2)
-    units_batch_1          = 'Dn$(1,2)'      #  11: Units - Batch 1
-    units_batch_2          = 'Dn$(3,2)'      #  12: Units - Batch 2
-                                             # (open) Dn$(5,2)
-                                             # (open) Dn$(7,2)
-    desc                   = 'En$'           #  15: Description (Item Or Msg)
-    label_claim            = 'Fn$'           #  16: Label Claim
-    over                   = 'Gn$'           #  17: % Over
-                                             # (open) Hn$
-    pct_in_formula_batch_1 = 'A(1)'          #  19: Pct In Formula - Batch 1
-    pct_in_formula_batch_2 = 'A(2)'          #  20: Pct In Formula - Batch 2
-                                             # (open) A(3)
-                                             # (open) A(4)
-    qty_batch_1            = 'B(1)'          #  23: Quantity - Batch 1
-    qty_batch_2            = 'B(2)'          #  24: Quantity - Batch 2
-    qty_committed_batch_1  = 'B(3)'          #  25: Qty Committed - Batch 1
-    qty_committed_batch_2  = 'B(4)'          #  26: Qty Committed - Batch 2
-                                             # (open) C(1)
-                                             # (open) C(2)
-    wip_qty_batch_1        = 'C(3)'          #  29: WIP Qty - Batch 1
-                                             # (open) C(4)
-
-
-
-class F320(str, Enum):
-    """
-    IFMS - FORMULA MASTER FILE
-    """
-    company_id            = 'An$(1,2)'      # Company Code
-    formula_id            = 'An$(3,10)'     # Formula Code
-                                            # (Open) An$(13,2)
-    rev_id                = 'An$(15,3)'     # Revision Number
-    key_type              = 'An$(18,1)'     # Key Group = "0"
-    desc                  = 'Bn$'           # Description
-    coating               = 'Cn$'           # Project Number (mis-named)
-    date_issued           = 'Dn$(1,6)'      # Date Issued
-    date_revised          = 'Dn$(7,6)'      # Date Revised
-    date_of_last_run      = 'Dn$(13,6)'     # Date Of Last Run
-    date_put_on_hold      = 'Dn$(19,6)'     # Date Put On Hold
-    date_written          = 'Dn$(25,6)'     # Date Written
-    approved_by           = 'Dn$(31,3)'     # Approved By
-    changed_by            = 'Dn$(34,3)'     # Changed By
-    change_approved_by    = 'Dn$(37,3)'     # Change Approved By
-    date_to_retest        = 'Dn$(40,3)'     # Date to Retest
-    last_sales_ord        = 'En$(1,6)'      # Last Sales Ord. #
-    last_customer         = 'En$(7,6)'      # Last Customer #
-    dept_id               = 'En$(13,2)'     # Department Code
-    color                 = 'En$(15,20)'    # Color
-    formulated_by         = 'Fn$(1,3)'      # Formulated By
-    formula_type          = 'Fn$(4,1)'      # Formula Type
-    ok_to_use             = 'Fn$(5,1)'      # Ok To Use?
-    hold_reason           = 'Fn$(6,2)'      # Hold Reason
-    change_reason_id      = 'Fn$(8,2)'      # Change Reason Code
-    test_w_milk           = 'Fn$(10,1)'     # Test W. Milk?
-    tablet_type           = 'Fn$(11,3)'     # Tablet Type
-    normal_prod_line      = 'Fn$(14,2)'     # Normal Production Line
-    serving_size_units    = 'Fn$(16,2)'     # Serving Size Units
-    bulk_item_id          = 'Fn$(18,6)'     # Bulk Item Code
-                                            # (open) Fn$(24,2)
-    prod_units            = 'Fn$(26,2)'     # Production Units
-    allergens             = 'Fn$(28,8)'     # Alpha Sort Key (mis-named)
-    std_batch_sizes       = 'Fn$(36,1)'     # Std Batch Sizes? (Y/N)
-    tube_size             = 'Fn$(37,2)'     # Tube Size
-                                            # (open) Fn$(39,2)
-    label_name            = 'Gn$'           # Label Name
-    reference_no          = 'Hn$'           # Reference No.
-    previous_reference_no = 'In$'           # Previous Reference No.
-    comment_line_1        = 'Jn$'           # Comment Line 1
-    comment_line_2        = 'Kn$'           # Comment Line 2
-    serving_size          = 'An'            # Serving Size
-    expected_yield        = 'Bn'            # Expected Yield %
-    hardness_range_low    = 'Cn'            # Hardness Range - Low
-    hardness_range_high   = 'Dn'            # Hardness Range - High
-    mos_shelf_life        = 'En'            # Mos Shelf Life
-                                            # (open) Fn
-    largest_batch_size    = 'Gn'            # Largest Batch Size
-    weight_10             = 'Hn'            # Weight/10
-                                            # (Open) In
-                                            # (Open) Jn
-
 
 class F135(str, Enum):
     """
@@ -469,6 +314,128 @@ class F135(str, Enum):
     new_landed               = 'I(24)'            # New Landed
     new_fob_cost             = 'I(25)'            # New FOB Cost
 
+class F320(str, Enum):
+    """
+    IFMS - FORMULA MASTER FILE
+    """
+    company_id            = 'An$(1,2)'      # Company Code
+    formula_id            = 'An$(3,10)'     # Formula Code
+                                            # (Open) An$(13,2)
+    rev_id                = 'An$(15,3)'     # Revision Number
+    key_type              = 'An$(18,1)'     # Key Group = "0"
+    desc                  = 'Bn$'           # Description
+    coating               = 'Cn$'           # Project Number (mis-named)
+    date_issued           = 'Dn$(1,6)'      # Date Issued
+    date_revised          = 'Dn$(7,6)'      # Date Revised
+    date_of_last_run      = 'Dn$(13,6)'     # Date Of Last Run
+    date_put_on_hold      = 'Dn$(19,6)'     # Date Put On Hold
+    date_written          = 'Dn$(25,6)'     # Date Written
+    approved_by           = 'Dn$(31,3)'     # Approved By
+    changed_by            = 'Dn$(34,3)'     # Changed By
+    change_approved_by    = 'Dn$(37,3)'     # Change Approved By
+    date_to_retest        = 'Dn$(40,3)'     # Date to Retest
+    last_sales_ord        = 'En$(1,6)'      # Last Sales Ord. #
+    last_customer         = 'En$(7,6)'      # Last Customer #
+    dept_id               = 'En$(13,2)'     # Department Code
+    color                 = 'En$(15,20)'    # Color
+    formulated_by         = 'Fn$(1,3)'      # Formulated By
+    formula_type          = 'Fn$(4,1)'      # Formula Type
+    ok_to_use             = 'Fn$(5,1)'      # Ok To Use?
+    hold_reason           = 'Fn$(6,2)'      # Hold Reason
+    change_reason_id      = 'Fn$(8,2)'      # Change Reason Code
+    test_w_milk           = 'Fn$(10,1)'     # Test W. Milk?
+    tablet_type           = 'Fn$(11,3)'     # Tablet Type
+    normal_prod_line      = 'Fn$(14,2)'     # Normal Production Line
+    serving_size_units    = 'Fn$(16,2)'     # Serving Size Units
+    bulk_item_id          = 'Fn$(18,6)'     # Bulk Item Code
+                                            # (open) Fn$(24,2)
+    prod_units            = 'Fn$(26,2)'     # Production Units
+    allergens             = 'Fn$(28,8)'     # Alpha Sort Key (mis-named)
+    std_batch_sizes       = 'Fn$(36,1)'     # Std Batch Sizes? (Y/N)
+    tube_size             = 'Fn$(37,2)'     # Tube Size
+                                            # (open) Fn$(39,2)
+    label_name            = 'Gn$'           # Label Name
+    reference_no          = 'Hn$'           # Reference No.
+    previous_reference_no = 'In$'           # Previous Reference No.
+    comment_line_1        = 'Jn$'           # Comment Line 1
+    comment_line_2        = 'Kn$'           # Comment Line 2
+    serving_size          = 'An'            # Serving Size
+    expected_yield        = 'Bn'            # Expected Yield %
+    hardness_range_low    = 'Cn'            # Hardness Range - Low
+    hardness_range_high   = 'Dn'            # Hardness Range - High
+    mos_shelf_life        = 'En'            # Mos Shelf Life
+                                            # (open) Fn
+    largest_batch_size    = 'Gn'            # Largest Batch Size
+    weight_10             = 'Hn'            # Weight/10
+                                            # (Open) In
+                                            # (Open) Jn
+
+
+class F322(str, Enum):
+    """
+    IFDT - FORMULA DETAIL - INGREDIENT DETAIL
+    """
+    company_id                = 'An$(1,2)'        # Company Code
+    formula_id                = 'An$(3,10)'       # Formula Code
+                                                  # (Open) An$(13,2)
+    rev_id                    = 'An$(15,3)'       # Revision Number
+    key_type                  = 'An$(18,1)'       # Key Group = "0"
+    line_id                   = 'An$(19,3)'       # Line Number
+    ingr_id_batch_1           = 'Bn$(1,8)'        # Ingredient Code - Batch 1
+    ingr_id_batch_2           = 'Bn$(9,8)'        # Ingredient Code - Batch 2
+    ingr_id_batch_3           = 'Bn$(17,8)'       # Ingredient Code - Batch 3
+    ingr_id_batch_temp        = 'Bn$(25,8)'       # Ingredient Code - Batch Temp
+    item_type_batch_1         = 'Cn$(1,1)'        # Item Type - Batch 1
+    item_type_batch_2         = 'Cn$(2,1)'        # Item Type - Batch 2
+    item_type_batch_3         = 'Cn$(3,1)'        # Item Type - Batch 3
+    item_type_batch_temp      = 'Cn$(4,1)'        # Item Type - Batch Temp
+    units_batch_1             = 'Dn$(1,2)'        # Units - Batch 1
+    units_batch_2             = 'Dn$(3,2)'        # Units - Batch 2
+    units_batch_3             = 'Dn$(5,2)'        # Units - Batch 3
+    units_batch_temp          = 'Dn$(7,2)'        # Units - Batch Temp
+                                                  # (open) En$
+    desc_batch_1              = 'Fn$(1,48)'       # Desc - Batch 1
+    desc_batch_2              = 'Fn$(49,48)'      # Desc - Batch 2
+    desc_batch_3              = 'Fn$(97,40)'      # Desc - Batch 3
+    desc_batch_temp           = 'Fn$(121,40)'     # Desc - Batch Temp
+    lbl_claim_batch_1         = 'Gn$(1,8)'        # Lbl Claim - Batch 1
+    lbl_claim_batch_2         = 'Gn$(9,8)'        # Lbl Claim - Batch 2
+    lbl_claim_batch_3         = 'Gn$(17,8)'       # Lbl Claim - Batch 3
+    lbl_claim_batch_temp      = 'Gn$(25,8)'       # Lbl Claim - Batch Temp
+    pct_over_batch_1          = 'Hn$(1,2)'        # Pct Over - Batch 1
+    pct_over_batch_2          = 'Hn$(3,2)'        # Pct Over - Batch 2
+    pct_over_batch_3          = 'Hn$(5,2)'        # Pct Over - Batch 3
+    pct_over_batch_temp       = 'Hn$(7,2)'        # Pct Over - Batch Temp
+    pct_in_formula_batch_1    = 'A(1)'            # Pct In Formula - Batch 1
+    pct_in_formula_batch_2    = 'A(2)'            # Pct In Formula - Batch 2
+    pct_in_formula_batch_3    = 'A(3)'            # Pct In Formula - Batch 3
+    pct_in_formula_batch_temp = 'A(4)'            # Pct In Formula - Batch Temp
+    qty_batch_1               = 'B(1)'            # Qty - Batch 1
+    qty_batch_2               = 'B(2)'            # Qty - Batch 2
+    qty_batch_3               = 'B(3)'            # Qty - Batch 3
+    qty_batch_temp            = 'B(4)'            # Qty - Batch Temp
+                                                  # (open) C(1)
+                                                  # (open) C(2)
+                                                  # (open) C(3)
+                                                  # (open) C(4)
+
+class F323(str, Enum):
+    """
+    IFDT1 - FORMULA DETAIL - PRODUCTION INFO
+    """
+    company_id     = 'An$(1,2)'      # Company Code
+    formula_id     = 'An$(3,10)'     # Formula Code
+                                     # (Open) An$(13,2)
+    rev_id         = 'An$(15,3)'     # Revision Number
+    key_type       = 'An$(18,1)'     # Key Group = "1"
+    batch_id       = 'An$(19,2)'     # Batch Id
+    desc           = 'Bn$'           # Description
+    comments       = 'Cn$'           # Comments
+    gross_weight   = 'An'            # Gross Weight (Lbs)
+    yield_in_units = 'Bn'            # Yield In Units
+    yield_pct      = 'Cn'            # Yield %
+    labor_hours    = 'Dn'            # Labor Hours
+
 class F328(str, Enum):
     """
     IFPP0 - SALES ORDER PRODUCTION PENDING - HEADER
@@ -537,3 +504,41 @@ class F328(str, Enum):
     units_produced          = 'Ln'              #  61: Units Produced
     no_of_lots_produced     = 'Mn'              #  62: No Of Lots Produced
     qty_on_order            = 'Nn'              #  63: Qty On Order
+class F329(str, Enum):
+    """
+    IFPP1 - SALES ORDER PRODUCTION PENDING - DETAIL
+    """
+    company_id             = 'An$(1,2)'      #   0: Company Code
+    order_no               = 'An$(3,6)'      #   1: Order Number
+    release_no             = 'An$(9,2)'      #   2: Release No
+    sales_order_seq        = 'An$(11,3)'     #   3: Sales Order Seq
+    key_type               = 'An$(14,1)'     #   4: Key Type = "1"
+    formula_line_no        = 'An$(15,3)'     #   5: Formula Line No
+    ingr_id_batch_1      = 'Bn$(1,8)'      #   6: Ingredient Code - Batch 1
+    ingr_id_batch_2      = 'Bn$(9,8)'      #   7: Ingredient Code - Batch 2
+    item_type_batch_1      = 'Cn$(1,1)'      #   8: Item Type - Batch 1
+    item_type_batch_2      = 'Cn$(2,1)'      #   9: Item Type - Batch 2
+                                             # (open) Cn$(3,2)
+    units_batch_1          = 'Dn$(1,2)'      #  11: Units - Batch 1
+    units_batch_2          = 'Dn$(3,2)'      #  12: Units - Batch 2
+                                             # (open) Dn$(5,2)
+                                             # (open) Dn$(7,2)
+    desc                   = 'En$'           #  15: Description (Item Or Msg)
+    label_claim            = 'Fn$'           #  16: Label Claim
+    over                   = 'Gn$'           #  17: % Over
+                                             # (open) Hn$
+    pct_in_formula_batch_1 = 'A(1)'          #  19: Pct In Formula - Batch 1
+    pct_in_formula_batch_2 = 'A(2)'          #  20: Pct In Formula - Batch 2
+                                             # (open) A(3)
+                                             # (open) A(4)
+    qty_batch_1            = 'B(1)'          #  23: Quantity - Batch 1
+    qty_batch_2            = 'B(2)'          #  24: Quantity - Batch 2
+    qty_committed_batch_1  = 'B(3)'          #  25: Qty Committed - Batch 1
+    qty_committed_batch_2  = 'B(4)'          #  26: Qty Committed - Batch 2
+                                             # (open) C(1)
+                                             # (open) C(2)
+    wip_qty_batch_1        = 'C(3)'          #  29: WIP Qty - Batch 1
+                                             # (open) C(4)
+
+
+
