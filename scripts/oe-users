@@ -260,6 +260,8 @@ def update():
             try:
                 res_users.write(user.id, values)
             except:
+                if 'password' in values:
+                    values['password'] = '...'
                 error('error trying to update user: %r\n' % values)
                 raise
             if group_change:
