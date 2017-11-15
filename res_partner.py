@@ -309,13 +309,13 @@ class res_partner(xmlid, osv.Model):
                             success = super(res_partner, self).write(cr, uid, fis_ids, values, context=context)
                         if success and A_fis_ids:
                             values['fis_updated_by_user'] = ''.join(sorted(set(check_fis + 'A')))
-                            success = super(res_partner, self).write(cr, uid, fis_ids, values, context=context)
+                            success = super(res_partner, self).write(cr, uid, A_fis_ids, values, context=context)
                         if success and S_fis_ids:
                             values['fis_updated_by_user'] = ''.join(sorted(set(check_fis + 'S')))
-                            success = super(res_partner, self).write(cr, uid, fis_ids, values, context=context)
+                            success = super(res_partner, self).write(cr, uid, S_fis_ids, values, context=context)
                         if success and AS_fis_ids:
                             values['fis_updated_by_user'] = 'AS'
-                            success = super(res_partner, self).write(cr, uid, fis_ids, values, context=context)
+                            success = super(res_partner, self).write(cr, uid, AS_fis_ids, values, context=context)
                     return success
         return super(res_partner, self).write(cr, uid, ids, values, context=context)
 
