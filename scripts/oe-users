@@ -195,6 +195,7 @@ def update():
     not_found = list()
     failed = list()
     logins = set()
+    errors = dict()
     print('users:', len(users))
     for line in SchroedingerFile(config.users.updates):
         if line.strip() == 'end':
@@ -259,11 +260,17 @@ def update():
                         )
             try:
                 res_users.write(user.id, values)
-            except:
+            except Exception, exc:
                 if 'password' in values:
                     values['password'] = '...'
-                error('error trying to update user: %r\n' % values)
-                raise
+                err = 'error %s trying to update %r: %r\n' % (type(exc).__name__, values['login'], values)
+                errors.setdefault((str(exc).replace('\\n','\n')), list()).append(err)
+                if isinstance(exc, Fault):
+                    row = row + [exc.faultCode.replace('\n\n', ':  ')]
+                else:
+                    row = row + [exc.message or 'unknown failure']
+                failed.append(row)
+                continue
             if group_change:
                 res_users.write(user.id, dict(groups_id=[(6, 0, permissions)]))
                 # now check to see if it took
@@ -355,6 +362,13 @@ def update():
                 error(str(exc).replace('\\n','\n'))
                 row = row + [exc.message or 'index failure']
                 failed.append(row)
+    for tb, problems in errors.items():
+        error()
+        for p in problems:
+            error(p, end='\n\n')
+        error()
+        error(tb)
+        error('-' * 50)
     if failed:
         with open(config.users.failed, 'a') as csv:
             csv.write('old_login,new_login,password,active,groups,name,error\n')
