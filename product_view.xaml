@@ -8,7 +8,7 @@
         ~record #product_normal_form_view_xml_id model='ir.ui.view'
             @name: view.product.product.form.xml_id
             @model: product.product
-            @inherit_id ref='stock.view_normal_procurement_locations_form'
+            @inherit_id ref='product.product_normal_form_view'
             @priority eval='7'
             @arch type='xml'
                 ~page $Information position='after'
@@ -20,10 +20,16 @@
                         @label_server_stub nolabel='1'
                     // ~page $Costs groups='fis_integration.purchase_cost'
                     //   @cost_server_stub
-                @loc_rack position='replace'
-                @loc_row position='replace'
-                @loc_case position='replace'
+                @product_manager position='after'
                     @fis_location
+                    ~separator $Stock_and_Expected_Variations colspan=4
+                    ~group attrs="{'invisible': [('type', '=', 'service')]}" groups='base.group_user'
+                        @virtual_available attrs="{'readonly': [('xml_id','!=',False)]}"
+                        @st_makeable_qty readonly=True
+                    ~group attrs="{'invisible': [('type', '=', 'service')]}" groups="base.group_user"
+                        @qty_available attrs="{'readonly': [('xml_id','!=',False)]}"
+                        @incoming_qty attrs="{'readonly': [('xml_id','!=',False)]}"
+                        @outgoing_qty attrs="{'readonly': [('xml_id','!=',False)]}"
                 @list_price position='after'
                     @shipped_as
                 @default_code position='replace'
@@ -32,21 +38,6 @@
                     @trademark_state readonly='1' attrs="{'invisible': [('trademark','=',False)]}"
                     @trademark_expiry_year on_change="onchange_trademark(trademark_expiry_year, trademark_renewal_date)" attrs="{'invisible': [('trademark','=',False)]}"
                     @trademark_renewal_date on_change="onchange_trademark(trademark_expiry_year, trademark_renewal_date)" attrs="{'invisible': [('trademark','=',False)]}"
-                ~xpath expr="//group[@string='Stock and Expected Variations']/label" position='replace'
-                ~xpath expr="//group[@string='Stock and Expected Variations']/div/field" position='replace'
-                ~xpath expr="//group[@string='Stock and Expected Variations']/div" position='replace'
-                ~xpath expr="//field[@name='virtual_available']" position='replace'
-                ~xpath expr="//field[@name='incoming_qty']" position='replace'
-                ~xpath expr="//field[@name='outgoing_qty']" position='replace'
-                ~xpath expr="//group[@string='Stock and Expected Variations']" position='replace'
-                    ~separator $Stock_and_Expected_Variations .oe_text_center colspan=4
-                    ~group attrs="{'invisible': [('type', '=', 'service')]}" groups='base.group_user'
-                        @virtual_available attrs="{'readonly': [('xml_id','!=',False)]}"
-                        @st_makeable_qty readonly=True
-                    ~group attrs="{'invisible': [('type', '=', 'service')]}" groups="base.group_user"
-                        @qty_available attrs="{'readonly': [('xml_id','!=',False)]}"
-                        @incoming_qty attrs="{'readonly': [('xml_id','!=',False)]}"
-                        @outgoing_qty attrs="{'readonly': [('xml_id','!=',False)]}"
 
         ~record #product_product_tree_view_xml_id model='ir.ui.view'
             @name: fis_integration.product.tree

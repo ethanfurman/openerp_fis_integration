@@ -15,9 +15,8 @@
             "product",
             "project",
             "sample",
-            "stock",
             ],
-    'update_xml': [
+    'data': [
             'hr_employee_view.xaml',
             'res_config_view.xaml',
             'res_partner_view.xaml',
