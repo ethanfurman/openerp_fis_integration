@@ -10,7 +10,6 @@ from openerp import SUPERUSER_ID
 from openerp.addons.product.product import sanitize_ean13
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period
 from osv import osv, fields
-from scripts import recipe
 import logging
 import re
 
@@ -231,22 +230,6 @@ class product_product(xmlid, osv.Model):
             result[id] = static_page_stub % "".join(htmlContentList)
         return result
 
-    def _product_available(self, cr, uid, ids, field_names=None, arg=False, context=None):
-        records = self.browse(cr, uid, ids, context=context)
-        values = {}
-        for rec in records:
-            current = values[rec.id] = {}
-            current['qty_available'] = qoh = rec['st_qty_available']
-            current['incoming_qty'] = inc = rec['st_incoming_qty']
-            current['outgoing_qty'] = out = rec['st_outgoing_qty']
-            current['virtual_available'] = qoh + inc - out
-            current['imm_available'] = qoh - out
-        return values
-
-    def _product_available_inv(self, cr, uid, id, field_name, field_value, misc=None, context=None):
-        field_name = 'st_' + field_name
-        return self.write(cr, uid, id, {field_name: field_value}, context=context)
-
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
@@ -257,63 +240,10 @@ class product_product(xmlid, osv.Model):
             ),
         'spcl_ship_instr': fields.text('Special Shipping Instructions'),
         'fis_location': fields.char('Location', size=6),
-        'qty_available': fields.function(
-            _product_available,
-            fnct_inv=_product_available_inv,
-            multi='qty_available',
-            type='float', digits=(16,3), string='Quantity On Hand',
-            store=True,
-            help="Current quantity of products according to FIS",
-            ),
-        'virtual_available': fields.function(
-            _product_available,
-            multi='qty_available',
-            type='float', digits=(16,3), string='Forecasted 10-day Quantity',
-            store=True,
-            help="Forecast quantity (computed as Quantity On Hand - Outgoing + Incoming)",
-            ),
-        'imm_available': fields.function(
-            _product_available,
-            multi='qty_available',
-            type='float', digits=(16,3), string='Uncommitted Quantity',
-            store=True,
-            help='Quantity on Hand less Out-going Quantity',
-            ),
-        'incoming_qty': fields.function(
-            _product_available,
-            fnct_inv=_product_available_inv,
-            multi='qty_available',
-            type='float', digits=(16,3), string='Incoming',
-            store=True,
-            help="Quantity of product that are planned to arrive according to FIS.",
-            ),
-        'outgoing_qty': fields.function(
-            _product_available,
-            fnct_inv=_product_available_inv,
-            multi='qty_available',
-            type='float', digits=(16,3), string='Outgoing',
-            store=True,
-            help="Quantity of product that are planned to be shipped/used according to FIS.",
-            ),
-        'st_makeable_qty': fields.float(
-            digits=[16,3], string='Immediately Producible',
-            help='Quantity that could be immediately produced.',
-            oldname='makeable_qty',
-            ),
-        'st_incoming_qty': fields.float(
-            digits=(16,3), string='non-FIS Incoming',
-            help="Quantity of product that are planned to arrive.",
-            oldname='nf_incoming_qty',
-            ),
-        'st_outgoing_qty': fields.float(
-            digits=(16,3), string='non-FIS Outgoing',
-            help="Quantity of product that are planned to leave.",
-            oldname='nf_outgoing_qty',
-            ),
-        'st_qty_available': fields.float(
-            digits=(16,3), string='non-FIS Quantity On Hand',
-            help="Current (actual) quantity of product.",
-            oldname='nf_qty_available',
+        'fis_qty_on_hand': fields.float(
+            string='Quantity On Hand',
+            help="Current quantity of products according to FIS.",
+            oldname='qty_available',
             ),
         'label_server_stub': fields.function(
             _label_links,
@@ -461,17 +391,6 @@ class product_product(xmlid, osv.Model):
                 values['trademark_state'] = 'dead'
                 prod_rec = prod_items.browse(cr, uid, [id])[0]
                 synced_prods[key] = prod_rec
-        # loop 2: update the dependent data
-        for inv_rec in nvty:
-            values = {}
-            key = inv_rec[F135.item_code]
-            values['st_makeable_qty'] = recipe.make_on_hand(inv_rec[F135.item_code])
-            if key in synced_prods:
-                prod_rec = synced_prods[key]
-                prod_items.write(cr, uid, prod_rec['id'], values)
-            elif key in unsynced_prods:
-                prod_rec = unsynced_prods[key]
-                prod_items.write(cr, uid, prod_rec.id, values)
         # and we're done
         _logger.info(self._name + " done!")
         return True
@@ -497,10 +416,7 @@ class product_product(xmlid, osv.Model):
         values['warranty'] = sl = float(fis_nvty_rec[F135.shelf_life] or 0.0)
         if not sl and sales_category_rec:
             values['warranty'] = float(sales_category_rec[F11.shelf_life] or 0.0)
-        values['st_qty_available'] = fis_nvty_rec[F135.on_hand]
-        values['st_incoming_qty'] = fis_nvty_rec[F135.on_order]
-        values['st_outgoing_qty'] = fis_nvty_rec[F135.committed]
-        values['st_makeable_qty'] = 0
+        values['fis_qty_on_hand'] = fis_nvty_rec[F135.on_hand]
         values['trademark'] = fis_nvty_rec[F135.trademark_expiry_year].strip() or False
         if not values['trademark']:
             values['trademark_state'] = ''
