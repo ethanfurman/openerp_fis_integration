@@ -3,9 +3,7 @@
     ~data
 
         ~record model='ir.actions.act_window' #project.open_view_project_all
-            @inherit_id ref='project.open_view_project_all'
             @context: {'search_default_Current': 1, 'search_default_Member': 1, 'search_default_Follower': 1}
 
         ~record model='ir.actions.act_window' #project.action_view_task
-            @inherit_id ref='project.action_view_task'
             @context: {'search_default_my_project': 1, 'search_default_my_task': 1, 'search_default_Follower': 1}
