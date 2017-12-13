@@ -97,7 +97,7 @@
             @model: hr.employee
             @inherit_id ref='hr.view_employee_filter'
             @arch type='xml'
-                @category_ids position='remove'
+                @category_ids position='replace'
                 @name position='after'
                     @identification_id $FIS_ID
                     @pay_type invisible='1'
