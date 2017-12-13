@@ -118,7 +118,7 @@
                     @twitter widget='url'
                     @parent_id invisible='1'
                     @parent_specials_notification invisible='1'
-                    @specials_notification on_change="onchance_specials_notification(specials_notification, parent_id)"
+                    @specials_notification on_change="onchange_specials_notification(specials_notification, parent_id)"
                     @sn_catalog_type $Catalog_By attrs="{'invisible': ['|',('specials_notification','in',['N','S',False]),'&',('specials_notification','=','D'),('parent_specials_notification','in',['N','S',False])], 'viewonly':[('specials_notification','=','D')]}"
                     @sn_specials_type $Specials_Sheet_By attrs="{'invisible': ['|',('specials_notification','in',['N','C',False]),'&',('specials_notification','=','D'),('parent_specials_notification','in',['N','C',False])], 'viewonly':[('specials_notification','=','D')]}"
                 @child_ids position='attributes'
