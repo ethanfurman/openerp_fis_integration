@@ -1,0 +1,87 @@
+!!! xml1.0
+~lines
+    ~report
+        ~title type='eval' expr="'Selected Product Traffic Items'"
+        ~date type='function' @today
+    ~line type='fields' @id
+        ~create-date type='field' @date
+        ~product type='field' name='product_id.name'
+        ~code type='field' name='product_id.xml_id'
+        ~sales-comment type='field' @sales_comment
+        ~purchase-comment type='field' @purchase_comment
+
+!!! xsl1.0
+~xsl:stylesheet version='1.0' xmlns:fo='http://www.w3.org/1999/XSL/Format' xmlns:xsl='http://www.w3.org/1999/XSL/Transform'
+
+    ~xsl:template match='/'
+        ~xsl:apply-templates select='lines'
+
+    ~xsl:template match='lines'
+        ~document
+            ~template author='OpenERP:Sample' title='Product Traffic Report' pageSize='us_letter'
+                ~pageTemplate id='first_page'
+                    ~pageGraphics
+                        ~xsl:apply-templates match='report'
+                    ~xsl:call-template name='first_page_frames'
+                ~pageTemplate id='other_pages'
+                    ~pageGraphics
+                        ~xsl:apply-templates match='report'
+                    ~xsl:call-template name='other_pages_frames'
+            ~stylesheet
+                ~blockTableStyle id='left'
+                    ~blockFont name='Helvetica' size='9'
+                    ~blockValign value='TOP'
+                ~blockTableStyle id='center'
+                    ~blockFont name='Helvetica' size='9'
+                    ~blockValign value='TOP'
+                    ~blockAlignment value='CENTER'
+                ~paraStyle name='nospace' fontName='Courier' fontSize='9' spaceAfter='0' spaceBefore='0'
+            ~story
+                ~setNextTemplate name='other_pages'
+                ~xsl:apply-templates match='report' mode='story'
+                ~blockTable colWidths='63, 63, 36, 306' style='left'
+                    ~tr style='center'
+                        ~td: Code
+                        ~td: Date
+                        ~td: Status
+                        ~td: Product and Comment
+                    ~xsl:apply-templates select='line'
+                        ~xsl:sort select='code'
+
+    ~xsl:template name='first_page_frames'
+        ~frame id='col1' x1='0.5in' y1='0.75in' width='6.75in' height='9.5in'
+
+    ~xsl:template name='other_pages_frames'
+        ~frame id='col2' x1='0.5in' y1='0.75in' width='6.75in' height='9.5in'
+
+    ~xsl:template match='report'
+        ~setFont name='Helvetica' size='12'
+        ~drawString x='0.5in' y='10.5in'
+            ~xsl:value-of select='title'
+        ~setFont name='Helvetica' size='10'
+        ~drawCentredString x='4.25in' y='10.7in'
+            ~xsl:value-of select='//corporate-header/corporation/name'
+        ~setFont name='Helvetica' size='12'
+        ~drawRightString x='8.0in' y='10.5in'
+            ~xsl:value-of select='date'
+        ~setFont name='Helvetica' size='8'
+        ~drawCentredString x='4.25in' y='0.43in'
+            ~xsl:value-of select='//corporate-header/corporation/rml_header1'
+        ~drawCentredString x='4.25in' y='0.3in'
+            ~xsl:value-of select='//corporate-header/corporation/rml_footer'
+
+    ~xsl:template match='line'
+        ~tr
+            ~td
+                ~xsl:value-of select='code'
+            ~td style='center'
+                ~xsl:value-of select='create-date'
+            ~td style='center'
+                ~xsl:value-of select='sales-comment'
+            ~td
+                ~para style='nospace'
+                    ~b
+                        ~xsl:value-of select='product'
+                    :cdata
+                        -->
+                    ~xsl:value-of select='purchase-comment'
