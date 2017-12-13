@@ -26,7 +26,13 @@
             'security/fis_security.xaml',
             'security/ir.model.access.csv',
             'wizard/merge_view.xaml',
-        ],
+            ],
+    'css': [
+            'static/src/css/fis.css',
+            ],
+    'js': [
+            'static/src/js/fis.js',
+            ],
     'test': [],
     'installable': True,
     'active': False,

@@ -14,6 +14,7 @@
                 ~page $Information position='after'
                     ~page $Shipping_Instructions
                         @spcl_ship_instr nolabel='1' placeholder='Special shipping instructions here...'
+                ~div @buttons position='replace'
                 ~page $Sales position='after'
                     ~page $Labels
                         @label_text nolabel='0'
@@ -22,7 +23,58 @@
                     //   @cost_server_stub
                 ~group @status position='before'
                     ~group $Availability
-                        @fis_qty_on_hand
+                        ~div .fis
+                            ~label for='fis_qty_on_hand' string='Quantity On-hand: '
+                            @fis_qty_on_hand .oe_inline
+                            ~table
+                                ~tr
+                                    ~th
+                                    ~th: Now
+                                    ~th: 10-day
+                                    ~th: 21-day
+                                ~tr
+                                    ~th: Produced
+                                    ~td
+                                        @fis_qty_produced widget='fis_positive_okay' options="{'zero_value': '.'}"
+                                    ~td
+                                        @fis_10_day_produced widget='fis_positive_okay' options="{'zero_value': '.'}"
+                                    ~td
+                                        @fis_21_day_produced widget='fis_positive_okay' options="{'zero_value': '.'}"
+                                ~tr
+                                    ~th: Consumed
+                                    ~td
+                                        @fis_qty_consumed widget='fis_negative_okay' options="{'zero_value': '.'}"
+                                    ~td
+                                        @fis_10_day_consumed widget='fis_negative_okay' options="{'zero_value': '.'}"
+                                    ~td
+                                        @fis_21_day_consumed widget='fis_negative_okay' options="{'zero_value': '.'}"
+                                ~tr
+                                    ~th: Purchased
+                                    ~td
+                                        @fis_qty_purchased widget='fis_positive_okay' options="{'zero_value': '.'}"
+                                    ~td
+                                        @fis_10_day_purchased widget='fis_positive_okay' options="{'zero_value': '.'}"
+                                    ~td
+                                        @fis_21_day_purchased widget='fis_positive_okay' options="{'zero_value': '.'}"
+                                ~tr
+                                    ~th: Sold
+                                    ~td
+                                        @fis_qty_sold widget='fis_negative_okay' options="{'zero_value': '.'}"
+                                    ~td
+                                        @fis_10_day_sold widget='fis_negative_okay' options="{'zero_value': '.'}"
+                                    ~td
+                                        @fis_21_day_sold widget='fis_negative_okay' options="{'zero_value': '.'}"
+                                ~tr
+                                    ~th: Available
+                                    ~td
+                                        @fis_qty_available widget='fis_positive_okay'
+                                    ~td
+                                        @fis_10_day_available widget='fis_positive_okay'
+                                    ~td
+                                        @fis_21_day_available widget='fis_positive_okay'
+                            ~label for='fis_qty_makeable' string='Immediately Producible: '
+                            @fis_qty_makeable .oe_inline
+
                 @product_manager position='after'
                     @fis_location
                 @list_price position='after'

@@ -1,6 +1,8 @@
 from collections import defaultdict
+from aenum import NamedTuple
 from dbf import Date
 from fis_integration.fis_schema import F11, F97, F135, F341
+from scription import Execute
 from VSS.BBxXlate.fisData import fisData
 from VSS.address import NameCase
 from fnx import date
@@ -8,8 +10,10 @@ from fnx.oe import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
 from openerp import SUPERUSER_ID
 from openerp.addons.product.product import sanitize_ean13
+from openerp.exceptions import ERPError
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period
 from osv import osv, fields
+from scripts import recipe
 import logging
 import re
 
@@ -22,6 +26,17 @@ LabelLinks = (
     "Plone/LabelDirectory/%s/%sNI.bmp",
     "Plone/LabelDirectory/%s/%sMK.bmp",
     )
+
+class ForecastDetail(NamedTuple):
+    produced = 0, None, 0.0
+    purchased = 1, None, 0.0
+    consumed = 2, None, 0.0
+    sold = 3, None, 0.0
+
+class Forecast(NamedTuple):
+    item = 0, None, ''
+    day_10 = 1, None, ForecastDetail()
+    day_21 = 2, None, ForecastDetail()
 
 def _get_category_records(key_table, cr, uid, ids, context=None):
     if isinstance(ids, (int, long)):
@@ -245,6 +260,10 @@ class product_product(xmlid, osv.Model):
             help="Current quantity of products according to FIS.",
             oldname='qty_available',
             ),
+        'fis_qty_makeable': fields.float(
+            string='Immediately Producible',
+            help="How much can be made with current inventory.",
+            ),
         'label_server_stub': fields.function(
             _label_links,
             string='Current Labels',
@@ -288,6 +307,69 @@ class product_product(xmlid, osv.Model):
                     )},
                 ),
         'trademark_renewal_date': fields.date('Trademark renewal submitted'),
+        'fis_qty_produced': fields.float(
+            string='Quantity Produced Today',
+            ),
+        'fis_qty_consumed': fields.float(
+            string='Quantity Used Today',
+            ),
+        'fis_qty_purchased': fields.float(
+            string='Quantity Received Today',
+            ),
+        'fis_qty_sold': fields.float(
+            string='Quantity Sold today',
+            ),
+        'fis_qty_available': fields.float(
+            string='Quantity Available Today',
+            ),
+        'fis_10_day_produced': fields.float(
+            string='10-day Production',
+            help="Qty produced in the next 10 days.",
+            oldname='incoming_qty',
+            ),
+        'fis_10_day_consumed': fields.float(
+            string='10-day Consumption',
+            help="Qty consumed in the next 10 days.",
+            oldname='outgoing_qty',
+            ),
+        'fis_10_day_purchased': fields.float(
+            string='10-day Purchases',
+            help='Qty purchased in the next 10 days.',
+            oldname='makeable_qty',
+            ),
+        'fis_10_day_sold': fields.float(
+            string='10-day Sales',
+            help="Qty sold in the next 10 days.",
+            oldname='nf_incoming_qty',
+            ),
+        'fis_10_day_available': fields.float(
+            string='10-day Available',
+            hely='Qty available in the next 10 days',
+            ),
+        'fis_21_day_produced': fields.float(
+            string='21-day Production',
+            help="Qty produced in the next 21 days.",
+            oldname='nf_outgoing_qty',
+            ),
+        'fis_21_day_consumed': fields.float(
+            string='21-day Consumption',
+            help="Qty consumed in the next 21 days.",
+            oldname='nf_qty_available',
+            ),
+        'fis_21_day_purchased': fields.float(
+            string='21-day Purchases',
+            help='Qty purchased in the next 21 days.',
+            oldname='virtual_available',
+            ),
+        'fis_21_day_sold': fields.float(
+            string='21-day Sales',
+            help="Qty sold in the next 21 days.",
+            oldname='imm_available',
+            ),
+        'fis_21_day_available': fields.float(
+            string='21-day Available',
+            help='Qty available in the next 21 days',
+            ),
         }
 
     def update_trademark_state(self, cr, uid, ids=None, arg=None, context=None):
@@ -360,11 +442,29 @@ class product_product(xmlid, osv.Model):
                 unsynced_prods[rec.default_code] = rec
         nvty = fisData(135, keymatch='%s101000    101**')
         cnvz = fisData(11, keymatch='as10%s')
+        # create a mapping of id -> 10- & 21- quantities
+        prod_forecast_qtys = self._get_forecast_quantities(cr, uid, [])
         # loop 1: update all the independent data
         for inv_rec in nvty:
             fis_sales_rec = cnvz.get(inv_rec[F135.sales_category])
             values = self._get_fis_values(inv_rec, fis_sales_rec)
             key = values['xml_id']
+            item, _10_day, _21_day = prod_forecast_qtys.get(key) or Forecast()
+            values['fis_qty_produced'] = 0
+            values['fis_qty_consumed'] = 0
+            values['fis_qty_purchased'] = 0
+            values['fis_qty_sold'] = 0
+            values['fis_qty_available'] = values['fis_qty_on_hand']
+            values['fis_10_day_produced'] = _10_day.produced
+            values['fis_10_day_consumed'] = _10_day.consumed
+            values['fis_10_day_purchased'] = _10_day.purchased
+            values['fis_10_day_sold'] = _10_day.sold
+            values['fis_10_day_available'] = values['fis_qty_on_hand'] + sum(_10_day)
+            values['fis_21_day_produced'] = _21_day.produced
+            values['fis_21_day_consumed'] = _21_day.consumed
+            values['fis_21_day_purchased'] = _21_day.purchased
+            values['fis_21_day_sold'] = _21_day.sold
+            values['fis_21_day_available'] = values['fis_qty_on_hand'] + sum(_21_day)
             if key.startswith('90000'):
                 values['categ_id'] = cleaning_cat
                 values['sale_ok'] = False
@@ -391,6 +491,17 @@ class product_product(xmlid, osv.Model):
                 values['trademark_state'] = 'dead'
                 prod_rec = prod_items.browse(cr, uid, [id])[0]
                 synced_prods[key] = prod_rec
+        # loop 2: update the dependent data
+        for inv_rec in nvty:
+            values = {}
+            key = inv_rec[F135.item_code]
+            values['fis_qty_makeable'] = recipe.make_on_hand(inv_rec[F135.item_code])
+            if key in synced_prods:
+                prod_rec = synced_prods[key]
+                prod_items.write(cr, uid, prod_rec['id'], values)
+            elif key in unsynced_prods:
+                prod_rec = unsynced_prods[key]
+                prod_items.write(cr, uid, prod_rec.id, values)
         # and we're done
         _logger.info(self._name + " done!")
         return True
@@ -439,6 +550,39 @@ class product_product(xmlid, osv.Model):
         values['shipped_as'] = shipped_as
         return values
 
+    def _get_forecast_quantities(self, cr, uid, ids, context=None):
+        data = self.read(cr, uid, [('id','!=',0)], fields=['id', 'xml_id', 'module'], context=context)
+        res = dict([(d['xml_id'], None) for d in data if (d['id'] and d['module'] == 'F135')])
+        job = Execute('/usr/local/bin/fis-query forecast --all')
+        if job.stderr or job.returncode:
+            raise ERPError('job failed', job.stderr or 'unknown cause (returncode: %d)' % job.returncode)
+        for line in job.stdout.split('\n'):
+            if not line.strip():
+                continue
+            try:
+                line = line.split(' - ')[1]
+            except IndexError:
+                _logger.error('problem with forecast line: %r', repr(line))
+                raise
+            if 'ERROR' in line:
+                continue
+            item_code, _10_day, _21_day = line.split(':')
+            if item_code not in res:
+                continue
+            prod_in, purch, prod_out, sold = _10_day.split()[2:6]
+            prod_in = float(prod_in)
+            purch = float(purch)
+            prod_out = -(float(prod_out))
+            sold = -(float(sold))
+            _10_day = ForecastDetail(prod_in, purch, prod_out, sold)
+            prod_in, purch, prod_out, sold = _21_day.split()[2:6]
+            prod_in = float(prod_in)
+            purch = float(purch)
+            prod_out = -(float(prod_out))
+            sold = -(float(sold))
+            _21_day = ForecastDetail(prod_in, purch, prod_out, sold)
+            res[item_code] = Forecast(item_code, _10_day, _21_day)
+        return res
 
 class production_line(xmlid, osv.Model):
     "production line"
