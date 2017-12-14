@@ -344,7 +344,7 @@ class product_product(xmlid, osv.Model):
             ),
         'fis_10_day_available': fields.float(
             string='10-day Available',
-            hely='Qty available in the next 10 days',
+            help='Qty available in the next 10 days',
             ),
         'fis_21_day_produced': fields.float(
             string='21-day Production',
