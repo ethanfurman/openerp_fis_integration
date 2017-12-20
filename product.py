@@ -1,14 +1,15 @@
 from collections import defaultdict
 from aenum import NamedTuple
+from antipathy import Path
 from dbf import Date
 from fis_integration.fis_schema import F11, F97, F135, F341
-from scription import Execute
+from scription import Execute, OrmFile
 from VSS.BBxXlate.fisData import fisData
 from VSS.address import NameCase
 from fnx import date
 from fnx.oe import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
-from openerp import SUPERUSER_ID
+from openerp import SUPERUSER_ID, CONFIG_DIR
 from openerp.addons.product.product import sanitize_ean13
 from openerp.exceptions import ERPError
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period
@@ -151,6 +152,7 @@ class product_template(osv.Model):
     _inherit = 'product.template'
 
     _columns = {
+        'fis_name': fields.char('Name', size=128, select=True),
         'warranty': fields.float("Shelf Life (mos)", digits=(16,3),),
         }
 
@@ -411,8 +413,10 @@ class product_product(xmlid, osv.Model):
         scans FIS product table and either updates product info or
         adds new products to table
         """
-        # get the tables we'll need
         _logger.info("product.product.fis_updates starting...")
+        # get the full descriptions
+        desc_map = _get_descriptions()
+        # get the tables we'll need
         product_module = 'F135'
         category_module = 'F11'
         location_module = 'F97'
@@ -449,6 +453,7 @@ class product_product(xmlid, osv.Model):
             fis_sales_rec = cnvz.get(inv_rec[F135.sales_category])
             values = self._get_fis_values(inv_rec, fis_sales_rec)
             key = values['xml_id']
+            values['name'] = desc_map[key]
             item, _10_day, _21_day = prod_forecast_qtys.get(key) or Forecast()
             values['fis_qty_produced'] = 0
             values['fis_qty_consumed'] = 0
@@ -506,12 +511,32 @@ class product_product(xmlid, osv.Model):
         _logger.info(self._name + " done!")
         return True
 
+    def _get_descriptions(self):
+        res = {}
+        config = OrmFile(Path(CONFIG_DIR)/'fnx.ini', section='openerp')
+        job = Execute(
+                'sudo ssh %(host)s cat %(file)s' % {
+                    'host': config.full_description_host,
+                    'file': config.full_description_path,
+                    },
+                pty=True,
+                password=config.pw,
+                )
+        text = job.stdout.split('\n')
+        for line in text:
+            match = re.match('(.{40})  \((\d{6})\)  (.*)$', line)
+            if match is None:
+                continue
+            fis_desc, item_code, full_desc = match.groups()
+            res[item_code] = full_desc
+        return res
+
     def _get_fis_values(self, fis_nvty_rec, sales_category_rec):
         values = {}
         values['xml_id'] = values['default_code'] = fis_nvty_rec[F135.item_code]
         name = NameCase(fis_nvty_rec[F135.name].strip())
         name = re.sub('sunridge', 'SunRidge', name, flags=re.I)
-        values['name'] = name
+        values['fis_name'] = name
         values['module'] = 'F135'
         categ_id = fis_nvty_rec[F135.sales_category].strip()
         if len(categ_id) == 2 and categ_id[0] in 'OISG':

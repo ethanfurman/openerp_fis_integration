@@ -81,6 +81,7 @@
                     @shipped_as
                 @default_code position='replace'
                     @xml_id
+                    @fis_name readonly='1'
                     @trademark readonly='1'
                     @trademark_state readonly='1' attrs="{'invisible': [('trademark','=',False)]}"
                     @trademark_expiry_year on_change="onchange_trademark(trademark_expiry_year, trademark_renewal_date)" attrs="{'invisible': [('trademark','=',False)]}"
