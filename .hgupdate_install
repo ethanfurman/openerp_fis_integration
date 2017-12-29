@@ -1,3 +1,4 @@
 scripts/recipe
 scripts/recipe.py
 scripts/oe-users
+scripts/updates.py updates/__init__.py
