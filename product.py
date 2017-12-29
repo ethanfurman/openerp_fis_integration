@@ -152,7 +152,7 @@ class product_template(osv.Model):
     _inherit = 'product.template'
 
     _columns = {
-        'fis_name': fields.char('Name', size=128, select=True),
+        'fis_name': fields.char('FIS Name', size=128, select=True),
         'warranty': fields.float("Shelf Life (mos)", digits=(16,3),),
         }
 
@@ -415,7 +415,7 @@ class product_product(xmlid, osv.Model):
         """
         _logger.info("product.product.fis_updates starting...")
         # get the full descriptions
-        desc_map = _get_descriptions()
+        desc_map = self._get_descriptions()
         # get the tables we'll need
         product_module = 'F135'
         category_module = 'F11'
@@ -453,7 +453,9 @@ class product_product(xmlid, osv.Model):
             fis_sales_rec = cnvz.get(inv_rec[F135.sales_category])
             values = self._get_fis_values(inv_rec, fis_sales_rec)
             key = values['xml_id']
-            values['name'] = desc_map[key]
+            values['name'] = desc_map.get(key)
+            if values['name'] is None:
+                values['name'] = values['fis_name']
             item, _10_day, _21_day = prod_forecast_qtys.get(key) or Forecast()
             values['fis_qty_produced'] = 0
             values['fis_qty_consumed'] = 0
