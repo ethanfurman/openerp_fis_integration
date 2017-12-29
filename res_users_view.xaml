@@ -1,0 +1,6 @@
+!!! xml1.0
+~openerp
+    ~data
+
+        ~record model='ir.actions.act_window' #base.action_res_users
+            @context: {'reset_password': False}
