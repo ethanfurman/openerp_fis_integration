@@ -1,7 +1,21 @@
-import enum
+import aenum
+from collections import defaultdict
+from VSS.utils import LazyClassAttr
 
-class FISenum(str, enum.Enum):
-    pass
+class FISenum(str, aenum.Enum):
+
+    FIS_names = LazyClassAttr(set, name='FIS_names')
+
+    def __init__(self, spec):
+        if '(' in spec:
+            fis_name, segment = spec.split('(', 1)
+            segment = segment.strip(' )')
+        else:
+            fis_name = spec
+            segment = None
+        self.fis_name = fis_name
+        self.segment = segment
+        self.__class__.FIS_names.add(fis_name)
 
 class F11(FISenum):
     "Sales Category codes"
@@ -155,3 +169,63 @@ class F341(FISenum):
     code =          'An$(4,2)'
     desc =          'Bn$'
     short_desc =    'Cn$'
+
+
+def get_changed_records(old_records, new_records, enum_schema):
+    # get changed records as list of (record, [(enum_schema_member, old_value, new_value), (...), ...]) tuples
+    unique_fields_name = list(enum_schema)[0].fis_name
+    unique_fields = [enum for enum in enum_schema if enum.fis_name == unique_fields_name]
+    changes = []
+    added = []
+    deleted = []
+    old_records_map = {}
+    new_records_map = {}
+    for rec in old_records:
+        key = []
+        for f in unique_fields:
+            key.append(rec[f])
+        key = tuple(key)
+        old_records_map[key] = rec
+    for rec in new_records:
+        key = []
+        for f in unique_fields:
+            key.append(rec[f])
+        key = tuple(key)
+        new_records_map[key] = rec
+    all_recs = set(new_records_map.keys() + old_records_map.keys())
+    for key in all_recs:
+        changed_values = []
+        new_rec = new_records_map.get(key)
+        old_rec = old_records_map.get(key)
+        if new_rec == old_rec:
+            continue
+        if new_rec is None:
+            deleted.append(old_rec)
+            continue
+        if old_rec is None:
+            added.append(new_rec)
+            continue
+        diff = []
+        for field in enum_schema:
+            if new_rec[field] != old_rec[field]:
+                diff.append(field)
+                changed_values.append((field, old_rec[field], new_rec[field]))
+        if changed_values:
+            changes.append((new_rec, changed_values))
+        else:
+            continue
+    return changes, added, deleted
+
+def combine_by_value(key, records):
+    changed_map = defaultdict(int)
+    for row in records:
+        rec_key = []
+        for t in row[1:]:
+            for f, old, new in t:
+                if f in key:
+                    rec_key.append(f)
+                    rec_key.append(new)
+        if rec_key:
+            changed_map[tuple(rec_key)] += 1
+    return changed_map
+
