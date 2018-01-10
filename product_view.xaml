@@ -25,7 +25,7 @@
                     ~group $Availability
                         ~div .fis
                             ~label for='fis_qty_on_hand' string='Quantity On-hand: '
-                            @fis_qty_on_hand .oe_inline
+                            @fis_qty_on_hand .oe_inline readonly='1'
                             ~table
                                 ~tr
                                     ~th
@@ -35,35 +35,35 @@
                                 ~tr
                                     ~th: Produced
                                     ~td
-                                        @fis_qty_produced widget='fis_positive_okay' options="{'zero_value': '.'}"
+                                        @fis_qty_produced readonly='1' widget='fis_positive_okay' options="{'zero_value': '.'}"
                                     ~td
-                                        @fis_10_day_produced widget='fis_positive_okay' options="{'zero_value': '.'}"
+                                        @fis_10_day_produced readonly='1' widget='fis_positive_okay' options="{'zero_value': '.'}"
                                     ~td
-                                        @fis_21_day_produced widget='fis_positive_okay' options="{'zero_value': '.'}"
+                                        @fis_21_day_produced readonly='1' widget='fis_positive_okay' options="{'zero_value': '.'}"
                                 ~tr
                                     ~th: Consumed
                                     ~td
-                                        @fis_qty_consumed widget='fis_negative_okay' options="{'zero_value': '.'}"
+                                        @fis_qty_consumed readonly='1' widget='fis_negative_okay' options="{'zero_value': '.'}"
                                     ~td
-                                        @fis_10_day_consumed widget='fis_negative_okay' options="{'zero_value': '.'}"
+                                        @fis_10_day_consumed readonly='1' widget='fis_negative_okay' options="{'zero_value': '.'}"
                                     ~td
-                                        @fis_21_day_consumed widget='fis_negative_okay' options="{'zero_value': '.'}"
+                                        @fis_21_day_consumed readonly='1' widget='fis_negative_okay' options="{'zero_value': '.'}"
                                 ~tr
                                     ~th: Purchased
                                     ~td
-                                        @fis_qty_purchased widget='fis_positive_okay' options="{'zero_value': '.'}"
+                                        @fis_qty_purchased readonly='1' widget='fis_positive_okay' options="{'zero_value': '.'}"
                                     ~td
-                                        @fis_10_day_purchased widget='fis_positive_okay' options="{'zero_value': '.'}"
+                                        @fis_10_day_purchased readonly='1' widget='fis_positive_okay' options="{'zero_value': '.'}"
                                     ~td
-                                        @fis_21_day_purchased widget='fis_positive_okay' options="{'zero_value': '.'}"
+                                        @fis_21_day_purchased readonly='1' widget='fis_positive_okay' options="{'zero_value': '.'}"
                                 ~tr
                                     ~th: Sold
                                     ~td
-                                        @fis_qty_sold widget='fis_negative_okay' options="{'zero_value': '.'}"
+                                        @fis_qty_sold readonly='1' widget='fis_negative_okay' options="{'zero_value': '.'}"
                                     ~td
-                                        @fis_10_day_sold widget='fis_negative_okay' options="{'zero_value': '.'}"
+                                        @fis_10_day_sold readonly='1' widget='fis_negative_okay' options="{'zero_value': '.'}"
                                     ~td
-                                        @fis_21_day_sold widget='fis_negative_okay' options="{'zero_value': '.'}"
+                                        @fis_21_day_sold readonly='1' widget='fis_negative_okay' options="{'zero_value': '.'}"
                                 ~tr
                                     ~th: Available
                                     ~td
