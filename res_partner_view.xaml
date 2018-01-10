@@ -56,30 +56,18 @@
                     @facebook widget='url'
                     @twitter widget='url'
                 @comment position='before'
-                    ~group attrs="{'invisible': ['|',('is_company','=',False), ('supplier','=',False)]}"
-                        ~group $Supplier_Info colspan='1'
-                            @sp_tele
-                            @sp_fax
+                    ~group $Certifications attrs="{'invisible': ['|',('is_company','=',False), ('supplier','=',False)]}"
+                        ~group
+                            @fis_org_cert attrs="{'invisible': [('module','!=','F65')]}"
+                            @fis_org_cert_file
+                            @fis_org_exp
                             ~separator
                             ~separator
-                            @sp_org_cert_file
-                            @sp_org_exp
-                            ~separator
-                            ~separator
-                            @sp_non_gmo
-                            @sp_gmo_exp
-                            ~separator
-                            ~separator
-                            @sp_kosher
-                            @sp_kosher_exp
-                        ~group $Vendor_Info colspan='1'
-                            @vn_tele
-                            @vn_fax
-                            ~separator
-                            ~separator
-                            @vn_org_cert
-                            @vn_org_cert_file
-                            @vn_org_exp
+                            @fis_non_gmo
+                            @fis_gmo_exp
+                        ~group
+                            @fis_kosher
+                            @fis_kosher_exp
                 ~page @page_history position='before'
                     ~page $Warehouse
                         @warehouse_comment nolabel='1'

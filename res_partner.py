@@ -121,48 +121,32 @@ class res_partner(xmlid, osv.Model):
             'res_partner_partner_keyword', 'partner_id', 'keyword_id',
             'Keywords',
             ),
-        'sp_tele': fields.char(
-            'Telephone',
-            size=20,
-            ),
-        'sp_fax': fields.char(
-            'Fax',
-            size=20,
-            ),
-        'sp_org_cert_file': fields.boolean(
-            'Organic Cert on file?',
-            ),
-        'sp_org_exp': fields.date(
-            'Cert expiration',
-            ),
-        'sp_non_gmo': fields.boolean(
-            'Non-GMO vendor?',
-            ),
-        'sp_gmo_exp': fields.date(
-            'GMO expiration',
-            ),
-        'sp_kosher': fields.boolean(
-            'Kosher?',
-            ),
-        'sp_kosher_exp': fields.date(
-            'Kosher expiration',
-            ),
-        'vn_tele': fields.char(
-            'Telephone',
-            size=20,
-            ),
-        'vn_fax': fields.char(
-            'Fax',
-            size=20,
-            ),
-        'vn_org_cert': fields.boolean(
+        'fis_org_cert': fields.boolean(
             'Organic Cert?',
             ),
-        'vn_org_cert_file': fields.boolean(
+        'fis_org_cert_file': fields.boolean(
             'Organic Cert on file?',
+            oldname='sp_org_cert_file',
             ),
-        'vn_org_exp': fields.date(
-            'Cert expiration',
+        'fis_org_exp': fields.date(
+            'Organic Cert expiration',
+            oldname='sp_org_exp',
+            ),
+        'fis_non_gmo': fields.boolean(
+            'Non-GMO vendor?',
+            oldname='sp_non_gmo',
+            ),
+        'fis_gmo_exp': fields.date(
+            'GMO expiration',
+            oldname='sp_gmo_exp',
+            ),
+        'fis_kosher': fields.boolean(
+            'Kosher?',
+            oldname='sp_kosher',
+            ),
+        'fis_kosher_exp': fields.date(
+            'Kosher expiration',
+            oldname='sp_kosher_exp',
             ),
         'is_carrier': fields.boolean('Carrier', help='This partner is used for shipping.'),
         'warehouse_comment': fields.text('Warehouse Notes'),
