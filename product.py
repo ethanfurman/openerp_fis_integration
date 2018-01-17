@@ -28,6 +28,25 @@ LabelLinks = (
     "Plone/LabelDirectory/%s/%sMK.bmp",
     )
 
+class TrademarkStatus(fields.SelectionEnum):
+    _order_ = 'dead dying renewing aging active'
+    dead = 'Dead'
+    dying = 'Almost Expired'
+    renewing = 'Renewing'
+    aging = 'Nearing Expiration'
+    active = 'Active'
+
+class TrademarkStatusKey(NamedTuple):
+    priority = 0, 'most severe status (e.g. dying is more severe than aging)'
+    state = 1, 'status of state trademark'
+    federal = 2, 'status of federal trademark'
+    def values(self):
+        res = {}
+        for i, field in enumerate(('trademark_state', 'state_trademark_state', 'federal_trademark_state')):
+            if self[i] is not False:
+                res[field] = self[i]
+        return res
+
 class ForecastDetail(NamedTuple):
     produced = 0, None, 0.0
     purchased = 1, None, 0.0
@@ -162,64 +181,94 @@ class product_product(xmlid, osv.Model):
     _name = 'product.product'
     _inherit = 'product.product'
 
-    # trademark_expiry_year
+    # trademark_expiry
     # trademark_state
-    # trademark_renewal_date
+    # trademark_renewal
     def _trademark_state(self, cr, uid, ids, field_names, arg, context=None):
+        #
+        # returns id_res of
+        # {
+        #   <id> : {
+        #           'trademark_state': <value>,
+        #           'state_trademark_state': <value>,
+        #           'federal_trademark_state': <value>,
+        #           }}
+        #
+        # or bulk_res of
+        # {
+        #   <status, status, status> : [<id>, <id>, ...]
+        # }
+        #
         if isinstance(ids, (int, long)):
             ids = [ids]
-        res = {}
+        id_res = defaultdict(dict)
+        bulk_res = defaultdict(list)
         records = self.read(
                 cr, uid, ids,
-                fields=['id', 'trademark_expiry_year', 'trademark_renewal_date'],
+                fields=[
+                    'id', 'trademark_state',
+                    'state_trademark_expiry', 'state_trademark_renewal', 'state_trademark_state',
+                    'federal_trademark_expiry', 'federal_trademark_renewal', 'federal_trademark_state',
+                    ],
                 context=context,
                 )
-        dates = defaultdict(list)
-        renewals = {}
-        for rec in records:
-            dates[rec['trademark_expiry_year']].append(rec['id'])
-            renewals[rec['id']] = rec['trademark_renewal_date']
-        # convert list of records to dict of id -> renewal
-        records = dict([(r['id'], r['trademark_renewal_date']) for r in records])
-        today = Date.strptime(
+        today = date(
                 fields.date.context_today(self, cr, uid, context=context),
                 DEFAULT_SERVER_DATE_FORMAT,
                 )
-        for expiry_year, ids in dates.items():
-            renewal_ids = []
-            # try:
-            #     expiry_date = Date.strptime(expiry_date, DEFAULT_SERVER_DATE_FORMAT)
-            # except ValueError:
-            #     days_left = 0
-            # else:
-            #     days_left = max((expiry_date - today).days, 0)
-            if expiry_year > today.year:
-                # all green and good to go!
-                state = 'active'
-            elif expiry_year < today.year:
-                # all dead
-                state = 'dead'
-            else:
-                # either dying or renewing
-                state = 'dying'
-                ids, original_ids = [], ids
-                for id in original_ids:
-                    renewal = records[id]
-                    if renewal and (today - date(renewal)) < Period.Week7:
-                        # if renewal date is in the last 13 weeks
-                        renewal_ids.append(id)
-                    else:
-                        # otherwise it's dying
-                        ids.append(id)
-            if arg == 'bulk':
-                res[state] = ids
-                res['renewing'] = renewal_ids
-            else:
-                for id in ids:
-                    res[id] = state
-                for id in renewal_ids:
-                    res[id] = 'renewing'
-        return res
+        for rec in records:
+            rec_id = rec['id']
+            state_expiry = date(rec['state_trademark_expiry'], DEFAULT_SERVER_DATE_FORMAT)
+            state_renewal = date(rec['state_trademark_renewal'], DEFAULT_SERVER_DATE_FORMAT)
+            federal_expiry = date(rec['federal_trademark_expiry'], DEFAULT_SERVER_DATE_FORMAT)
+            federal_renewal = date(rec['federal_trademark_renewal'], DEFAULT_SERVER_DATE_FORMAT)
+            ts = sts = fts = False
+            if state_expiry:
+                expiry_gap = state_expiry - today
+                if expiry_gap > Period.Week26:
+                    sts = TrademarkStatus.active
+                elif state_renewal and today < state_expiry and today - state_renewal < Period.Week13:
+                    sts = TrademarkStatus.renewing
+                elif expiry_gap > Period.Week13:
+                    sts = TrademarkStatus.aging
+                elif state_expiry > today:
+                    sts = TrademarkStatus.dying
+                else:
+                    sts = TrademarkStatus.dead
+            if federal_expiry:
+                expiry_gap = federal_expiry - today
+                if expiry_gap > Period.Week26:
+                    fts = TrademarkStatus.active
+                elif federal_renewal and today < federal_expiry and today - federal_renewal < Period.Week13:
+                    fts = TrademarkStatus.renewing
+                elif expiry_gap > Period.Week13:
+                    fts = TrademarkStatus.aging
+                elif federal_expiry > today:
+                    fts = TrademarkStatus.dying
+                else:
+                    fts = TrademarkStatus.dead
+            if state_expiry and federal_expiry:
+                ts = min(sts, fts)
+            elif state_expiry:
+                ts = sts
+            elif federal_expiry:
+                ts = fts
+            key = []
+            for new_status, field in (
+                    (ts, 'trademark_state'),
+                    (sts, 'state_trademark_state'),
+                    (fts, 'federal_trademark_state'),
+                ):
+                if field in field_names and new_status != rec[field]:
+                    id_res[rec_id][field] = new_status
+                    key.append(new_status)
+                else:
+                    key.append(False)
+            bulk_res[TrademarkStatusKey(*key)].append(rec_id)
+        if arg == 'bulk':
+            return bulk_res
+        else:
+            return id_res
 
     def _cost_link(self, cr, uid, ids, field_name, arg, context=None):
         if isinstance(ids, (int, long)):
@@ -287,28 +336,58 @@ class product_product(xmlid, osv.Model):
         #     ),
         'label_text': fields.text('Label Text'),
         'docs': fields.html('Documents'),
-        'trademark': fields.char(string='Trademark', size=2),
-        'trademark_expiry_year': fields.integer('Trademark Expires', help="Expiry Year"),
+        'trademarks': fields.char(string='Trademark', size=2, oldname='trademark'),
         'trademark_state': fields.function(
                 _trademark_state,
                 fnct_inv=True,
+                multi='trademark',
                 type='selection',
-                string='Trademark Status',
-                sort_order='definition',
-                selection = (
-                    ('active', 'Active'),
-                    ('dying', 'Expiring'),
-                    ('renewing', 'Renewing'),
-                    ('dead', 'Dead'),
-                    ),
+                string='Trademark status',
+                selection = TrademarkStatus,
                 store={
                     'product.product': (
                         lambda table, cr, uid, ids, ctx: ids,
-                        ['trademark_expiry_year', 'trademark_renewal_date'],
+                        [   'state_trademark_expiry', 'state_trademark_renewal',
+                            'federal_trademark_expiry', 'federal_trademark_renewal',
+                            ],
                         10,
                     )},
                 ),
-        'trademark_renewal_date': fields.date('Trademark renewal submitted'),
+        'state_trademark': fields.char('State Trademark', size=128),
+        'state_trademark_expiry': fields.date('State Trademark expires', oldname='trademark_expiry_year'),
+        'state_trademark_renewal': fields.date('State Trademark renewal submitted', oldname='trademark_renewal_date'),
+        'state_trademark_state': fields.function(
+                _trademark_state,
+                fnct_inv=True,
+                multi='trademark',
+                type='selection',
+                string='State Trademark Status',
+                selection = TrademarkStatus,
+                store={
+                    'product.product': (
+                        lambda table, cr, uid, ids, ctx: ids,
+                        ['state_trademark_expiry', 'state_trademark_renewal'],
+                        10,
+                    )},
+                oldname='trademark_state',
+                ),
+        'federal_trademark': fields.char('Federal Trademark', size=128),
+        'federal_trademark_expiry': fields.date('Federal Trademark expires'),
+        'federal_trademark_renewal': fields.date('Federal Trademark renewal submitted'),
+        'federal_trademark_state': fields.function(
+                _trademark_state,
+                fnct_inv=True,
+                multi='trademark',
+                type='selection',
+                string='Federal Trademark status',
+                selection = TrademarkStatus,
+                store={
+                    'product.product': (
+                        lambda table, cr, uid, ids, ctx: ids,
+                        ['federal_trademark_expiry', 'federal_trademark_renewal'],
+                        10,
+                    )},
+                ),
         'fis_qty_produced': fields.float(
             string='Quantity Produced Today',
             ),
@@ -323,6 +402,7 @@ class product_product(xmlid, osv.Model):
             ),
         'fis_qty_available': fields.float(
             string='Quantity Available Today',
+            oldname='virtual_available',
             ),
         'fis_10_day_produced': fields.float(
             string='10-day Production',
@@ -361,7 +441,6 @@ class product_product(xmlid, osv.Model):
         'fis_21_day_purchased': fields.float(
             string='21-day Purchases',
             help='Qty purchased in the next 21 days.',
-            oldname='virtual_available',
             ),
         'fis_21_day_sold': fields.float(
             string='21-day Sales',
@@ -375,37 +454,45 @@ class product_product(xmlid, osv.Model):
         }
 
     def update_trademark_state(self, cr, uid, ids=None, arg=None, context=None):
-        print repr(ids)
         if ids is None:
-            ids = self.search(cr, uid, [('trademark','!=',False)], context=context)
-        print repr(ids)
-        res = self._trademark_state(cr, uid, ids, field_names=None, arg='bulk', context=context)
-        from pprint import pprint; pprint(res)
+            ids = self.search(cr, uid, [('trademarks','!=',False)], context=context)
+        res = self._trademark_state(
+                cr, uid, ids,
+                field_names=['trademark_state','state_trademark_state','federal_trademark_state'],
+                arg='bulk',
+                context=context,
+                )
         # res = {days_left: [ids], ...}
-        for state, ids in res.items():
-            print '%s: %r' % (state, ids)
-            success = self.write(cr, uid, ids, {'trademark_state': state}, context=context)
-            if not success:
-                return success
-        print 'done'
+        for states, ids in res.items():
+            # states is a TrademarkStatusKey, and values() will give us the needed update dictionary
+            values = states.values()
+            if values:
+                success = self.write(cr, uid, ids, values, context=context)
+                if not success:
+                    return success
         return True
 
-    def onchange_trademark(self, cr, uid, ids, year, renewal, context=None):
+    def onchange_trademark(self, cr, uid, ids, trademark, expiry, renewal, field, context=None):
         today = date(fields.date.context_today(self, cr, uid, context=context))
         result = {}
         result['value'] = values = {}
-        if year > today.year:
-            values['trademark_state'] = 'active'
-        elif year < today.year:
-            values['trademark_state'] = 'dead'
+        if not expiry:
+            values[field] = TrademarkStatus.dead
         else:
-            # either dying or renewing
-            if renewal and (today - date(renewal)) < Period.Week7:
-                # if renewal date is in the last 13 weeks
-                values['trademark_state'] = 'renewing'
+            expiry = date(expiry)
+            renewal = date(renewal)
+            expiry_gap = expiry - today
+            if expiry_gap > Period.Week26:
+                sts = TrademarkStatus.active
+            elif renewal and today < expiry and today - renewal < Period.Week13:
+                sts = TrademarkStatus.renewing
+            elif expiry_gap > Period.Week13:
+                sts = TrademarkStatus.aging
+            elif expiry > today:
+                sts = TrademarkStatus.dying
             else:
-                # otherwise it's dying
-                values['trademark_state'] = 'dying'
+                sts = TrademarkStatus.dead
+            values[field] = sts
         return result
 
     def fis_updates(self, cr, uid, *args):
@@ -555,9 +642,9 @@ class product_product(xmlid, osv.Model):
         if not sl and sales_category_rec:
             values['warranty'] = float(sales_category_rec[F11.shelf_life] or 0.0)
         values['fis_qty_on_hand'] = fis_nvty_rec[F135.on_hand]
-        values['trademark'] = fis_nvty_rec[F135.trademark_expiry_year].strip() or False
-        if not values['trademark']:
-            values['trademark_state'] = ''
+        values['trademarks'] = fis_nvty_rec[F135.trademarked].strip() or False
+        if not values['trademarks']:
+            values['trademark_state'] = False
 
         shipped_as = fis_nvty_rec[F135.ship_size].strip()
         if shipped_as.lower() in ('each','1 each','1/each'):

@@ -14,6 +14,18 @@
                 ~page $Information position='after'
                     ~page $Shipping_Instructions
                         @spcl_ship_instr nolabel='1' placeholder='Special shipping instructions here...'
+                    ~page $Trademarks attrs="{'invisible':[('trademarks','=',False)]}"
+                        ~group $Trademarks
+                            ~group
+                                @state_trademark
+                                @state_trademark_state readonly='1'
+                                @state_trademark_expiry on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
+                                @state_trademark_renewal on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
+                            ~group
+                                @federal_trademark
+                                @federal_trademark_state readonly='1'
+                                @federal_trademark_expiry on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
+                                @federal_trademark_renewal on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
                 ~div @buttons position='replace'
                 ~page $Sales position='after'
                     ~page $Labels
@@ -82,10 +94,7 @@
                 @default_code position='replace'
                     @xml_id
                     @fis_name readonly='1'
-                    @trademark readonly='1'
-                    @trademark_state readonly='1' attrs="{'invisible': [('trademark','=',False)]}"
-                    @trademark_expiry_year on_change="onchange_trademark(trademark_expiry_year, trademark_renewal_date)" attrs="{'invisible': [('trademark','=',False)]}"
-                    @trademark_renewal_date on_change="onchange_trademark(trademark_expiry_year, trademark_renewal_date)" attrs="{'invisible': [('trademark','=',False)]}"
+                    @trademarks readonly='1'
 
         ~record #product_product_tree_view_xml_id model='ir.ui.view'
             @name: fis_integration.product.tree
@@ -158,25 +167,19 @@
             @name: Product Trademark
             @model: product.product
             @arch type='xml'
-                ~tree $Trademark_Products colors="red:trademark_state == 'dead';orange:trademark_state == 'dying' or trademark_state == 'renewing';green:trademark_state == 'healthy'"
+                ~tree $Trademark_Products colors="red:trademark_state == 'dead';orange:trademark_state == 'dying';blue:trademark_state == 'aging';green:trademark_state == 'renewing'"
                     @xml_id
                     @name
-                    @trademark_state invisible='1'
-                    @trademark_expiry_year
-                    @trademark_renewal_date
+                    @trademark_state
 
         ~record #product_trademark_search model='ir.ui.view'
             @name: Product Trademark Search
             @model: product.product
             @arch type='xml'
                 ~search $Search_Trademark
-                    ~filter $All_Trademarked @type_trademark_all domain="[('trademark','!=',False)]"
-                    ~separator
-                    ~filter $Active_Trademarked @type_trademark_active domain="[('trademark_state','in',['active','dying','renewing'])]"
-                    ~filter $Expiring_Trademarked @type_trademark_expiring domain="[('trademark_state','in',['dying','renewing'])]"
+                    ~filter $Active_Trademarked @type_trademark_active domain="[('trademark_state','in',['active','aging','dying','renewing'])]"
+                    ~filter $Expiring_Trademarked @type_trademark_expiring domain="[('trademark_state','in',['aging','dying','renewing'])]"
                     ~filter $Inactive_Trademarked @type_trademark_inactive domain="[('trademark_state','=','dead')]"
-                    ~separator
-                    ~filter $All_Not_Trademarked @type_trademark_none domain="[('trademark','=',False)]"
 
         ~record #product_trademark_action model='ir.actions.act_window'
             @name: Product Trademark
@@ -187,6 +190,7 @@
             @view_id ref='fis_integration.product_trademark_list_view'
             @search_view_id ref='product_trademark_search'
             @context eval="{'search_default_type_trademark_all':1}"
+            @domain eval="[('trademarks','!=',False)]"
 
         ~menuitem @Trademarks #product_trademarked parent='base.menu_product' action='product_trademark_action' groups='base.group_sale_salesman'
 

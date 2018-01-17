@@ -134,7 +134,7 @@ class F135(FISenum):
     available = 'Bn$(1,1)'
     sales_category = 'Bn$(3,2)'
     shelf_life = 'Bn$(69,2)'
-    trademark_expiry_year = 'Bn$(117,2)'
+    trademarked = 'Bn$(117,2)'
     name = 'Cn$(1,40)'
     ship_size = 'Cn$(41,8)'
     manager = 'Dn$(5,1)'
