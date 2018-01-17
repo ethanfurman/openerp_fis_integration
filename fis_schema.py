@@ -171,10 +171,13 @@ class F341(FISenum):
     short_desc =    'Cn$'
 
 
-def get_changed_records(old_records, new_records, enum_schema):
+def get_changed_records(old_records, new_records, enum_schema, address_fields, ignore=lambda r: False):
     # get changed records as list of (record, [(enum_schema_member, old_value, new_value), (...), ...]) tuples
-    unique_fields_name = list(enum_schema)[0].fis_name
-    unique_fields = [enum for enum in enum_schema if enum.fis_name == unique_fields_name]
+    key_fields_name = list(enum_schema)[0].fis_name
+    key_fields = [enum for enum in enum_schema if enum.fis_name == key_fields_name]
+    if address_fields is None:
+        address_fields = ()
+    enum_schema = [m for m in enum_schema if m not in address_fields]
     changes = []
     added = []
     deleted = []
@@ -182,13 +185,13 @@ def get_changed_records(old_records, new_records, enum_schema):
     new_records_map = {}
     for rec in old_records:
         key = []
-        for f in unique_fields:
+        for f in key_fields:
             key.append(rec[f])
         key = tuple(key)
         old_records_map[key] = rec
     for rec in new_records:
         key = []
-        for f in unique_fields:
+        for f in key_fields:
             key.append(rec[f])
         key = tuple(key)
         new_records_map[key] = rec
@@ -196,6 +199,8 @@ def get_changed_records(old_records, new_records, enum_schema):
     for key in all_recs:
         changed_values = []
         new_rec = new_records_map.get(key)
+        if ignore(new_rec):
+            continue
         old_rec = old_records_map.get(key)
         if new_rec == old_rec:
             continue
@@ -206,6 +211,13 @@ def get_changed_records(old_records, new_records, enum_schema):
             added.append(new_rec)
             continue
         diff = []
+        for field in address_fields:
+            if new_rec[field] != old_rec[field]:
+                # add all the address fields and dump out of the loop
+                for field in address_fields:
+                    diff.append(field)
+                    changed_values.append((field, old_rec[field], new_rec[field]))
+                break
         for field in enum_schema:
             if new_rec[field] != old_rec[field]:
                 diff.append(field)
@@ -217,7 +229,8 @@ def get_changed_records(old_records, new_records, enum_schema):
     return changes, added, deleted
 
 def combine_by_value(key, records):
-    changed_map = defaultdict(int)
+    # records with field changes in addr1, addr2, addr3, and postal cannot be combined
+    changed_map = defaultdict(list)
     for row in records:
         rec_key = []
         for t in row[1:]:
@@ -226,6 +239,6 @@ def combine_by_value(key, records):
                     rec_key.append(f)
                     rec_key.append(new)
         if rec_key:
-            changed_map[tuple(rec_key)] += 1
+            changed_map[tuple(rec_key)].append(row)
     return changed_map
 
