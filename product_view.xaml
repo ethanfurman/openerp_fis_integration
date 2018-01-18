@@ -37,8 +37,8 @@
                     ~group $Availability
                         ~div .fis
                             ~label for='fis_qty_on_hand' string='Quantity On-hand: '
-                            @fis_qty_on_hand .oe_inline readonly='1'
-                            ~table
+                            @fis_qty_on_hand .oe_inline attrs="{'readonly': [('xml_id','!=',False)]}"
+                            ~table attrs="{'invisible': [('xml_id','=',False)]}"
                                 ~tr
                                     ~th
                                     ~th: Now
@@ -84,8 +84,8 @@
                                         @fis_10_day_available readonly='1' widget='fis_positive_okay'
                                     ~td
                                         @fis_21_day_available readonly='1' widget='fis_positive_okay'
-                            ~label for='fis_qty_makeable' string='Immediately Producible: '
-                            @fis_qty_makeable .oe_inline
+                            ~label for='fis_qty_makeable' string='Immediately Producible: ' attrs="{'invisible': [('xml_id','=',False)]}"
+                            @fis_qty_makeable .oe_inline attrs="{'invisible': [('xml_id','=',False)]}"
 
                 @product_manager position='after'
                     @fis_location
