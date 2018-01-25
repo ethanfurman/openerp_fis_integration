@@ -8,7 +8,7 @@ from fis_integration.fis_schema import F27, F33, F47, F65, F74, F163
 from fnx.oe import mail
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase
 from VSS.BBxXlate.fisData import fisData
-from VSS.utils import fix_phone, fix_date, var, Date
+from VSS.utils import all_equal, fix_phone, fix_date, var, Date
 from fnx.xid import xmlid
 
 _logger = logging.getLogger(__name__)
@@ -206,43 +206,52 @@ class res_partner(xmlid, osv.Model):
     def write(self, cr, uid, ids, values, context=None):
         if context is None:
             context = {}
+        if isinstance(ids, (int, long)):
+            ids = [ids]
         context = context.copy()
         updating_from_fis = context.pop('fis-updates', False)
-        data = self.read(
+        datas = self.read(
                 cr, uid, ids,
                 fields=['id', 'fis_updated_by_user', 'fis_data_address', 'is_company',
                         'specials_notification', 'sn_catalog_type', 'sn_specials_type',
                         ],
                 context=context,
                 )
+        # datas is a list of dicts
         if updating_from_fis:
-            # save name/addr/cszc into fis_data_address field
-            # if record has fis_updated_by_user set do not update name/addr/cszc
-            # ids is a single integer
-            updated_by_user = data['fis_updated_by_user'] or ''
-            state = self.pool.get('res.country.state').browse(cr, uid, values.get('state_id'), context=context)
-            country = self.pool.get('res.country').browse(cr, uid, values.get('country_id'), context=context)
-            values['fis_data_address'] = '\n'.join([
-                    values['name'] or '',
-                    values.get('street', ''),
-                    values.get('street2', ''),
-                    '%s, %s  %s' % (
-                        values.get('city', ''),
-                        state and state.name or '',
-                        values.get('zip', ''),
-                        ),
-                    country and country.name or '',
-                    ])
-            if 'A' in updated_by_user:
-                if data['fis_data_address'] and values['fis_data_address'] != data['fis_data_address']:
-                    values['fis_data_address_changed'] = True
-                for attr in ADDRESS_FIELDS:
-                    values.pop(attr, None)
-            if 'S' in updated_by_user:
-                values.pop('specials_notification', None)
+            if any(f in values for f in ADDRESS_FIELDS+('specials_notifications',)):
+                # if any address fields set, data must be a dict
+                #
+                # save name/addr/cszc into fis_data_address field
+                # if record has fis_updated_by_user set do not update name/addr/cszc
+                # ids is a single integer
+                if (
+                        all_equal(d['specials_notification'] for d in datas)
+                        and all_equal(d['fis_data_address'] for d in datas)
+                    ):
+                    updated_by_user = datas[0]['fis_updated_by_user'] or ''
+                    if 'S' in updated_by_user:
+                        values.pop('specials_notification', None)
+                    if 'A' in updated_by_user:
+                        values['fis_data_address_changed'] = True
+                        for attr in ADDRESS_FIELDS:
+                            values.pop(attr, None)
+                else:
+                    # save the records individually
+                    for data in datas:
+                        piecemeal_values = values.copy()
+                        if 'S' in updated_by_user:
+                            piecemeal_values.pop('specials_notification', None)
+                        if 'A' in updated_by_user:
+                            if datas['fis_data_address'] and values['fis_data_address'] != datas['fis_data_address']:
+                                piecemeal_values['fis_data_address_changed'] = True
+                            for attr in ADDRESS_FIELDS:
+                                piecemeal_values.pop(attr, None)
+                        if not super(res_partner, self).write(cr, uid, data['id'], piecemeal_values, context=context):
+                            return False
+                    return True
         else:
-            # at this point data is either a dict or a list of dicts
-            # we only care if an address field is being updated
+            # we only care if a latched field is being updated
             check_fis = ''
             for field in ADDRESS_FIELDS:
                 if field in values:
@@ -251,56 +260,21 @@ class res_partner(xmlid, osv.Model):
             if 'specials_notification' in values:
                 check_fis += 'S'
             if check_fis:
-                # an address field is being updated -- is the record(s) an FIS record?
-                if isinstance(ids, (int, long)):
-                    updated_by_user = data['updated_by_user'] or ''
-                    # only one record, data is a dict
-                    if data['fis_data_address']:
-                        # definitely an FIS record
-                        if 'A' in check_fis:
-                            updated_by_user += 'A'
-                        if 'S' in check_fis:
-                            updated_by_user += 'S'
-                        values['fis_updated_by_user'] = ''.join(sorted(set(updated_by_user)))
-                else:
-                    # list of dicts
-                    A_fis_ids = []
-                    S_fis_ids = []
-                    AS_fis_ids = []
-                    fis_ids = []
-                    ids = []
-                    for d in data:
-                        updated_by_user = d['fis_updated_by_user']
-                        id = d['id']
-                        if not d['fis_data_address']:
-                            ids.append(id)
-                        elif updated_by_user == 'AS':
-                            AS_fis_ids.append(id)
-                        elif updated_by_user == 'A':
-                            A_fis_ids.append(id)
-                        elif updated_by_user == 'S':
-                            S_fis_ids.append(id)
-                        else:
-                            fis_ids.append(id)
-                    success = True
-                    if ids:
-                        # write non-fis records
-                        success = super(res_partner, self).write(cr, uid, ids, values, context=context)
-                    if success:
-                        # update and write any fis records
-                        if success and fis_ids:
-                            values['fis_updated_by_user'] = check_fis
-                            success = super(res_partner, self).write(cr, uid, fis_ids, values, context=context)
-                        if success and A_fis_ids:
-                            values['fis_updated_by_user'] = ''.join(sorted(set(check_fis + 'A')))
-                            success = super(res_partner, self).write(cr, uid, A_fis_ids, values, context=context)
-                        if success and S_fis_ids:
-                            values['fis_updated_by_user'] = ''.join(sorted(set(check_fis + 'S')))
-                            success = super(res_partner, self).write(cr, uid, S_fis_ids, values, context=context)
-                        if success and AS_fis_ids:
-                            values['fis_updated_by_user'] = 'AS'
-                            success = super(res_partner, self).write(cr, uid, AS_fis_ids, values, context=context)
-                    return success
+                # okay, we really only care if any the records to update are FIS records
+                if any(d['fis_data_address'] for d in datas):
+                    for data in datas:
+                        piecemeal_values = values.copy()
+                        if datas['fis_data_address']:
+                            # definitely an FIS record
+                            updated_by_user = datas['fis_updated_by_user'] or ''
+                            if 'A' in check_fis:
+                                updated_by_user += 'A'
+                            if 'S' in check_fis:
+                                updated_by_user += 'S'
+                            piecemeal_values['fis_updated_by_user'] = ''.join(sorted(set(updated_by_user)))
+                        if not super(res_partner, self).write(cr, uid, data['id'], piecemeal_values, context=context):
+                            return False
+                    return True
         return super(res_partner, self).write(cr, uid, ids, values, context=context)
 
     def name_get(self, cr, uid, ids, context=None):

@@ -1,5 +1,7 @@
+fis_schema.py
 scripts/recipe
 scripts/recipe.py
 scripts/oe-users
 scripts/updates.py updates/__init__.py
 scripts/fis
+scripts/fis_integration_update

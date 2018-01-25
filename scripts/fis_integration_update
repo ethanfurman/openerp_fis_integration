@@ -1,0 +1,1159 @@
+#!/usr/local/sbin/suid-python --virtualenv
+
+from __future__ import print_function
+
+from scription import *
+from aenum import Enum
+from collections import defaultdict
+from fis_schema import F27, F33, F65, F74, F163
+# from fis_scheam import F47
+from fis_schema import get_changed_records, combine_by_value
+from openerplib import AttrDict, get_connection, get_records, Many2One, DEFAULT_SERVER_DATE_FORMAT
+# from traceback import format_exception
+from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, NameCaseReversed, PostalCode
+from VSS.BBxXlate.fisData import fisData
+from VSS.utils import fix_phone, fix_date, Date, grouped
+import re
+import os
+# import sys
+
+
+@Script()
+def main():
+    global config, oe, errors
+    config = OrmFile('%s/config/fnx.ini' % os.environ['VIRTUAL_ENV'])
+    oe = config.openerp
+    oe = get_connection(hostname=oe.host, database=oe.db, login=oe.user, password=oe.pw)
+    errors = defaultdict(list)
+
+@Command(
+        files=Spec('changed FIS files', MULTIREQ),
+        type=Spec(
+            'perform quick or full comparison [quick: compare against old FIS files; full: compare against OpenERP records',
+            OPTION,
+            choices=['quick', 'full'],
+            type=lambda f: f.lower(),
+            ),
+        )
+def fis_integration_update(files, type='quick'):
+    global state_recs, country_recs, emp1, posm, vnms, csms
+    global skipped_suppliers, vendor_suppliers, ven2sup
+    global models
+    ven2sup = {}
+    if type not in ('quick', 'full'):
+        abort('unknown type: %r' % (type, ))
+
+    state_recs = dict([
+        (r.name, (r.id, r.code, r.country_id))
+        for r in get_records(oe, 'res.country.state')
+        ])
+    country_recs = dict([
+        (r.name, r.id)
+        for r in get_records(oe, 'res.country')
+        ])
+    csms = fisData(33, keymatch='10%s')
+    emp1 = fisData(74, keymatch='10%s')
+    vnms = fisData(65, keymatch='10%s')
+    posm = fisData(163, keymatch='10%s')
+    skipped_suppliers = set()
+    vendor_suppliers = set()
+    if 'emp1' in files:
+        handle_emp1(type)
+    if 'posm' in files:
+        handle_posm(type)
+    if 'vnms' in files:
+        handle_vnms(type)
+    if 'csms' in files:
+        handle_csms(type)
+    if 'cnvz' in files:
+        # handle_sales_reps(type)
+        handle_carrier(type)
+    # if type == 'full':
+    #     supplier_codes = self.get_xml_id_map(cr, uid, module='F163')
+    #     customer_codes = self.get_xml_id_map(cr, uid, module='F33')
+    #     carrier_codes = self.get_xml_id_map(cr, uid, module='F27')
+    #     employee_codes = self.get_xml_id_map(cr, uid, module='F74')
+    #
+    for m, problems in sorted(Model.errors.items()):
+        error(m,'\n============')
+        for p in problems:
+            error('  ', p)
+        error()
+
+
+def handle_csms(method):
+    print('processing CSMS...')
+    context = {'fis-updates': True, 'active_test': False}
+    res = AttrDict()
+    res.partner = Model(oe.get_model('res.partner'), 'csms', 'F33', context)
+    csms = fisData(33, keymatch='10%s ')
+    if method == 'quick':
+        csms_old = fisData(33, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
+    changes, added, deleted = get_changed_records(
+            csms_old.values(),
+            csms.values(),
+            enum_schema=[
+                F33.name, F33.salesrep, F33.catalog_category, F33.this_year_sales,
+                F33.last_year_sales, F33.tele, F33.contact,
+                ],
+            address_fields=[
+                F33.addr1, F33.addr2, F33.addr3,
+                ],
+            )
+    changed_map = combine_by_value(F33, changes)
+    for changed_fields, records in ProgressView(iterable=sorted(changed_map.items()), view_type='bar'):
+        print('changed fields:', changed_fields, verbose=2)
+        # get ids for existing records
+        keys = [r[F33.code].strip() for r in records]
+        oe_ids = res.partner.search(domain=[('module','=','F33'),('xml_id','in',keys)])
+        if not oe_ids:
+            # unable to find these "changed" records in OpenERP -- log, and move records
+            # to the add queue
+            for rec in records:
+                res.partner.error('changed record F33:%s not found in OpenERP' % rec[F33.code])
+            continue
+        # changed_fields = (field_enum, new_value, field_enum, new_value, ...)
+        #
+        # create values update dict for OpenERP
+        values = {}
+        address_done = False
+        sample_rec = records[0]
+        contact = {}
+        for field, value in grouped(changed_fields, 2):
+            if field is F33.name:
+                values['name'] = re.sub('sunridge', 'SunRidge', BsnsCase(sample_rec[F33.name]), flags=re.I)
+            elif field is F33.contact:
+                contact = dict([(r[F33.code], NameCase(value)) for r in records])
+            elif field in (F33.addr1, F33.addr2, F33.addr3):
+                if address_done is True:
+                    continue
+                address_done = True
+                values.update(process_address(F33, sample_rec, key=sample_rec[F33.code], module='csms'))
+            elif field is F33.catalog_category:
+                # TODO: add code to res_partner.py to safeguard user data
+                pass
+            elif field in (F33.this_year_sales, F33.last_year_sales):
+                values['active'] = True
+            elif field is F33.tele:
+                values['phone'] = fix_phone(value)
+        # and update OpenERP
+        res.partner.write(keys, oe_ids, values, context=context)
+        # and handle any contacts
+        for company_key, contact_name in contact.items():
+            contact_key = 'cntct_' + company_key
+            contacts = res.partner.read(
+                    domain=[('module','=','F33'),('xml_id','=',contact_key)],
+                    fields=['id','active'],
+                    )
+            if not contacts:
+                company = res.partner.read(
+                    domain=[('module','=','F33'),('xml_id','=',company_key)],
+                    fields=['id','active'],
+                    )
+                active = company[0].active
+                res.partner.create(contact_key, {'name': contact_name, 'active':active})
+            else:
+                active = contacts[0].active
+                contact_id = contacts[0].id
+                if not contact_name:
+                    active = False
+                res.partner.write(contact_key, contact_id, {'name': contact_name, 'active':active})
+    #
+    # now add new customers
+    #
+    for fis_rec in ProgressView(iterable=added, view_type='bar', message='--== ADDING ==--'):
+        print('\nadding:', fis_rec, sep='\n', verbose=2)
+        values = {}
+        # TODO: get salesrep working
+        # rep = cus_rec[F33.salesrep]
+        # rep = sales_people.get(rep, False)
+        values = {'active': False}
+        # values['user_id'] = rep
+        values['is_company'] = True
+        values['customer'] = True
+        values['use_parent_address'] = False
+        values['xml_id'] = key = fis_rec[F33.code]
+        values['module'] = 'F33'
+        # valid customer code? active account?
+        values['fis_valid'] = fis_valid = len(key) == 5
+        if (
+                fis_rec[F33.this_year_sales]
+             or fis_rec[F33.last_year_sales]
+            ):
+            values['active'] = True
+        else:
+            # TODO check for open orders
+            pass
+        notify_by = Specials.get_member(fis_rec[F33.catalog_category].upper(), Specials.neither)
+        values['specials_notification'] = notify_by.value
+        values['name'] = cus_name = re.sub('sunridge', 'SunRidge', BsnsCase(fis_rec[F33.name]), flags=re.I)
+        if not values['name']:
+            res.partner.error("Missing name for customer %s -- skipping" % (key, ))
+            continue
+        values.update(process_address(F33, fis_rec, key=fis_rec[F33.code], module='csms'))
+        values['phone'] = fix_phone(fis_rec[F33.tele])
+        # double-check that record doesn't already exist
+        customer_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F33')])
+        if customer_id:
+            customer_id = customer_id[0]
+            res.partner.error('FIS ID F33:%s (%s) already exists in OpenERP' % (key, cus_name))
+        else:
+            customer_id = res.partner.create(key, values)
+            if not customer_id:
+                continue
+        if fis_rec[F33.contact]:
+            contact = NameCase(fis_rec[F33.contact])
+            values = {
+                    'fis_valid': fis_valid,
+                    'specials_notification': Specials.company,
+                    }
+            values['name'] = cntct_name = re.sub('sunridge', 'SunRidge', contact, flags=re.I)
+            values['is_company'] = False
+            values['customer'] = True
+            values['parent_id'] = customer_id
+            values['use_parent_address'] = True
+            values['xml_id'] = cntct_key = 'cntct_' + key
+            values['module'] = 'F33'
+            # double-check that record doesn't already exist
+            cntct_id = res.partner.search(domain=[('xml_id','=',cntct_key),('module','=','F33')])
+            if cntct_id:
+                cntct_id = cntct_id[0]
+                res.partner.error('FIS ID F33:%s (%s) already exists in OpenERP' % (cntct_key, cntct_name))
+                res.partner.write(cntct_key, cntct_id, values)
+            else:
+                res.partner.create(cntct_key, values)
+    #
+    # send email for deleted customers
+    #
+    if deleted:
+        customer_list = ['%6s  %s' % ('FIS ID', 'Name')]
+        data = []
+        for rec in deleted:
+            xml_id = rec[F27.code]
+            name = BsnsCase(rec[F27.name])
+            data.append(xml_id, name)
+        for rec in sorted(data, key=lambda r: r[1]):
+            customer_list.append("%6s  %s" % rec)
+        mail(message=
+                "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
+                # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
+                # "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
+                # "Cc: Alyssa Corinne <alyssa@sunridgefarms.com>\n"
+                "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
+                "Subject: customers deleted in FIS... what action in OpenERP?  [csms, 33]\n"
+                "\n"
+                + '\n'.join(customer_list),
+                )
+
+def handle_carrier(method):
+    context = {'fis-updates': True, 'active_test': False}
+    res = AttrDict()
+    res.partner = Model(oe.get_model('res.partner'), 'cnvzsv', 'F27', context)
+    cnvzsv = fisData(27, keymatch='SV10%s')
+    if method == 'quick':
+        cnvzsv_old = fisData(27, keymatch='SV10%s', data_path=config.network.fis_data_local_old_path)
+    changes, added, deleted = get_changed_records(
+            cnvzsv_old.values(),
+            cnvzsv.values(),
+            enum_schema=[
+                F27.name, F27.tele, F27.fuel_surcharge,
+                ],
+            address_fields=[
+                F27.addr1, F27.addr2, F27.addr3,
+                ],
+            )
+    changed_map = combine_by_value(F27, changes)
+    for changed_fields, records in ProgressView(iterable=changed_map.items(), view_type='bar', message='--== ADDING ==--'):
+        print('changed fields:', changed_fields)
+        keys = [r[F27.code].strip() for r in records]
+        # get ids for existing records
+        oe_ids = res.partner.search(domain=[('module','=','F27'),('xml_id','in',keys)])
+        if not oe_ids:
+            # unable to find these "changed" records in OpenERP -- log, and move records
+            # to the add queue
+            for rec in records:
+                key = rec[F27.code]
+                name = BsnsCase(rec[F27.name])
+                res.partner.error('changed record F27:%s (%s) not found in OpenERP' % rec[F27.code])
+            continue
+        # changed_fields = (field_enum, new_value, field_enum, new_value, ...)
+        #
+        # create values update dict for OpenERP
+        values = {}
+        address_done = False
+        sample_rec = records[0]
+        for field, value in grouped(changed_fields, 2):
+            if field is F27.name:
+                values['name'] = re.sub('sunridge', 'SunRidge', BsnsCase(records[0][F27.name]), flags=re.I)
+            elif field in (F27.addr1, F27.addr2, F27.addr3):
+                if address_done is True:
+                    continue
+                address_done = True
+                values.update(process_address(F27, sample_rec, key=sample_rec[F27.code], module='cnvzsv'))
+            elif field is F27.tele:
+                values['phone'] = fix_phone(value)
+            elif field is F27.fuel_surcharge:
+                values['fuel_surcharge'] = value.upper() == 'Y'
+        # and update OpenERP
+        res.partner.write(keys, oe_ids, values)
+    #
+    # now add new carriers
+    #
+    for fis_rec in ProgressView(iterable=added, view_type='bar', message='--== ADDING ==--'):
+        print('\nadding:', fis_rec, sep='\n', verbose=2)
+        values = {}
+        values['name'] = name = re.sub('sunridge', 'SunRidge', BsnsCase(fis_rec[F27.name]), flags=re.I)
+        values['xml_id'] = values['identification_id'] = key = fis_rec[F27.code].strip()
+        values['module'] = 'F27'
+        values['is_company'] = True
+        values['is_carrier'] = True
+        values['use_parent_address'] = False
+        if key == '99':
+            values['name'] = '____________'
+        values.update(process_address(F27, sample_rec, key=fis_rec[F27.code], module='cnvzsv'))
+        values['phone'] = fis_rec[F27.tele]
+        values['fuel_surcharge'] = fis_rec[F27.fuel_surcharge].upper() == 'Y'
+        # double-check that record doesn't already exist
+        if res.partner.search(domain=[('xml_id','=',key),('module','=','F27')]):
+            res.partner.error('FIS ID F27:%s (%s) already exists in OpenERP' % (key, name))
+        else:
+            res.partner.create(key, values)
+    #
+    # send email for deleted carriers
+    #
+    if deleted:
+        carrier_list = ['%6s  %s' % ('FIS ID', 'Name')]
+        data = []
+        for rec in deleted:
+            xml_id = rec[F27.code]
+            name = BsnsCase(rec[F27.name])
+            data.append(xml_id, name)
+        for rec in sorted(data, key=lambda r: r[1]):
+            carrier_list.append("%6s  %s" % rec)
+        mail(message=
+                "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
+                # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
+                # "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
+                # "Cc: Alyssa Corinne <alyssa@sunridgefarms.com>\n"
+                "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
+                "Subject: carriers deleted in FIS... what action in OpenERP?  [cnvzsv, 27]\n"
+                "\n"
+                + '\n'.join(carrier_list),
+                )
+
+
+def handle_emp1(method):
+    context = {'hr_welcome': False, 'fis-updates': True, 'active_test': False}
+    today = Date.today()
+    hr = AttrDict()
+    hr.employee = Model(oe.get_model('hr.employee'), 'emp1', 'F74-emp', context)
+    res = AttrDict()
+    res.partner = Model(oe.get_model('res.partner'), 'emp1', 'F74', context)
+    if method == 'quick':
+        emp1_old = fisData(74, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
+    changes, added, deleted = get_changed_records(
+            emp1_old.values(),
+            emp1.values(),
+            enum_schema=[
+                F74.name, F74.ssn, F74.tele, F74.date_hired, F74.date_terminated,
+                F74.birth_date, F74.last_raise, F74.status_flag, F74.pay_type,
+                F74.marital_status, F74.pension_status, F74.gender, F74.emergency_contact,
+                F74.emergency_phone, F74.exempt_fed, F74.exempt_state, F74.hourly_rate,
+                ],
+            address_fields=[
+                F74.addr1, F74.addr2, F74.addr3,
+                ],
+            ignore=lambda r: int(r[F74.emp_num]) >= 9000,
+            )
+    changed_map = combine_by_value(F74, changes)
+    active_test_needed = set()
+    birthday_test_needed = set()
+    for changed_fields, records in ProgressView(
+            iterable=changed_map.items(),
+            view_type='bar',
+            message='--== Changed ==--',
+        ):
+        # get ids for existing records
+        keys = [r[F74.emp_num].strip() for r in records]
+        oe_ids = hr.employee.search(domain=[('module','=','F74-emp'),('xml_id','in',keys)])
+        if not oe_ids:
+            # unable to find these "changed" records in OpenERP -- log, and move records
+            # to the add queue
+            for rec in records:
+                hr.employee.error('changed record F74:%s not found in OpenERP' % rec[F74.code])
+            continue
+        # changed_fields = (field_enum, new_value, field_enum, new_value, ...)
+        #
+        # create values update dict for OpenERP
+        values = {}
+        address_done = False
+        sample_rec = records[0]
+        for field, value in grouped(changed_fields, 2):
+            if field is F74.name:
+                values['name'] = re.sub('sunridge', 'SunRidge', NameCase(records[0][F74.name]), flags=re.I)
+            elif field in (F74.addr1, F74.addr2, F74.addr3):
+                if address_done is True:
+                    continue
+                address_done = True
+                values.update(process_address(F74, sample_rec, key=sample_rec[F74.emp_num], module='emp1', home=True))
+            elif field is F74.tele:
+                values['home_phone'] = fix_phone(value)
+            elif field is F74.ssn:
+                if len(value) == 9:
+                    value = '%s-%s-%s' % (value[:3], value[3:5], value[5:])
+                values['ssnid'] = value
+            elif field is F74.date_hired:
+                active_test_needed |= set(oe_ids)
+                values['hire_date'] = fix_date(value)
+            elif field is F74.date_terminated:
+                active_test_needed |= set(oe_ids)
+                values['fire_date'] = fix_date(value)
+            elif field is F74.birth_date:
+                birthday_test_needed |= set(oe_ids)
+                values['birthday'] = fix_date(value, delta_year=-100)
+            elif field is F74.status_flag:
+                values['status_flag'] = value
+            elif field is F74.pension_status:
+                values['pension_plan'] = value.upper() == 'Y'
+            elif field is F74.pay_type:
+                value['pay_type'] = ('salary', 'hourly')[value.upper() == 'H']
+            elif field is F74.hourly_rate:
+                values['hourly_rate'] = value
+            elif field is F74.last_raise:
+                values['last_raise'] = fix_date(value)
+            elif field is F74.exempt_fed:
+                values['federal_exemptions'] = int(value or 0)
+            elif field is F74.exempt_state:
+                values['state_exemptions'] = int(value or 0)
+            elif field is F74.emergency_contact:
+                values['emergency_contact'] = NameCase(value)
+            elif field is F74.emergency_phone:
+                values['emergency_number'] = fix_phone(value)
+            elif field is F74.marital_status:
+                values['marital'] = ('single', 'married')[value.upper() == 'M']
+            elif field is F74.gender:
+                values['gender'] = ('male', 'female')[value.upper() == 'F']
+        # and update OpenERP
+        hr.employee.write(keys, oe_ids, values)
+    #
+    # now add new employees
+    #
+    for fis_rec in ProgressView(iterable=added, view_type='bar', message='--== Added ==--'):
+        print('\nadding:', fis_rec, sep='\n', verbose=2)
+        values = {}
+        values['name'] = emp_name = re.sub('sunridge', 'SunRidge', NameCase(fis_rec[F74.name]), flags=re.I)
+        values['xml_id'] = values['identification_id'] = emp_num = fis_rec[F74.emp_num].strip()
+        values['module'] = 'F74-emp'
+        try:
+            if int(emp_num) >= 9000:
+                continue
+        except (ValueError, TypeError):
+            continue
+        values['employment_type'] = 'standard'
+        values.update(process_address(F74, fis_rec, key=fis_rec[F74.emp_num], module='emp1', home=True))
+        values['home_phone'] = fix_phone(fis_rec[F74.tele])
+        ssn = fis_rec[F74.ssn]
+        if len(ssn) == 9:
+            ssn = '%s-%s-%s' % (ssn[:3], ssn[3:5], ssn[5:])
+        values['ssnid'] = ssn
+        values['hire_date'] = hired = fix_date(fis_rec[F74.date_hired])
+        values['fire_date'] = fired = fix_date(fis_rec[F74.date_terminated])
+        values['active'] = (not fired or hired > fired)
+        values['birthday'] = fix_date(fis_rec[F74.birth_date])
+        values['status_flag'] = fis_rec[F74.status_flag]
+        values['pension_plan'] = fis_rec[F74.pension_status].upper() == 'Y'
+        values['pay_type'] = ('salary', 'hourly')[fis_rec[F74.pay_type].upper() == 'H']
+        values['hourly_rate'] = fis_rec[F74.hourly_rate]
+        values['last_raise'] = fix_date(fis_rec[F74.last_raise])
+        values['marital'] = ('single', 'married')[fis_rec[F74.marital_status].upper() == 'M']
+        values['gender'] = ('male', 'female')[fis_rec[F74.gender].upper() == 'F']
+        values['emergency_contact'] = NameCase(fis_rec[F74.emergency_contact])
+        values['emergency_number'] = fix_phone(fis_rec[F74.emergency_phone])
+        values['federal_exemptions'] = int(fis_rec[F74.exempt_fed] or 0)
+        values['state_exemptions'] = int(fis_rec[F74.exempt_state] or 0)
+        # check for existing res.partner record, and use it if it exists
+        rp_id = hr.employee.search(domain=[('module','=','F74'),('xml_id','=',emp_num)])
+        if rp_id:
+            rp_id = rp_id[0]
+        else:
+            # otherwise, try to create it, leaving it at False (0) on failure
+            rp_id = res.partner.create(emp_num, {'name': emp_name, 'xml_id': emp_num, 'module': 'F74'})
+        ## double-check that record doesn't already exist
+        employee_id = hr.employee.search(domain=[('xml_id','=',emp_num),('module','=','F74-emp')])
+        if employee_id:
+            employee_id = employee_id[0]
+            hr.employee.error('FIS ID F74-emp:%s (%s) already exists in OpenERP' % (emp_num, emp_name))
+        else:
+            employee_id = hr.employee.create(emp_num, values)
+            if not employee_id:
+                continue
+        if rp_id:
+            # update partner record with link to employee record
+            res.partner.write(emp_num, rp_id, {'employee_id': employee_id})
+        birthday_test_needed.add(employee_id)
+        active_test_needed.add(employee_id)
+    #
+    # send email for deleted employees
+    #
+    if deleted:
+        employee_list = ['%6s  %-11s  %-11s  %s' % ('Emp. #', 'Start Date', 'End Date', 'Employee Name')]
+        data = []
+        for rec in deleted:
+            emp_num = rec[F74.emp_num]
+            name = NameCaseReversed(rec[F74.name])
+            if rec[F74.date_hired]:
+                date_hired = fix_date(rec[F74.date_hired])
+            else:
+                date_hired = ''
+            if rec[F74.date_terminated]:
+                date_terminated = fix_date(rec[F74.date_terminated])
+            else:
+                date_terminated = ''
+            data.append((emp_num, date_hired, date_terminated, name))
+        for rec in sorted(data, key=lambda r: r[3]):
+            employee_list.append("%6s  %-11s  %-11s  %s" % rec)
+        mail(message=
+                "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
+                # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
+                # "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
+                # "Cc: Alyssa Corinne <alyssa@sunridgefarms.com>\n"
+                "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
+                "Subject: employees deleted in FIS... what action in OpenERP?\n"
+                "\n"
+                + '\n'.join(employee_list),
+                )
+    #
+    # check for suspect birthdates
+    #
+    if birthday_test_needed:
+        underage = today.replace(delta_year=-18).strftime(DEFAULT_SERVER_DATE_FORMAT)
+        overage = today.replace(delta_year=+65).strftime(DEFAULT_SERVER_DATE_FORMAT)
+        bad_birthdays = hr.employee.read(
+                domain=[('id','in',list(birthday_test_needed)),'|',('birthday','<',underage),('birthday','>',overage)],
+                fields=['id', 'birthday', 'name', 'xml_id'],
+                )
+        if bad_birthdays:
+            employee_list = []
+            for rec in bad_birthdays:
+                rec.name = NameCaseReversed(rec.name)
+                rec.birthday = Date.strptime(rec.birthday, DEFAULT_SERVER_DATE_FORMAT)#.strftime('%d-%b-%Y')
+            for rec in sorted(bad_birthdays, key=lambda r: r.name):
+                employee_list.append("%5s:  %s - %s" % (rec.xml_id, rec.birthday, rec.name))
+            mail(message=
+                    "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
+                    # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
+                    # "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
+                    # "Cc: Alyssa Corinne <alyssa@sunridgefarms.com>\n"
+                    "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
+                    "Subject: employees with suspect birthdates in FIS [emp1, 74]\n"
+                    "\n"
+                    + '\n'.join(employee_list),
+                    )
+    #
+    # check for (in)active records
+    #
+    if active_test_needed:
+        active_test = hr.employee.read(
+                domain=[('id','in',list(active_test_needed))],
+                fields=['id', 'hire_date', 'fire_date','xml_id'],
+                )
+        active = []
+        active_keys = []
+        inactive = []
+        inactive_keys = []
+        for rec in active_test:
+            if not rec.fire_date:
+                active.append(rec.id)
+                active_keys.append(rec.xml_id)
+            elif rec.fire_date < rec.hire_date:
+                active.append(rec.id)
+                active_keys.append(rec.xml_id)
+            else:
+                inactive.append(rec.id)
+                inactive_keys.append(rec.xml_id)
+        if active:
+            hr.employee.write(active_keys, active, {'active': True})
+        if inactive:
+            hr.employee.write(inactive_keys, inactive, {'active': False})
+
+
+def handle_posm(method):
+    context = {'fis-updates': True, 'active_test': False}
+    res = AttrDict()
+    res.partner = Model(oe.get_model('res.partner'), 'posm', 'F163', context)
+    if method == 'quick':
+        posm_old = fisData(163, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
+    changes, added, deleted = get_changed_records(
+            posm_old.values(),
+            posm.values(),
+            enum_schema=[
+                F163.name, F163.tele, F163.fax, F163.vendor, F163.org_cert_file,
+                F163.non_gmo, F163.kosher, F163.cert_exp, F163.gmo_exp, F163.kosher_exp,
+                ],
+            address_fields=[
+                F163.addr1, F163.addr2, F163.addr3,
+                ],
+            ignore=is_invalid_posm_record,
+            )
+    print('\n%d changes; %d additions; %d deletions' % (len(changes), len(added), len(deleted)))
+    changed_map = combine_by_value(F163, changes)
+    for changed_fields, records in ProgressView(iterable=sorted(changed_map.items()), view_type='bar'):
+        print('\n---- changed fields ----\n', changed_fields, verbose=2)
+        # get ids for existing records
+        keys = [r[F163.code].strip() for r in records]
+        oe_ids = res.partner.search(domain=[('module','=','F163'),('xml_id','in',keys)])
+        if not oe_ids:
+            # unable to find these "changed" records in OpenERP -- log, and move records
+            # to the add queue
+            for rec in records:
+                res.partner.error('changed record F163:%s not found not found in OpenERP' % rec[F163.code])
+            continue
+        # changed_fields = (field_enum, new_value, field_enum, new_value, ...)
+        #
+        # create values update dict for OpenERP
+        values = {}
+        address_done = False
+        sample_rec = records[0]
+        for field, value in grouped(changed_fields, 2):
+            if field is F163.name:
+                values['name'] = re.sub('sunridge', 'SunRidge', BsnsCase(value), flags=re.I)
+            elif field in (F163.addr1, F163.addr2, F163.addr3):
+                if address_done is True:
+                    continue
+                address_done = True
+                values.update(process_address(F163, sample_rec, key=sample_rec[F163.code], module='posm'))
+            elif field is F163.tele:
+                values['phone'] = fix_phone(value)
+            elif field is F163.fax:
+                values['fax'] = fix_phone(value)
+            elif field is F163.vendor:
+                for rec in records:
+                    vendor_suppliers.add(F163.code)
+            elif field is F163.org_cert_file:
+                values['fis_org_cert_file'] = value.upper() in 'YO'
+            elif field is F163.non_gmo:
+                values['fis_non_gmo'] = value.upper() in 'Y'
+            elif field is F163.kosher:
+                values['fis_kosher'] = value.upper() in 'Y'
+            elif field is F163.cert_exp:
+                values['fis_org_exp'] = fix_date(value)
+            elif field is F163.gmo_exp:
+                values['fis_gmo_exp'] = fix_date(value)
+            elif field is F163.kosher_exp:
+                values['fis_kosher_exp'] = fix_date(value)
+        # and update OpenERP
+        res.partner.write(keys, oe_ids, values)
+    #
+    # add new records
+    #
+    for sup_rec in ProgressView(iterable=added, view_type='bar'):
+        print('\nadding:', sup_rec, sep='\n', verbose=2)
+        values = {'active': True}
+        # valid supplier code? active account?
+        values['xml_id'] = key = sup_rec[F163.code]
+        values['module'] = 'F163'
+        values['fis_valid'] = True
+        values['name'] = sup_name = re.sub('sunridge', 'SunRidge', BsnsCase(sup_rec[F163.name]), flags=re.I)
+        values['is_company'] = True
+        values['supplier'] = True
+        values['customer'] = False
+        values['use_parent_address'] = False
+        values.update(process_address(F163, sup_rec, key=sup_rec[F163.code], module='posm'))
+        values['phone'] = fix_phone(sup_rec[F163.tele])
+        values['fax'] = fix_phone(sup_rec[F163.fax])
+        values['fis_org_cert_file'] = sup_rec[F163.org_cert_file] in 'YO'
+        values['fis_org_exp'] = fix_date(sup_rec[F163.cert_exp])
+        values['fis_non_gmo'] = sup_rec[F163.non_gmo] in 'Y'
+        values['fis_gmo_exp'] = fix_date(sup_rec[F163.gmo_exp])
+        values['fis_kosher'] = sup_rec[F163.kosher] in 'Y'
+        values['fis_kosher_exp'] = fix_date(sup_rec[F163.kosher_exp])
+        # double-check that record doesn't already exist
+        if res.partner.search(domain=[('xml_id','=',key),('module','=','F163')]):
+            res.partner.error('FIS ID F163:%s (%s) already exists in OpenERP' % (key, sup_name))
+        else:
+            res.partner.create(key, values)
+    #
+    # send email for deleted suppliers
+    #
+    if deleted:
+        supplier_list = ['%6s  %s' % ('FIS ID', 'Name')]
+        data = []
+        for rec in deleted:
+            xml_id = rec[F163.code]
+            name = BsnsCase(rec[F163.name])
+            data.append((xml_id, name))
+        for rec in sorted(data, key=lambda r: r[1]):
+            supplier_list.append("%6s  %s" % rec)
+        mail(message=
+                "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
+                # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
+                # "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
+                # "Cc: Alyssa Corinne <alyssa@sunridgefarms.com>\n"
+                "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
+                "Subject: suppliers deleted in FIS... what action in OpenERP?  [posm, 163]\n"
+                "\n"
+                + '\n'.join(supplier_list),
+                )
+
+
+def handle_vnms(method):
+    context = {'fis-updates': True, 'active_test': False}
+    res = AttrDict()
+    res.partner = Model(oe.get_model('res.partner'), 'vnms', 'F65', context)
+    if method == 'quick':
+        vnms_old = fisData(65, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
+    if not ven2sup:
+        # posm not processed on this invocation, run through those
+        # records now
+        for rec in posm.values():
+            is_invalid_posm_record(rec)
+    def is_invalid_vnms(rec):
+        xml_id = rec[F65.code]
+        name = rec[F65.name]
+        if (
+                len(xml_id) == 6
+                and xml_id.isdigit()
+                and name
+            ):
+            # valid record
+            return False
+        # invalid record
+        return True
+    changes, added, deleted = get_changed_records(
+            vnms_old.values(),
+            vnms.values(),
+            enum_schema=[
+                F65.name, F65.tele, F65.fax, F65.contact,
+                F65.org_cert, F65.org_cert_file, F65.cert_exp,
+                ],
+            address_fields=[
+                F65.addr1, F65.addr2, F65.addr3,
+                ],
+            ignore=is_invalid_vnms
+            )
+    changed_map = combine_by_value(F65, changes)
+    for changed_fields, records in ProgressView(iterable=sorted(changed_map.items()), view_type='bar'):
+        print('changed fields:', changed_fields, verbose=2)
+        # get ids for existing records
+        keys = [r[F65.code].strip() for r in records]
+        oe_ids = res.partner.search(domain=[('module','=','F65'),('xml_id','in',keys)])
+        if not oe_ids:
+            # unable to find these "changed" records in OpenERP -- log, and move records
+            # to the add queue
+            for rec in records:
+                res.partner.error('changed record F65:%s not found in OpenERP' % rec[F65.code])
+                continue
+        # changed_fields = (field_enum, new_value, field_enum, new_value, ...)
+        for oe_id, rec in zip(oe_ids, records):
+            # create values update dict for OpenERP
+            values = {}
+            contact_only = {}
+            address_done = False
+            key = rec[F65.code]
+            sup_xml_id = ven2sup.get(key)
+            is_contact = sup_xml_id is not None
+            if is_contact:
+                sup_rec = posm[sup_xml_id]
+                sup_rec_oe_id = res.partner.search(domain=[('xml_id','=',sup_xml_id),('module','=','F163')])
+                if sup_rec_oe_id:
+                    sup_rec_oe_id = sup_rec_oe_id[0]
+                else:
+                    sup_rec_oe_id = False
+                values['is_company'] = False
+                values['use_parent_address'] = True
+            else:
+                values['is_company'] = True
+                values['use_parent_address'] = False
+            for field, value in grouped(changed_fields, 2):
+                if field is F65.name and not is_contact:
+                    values['name'] = re.sub('sunridge', 'SunRidge', BsnsCase(records[0][F65.name]), flags=re.I)
+                elif field is F65.contact and is_contact:
+                    values['name'] = BsnsCase(value)
+                elif field is F65.contact:
+                    # save for updating later
+                    contact_only['name'] = NameCase(value)
+                    contact_only['parent_id'] = oe_id
+                    contact_only['use_parent_address'] = True
+                    contact_only['xml_id'] = 'cntct_%s' % key
+                    contact_only['module'] = 'F65'
+                elif field in (F65.addr1, F65.addr2, F65.addr3):
+                    if address_done is True:
+                        continue
+                    address_done = True
+                    vendor_address = process_address(F65, rec, key=rec[F163.code], module='vnms')
+                    supplier_address = {}
+                    if is_contact:
+                        supplier_address = process_address(F163, sup_rec)
+                    # is this vendor address different from the supplier's?
+                    if vendor_address != supplier_address:
+                        values['use_parent_address'] = False
+                        values.update(vendor_address)
+                elif field is F65.tele:
+                    values['phone'] = fix_phone(value)
+                elif field is F65.fax:
+                    values['fax'] = fix_phone(value)
+                if is_contact:
+                    values['parent_id'] = sup_rec_oe_id
+                    values['fis_org_cert'] = False
+                    values['fis_org_cert_file'] = False
+                    values['fis_cert_exp'] = False
+                else:
+                    values['parent_id'] = False
+                    if field is F65.org_cert:
+                        values['fis_org_cert'] = value.upper() in 'Y'
+                    elif field is F65.org_cert_file:
+                        values['fis_org_cert_file'] = value.upper() in 'Y'
+                    elif field is F65.cert_exp:
+                        values['fis_org_exp'] = fix_date(value)
+            # and update OpenERP
+            if values:
+                res.partner.write(key, oe_id, values)
+            if contact_only:
+                # get contact id and update
+                contact_id = res.partner.search(
+                        domain=[('xml_id','=',contact_only['xml_id']),('module','=','F65')],
+                        )
+                contact_id = contact_id and contact_id[0] or False
+                res.partner.write(key, contact_id, contact_only)
+    #
+    # add new records
+    #
+    for ven_rec in ProgressView(iterable=added, view_type='bar'):
+        print('\nadding:', ven_rec, sep='\n', verbose=2)
+        values = {'active': True}
+        # valid supplier code? active account?
+        values['xml_id'] = key = ven_rec[F65.code]
+        values['module'] = 'F65'
+        values['fis_valid'] = True
+        values['supplier'] = True
+        values['customer'] = False
+        sup_xml_id = ven2sup.get(key)
+        is_contact = sup_xml_id is not None
+        contact_only = {}
+        if is_contact:
+            sup_rec = posm[sup_xml_id]
+            sup_rec_oe_id = res.partner.search(domain=[('xml_id','=',sup_xml_id),('module','=','F163')])
+            sup_rec_oe_id = sup_rec_oe_id and sup_rec_oe_id[0] or False
+            values['parent_id'] = sup_rec_oe_id
+            values['is_company'] = False
+            values['use_parent_address'] = True
+            values['name'] = ven_name = NameCase(ven_rec[F65.contact]) or BsnsCase(ven_rec[F65.name])
+            contact_phone = fix_phone(ven_rec[F65.tele])
+            if contact_phone != fix_phone(sup_rec[F163.tele]):
+                values['phone'] = contact_phone
+            fax_phone = fix_phone(ven_rec[F65.fax])
+            if fax_phone != fix_phone(sup_rec[F163.fax]):
+                values['fax'] = fax_phone
+        else:
+            values['parent_id'] = False
+            values['is_company'] = True
+            values['use_parent_address'] = False
+            values['name'] = ven_name = re.sub('sunridge', 'SunRidge', BsnsCase(ven_rec[F65.name]), flags=re.I)
+            values['phone'] = fix_phone(ven_rec[F65.tele])
+            values['fax'] = fix_phone(ven_rec[F65.fax])
+            values['fis_org_cert'] = ven_rec[F65.org_cert] in 'Y'
+            values['fis_org_cert_file'] = ven_rec[F65.org_cert_file] in 'Y'
+            values['fis_org_exp'] = fix_date(ven_rec[F65.cert_exp])
+            contact_name = NameCase(ven_rec[F65.contact])
+            if contact_name:
+                contact_only['name'] = cntct_name = contact_name
+                contact_only['use_parent_address'] = True
+                contact_only['xml_id'] = cntct_key = 'cntct_%s' % key
+                contact_only['module'] = 'F65'
+        # figure out which address to use (contact? different from supplier?)
+        vendor_address = process_address(F65, ven_rec, key=ven_rec[F163.code], module='vnms')
+        supplier_address = {}
+        if is_contact:
+            supplier_address = process_address(F163, sup_rec)
+        # is this vendor address different from the supplier's?
+        if vendor_address != supplier_address:
+            # this is correct for both vendor-is-company and vendor-is-contact-with-different-address
+            values['use_parent_address'] = False
+            values.update(vendor_address)
+        oe_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F65')])
+        if oe_id:
+            oe_id = oe_id[0]
+            res.partner.error('FIS ID F65:%s (%s) already exists in OpenERP' % (key, ven_name))
+        else:
+            oe_id = res.partner.create(key, values)
+            if not oe_id:
+                continue
+        if contact_only:
+            contact_only['parent_id'] = oe_id
+            if res.partner.search(domain=[('xml_id','=',cntct_key),('module','=','F65')]):
+                res.partner.error('FIS ID F65:%s (%s) already exists in OpenERP' % (cntct_key, cntct_name))
+            else:
+                res.partner.create(key, contact_only)
+    #
+    # send email for deleted vendors
+    #
+    if deleted:
+        vendor_list = ['%6s  %s' % ('FIS ID', 'Name')]
+        data = []
+        for rec in deleted:
+            xml_id = rec[F65.code]
+            name = BsnsCase(rec[F65.name])
+            data.append(xml_id, name)
+        for rec in sorted(data, key=lambda r: r[1]):
+            vendor_list.append("%6s  %s" % rec)
+        mail(message=
+                "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
+                # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
+                # "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
+                # "Cc: Alyssa Corinne <alyssa@sunridgefarms.com>\n"
+                "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
+                "Subject: vendors deleted in FIS... what action in OpenERP?  [vnms, 65]\n"
+                "\n"
+                + '\n'.join(vendor_list),
+                )
+
+_raise_lookup = object()
+class Specials(str, Enum):
+    _order_ = 'neither catalog specials both default'
+    neither   = 'N'
+    catalog   = 'C'
+    specials  = 'S'
+    both      = 'B'
+    default   = 'D'
+    company   = default
+    @classmethod
+    def get_member(cls, text, default=_raise_lookup):
+        for member in cls:
+            if member.value == text:
+                return member
+        else:
+            if default is not _raise_lookup:
+                return default
+        raise LookupError('%r not found in %s' % (text, cls.__name__))
+
+def pfm(values):
+    "prepare values dict for marshalling"
+    result = {}
+    for k, v in values.items():
+        if v is None:
+            result[k] = False
+        elif isinstance(v, Date):
+            result[k] = v.strftime(DEFAULT_SERVER_DATE_FORMAT)
+        elif isinstance(v, Many2One):
+            result[k] = v.id
+        elif isinstance(v, PostalCode):
+            result[k] = v.code
+        elif isinstance(v, Enum):
+            result[k] = v.value
+        else:
+            result[k] = v
+    return result
+
+def process_address(schema, fis_rec, key=None, module=None, home=False):
+    if module is not None and key is None:
+        raise ValueError('module specified but key was not')
+    result = {}
+    addr1, addr2, addr3 = Sift(fis_rec[schema.addr1], fis_rec[schema.addr2], fis_rec[schema.addr3])
+    addr2, city, state, postal, country = cszk(addr2, addr3)
+    addr3 = ''
+    addr1 = normalize_address(addr1)
+    addr2 = normalize_address(addr2)
+    addr1, addr2 = AddrCase(Rise(addr1, addr2))
+    city = NameCase(city)
+    state, country = NameCase(state), NameCase(country)
+    valid_address = True
+    if (
+            not (addr1 or addr2)
+            or not (city or state or country)
+        ):
+        # just use the FIS data without processing
+        addr1, addr2, city = Rise(fis_rec[schema.addr1], fis_rec[schema.addr2], fis_rec[schema.addr3])
+        state = country = ''
+        postal = PostalCode('', '')
+        valid_address = False
+    if home:
+        result['home_street'] = addr1
+        result['home_street2'] = addr2
+        result['home_city'] = city
+        result['home_zip'] = postal
+        result['home_country_id'] = False
+        result['home_state_id'] = False
+    else:
+        result['street'] = addr1
+        result['street2'] = addr2
+        result['city'] = city
+        result['zip'] = postal
+        result['country_id'] = False
+        result['state_id'] = False
+    if valid_address:
+        if state and home:
+            result['home_state_id'] = state_recs[state][0]
+            result['home_country_id'] = state_recs[state][2]
+        elif state:
+            result['state_id'] = state_recs[state][0]
+            result['country_id'] = state_recs[state][2]
+        elif country:
+            country_id = country_recs.get(country, False)
+            if country_id is False:
+                if module is not None:
+                    Model.errors[module].append("%s record %s has invalid country <%r>" % (module, key, country))
+            else:
+                result['country_id'] = country_id
+    return result
+
+def is_invalid_posm_record(rec):
+    if rec is None:
+        return True
+    xml_id = rec[F163.code]
+    name = rec[F163.name]
+    vendor_xml_id = rec[F163.vendor]
+    vendor_rec = vnms.get(vendor_xml_id)
+    if (
+            len(xml_id) == 6
+            and xml_id.isdigit()
+            and name
+            and len(vendor_xml_id) == 6
+            and vendor_xml_id.isdigit()
+            and vendor_rec is not None
+        ):
+        # valid record, record vendor mapping
+        ven2sup[vendor_xml_id] = xml_id
+        return False
+    # invalid record
+    return True
+
+
+class Model(object):
+
+    models = []
+    errors = defaultdict(list)
+
+    def __init__(self, table, abbr, module, context):
+        self.models.append(self)
+        self.table = table
+        self.abbr = abbr
+        self.module = module
+        self.context = context
+
+    def error(self, msg):
+        self.errors[self.abbr].append(msg)
+
+    def create(self, key, values, context=None):
+        if context is None:
+            context = self.context
+        try:
+            return self.table.create(pfm(values), context=context)
+        except:
+            # cls, exc, tb = sys.exc_info()
+            # self.errors[self.abbr].append('FIS ID %s:%s create caused exception %r' % (self.module, key, exc))
+            # error(''.join(format_exception(cls, exc, tb)))
+            return False
+
+    def read(self, **kwds):
+        if 'context' not in kwds:
+            kwds['context'] = self.context
+        return get_records(self.table, **kwds)
+
+    def search(self, domain, context=None):
+        if context is None:
+            context = self.context
+        return self.table.search(domain, context=context)
+
+    def write(self, key, ids, values, context=None):
+        if context is None:
+            context = self.context
+        try:
+            self.table.write(ids, pfm(values), context=context)
+            return True
+        except:
+            # cls, exc, tb = sys.exc_info()
+            # self.errors[self.abbr].append('FIS ID %s:%s write caused exception %r' % (self.module, key, exc))
+            # error(format_exception(cls, exc, tb))
+            return False
+
+# def handle_sales_reps():
+#     context = {'fis-updates': True}
+#     res = AttrDict()
+#     res.partner = oe.get_model('res.partner')
+#     cnvzz = fisData(47)
+#     if method == 'quick':
+#         cnvz_old = fisData(47, data_path=config.network.fis_data_local_old_path)
+#     failed_match = set()
+#     def is_invalid_cnvz(sales_rec):
+#         sales_id = rec[F47.salesperson_id].upper()
+#         sales_name = rec[F47.salesperson_name]
+#         company_id = rec[F47.company_id]
+#         if company_id != '10':
+#             return True
+#         if '-' in sales_name:
+#             sales_name, extra = sales_name.split('-')
+#             if not extra.strip().isdigit() and sales_id != 'BAD':
+#                 return True
+#         return False
+#     #
+#     # saving below for later
+#     #
+#         sales_full_name = sales_name.lower()
+#         names = sales_full_name.split()
+#         if len(names) > 1:
+#             sales_name = ' '.join([names[0], names[-1]])
+#         else:
+#             sales_name = sales_name.lower()
+#         if sales_name in failed_match:
+#             # this name already failed to match
+#             continue
+#         if var(potential_sales_people.get(sales_name)) is not None and len(var()) == 1:
+#             # full-name match
+#             sales_people[sales_id] = var()[0]
+#         # elif len(names) == 1:
+#         #     # if it didn't match before, it's not going to match now
+#         #     pass
+#         #     # potential_sales_people[sales_id] = None
+#         #     # failed_match.add(sales_name)
+#         elif var(potential_sales_people.get(names[-1])) and len(var()) == 1:
+#             # last name match
+#             sales_people[sales_id] = var()[0]
+#         elif var(potential_sales_people.get(names[0])) and len(var()) == 1:
+#             # first name match
+#             sales_people[sales_id] = var()[0]
+#         else:
+#             # no match at all
+#             # look for user matches and previously created dummy user accounts
+#             all_users = res_users.browse(cr, uid, context=inactive_too)
+#             all_users.sort(key=lambda r: not r.active)
+#             if len(names) > 1:
+#                 # try to match sales name with beginning of user name
+#                 # e.g. "billy bob" with "billy bob joe"
+#                 user = [u for u in all_users if u.name.lower().startswith(sales_name)]
+#                 if user:
+#                     if len(user) == 1:
+#                         sales_people[sales_id] = user[0].id
+#                         continue
+#                     else:
+#                         _logger.warning('unable to match %s (%s): too many possibles', sales_name, sales_id)
+#                         failed_match.add(sales_name)
+#                         continue
+#
+#                 login = names[0][0] + names[1]
+#             else:
+#                 login = names[0]
+#             # try to match against login
+#             # e.g. "billy bob" with "bbob"
+#             for user in all_users:
+#                 if login == user.login:
+#                     sales_people[sales_id] = user.id
+#                     break
+#             else:
+#                 # if we make it this far, no matches -- so let's create a new (inactive)
+#                 # user so we can properly categorize customers
+#                 _logger.warning('unable to match %s: creating dummy user', sales_name)
+#                 id = res_users.create(
+#                         cr, uid,
+#                         {
+#                             'name': NameCase(sales_name),
+#                             'login': login,
+#                             'active': False,
+#                             'tz': 'America/Los_Angeles',
+#                             },
+#                         context=context)
+#                 sales_people[sales_id] = id
+#                 all_users.append(res_users.browse(cr, uid, id, context=inactive_too))
+#             # continue
+#             # failed_match.add(sales_name)
+
+Main()

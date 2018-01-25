@@ -17,6 +17,9 @@ class FISenum(str, aenum.Enum):
         self.segment = segment
         self.__class__.FIS_names.add(fis_name)
 
+    def __repr__(self):
+        return "<%s.%s>" % (self.__class__.__name__, self._name_)
+
 class F11(FISenum):
     "Sales Category codes"
     code = 'An$(5,2)'
@@ -173,8 +176,13 @@ class F341(FISenum):
 
 def get_changed_records(old_records, new_records, enum_schema, address_fields, ignore=lambda r: False):
     # get changed records as list of (record, [(enum_schema_member, old_value, new_value), (...), ...]) tuples
-    key_fields_name = list(enum_schema)[0].fis_name
-    key_fields = [enum for enum in enum_schema if enum.fis_name == key_fields_name]
+    try:
+        if issubclass(enum_schema, aenum.Enum):
+            enum = enum_schema
+    except TypeError:
+            enum = type(enum_schema[0])
+    key_fields_name = list(enum)[0].fis_name
+    key_fields = [m for m in enum if m.fis_name == key_fields_name]
     if address_fields is None:
         address_fields = ()
     enum_schema = [m for m in enum_schema if m not in address_fields]
@@ -199,8 +207,6 @@ def get_changed_records(old_records, new_records, enum_schema, address_fields, i
     for key in all_recs:
         changed_values = []
         new_rec = new_records_map.get(key)
-        if ignore(new_rec):
-            continue
         old_rec = old_records_map.get(key)
         if new_rec == old_rec:
             continue
@@ -209,6 +215,8 @@ def get_changed_records(old_records, new_records, enum_schema, address_fields, i
             continue
         if old_rec is None:
             added.append(new_rec)
+            continue
+        if ignore(new_rec):
             continue
         diff = []
         for field in address_fields:
@@ -230,15 +238,17 @@ def get_changed_records(old_records, new_records, enum_schema, address_fields, i
 
 def combine_by_value(key, records):
     # records with field changes in addr1, addr2, addr3, and postal cannot be combined
+    print 'combine by value key: ', key
     changed_map = defaultdict(list)
     for row in records:
         rec_key = []
+        fis_record = row[0]
         for t in row[1:]:
-            for f, old, new in t:
-                if f in key:
-                    rec_key.append(f)
-                    rec_key.append(new)
+            for fis_field, old_value, new_value in t:
+                if fis_field in key:
+                    rec_key.append(fis_field)
+                    rec_key.append(new_value)
         if rec_key:
-            changed_map[tuple(rec_key)].append(row)
+            changed_map[tuple(rec_key)].append(fis_record)
     return changed_map
 
