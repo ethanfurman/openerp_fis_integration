@@ -32,8 +32,14 @@ config = OrmFile(Path('%s/config/fnx.ini' % virtual_env))
         filenum=Spec('file abbreviation or number to operate on', ),
         keymatch=Spec('key template to select individual records', ),
         key=Spec('key of desired record', ),
+        full=Spec('show all fields', FLAG),
+        color=Spec('use color output', FLAG),
         )
-def diff(filenum, keymatch, key):
+def diff(filenum, keymatch, key, full, color):
+    # easier color names
+    white, red, green, cyan = Color.FG_White, Color.FG_Red, Color.FG_Green, Color.FG_Cyan
+    bold, all_reset = Color.Bright, Color.AllReset
+    #
     if filenum.isdigit():
         filenum = int(filenum)
     fis_table = fd.fisData(filenum, keymatch=keymatch)
@@ -61,21 +67,33 @@ def diff(filenum, keymatch, key):
             if spec.startswith(key_field_pre):
                 changed_fields.append((index.split('_')[1], spec, old_data, new_data, desc))
                 data_width = max(data_width, len(old_data), len(new_data))
-            elif old_data != new_data:
+            elif old_data != new_data or full:
                 changed_fields.append((index.split('_')[1], spec, old_data, new_data, desc))
                 data_width = max(data_width, len(str(old_data)), len(str(new_data)))
         lines = []
+        def select_color(row):
+            old = row[2]
+            new = row[2]
+            if old == new:
+                return white, white, white|bold, white|bold, white
+            else:
+                return white, white, red, green, white
+        string_template = ColorTemplate(
+                '%%3s | %%-12s | %%-%ds | %%-%ds | %%s' % (data_width, data_width),
+                default_color=all_reset+cyan,
+                select_colors=select_color,
+                )
+        numeric_template = ColorTemplate(
+                '%%3s | %%-12s | %%%ds | %%%ds | %%s' % (data_width, data_width),
+                default_color=all_reset+cyan,
+                select_colors=select_color,
+                )
         for line in changed_fields:
             index, spec, old, new, desc = line
             if '$' in spec:
-                lines.append(
-                        '%3s | %-12s | %-*s | %-*s | %s'
-                        % (index, spec, data_width, old, data_width, new, desc)
-                        )
+                lines.append(string_template(index, spec, old, new, desc))
             else:
-                lines.append(
-                        '%3s | %-12s | %*s | %*s | %s'
-                        % (index, spec, data_width, old or '-', data_width, new or '-', desc))
+                lines.append(numeric_template(index, spec, old, new, desc))
         echo('\n'.join(lines))
 
 
