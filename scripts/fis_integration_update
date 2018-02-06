@@ -1,30 +1,45 @@
 #!/usr/local/sbin/suid-python --virtualenv
 
+# imports
 from __future__ import print_function
 
 from scription import *
 from aenum import Enum
 from collections import defaultdict
 from fis_schema import F27, F33, F65, F74, F163
-# from fis_scheam import F47
+    # from fis_scheam import F47
 from fis_schema import get_changed_records, combine_by_value
 from openerplib import AttrDict, get_connection, get_records, Many2One, DEFAULT_SERVER_DATE_FORMAT
-# from traceback import format_exception
+    # from traceback import format_exception
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, NameCaseReversed, PostalCode
 from VSS.BBxXlate.fisData import fisData
 from VSS.utils import fix_phone, fix_date, Date, grouped
 import re
 import os
-# import sys
+    # import sys
 
+C = Color
+grey = C.Dim | C.FG_White
+white = C.Normal | C.FG_White
+same = C.Normal | C.FG_White
+oldv = C.Normal | C.FG_Red
+newv = C.Normal | C.FG_Green
 
-@Script()
-def main():
-    global config, oe, errors
+# API
+@Script(
+    dryrun=('do not make changes, only show what changes would be made', FLAG),
+    )
+def main(dryrun):
+    global config, oe, errors, DRYRUN, script_verbosity
+    DRYRUN = False
     config = OrmFile('%s/config/fnx.ini' % os.environ['VIRTUAL_ENV'])
     oe = config.openerp
     oe = get_connection(hostname=oe.host, database=oe.db, login=oe.user, password=oe.pw)
     errors = defaultdict(list)
+    if dryrun:
+        DRYRUN = True
+        if not script_verbosity:
+            script_verbosity = 1
 
 @Command(
         files=Spec('changed FIS files', MULTIREQ),
@@ -51,6 +66,8 @@ def fis_integration_update(files, type='quick'):
         (r.name, r.id)
         for r in get_records(oe, 'res.country')
         ])
+    for name, rec_id in country_recs.items():
+        country_recs[rec_id] = name
     csms = fisData(33, keymatch='10%s')
     emp1 = fisData(74, keymatch='10%s')
     vnms = fisData(65, keymatch='10%s')
@@ -80,15 +97,155 @@ def fis_integration_update(files, type='quick'):
             error('  ', p)
         error()
 
-
-def handle_csms(method):
-    print('processing CSMS...')
+# helpers
+def handle_csms_full():
     context = {'fis-updates': True, 'active_test': False}
     res = AttrDict()
     res.partner = Model(oe.get_model('res.partner'), 'csms', 'F33', context)
     csms = fisData(33, keymatch='10%s ')
-    if method == 'quick':
-        csms_old = fisData(33, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
+    company_records = AttrDict(default=AttrDict)
+    contact_records = AttrDict(default=AttrDict)
+    #
+    # convert all the FIS records for comparison to the matching OpenERP records
+    #
+    for fis_rec in ProgressView(iterable=csms.values(), view_type='bar', message='--== CONVERTING ==--'):
+        # print('\nconverting:', fis_rec, sep='\n', verbose=2)
+        values = AttrDict()
+        # TODO: get salesrep working
+        # rep = cus_rec[F33.salesrep]
+        # rep = sales_people.get(rep, False)
+        values.active = False
+        # values['user_id'] = rep
+        values.is_company = True
+        values.customer = True
+        values.xml_id = key = fis_rec[F33.code]
+        values.module = 'F33'
+        # valid customer code? active account?
+        values.fis_valid = fis_valid = len(key) == 5
+        if (
+                fis_rec[F33.this_year_sales]
+             or fis_rec[F33.last_year_sales]
+            ):
+            values.active = True
+        else:
+            # TODO check for open orders
+            pass
+        notify_by = Specials.get_member(fis_rec[F33.catalog_category].upper(), Specials.neither)
+        values.specials_notification = notify_by.value
+        values.name = re.sub('sunridge', 'SunRidge', BsnsCase(fis_rec[F33.name]), flags=re.I)
+        if not values.name:
+            res.partner.error("Missing name for customer %s -- skipping" % (key, ))
+            continue
+        values.update(process_address(F33, fis_rec, key=fis_rec[F33.code], module='csms'))
+        values.phone = fix_phone(fis_rec[F33.tele])
+        # save for later
+        company_records[values.xml_id] = values
+        # process contact, if any
+        if fis_rec[F33.contact]:
+            contact = NameCase(fis_rec[F33.contact])
+            values = AttrDict(
+                    fis_valid=fis_valid,
+                    specials_notification=Specials.company,
+                    )
+            values.name = re.sub('sunridge', 'SunRidge', contact, flags=re.I)
+            values.is_company = False
+            values.customer = True
+            values.parent_id = key
+            values.xml_id = 'cntct_' + key
+            values.module = 'F33'
+            # again, save for later
+            contact_records[values.xml_id] = values
+    #
+    # now retrieve the OpenERP records that match the CSMS module
+    #
+    print('retrieving OpenERP records...')
+    old_records = dict([
+        (r.xml_id, r)
+        for r in get_records(
+            oe, 'res.partner',
+            domain=[('module','=','F33')],
+            fields=[
+                'id', 'module', 'xml_id',
+                'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
+                'fis_valid', 'specials_notification', 'phone', 'is_company', 'customer',
+                'fis_updated_by_user', 'active', 'fis_data_address',
+                ],
+            context=context,
+            )])
+    #
+    # discern the changes
+    #
+    seen_fis = set()
+    # seen_oe = set()
+    new_oe = []
+    # deleted_fis = []
+    def select_color(row):
+        f, o, v = row
+        if o != v:
+            return grey, oldv, newv
+        else:
+            return grey, white, white
+    template = ColorTemplate(
+            '| %-21s | %-40s | %-40s |',
+            default_color=C.Dim|C.FG_Cyan,
+            select_colors=select_color,
+            multiline='wrap',
+            )
+    for fis_id, fis_datom in company_records.items():
+        record = []
+        print('FIS:\n', fis_datom, verbose=3)
+        seen_fis.add(fis_id)
+        oe_datom = old_records.get(fis_id)
+        if oe_datom is None:
+            new_oe.append(fis_datom)
+            continue
+        print('OpenERP:\n', oe_datom, verbose=3)
+        # compare the interesting fields
+        changes = {}
+        for field in ('name', 'phone', 'active', 'fis_data_address'):
+            old_value, new_value = oe_datom[field], fis_datom[field]
+            if old_value != new_value:
+                changes[field] = fis_datom[field]
+            record.append(template(field, old_value, new_value) + C.AllReset)
+        record.append('Updated by user:', C.FG_Yellow, oe_datom.fis_updated_by_user + C.AllReset)
+        if 'S' not in (oe_datom.fis_updated_by_user or []):
+            field = 'specials_notification'
+            old_value, new_value = oe_datom[field], fis_datom[field]
+            if old_value != new_value:
+                error('skipping change of Specials Notifications from %r to %r' % (old_value, new_value))
+                # changes[field] = new_value
+            record.append(template(field, old_value, new_value) + C.AllReset)
+        if 'A' not in (oe_datom.fis_updated_by_user or []):
+            for field in ('street', 'street2', 'city', 'state_id', 'zip', 'country_id'):
+                old_value, new_value =  oe_datom[field], fis_datom[field]
+                if old_value != new_value:
+                    changes[field] = new_value
+                record.append(template(field, old_value, new_value) + C.AllReset)
+        if (
+                DRYRUN
+                and (
+                    ('fis_data_address' in changes and len(changes) > 1)
+                    or ('fis_data_address' not in changes and len(changes))
+                    )
+            ):
+            echo('-' * 111)
+            echo('\n'.join(record))
+            echo('-' * 111)
+            raw_input('check data...')
+        if changes and not DRYRUN:
+            res.partner.write(oe_datom.xml_id, oe_datom.id, changes)
+
+
+def handle_csms(method):
+    print('processing CSMS...')
+    if method == 'full':
+        handle_csms_full()
+        return
+    context = {'fis-updates': True, 'active_test': False}
+    res = AttrDict()
+    res.partner = Model(oe.get_model('res.partner'), 'csms', 'F33', context)
+    csms = fisData(33, keymatch='10%s ')
+    csms_old = fisData(33, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
     changes, added, deleted = get_changed_records(
             csms_old.values(),
             csms.values(),
@@ -986,7 +1143,11 @@ def process_address(schema, fis_rec, key=None, module=None, home=False):
             result['home_country_id'] = state_recs[state][2]
         elif state:
             result['state_id'] = state_recs[state][0]
-            result['country_id'] = state_recs[state][2]
+            result['country_id'] = country = state_recs[state][2]
+            if country.name == 'United States':
+                country = ''
+            else:
+                country = country.name
         elif country:
             country_id = country_recs.get(country, False)
             if country_id is False:
@@ -994,6 +1155,18 @@ def process_address(schema, fis_rec, key=None, module=None, home=False):
                     Model.errors[module].append("%s record %s has invalid country <%r>" % (module, key, country))
             else:
                 result['country_id'] = country_id
+    if not home:
+        result['fis_data_address'] = '\n'.join([
+                l
+                for l in (
+                    BsnsCase(fis_rec[schema.name]),
+                    addr1,
+                    addr2,
+                    ('%s %s' % (', '.join([f for f in (city, state) if f]), postal)).strip(),
+                    country,
+                    )
+                if l.strip()
+                ])
     return result
 
 def is_invalid_posm_record(rec):
@@ -1066,6 +1239,7 @@ class Model(object):
             # error(format_exception(cls, exc, tb))
             return False
 
+# old code
 # def handle_sales_reps():
 #     context = {'fis-updates': True}
 #     res = AttrDict()
@@ -1156,4 +1330,5 @@ class Model(object):
 #             # continue
 #             # failed_match.add(sales_name)
 
+# main
 Main()
