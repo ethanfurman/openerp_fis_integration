@@ -174,7 +174,7 @@ class res_partner(xmlid, osv.Model):
         }
 
     _defaults = {
-        'specials_notification': Specials.neither.db,
+        'specials_notification': Specials.neither,
         }
 
     def create(self, cr, uid, values, context=None):
@@ -264,9 +264,9 @@ class res_partner(xmlid, osv.Model):
                 if any(d['fis_data_address'] for d in datas):
                     for data in datas:
                         piecemeal_values = values.copy()
-                        if datas['fis_data_address']:
+                        if data['fis_data_address']:
                             # definitely an FIS record
-                            updated_by_user = datas['fis_updated_by_user'] or ''
+                            updated_by_user = data['fis_updated_by_user'] or ''
                             if 'A' in check_fis:
                                 updated_by_user += 'A'
                             if 'S' in check_fis:
