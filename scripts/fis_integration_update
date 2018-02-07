@@ -191,7 +191,7 @@ def handle_csms_full():
             select_colors=select_color,
             multiline='wrap',
             )
-    for fis_id, fis_datom in company_records.items():
+    for fis_id, fis_datom in ProgressView(iterable=company_records.items(), view_type='bar', message='searching for changes\n'):
         record = []
         print('FIS:\n', fis_datom, verbose=3)
         seen_fis.add(fis_id)
@@ -206,32 +206,31 @@ def handle_csms_full():
             old_value, new_value = oe_datom[field], fis_datom[field]
             if old_value != new_value:
                 changes[field] = fis_datom[field]
-            record.append(template(field, old_value, new_value) + C.AllReset)
-        record.append('Updated by user:', C.FG_Yellow, oe_datom.fis_updated_by_user + C.AllReset)
+            record.append('%s%s' % (template(field, old_value, new_value), C.AllReset))
+        record.append('Updated by user: %s%s%s' % (C.FG_Yellow, oe_datom.fis_updated_by_user, C.AllReset))
         if 'S' not in (oe_datom.fis_updated_by_user or []):
             field = 'specials_notification'
             old_value, new_value = oe_datom[field], fis_datom[field]
             if old_value != new_value:
                 error('skipping change of Specials Notifications from %r to %r' % (old_value, new_value))
                 # changes[field] = new_value
-            record.append(template(field, old_value, new_value) + C.AllReset)
+            record.append('%s%s' % (template(field, old_value, new_value), C.AllReset))
         if 'A' not in (oe_datom.fis_updated_by_user or []):
             for field in ('street', 'street2', 'city', 'state_id', 'zip', 'country_id'):
                 old_value, new_value =  oe_datom[field], fis_datom[field]
                 if old_value != new_value:
                     changes[field] = new_value
-                record.append(template(field, old_value, new_value) + C.AllReset)
+                record.append('%s%s' % (template(field, old_value, new_value), C.AllReset))
         if (
-                DRYRUN
+                script_verbosity > 1
                 and (
                     ('fis_data_address' in changes and len(changes) > 1)
                     or ('fis_data_address' not in changes and len(changes))
                     )
             ):
-            echo('-' * 111)
+            echo('\n' + '-' * 111)
             echo('\n'.join(record))
             echo('-' * 111)
-            raw_input('check data...')
         if changes and not DRYRUN:
             res.partner.write(oe_datom.xml_id, oe_datom.id, changes)
 
