@@ -4,4 +4,5 @@ scripts/recipe.py
 scripts/oe-users
 scripts/updates.py updates/__init__.py
 scripts/fis
-scripts/fis_integration_update
+scripts/fis_integration_update updates/fis_integration
+scripts/fis_update
