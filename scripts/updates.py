@@ -15,39 +15,37 @@ and possibly 'quick' or 'full' with quick being the default:
 from __future__ import print_function
 
 from antipathy import Path
-from scription import error
+from collections import defaultdict
+from scription import error, print
 from traceback import format_exc
 
 script_verbosity = 0
 
 def get_script_mapping():
-    FIS_mapping = {}
+    FIS_mapping = defaultdict(list)
     # load the files and extract the mappings
-    candidates = [
-            p
-            for p in Path(__file__).path.glob('*.py')
-            if not p.endswith('__init__.py')
-            ]
-    print(candidates, verbose=2)
+    candidates = [p for p in Path(__file__).path.glob('*_mapping.py')]
+    print('potential info files: %s' % ', '.join(candidates), verbose=2)
     for data in candidates:
-        info = {'FIS_mapping': {}}
+        info = {}
         try:
             with open(data) as f:
                 info.update(eval(f.read()))
-            print(info, verbose=3)
-            for fis, scripts in info['FIS_mapping'].items():
+            print('actual info: %r' % info, verbose=3)
+            for fis, scripts in info.items():
                 if isinstance(scripts, str):
                     scripts = [scripts]
-                current_scripts = FIS_mapping.setdefault(fis, set())
+                # current_scripts = FIS_mapping.setdefault(fis, set())
                 for s in scripts:
                     if not isinstance(s, str):
                         raise ValueError('file %r, invalid script: %r ' % (data, s))
                 for s in scripts:
-                    current_scripts.add(s)
+                    FIS_mapping[s].append(fis)
         except Exception:
             tb = format_exc()
             error('=' * 50, 'file: %s' % data, tb, '=' * 50, sep='\n')
             continue
+    print('final scripts:', verbose=2)
     for k, v in sorted(FIS_mapping.items()):
-        print('%s: %r' % (k, v), verbose=2)
+        print('   %s: %r' % (k, v), verbose=2)
     return FIS_mapping

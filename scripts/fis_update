@@ -1,4 +1,4 @@
-#!/usr/local/sbin/suid-python --virtualenv=/opt/openerp
+#!/usr/local/sbin/suid-python
 """\
 Update OpenERP tables from FIS source files.
 
@@ -45,10 +45,18 @@ def main():
     active_files = config.network.fis_openerp_files.split()
 
 @Command(
-        quick=Spec('Differential agains FIS tables (very fast)', FLAG, force_default=True),
-        full=Spec('Differential against existing OpenERP data', FLAG),
+        method=Spec(
+            'perform quick or full comparison [quick: compare against old FIS files;'
+            ' full: compare against OpenERP records',
+            choices=['quick', 'full'],
+            default='quick',
+            type=lambda f: f.lower(),
+            ),
+
+        skip_copy=Spec('Skip copying files', FLAG),
+        dryrun=Spec('do not actually make changes', FLAG),
         )
-def update_fis(quick, full):
+def fis_update(method, skip_copy, dryrun):
     """
     update FIS files from master, then FIS data in OpenERP
 
@@ -61,62 +69,73 @@ def update_fis(quick, full):
     #
     # step 1: move files around
     #
-    print('copying files')
-    # copy files to old path
-    system('rsync -a %s/ %s' % (new, old))
-    # calculate which files to grab from master
-    if full:
-        files = '{path}/{pre}???? {path}/{pre}????? {path}/{pre}??????'.format(path=path, pre=pre).split()
-    else:
-        files = ['%s/%s%s' % (path, pre, f) for f in active_files]
-    # and grab them
-    system('rsync --bwlimit=10 %s:%s %s/' % (master, ' :'.join(files), new))
+    if not skip_copy:
+        print('copying files')
+        # copy files to old path
+        system('rsync -a %s/ %s' % (new, old))
+        # calculate which files to grab from master
+        if method == 'full':
+            files = '{path}/{pre}???? {path}/{pre}????? {path}/{pre}??????'.format(path=path, pre=pre).split()
+        else:
+            files = ['%s/%s%s' % (path, pre, f) for f in active_files]
+        # and grab them
+        system('rsync --bwlimit=10 %s:%s %s/' % (master, ' :'.join(files), new))
     system('chown -R openerp: /FIS')
-    system('chmod 440 %s/*' % config.network.fis_data_local_path)
+    config.network.fis_data_local_path.chmod(0o440, '*')
     #
     # step 2: determine which files changed
     #
     print('checking for changed files')
-    c1 = [
+    files = [
         f for f in new.glob('O????') if
             f.stat().st_mtime != old.stat(f.filename).st_mtime
         ]
-    c1.extend([
+    files.extend([
         f for f in new.glob('O?????') if
             f.stat().st_mtime != old.stat(f.filename).st_mtime
         ])
-    c1.extend([
+    files.extend([
         f for f in new.glob('O??????') if
             f.stat().st_mtime != old.stat(f.filename).st_mtime
         ])
-    print('changed files: %s [%s]' % (len(c1), ', '.join(c1)), verbose=1)
+    # strip path and leading {pre} from filenames
+    files = [f.filename[1:] for f in files]
+    print('changed files: %s [%s]' % (len(files), ', '.join(files)), verbose=1)
     #
     # step 3: get appropriate scripts, and execute them
     #
     FIS_mapping = updates.get_script_mapping()
-    FIS_mapping
+    for script, tables in FIS_mapping.items():
+        cmd = '/opt/bin/updates/%s %s --method=%s' % (script, ','.join(tables), method)
+        if dryrun:
+            cmd += ' --dryrun'
+        if script_verbosity:
+            cmd += ' -' + 'v' * script_verbosity
+        system(cmd)
 
 
-
-def system(cmd):
+def system(cmd, on_error='abort'):
     with user_ids(0, 0):
         print('--== running "%s" . . .: ' % cmd, end='', verbose=2)
-        job = Execute(cmd)
+        job = Execute(cmd, pty=True)
         print(job.returncode, '==--', verbose=2)
         if job.returncode or job.stderr:
             # unable to copy files -- abort
-            error('Error copying files (returncode %r):' % (job.returncode, ))
+            error('Error with command (returncode %r):' % (job.returncode, ))
             error('------------------ cmd  ------------------')
             error(cmd)
-            error('----------------- stdout -----------------')
-            error(job.stdout)
+            if job.stdout.strip():
+                error('----------------- stdout -----------------')
+                error(job.stdout.strip())
             error('----------------- stderr -----------------')
-            error(job.stderr)
-            error('==========================================')
-            abort()
-        else:
+            if job.stderr.strip():
+                error(job.stderr.strip())
+                error('==========================================')
+            if on_error == 'abort':
+                abort()
+        elif job.stdout.strip():
             print('---- stdout ----', verbose=2)
-            print(job.stdout, verbose=2)
+            print(job.stdout.strip(), verbose=2)
             print('=' * 25, verbose=2)
 
 Main()

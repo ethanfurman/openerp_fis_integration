@@ -42,22 +42,21 @@ def main(dryrun):
             script_verbosity = 1
 
 @Command(
-        files=Spec('changed FIS files', MULTIREQ),
-        type=Spec(
-            'perform quick or full comparison [quick: compare against old FIS files; full: compare against OpenERP records',
+        files=Spec('changed FIS files', MULTIREQ, type=lambda f: f.lower()),
+        method=Spec(
+            'perform quick or full comparison [quick: compare against old FIS files;'
+            ' full: compare against OpenERP records',
             OPTION,
             choices=['quick', 'full'],
-            type=lambda f: f.lower(),
+            type=lambda m: m.lower(),
             ),
         )
-def fis_integration_update(files, type='quick'):
+def fis_integration(files, method='quick'):
+    echo('files: %r\nmethod: %r' % (files, method))
     global state_recs, country_recs, emp1, posm, vnms, csms
     global skipped_suppliers, vendor_suppliers, ven2sup
     global models
     ven2sup = {}
-    if type not in ('quick', 'full'):
-        abort('unknown type: %r' % (type, ))
-
     state_recs = dict([
         (r.name, (r.id, r.code, r.country_id))
         for r in get_records(oe, 'res.country.state')
@@ -75,22 +74,16 @@ def fis_integration_update(files, type='quick'):
     skipped_suppliers = set()
     vendor_suppliers = set()
     if 'emp1' in files:
-        handle_emp1(type)
+        handle_emp1(method)
     if 'posm' in files:
-        handle_posm(type)
+        handle_posm(method)
     if 'vnms' in files:
-        handle_vnms(type)
+        handle_vnms(method)
     if 'csms' in files:
-        handle_csms(type)
+        handle_csms(method)
     if 'cnvz' in files:
-        # handle_sales_reps(type)
-        handle_carrier(type)
-    # if type == 'full':
-    #     supplier_codes = self.get_xml_id_map(cr, uid, module='F163')
-    #     customer_codes = self.get_xml_id_map(cr, uid, module='F33')
-    #     carrier_codes = self.get_xml_id_map(cr, uid, module='F27')
-    #     employee_codes = self.get_xml_id_map(cr, uid, module='F74')
-    #
+        # handle_sales_reps(method)
+        handle_carrier(method)
     for m, problems in sorted(Model.errors.items()):
         error(m,'\n============')
         for p in problems:
@@ -258,6 +251,9 @@ def handle_csms(method):
             )
     changed_map = combine_by_value(F33, changes)
     for changed_fields, records in ProgressView(iterable=sorted(changed_map.items()), view_type='bar'):
+        #
+        # TODO: check actual values in OpenERP and remove "changes" that are already set
+        #
         print('changed fields:', changed_fields, verbose=2)
         # get ids for existing records
         keys = [r[F33.code].strip() for r in records]
