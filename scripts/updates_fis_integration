@@ -27,11 +27,12 @@ newv = C.Normal | C.FG_Green
 
 # API
 @Script(
-    dryrun=('do not make changes, only show what changes would be made', FLAG),
-    )
-def main(dryrun):
-    global config, oe, errors, DRYRUN, script_verbosity
-    DRYRUN = False
+        dryrun=('do not make changes, only show what changes would be made', FLAG),
+        list_records=Spec('list added/changed records', FLAG),
+        )
+def main(dryrun, list_records):
+    global config, oe, errors, DRYRUN, LIST_RECORDS, script_verbosity
+    DRYRUN = LIST_RECORDS = False
     config = OrmFile('%s/config/fnx.ini' % os.environ['VIRTUAL_ENV'])
     oe = config.openerp
     oe = get_connection(hostname=oe.host, database=oe.db, login=oe.user, password=oe.pw)
@@ -40,6 +41,7 @@ def main(dryrun):
         DRYRUN = True
         if not script_verbosity:
             script_verbosity = 1
+    LIST_RECORDS = list_records
 
 @Command(
         files=Spec('changed FIS files', MULTIREQ, type=lambda f: f.lower()),
@@ -48,10 +50,11 @@ def main(dryrun):
             ' full: compare against OpenERP records',
             OPTION,
             choices=['quick', 'full'],
+            default='quick',
             type=lambda m: m.lower(),
             ),
         )
-def fis_integration(files, method='quick'):
+def fis_integration(files, method):
     echo('files: %r\nmethod: %r' % (files, method))
     global state_recs, country_recs, emp1, posm, vnms, csms
     global skipped_suppliers, vendor_suppliers, ven2sup
@@ -101,7 +104,7 @@ def handle_csms_full():
     #
     # convert all the FIS records for comparison to the matching OpenERP records
     #
-    print('--== CONVERTING RECORDS ==--')
+    print('converting FIS records')
     for fis_rec in csms.values():
         company, contact = convert_csms_rec(fis_rec)
         # save for later
@@ -113,7 +116,7 @@ def handle_csms_full():
     #
     # now retrieve the OpenERP records that match the CSMS module
     #
-    print('retrieving OpenERP records...')
+    print('retrieving OpenERP records')
     oe_records = dict([
         (r.xml_id, r)
         for r in get_records(
@@ -146,7 +149,7 @@ def handle_csms_full():
             select_colors=select_color,
             multiline='wrap',
             )
-    print('--== PROCESSING CHANGES ==--')
+    print('processing changes')
     for fis_id, fis_datom in fis_company_records.items():
     # companies first
         record = []
@@ -196,6 +199,10 @@ def handle_csms_full():
             echo('-' * 111)
         # write the changes
         if changes and not DRYRUN:
+            if LIST_RECORDS:
+                echo('  F33:%s  %s' % (fis_id, fis_datom.name), end='  ')
+                print(repr(changes), end='')
+                echo()
             res.partner.write(oe_datom.xml_id, oe_datom.id, changes)
         #
         # contacts second
@@ -234,6 +241,10 @@ def handle_csms_full():
                     record.append('%s%s' % (template(field, old_value, new_value), C.AllReset))
             if changes:
                 changes['parent_id'] = parent_id
+                if LIST_RECORDS:
+                    echo('  F33:%s  %s' % (contact_key, fis_datom.name), end='  ')
+                    print(repr(changes), end='')
+                    echo()
                 res.partner.write(contact_key, oe_datom.id, changes)
     #
     # add new records
@@ -251,6 +262,10 @@ def handle_csms_full():
             if values.xml_id.startswith('cntct_'):
                 parent = oe_records[values.xml_id[6:]]
                 values.parent_id = parent.id
+            if LIST_RECORDS:
+                echo('  F33:%s  %s' % (key, values.name), end='  ')
+                print(repr(values), end='')
+                echo()
             customer_id = res.partner.create(key, values)
             if not customer_id:
                 continue
@@ -261,7 +276,7 @@ def handle_csms_full():
 
 
 def handle_csms(method):
-    print('processing CSMS...')
+    print('\nprocessing CSMS...')
     if method == 'full':
         return handle_csms_full()
     context = {'fis-updates': True, 'active_test': False}
@@ -395,7 +410,6 @@ def handle_csms(method):
                 )
 
 def handle_carrier_full():
-    print('processing CNVZsv...')
     context = {'fis-updates': True, 'active_test': False}
     res = AttrDict()
     res.partner = Model(oe.get_model('res.partner'), 'cnvzsv', 'F27', context)
@@ -404,7 +418,7 @@ def handle_carrier_full():
     #
     # convert all the FIS records for comparison to the matching OpenERP records
     #
-    print('--== CONVERTING FIS RECORDS ==--')
+    print('converting FIS records')
     for fis_rec in cnvzsv.values():
         company = convert_carrier_rec(fis_rec)
         fis_company_records[company.xml_id] = company
@@ -443,7 +457,7 @@ def handle_carrier_full():
             select_colors=select_color,
             multiline='wrap',
             )
-    print('--== PROCESSING CHANGES ==--')
+    print('processing changes')
     for fis_id, fis_datom in fis_company_records.items():
         record = []
         print('FIS:\n', fis_datom, verbose=3)
@@ -487,6 +501,7 @@ def handle_carrier_full():
         res.partner.create(values, context=context)
 
 def handle_carrier(method):
+    print('\nprocessing CNVZsv...')
     if method == 'full':
         return handle_carrier_full()
     context = {'fis-updates': True, 'active_test': False}
@@ -505,7 +520,7 @@ def handle_carrier(method):
                 ],
             )
     changed_map = combine_by_value(F27, changes)
-    print('--== PROCESSING CHANGES ==--')
+    print('processing changes')
     for changed_fields, records in changed_map.items():
         print('changed fields:', changed_fields)
         keys = [r[F27.code].strip() for r in records]
@@ -542,7 +557,7 @@ def handle_carrier(method):
     #
     # now add new carriers
     #
-    print('--== ADDING RECORDS ==--')
+    print('adding records')
     for fis_rec in added:
         print('\nadding:', fis_rec, sep='\n', verbose=2)
         company = convert_carrier_rec(fis_rec)
@@ -746,6 +761,7 @@ def handle_emp1_full():
 
 
 def handle_emp1(method):
+    print('\nprocessing EMP1')
     if method == 'full':
         return handle_emp1_full()
     context = {'hr_welcome': False, 'fis-updates': True, 'active_test': False}
@@ -772,7 +788,7 @@ def handle_emp1(method):
     changed_map = combine_by_value(F74, changes)
     active_test_needed = set()
     birthday_test_needed = set()
-    print('--== PROCESSING CHANGES ==--')
+    print('processing changes')
     for changed_fields, records in changed_map.items():
         # get ids for existing records
         keys = [r[F74.emp_num].strip() for r in records]
@@ -839,7 +855,7 @@ def handle_emp1(method):
     #
     # now add new employees
     #
-    print('--== ADDING RECORDS ==--')
+    print('adding records')
     for fis_rec in added:
         employee = convert_emp1_rec(fis_rec)
         if employee is None:
