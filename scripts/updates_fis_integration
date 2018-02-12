@@ -101,6 +101,8 @@ def handle_csms_full():
     csms = fisData(33, keymatch='10%s ')
     fis_company_records = AttrDict(default=AttrDict)
     fis_contact_records = AttrDict(default=AttrDict)
+    changed_records = 0
+    added_records = 0
     #
     # convert all the FIS records for comparison to the matching OpenERP records
     #
@@ -198,12 +200,14 @@ def handle_csms_full():
             echo('\n'.join(record))
             echo('-' * 111)
         # write the changes
-        if changes and not DRYRUN:
+        changed_records += 1 if changes else 0
+        if changes:
             if LIST_RECORDS:
                 echo('  F33:%s  %s' % (fis_id, fis_datom.name), end='  ')
                 print(repr(changes), end='')
                 echo()
-            res.partner.write(oe_datom.xml_id, oe_datom.id, changes)
+            if not DRYRUN:
+                res.partner.write(oe_datom.xml_id, oe_datom.id, changes)
         #
         # contacts second
         #
@@ -239,13 +243,15 @@ def handle_csms_full():
                     #
                     # changes[field] = new_value
                     record.append('%s%s' % (template(field, old_value, new_value), C.AllReset))
+            changed_records += 1 if changes else 0
             if changes:
                 changes['parent_id'] = parent_id
                 if LIST_RECORDS:
                     echo('  F33:%s  %s' % (contact_key, fis_datom.name), end='  ')
                     print(repr(changes), end='')
                     echo()
-                res.partner.write(contact_key, oe_datom.id, changes)
+                if not DRYRUN:
+                    res.partner.write(contact_key, oe_datom.id, changes)
     #
     # add new records
     #
@@ -266,12 +272,20 @@ def handle_csms_full():
                 echo('  F33:%s  %s' % (key, values.name), end='  ')
                 print(repr(values), end='')
                 echo()
-            customer_id = res.partner.create(key, values)
-            if not customer_id:
-                continue
+            added_records += 1
+            if LIST_RECORDS:
+                echo('  F33:%s  %s' % (contact_key, fis_datom.name), end='  ')
+                print(repr(changes), end='')
+                echo()
+            if not DRYRUN:
+                customer_id = res.partner.create(key, values)
+                if not customer_id:
+                    continue
         if not values.xml_id.startswith('cntct_'):
             values.id = customer_id
             fis_company_records[values.xml_id] = values
+    print('  %d records changed' % changed_records)
+    print('  %d records added' % added_records)
 
 
 
@@ -284,6 +298,8 @@ def handle_csms(method):
     res.partner = Model(oe.get_model('res.partner'), 'csms', 'F33', context)
     csms = fisData(33, keymatch='10%s ')
     csms_old = fisData(33, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
+    changed_records = 0
+    added_records = 0
     changes, added, deleted = get_changed_records(
             csms_old.values(),
             csms.values(),
@@ -336,7 +352,16 @@ def handle_csms(method):
             elif field is F33.tele:
                 values['phone'] = fix_phone(value)
         # and update OpenERP
-        res.partner.write(keys, oe_ids, values, context=context)
+        assert values, "no changed fields?  problem with get_changed_records or combine by value?"
+        changed_records += len(records)
+        if values:
+            if LIST_RECORDS:
+                for rec in records:
+                    echo('  F33:%s  %s' % (rec.xml_id, rec.name), end='  ')
+                    print(repr(changes), end='')
+                    echo()
+            if not DRYRUN:
+                res.partner.write(keys, oe_ids, values, context=context)
         # and handle any contacts
         for company_key, contact_name in contact.items():
             contact_key = 'cntct_' + company_key
@@ -350,13 +375,25 @@ def handle_csms(method):
                     fields=['id','active'],
                     )
                 active = company[0].active
-                res.partner.create(contact_key, {'name': contact_name, 'active':active})
+                added_records += 1
+                if LIST_RECORDS:
+                    echo('  F33:%s  %s' % (contact_key, values.name), end='  ')
+                    print(repr(changes), end='')
+                    echo()
+                if not DRYRUN:
+                    res.partner.create(contact_key, {'name': contact_name, 'active':active})
             else:
                 active = contacts[0].active
                 contact_id = contacts[0].id
                 if not contact_name:
                     active = False
-                res.partner.write(contact_key, contact_id, {'name': contact_name, 'active':active})
+                changed_records += 1
+                if LIST_RECORDS:
+                    echo('  F33:%s  %s' % (contact_key, values.name), end='  ')
+                    print(repr(changes), end='')
+                    echo()
+                if not DRYRUN:
+                    res.partner.write(contact_key, contact_id, {'name': contact_name, 'active':active})
     #
     # now add new customers
     #
@@ -372,9 +409,15 @@ def handle_csms(method):
             customer_id = customer_id[0]
             res.partner.error('FIS ID F33:%s (%s) already exists in OpenERP' % (key, cus_name))
         else:
-            customer_id = res.partner.create(key, values)
-            if not customer_id:
-                continue
+            added_records += 1
+            if LIST_RECORDS:
+                echo('  F33:%s  %s' % (contact_key, values.name), end='  ')
+                print(repr(changes), end='')
+                echo()
+            if not DRYRUN:
+                customer_id = res.partner.create(key, values)
+                if not customer_id:
+                    continue
         if contact is not None:
             # double-check that record doesn't already exist
             cntct_key = contact.xml_id
@@ -383,9 +426,21 @@ def handle_csms(method):
             if cntct_id:
                 cntct_id = cntct_id[0]
                 res.partner.error('FIS ID F33:%s (%s) already exists in OpenERP' % (cntct_key, cntct_name))
-                res.partner.write(cntct_key, cntct_id, values)
+                changed_records += 1
+                if LIST_RECORDS:
+                    echo('  F33:%s  %s' % (contact_key, values.name), end='  ')
+                    print(repr(changes), end='')
+                    echo()
+                if not DRYRUN:
+                    res.partner.write(cntct_key, cntct_id, values)
             else:
-                res.partner.create(cntct_key, values)
+                added_records += 1
+                if LIST_RECORDS:
+                    echo('  F33:%s  %s' % (contact_key, values.name), end='  ')
+                    print(repr(changes), end='')
+                    echo()
+                if not DRYRUN:
+                    res.partner.create(cntct_key, values)
     #
     # send email for deleted customers
     #
@@ -408,6 +463,8 @@ def handle_csms(method):
                 "\n"
                 + '\n'.join(customer_list),
                 )
+    print('  %d records changed' % changed_records)
+    print('  %d records added' % added_records)
 
 def handle_carrier_full():
     context = {'fis-updates': True, 'active_test': False}
@@ -415,6 +472,8 @@ def handle_carrier_full():
     res.partner = Model(oe.get_model('res.partner'), 'cnvzsv', 'F27', context)
     cnvzsv = fisData(27, keymatch='SV10%s')
     fis_company_records = AttrDict(default=AttrDict)
+    changed_records = 0
+    added_records = 0
     #
     # convert all the FIS records for comparison to the matching OpenERP records
     #
@@ -492,13 +551,34 @@ def handle_carrier_full():
             echo('\n'.join(record))
             echo('-' * 111)
         # write the changes
-        if changes and not DRYRUN:
-            res.partner.write(oe_datom.xml_id, oe_datom.id, changes)
+        changed_records += 1 if changes else 0
+        if changes:
+            if LIST_RECORDS:
+                echo('  F27:%s  %s' % (oe_datom.xml_id, changes.name), end='  ')
+                print(repr(changes), end='')
+                echo()
+            if not DRYRUN:
+                res.partner.write(oe_datom.xml_id, oe_datom.id, changes)
     #
     # create new records
     #
+    added_records += len(new_fis)
     for values in new_fis:
-        res.partner.create(values, context=context)
+        # double-check that record doesn't already exist
+        key = values.xml_id
+        name = values.name
+        if res.partner.search(domain=[('xml_id','=',key),('module','=','F27')]):
+            res.partner.error('FIS ID F27:%s (%s) already exists in OpenERP' % (key, name))
+        else:
+            added_records += 1
+            if LIST_RECORDS:
+                echo('  F27:%s  %s' % (key, name), end='  ')
+                print(repr(changes), end='')
+                echo()
+            if not DRYRUN:
+                res.partner.create(key, values)
+    print('  %d records changed' % changed_records)
+    print('  %d records added' % added_records)
 
 def handle_carrier(method):
     print('\nprocessing CNVZsv...')
@@ -509,6 +589,8 @@ def handle_carrier(method):
     res.partner = Model(oe.get_model('res.partner'), 'cnvzsv', 'F27', context)
     cnvzsv = fisData(27, keymatch='SV10%s')
     cnvzsv_old = fisData(27, keymatch='SV10%s', data_path=config.network.fis_data_local_old_path)
+    changed_records = 0
+    added_records = 0
     changes, added, deleted = get_changed_records(
             cnvzsv_old.values(),
             cnvzsv.values(),
@@ -553,7 +635,15 @@ def handle_carrier(method):
             elif field is F27.fuel_surcharge:
                 values['fuel_surcharge'] = value.upper() == 'Y'
         # and update OpenERP
-        res.partner.write(keys, oe_ids, values)
+        assert values, "no changed fields?  problem with get_changed_records or combine by value?"
+        changed_records += len(records)
+        if LIST_RECORDS:
+            for rec in records:
+                echo('  F27:%s  %s' % (rec.xml_id, rec.name), end='  ')
+                print(repr(changes), end='')
+                echo()
+        if not DRYRUN:
+            res.partner.write(keys, oe_ids, values)
     #
     # now add new carriers
     #
@@ -567,7 +657,13 @@ def handle_carrier(method):
         if res.partner.search(domain=[('xml_id','=',key),('module','=','F27')]):
             res.partner.error('FIS ID F27:%s (%s) already exists in OpenERP' % (key, name))
         else:
-            res.partner.create(key, values)
+            added_records += 1
+            if LIST_RECORDS:
+                echo('  F27:%s  %s' % (key, values.name), end='  ')
+                print(repr(changes), end='')
+                echo()
+            if not DRYRUN:
+                res.partner.create(key, values)
     #
     # send email for deleted carriers
     #
@@ -590,7 +686,8 @@ def handle_carrier(method):
                 "\n"
                 + '\n'.join(carrier_list),
                 )
-
+    print('  %d records changed' % changed_records)
+    print('  %d records added' % added_records)
 
 def handle_emp1_full():
     context = {'hr_welcome': False, 'fis-updates': True, 'active_test': False}
@@ -600,6 +697,8 @@ def handle_emp1_full():
     res = AttrDict()
     res.partner = Model(oe.get_model('res.partner'), 'emp1', 'F74', context)
     employee_records = []
+    changed_records = 0
+    added_records = 0
     #
     # convert all the FIS records for comparison to the matching OpenERP records
     #
@@ -670,6 +769,7 @@ def handle_emp1_full():
             record.append('%s%s' % (template(field, old_value, new_value), C.AllReset))
         # write the changes
         print('\n'.join(record))
+        changed_records += 1 if changes else 0
         if changes and not DRYRUN:
             res.partner.write(oe_datom.xml_id, oe_datom.id, changes)
     #
@@ -678,30 +778,34 @@ def handle_emp1_full():
     print('--== ADDING RECORDS ==--')
     active_test_needed = set()
     birthday_test_needed = set()
-    for fis_datom in new_fis:
-        emp_num = fis_datom.emp_num
-        emp_name = fis_datom.emp_name
-        # check for existing res.partner record, and use it if it exists
-        rp_id = hr.employee.search(domain=[('module','=','F74'),('xml_id','=',emp_num)])
-        if rp_id:
-            rp_id = rp_id[0]
-        else:
-            # otherwise, try to create it, leaving it at False (0) on failure
-            rp_id = res.partner.create(emp_num, {'name': emp_name, 'xml_id': emp_num, 'module': 'F74'})
-        ## double-check that record doesn't already exist
-        employee_id = hr.employee.search(domain=[('xml_id','=',emp_num),('module','=','F74-emp')])
-        if employee_id:
-            employee_id = employee_id[0]
-            hr.employee.error('FIS ID F74-emp:%s (%s) already exists in OpenERP' % (emp_num, emp_name))
-        else:
-            employee_id = hr.employee.create(emp_num, fis_datom)
-            if not employee_id:
-                continue
-        if rp_id:
-            # update partner record with link to employee record
-            res.partner.write(emp_num, rp_id, {'employee_id': employee_id})
-        birthday_test_needed.add(employee_id)
-        active_test_needed.add(employee_id)
+    if DRYRUN:
+        added_records += len(new_fis)
+    else:
+        for fis_datom in new_fis:
+            emp_num = fis_datom.emp_num
+            emp_name = fis_datom.emp_name
+            # check for existing res.partner record, and use it if it exists
+            rp_id = hr.employee.search(domain=[('module','=','F74'),('xml_id','=',emp_num)])
+            if rp_id:
+                rp_id = rp_id[0]
+            else:
+                # otherwise, try to create it, leaving it at False (0) on failure
+                rp_id = res.partner.create(emp_num, {'name': emp_name, 'xml_id': emp_num, 'module': 'F74'})
+            ## double-check that record doesn't already exist
+            employee_id = hr.employee.search(domain=[('xml_id','=',emp_num),('module','=','F74-emp')])
+            if employee_id:
+                employee_id = employee_id[0]
+                hr.employee.error('FIS ID F74-emp:%s (%s) already exists in OpenERP' % (emp_num, emp_name))
+            else:
+                added_records += 1
+                employee_id = hr.employee.create(emp_num, fis_datom)
+                if not employee_id:
+                    continue
+            if rp_id:
+                # update partner record with link to employee record
+                res.partner.write(emp_num, rp_id, {'employee_id': employee_id})
+            birthday_test_needed.add(employee_id)
+            active_test_needed.add(employee_id)
     #
     # check for suspect birthdates
     #
@@ -752,12 +856,13 @@ def handle_emp1_full():
                 inactive.append(rec.id)
                 inactive_keys.append(rec.xml_id)
         if active:
-            hr.employee.write(active_keys, active, {'active': True})
+            print('setting %d records active' % len(active_keys))
+            if not DRYRUN:
+                hr.employee.write(active_keys, active, {'active': True})
         if inactive:
-            hr.employee.write(inactive_keys, inactive, {'active': False})
-
-
-
+            print('setting %d records inactive' % len(inactive_keys))
+            if not DRYRUN:
+                hr.employee.write(inactive_keys, inactive, {'active': False})
 
 
 def handle_emp1(method):
@@ -771,6 +876,8 @@ def handle_emp1(method):
     res = AttrDict()
     res.partner = Model(oe.get_model('res.partner'), 'emp1', 'F74', context)
     emp1_old = fisData(74, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
+    changed_records = 0
+    added_records = 0
     changes, added, deleted = get_changed_records(
             emp1_old.values(),
             emp1.values(),
@@ -851,38 +958,45 @@ def handle_emp1(method):
             elif field is F74.gender:
                 values['gender'] = ('male', 'female')[value.upper() == 'F']
         # and update OpenERP
-        hr.employee.write(keys, oe_ids, values)
+        assert values, "no changed fields?  problem with get_changed_records or combine by value?"
+        changed_records += len(records)
+        if not DRYRUN:
+            hr.employee.write(keys, oe_ids, values)
     #
     # now add new employees
     #
     print('adding records')
-    for fis_rec in added:
-        employee = convert_emp1_rec(fis_rec)
-        if employee is None:
-            continue
-        # check for existing res.partner record, and use it if it exists
-        emp_num = employee.xml_id
-        emp_name = employee.name
-        rp_id = hr.employee.search(domain=[('module','=','F74'),('xml_id','=',emp_num)])
-        if rp_id:
-            rp_id = rp_id[0]
-        else:
-            # otherwise, try to create it, leaving it at False (0) on failure
-            rp_id = res.partner.create(emp_num, {'name': emp_name, 'xml_id': emp_num, 'module': 'F74'})
-        ## double-check that record doesn't already exist
-        employee_id = hr.employee.search(domain=[('xml_id','=',emp_num),('module','=','F74-emp')])
-        if employee_id:
-            employee_id = employee_id[0]
-            hr.employee.error('FIS ID F74-emp:%s (%s) already exists in OpenERP' % (emp_num, emp_name))
-        else:
-            employee_id = hr.employee.create(emp_num, values)
-            if not employee_id:
+    if DRYRUN:
+        added_records += len(added)
+    else:
+        for fis_rec in added:
+            employee = convert_emp1_rec(fis_rec)
+            if employee is None:
                 continue
-        if rp_id:
-            # update partner record with link to employee record
-            res.partner.write(emp_num, rp_id, {'employee_id': employee_id})
-        birthday_test_needed.add(employee_id)
-        active_test_needed.add(employee_id)
+            # check for existing res.partner record, and use it if it exists
+            emp_num = employee.xml_id
+            emp_name = employee.name
+            rp_id = hr.employee.search(domain=[('module','=','F74'),('xml_id','=',emp_num)])
+            if rp_id:
+                rp_id = rp_id[0]
+            else:
+                # otherwise, try to create it, leaving it at False (0) on failure
+                rp_id = res.partner.create(emp_num, {'name': emp_name, 'xml_id': emp_num, 'module': 'F74'})
+            ## double-check that record doesn't already exist
+            employee_id = hr.employee.search(domain=[('xml_id','=',emp_num),('module','=','F74-emp')])
+            if employee_id:
+                employee_id = employee_id[0]
+                hr.employee.error('FIS ID F74-emp:%s (%s) already exists in OpenERP' % (emp_num, emp_name))
+            else:
+                added_records += 1
+                employee_id = hr.employee.create(emp_num, values)
+                if not employee_id:
+                    continue
+            if rp_id:
+                # update partner record with link to employee record
+                res.partner.write(emp_num, rp_id, {'employee_id': employee_id})
+            birthday_test_needed.add(employee_id)
+            active_test_needed.add(employee_id)
     #
     # send email for deleted employees
     #
@@ -963,9 +1077,13 @@ def handle_emp1(method):
                 inactive.append(rec.id)
                 inactive_keys.append(rec.xml_id)
         if active:
-            hr.employee.write(active_keys, active, {'active': True})
+            print('setting %d records active' % len(active_keys))
+            if not DRYRUN:
+                hr.employee.write(active_keys, active, {'active': True})
         if inactive:
-            hr.employee.write(inactive_keys, inactive, {'active': False})
+            print('setting %d records inactive' % len(inactive_keys))
+            if not DRYRUN:
+                hr.employee.write(inactive_keys, inactive, {'active': False})
 
 
 def handle_posm(method):
@@ -974,6 +1092,7 @@ def handle_posm(method):
     res.partner = Model(oe.get_model('res.partner'), 'posm', 'F163', context)
     if method == 'quick':
         posm_old = fisData(163, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
+    changed_records = 0
     changes, added, deleted = get_changed_records(
             posm_old.values(),
             posm.values(),
@@ -1034,6 +1153,8 @@ def handle_posm(method):
             elif field is F163.kosher_exp:
                 values['fis_kosher_exp'] = fix_date(value)
         # and update OpenERP
+        assert values, "no changed fields?  problem with get_changed_records or combine by value?"
+        changed_records += len(records)
         res.partner.write(keys, oe_ids, values)
     #
     # add new records
@@ -1093,6 +1214,7 @@ def handle_vnms(method):
     context = {'fis-updates': True, 'active_test': False}
     res = AttrDict()
     res.partner = Model(oe.get_model('res.partner'), 'vnms', 'F65', context)
+    changed_records = 0
     if method == 'quick':
         vnms_old = fisData(65, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
     if not ven2sup:
@@ -1201,6 +1323,7 @@ def handle_vnms(method):
                         values['fis_org_exp'] = fix_date(value)
             # and update OpenERP
             if values:
+                changed_records += 1
                 res.partner.write(key, oe_id, values)
             if contact_only:
                 # get contact id and update
@@ -1208,6 +1331,7 @@ def handle_vnms(method):
                         domain=[('xml_id','=',contact_only['xml_id']),('module','=','F65')],
                         )
                 contact_id = contact_id and contact_id[0] or False
+                changed_records += 1
                 res.partner.write(key, contact_id, contact_only)
     #
     # add new records
