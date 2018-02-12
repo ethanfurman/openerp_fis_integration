@@ -55,8 +55,9 @@ def main():
 
         skip_copy=Spec('Skip copying files', FLAG),
         dryrun=Spec('do not actually make changes', FLAG),
+        list_records=Spec('list affected records', FLAG),
         )
-def fis_update(method, skip_copy, dryrun):
+def fis_update(method, skip_copy, dryrun, list_records):
     """
     update FIS files from master, then FIS data in OpenERP
 
@@ -109,6 +110,8 @@ def fis_update(method, skip_copy, dryrun):
         cmd = '/opt/bin/updates/%s %s --method=%s' % (script, ','.join(tables), method)
         if dryrun:
             cmd += ' --dryrun'
+        if list_records:
+            cmd += ' --list-records'
         if script_verbosity:
             cmd += ' -' + 'v' * script_verbosity
         system(cmd)
