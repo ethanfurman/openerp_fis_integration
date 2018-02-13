@@ -13,7 +13,6 @@ from VSS.utils import fix_phone
 # from dbf import Date
 from antipathy import Path
 import dbf
-import env
 import os
 import random
 import re
@@ -22,6 +21,7 @@ from openerplib import get_connection, get_records
 
 virtual_env = os.environ['VIRTUAL_ENV']
 config = OrmFile(Path('%s/config/fnx.ini' % virtual_env))
+env = config.env
 
 # SOURCE = Path('/var/fis/production/')
 # ARCHIVE = Path('/var/openerp/archive/production/')
