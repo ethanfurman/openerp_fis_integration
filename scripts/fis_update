@@ -101,7 +101,7 @@ def fis_update(method, skip_copy, skip_update, dryrun, list_records):
         ])
     # strip path and leading {pre} from filenames
     files = [f.filename[1:] for f in files]
-    print('changed files: %s [%s]' % (len(files), ', '.join(files)), verbose=1)
+    print('changed file candidates: %s [%s]' % (len(files), ', '.join(files)), verbose=1)
     #
     # step 3: get appropriate scripts, and execute them
     #
