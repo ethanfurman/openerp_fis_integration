@@ -31,7 +31,7 @@ env = config.env
 @Command(
         filenum=Spec('file abbreviation or number to operate on', ),
         keymatch=Spec('key template to select individual records', default=None),
-        key=Spec('key of desired record', default=None),
+        key=Spec('key of desired record', MULTIREQ, default=()),
         full=Spec('show all fields', FLAG),
         color=Spec('use color output', FLAG),
         summary=Spec('show summary only', FLAG,),
@@ -47,11 +47,14 @@ def diff(filenum, keymatch, key, full, color, summary):
     fis_table = fd.fisData(filenum, keymatch=keymatch)
     fis_table_old = fd.fisData(filenum, keymatch=keymatch, data_path=config.network.fis_data_local_old_path)
     print('using files: ', fis_table.filename, fis_table_old.filename, verbose=2)
+    new_records = []
+    old_records = []
     if keymatch and key:
         # user specified record to diff
         print('keymatch and key specified', verbose=2)
-        new_records = [fis_table.get(key)]
-        old_records = [fis_table_old.get(key)]
+        for k in key:
+            new_records.append(fis_table.get(k))
+            old_records.append(fis_table_old.get(k))
         data_width = 0
     elif keymatch or key:
         abort('must specify both KEYMATCH and KEY if either is given')
