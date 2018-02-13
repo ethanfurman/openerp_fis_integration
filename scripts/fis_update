@@ -86,26 +86,26 @@ def fis_update(method, skip_copy, skip_update, dryrun, list_records):
     #
     # step 2: determine which files changed
     #
+    print('checking for changed files')
+    files = [
+        f for f in new.glob('O????') if
+            f.stat().st_mtime != old.stat(f.filename).st_mtime
+        ]
+    files.extend([
+        f for f in new.glob('O?????') if
+            f.stat().st_mtime != old.stat(f.filename).st_mtime
+        ])
+    files.extend([
+        f for f in new.glob('O??????') if
+            f.stat().st_mtime != old.stat(f.filename).st_mtime
+        ])
+    # strip path and leading {pre} from filenames
+    files = [f.filename[1:] for f in files]
+    print('changed files: %s [%s]' % (len(files), ', '.join(files)), verbose=1)
+    #
+    # step 3: get appropriate scripts, and execute them
+    #
     if not skip_update:
-        print('checking for changed files')
-        files = [
-            f for f in new.glob('O????') if
-                f.stat().st_mtime != old.stat(f.filename).st_mtime
-            ]
-        files.extend([
-            f for f in new.glob('O?????') if
-                f.stat().st_mtime != old.stat(f.filename).st_mtime
-            ])
-        files.extend([
-            f for f in new.glob('O??????') if
-                f.stat().st_mtime != old.stat(f.filename).st_mtime
-            ])
-        # strip path and leading {pre} from filenames
-        files = [f.filename[1:] for f in files]
-        print('changed files: %s [%s]' % (len(files), ', '.join(files)), verbose=1)
-        #
-        # step 3: get appropriate scripts, and execute them
-        #
         FIS_mapping = updates.get_script_mapping()
         for script, tables in FIS_mapping.items():
             cmd = '/opt/bin/updates/%s %s --method=%s' % (script, ','.join(tables), method)
