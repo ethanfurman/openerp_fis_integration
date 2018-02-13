@@ -56,7 +56,6 @@ def main(dryrun, list_records):
         delete=Spec('delete records [default: send email]', FLAG,),
         )
 def fis_integration(files, method, delete):
-    echo('files: %r\nmethod: %r' % (files, method))
     global state_recs, country_recs, emp1, posm, vnms, csms
     global skipped_suppliers, vendor_suppliers, ven2sup
     global models, DELETE
@@ -337,6 +336,7 @@ def handle_csms(method):
     res = AttrDict()
     res.partner = Model(oe.get_model('res.partner'), 'csms', 'F33', context)
     csms = fisData(33, keymatch='10%s ')
+    print(csms.filename, verbose=2)
     csms_old = fisData(33, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
     changed_records = 0
     added_records = 0
@@ -628,6 +628,7 @@ def handle_carrier(method):
     res = AttrDict()
     res.partner = Model(oe.get_model('res.partner'), 'cnvzsv', 'F27', context)
     cnvzsv = fisData(27, keymatch='SV10%s')
+    print(cnvzsv.filename, verbose=2)
     cnvzsv_old = fisData(27, keymatch='SV10%s', data_path=config.network.fis_data_local_old_path)
     changed_records = 0
     added_records = 0
@@ -907,6 +908,7 @@ def handle_emp1_full():
 
 def handle_emp1(method):
     print('\nprocessing EMP1')
+    print(emp1.filename, verbose=2)
     if method == 'full':
         return handle_emp1_full()
     context = {'hr_welcome': False, 'fis-updates': True, 'active_test': False}
@@ -1127,6 +1129,8 @@ def handle_emp1(method):
 
 
 def handle_posm(method):
+    print('processing POSM')
+    print(posm.filename, verbose=2)
     context = {'fis-updates': True, 'active_test': False}
     res = AttrDict()
     res.partner = Model(oe.get_model('res.partner'), 'posm', 'F163', context)
@@ -1251,6 +1255,8 @@ def handle_posm(method):
 
 
 def handle_vnms(method):
+    print('processing VNMS')
+    print(vnms.filename, verbose=2)
     context = {'fis-updates': True, 'active_test': False}
     res = AttrDict()
     res.partner = Model(oe.get_model('res.partner'), 'vnms', 'F65', context)
@@ -1547,7 +1553,7 @@ def convert_csms_rec(fis_rec):
     contact = None
     if fis_rec[F33.contact] and fis_rec[F33.contact] != fis_rec[F33.name]:
         contact = AttrDict()
-        contact.name = NameCase(fis_rec[F33.name])
+        contact.name = NameCase(fis_rec[F33.contact])
         contact.xml_id = 'cntct_' + key
         contact.module = 'F33'
         contact.is_company = False
@@ -1555,6 +1561,7 @@ def convert_csms_rec(fis_rec):
         contact.use_parent_address = True
         contact.fis_valid = fis_valid
         contact.specials_notification = Specials.company
+        contact.active = company.active
     return company, contact
 
 _raise_lookup = object()
