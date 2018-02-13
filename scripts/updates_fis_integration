@@ -103,6 +103,7 @@ def handle_csms_full():
     fis_contact_records = AttrDict(default=AttrDict)
     changed_records = 0
     added_records = 0
+    deleted_records = 0
     #
     # convert all the FIS records for comparison to the matching OpenERP records
     #
@@ -138,7 +139,7 @@ def handle_csms_full():
     seen_fis = set()
     # seen_oe = set()
     new_fis = []
-    deleted_fis = []
+    deleted_oe = []
     def select_color(row):
         f, o, v = row
         if o != v:
@@ -215,14 +216,18 @@ def handle_csms_full():
         contact_key = 'cntct_' + fis_datom.xml_id
         fis_datom = fis_contact_records.get(contact_key, None)
         oe_datom = oe_records.get(contact_key)
+        # fis_name = fis_datom and fis_datom.name or None
+        # oe_name = oe_datom and oe_datom.name or None
+        # echo('|'.join([str(o) for o in (contact_key, type(fis_datom), fis_name, type(oe_datom), oe_name)]))
         if fis_datom == oe_datom:
             # this covers the cases where both are None and where both are equal
             continue
         if fis_datom is None:
             # contact was removed on the FIS side
-            deleted_fis.append(contact_key)
+            deleted_oe.append(oe_datom)
+            deleted_records += 1
         elif oe_datom is None:
-            # contact wass added on the FIS side
+            # contact was added on the FIS side
             new_fis.append(fis_datom)
         else:
             changes = {}
@@ -284,10 +289,31 @@ def handle_csms_full():
         if not values.xml_id.startswith('cntct_'):
             values.id = customer_id
             fis_company_records[values.xml_id] = values
+    #
+    # send email for deleted customers
+    #
+    if deleted_oe:
+        customer_list = ['%6s  %s' % ('FIS ID', 'Name')]
+        data = []
+        for oe_datom in deleted_oe:
+            xml_id = oe_datom.xml_id
+            name = oe_datom.name
+            data.append((xml_id, name))
+        for rec in sorted(data, key=lambda r: r[1]):
+            customer_list.append("%6s  %s" % rec)
+        mail(message=
+                "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
+                # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
+                # "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
+                # "Cc: Alyssa Corinne <alyssa@sunridgefarms.com>\n"
+                "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
+                "Subject: customers deleted in FIS... what action in OpenERP?  [csms, 33]\n"
+                "\n"
+                + '\n'.join(customer_list),
+                )
     print('  %d records changed' % changed_records)
     print('  %d records added' % added_records)
-
-
+    print('  %d records deleted' % deleted_records)
 
 def handle_csms(method):
     print('\nprocessing CSMS...')
