@@ -30,12 +30,14 @@ config = OrmFile(Path('%s/config/fnx.ini' % virtual_env))
 
 @Command(
         filenum=Spec('file abbreviation or number to operate on', ),
-        keymatch=Spec('key template to select individual records', ),
-        key=Spec('key of desired record', ),
+        keymatch=Spec('key template to select individual records', default=None),
+        key=Spec('key of desired record', default=None),
         full=Spec('show all fields', FLAG),
         color=Spec('use color output', FLAG),
+        summary=Spec('show summary only', FLAG,),
         )
-def diff(filenum, keymatch, key, full, color):
+def diff(filenum, keymatch, key, full, color, summary):
+    "show specified, or all, records diffed with their older version"
     # easier color names
     white, red, green, cyan = Color.FG_White, Color.FG_Red, Color.FG_Green, Color.FG_Cyan
     bold, all_reset = Color.Bright, Color.AllReset
@@ -44,57 +46,107 @@ def diff(filenum, keymatch, key, full, color):
         filenum = int(filenum)
     fis_table = fd.fisData(filenum, keymatch=keymatch)
     fis_table_old = fd.fisData(filenum, keymatch=keymatch, data_path=config.network.fis_data_local_old_path)
-    print('using files: ', fis_table.filename, fis_table_old.filename)
-    new_rec = fis_table.get(key)
-    old_rec = fis_table_old.get(key)
-    if new_rec is None and old_rec is None:
-        echo('record %r does not exist' % (key, ))
-    elif new_rec is None:
-        echo(old_rec)
-        echo('record has been DELETED')
-    elif old_rec is None:
-        echo(new_rec)
-        echo('record has been ADDED')
-    else:
-        # only show key fields and changed fields
-        key_field_pre = fis_table.datamap[0]
-        changed_fields = []
+    print('using files: ', fis_table.filename, fis_table_old.filename, verbose=2)
+    if keymatch and key:
+        # user specified record to diff
+        print('keymatch and key specified', verbose=2)
+        new_records = [fis_table.get(key)]
+        old_records = [fis_table_old.get(key)]
         data_width = 0
-        for field_meta in fis_table.fieldlist:
-            index, desc, _, spec, _ = field_meta
-            old_data = old_rec[spec]
-            new_data = new_rec[spec]
-            if spec.startswith(key_field_pre):
-                changed_fields.append((index.split('_')[1], spec, old_data, new_data, desc))
-                data_width = max(data_width, len(old_data), len(new_data))
-            elif old_data != new_data or full:
-                changed_fields.append((index.split('_')[1], spec, old_data, new_data, desc))
-                data_width = max(data_width, len(str(old_data)), len(str(new_data)))
-        lines = []
-        def select_color(row):
-            old = row[2]
-            new = row[2]
-            if old == new:
-                return white, white, white|bold, white|bold, white
-            else:
-                return white, white, red, green, white
-        string_template = ColorTemplate(
-                '%%3s | %%-12s | %%-%ds | %%-%ds | %%s' % (data_width, data_width),
-                default_color=all_reset+cyan,
-                select_colors=select_color,
-                )
-        numeric_template = ColorTemplate(
-                '%%3s | %%-12s | %%%ds | %%%ds | %%s' % (data_width, data_width),
-                default_color=all_reset+cyan,
-                select_colors=select_color,
-                )
-        for line in changed_fields:
-            index, spec, old, new, desc = line
-            if '$' in spec:
-                lines.append(string_template(index, spec, old, new, desc))
-            else:
-                lines.append(numeric_template(index, spec, old, new, desc))
-        echo('\n'.join(lines))
+    elif keymatch or key:
+        abort('must specify both KEYMATCH and KEY if either is given')
+    else:
+        print('looking for all changed records', verbose=2)
+        # lock in data widths
+        data_width = max(fis_table.field_widths)
+        # find all changed records
+        new_records = []
+        old_records = []
+        old_records_map = {}
+        new_records_map = {}
+        for rec in fis_table_old.values():
+            # key = []
+            # for f in key_fields:
+            #     key.append(rec[f])
+            # key = tuple(key)
+            old_records_map[rec.rec[0]] = rec
+        for rec in fis_table.values():
+            # key = []
+            # for f in key_fields:
+            #     key.append(rec[f])
+            # key = tuple(key)
+            new_records_map[rec.rec[0]] = rec
+        all_recs = set(new_records_map.keys() + old_records_map.keys())
+        for key in all_recs:
+            new_rec = new_records_map.get(key)
+            old_rec = old_records_map.get(key)
+            if new_rec != old_rec:
+                new_records.append(new_records_map.get(key))
+                old_records.append(old_records_map.get(key))
+    added = deleted = changed = 0
+    for old_rec, new_rec in zip(old_records, new_records):
+        if new_rec is None and old_rec is None:
+            echo('record %r does not exist' % (key, ))
+        elif new_rec is None:
+            deleted += 1
+            if not summary:
+                echo(old_rec)
+                echo('record has been DELETED')
+        elif old_rec is None:
+            added += 1
+            if not summary:
+                echo(new_rec)
+                echo('record has been ADDED')
+        else:
+            changed += 1
+            if summary:
+                continue
+            # only show key fields and changed fields, unless user specified --full
+            key_field_pre = fis_table.datamap[0]
+            changed_fields = []
+            for field_meta in fis_table.fieldlist:
+                index, desc, _, spec, _ = field_meta
+                old_data = old_rec[spec]
+                new_data = new_rec[spec]
+                if spec.startswith(key_field_pre):
+                    changed_fields.append((index.split('_')[1], spec, old_data, new_data, desc))
+                    data_width = max(data_width, len(old_data), len(new_data))
+                elif old_data != new_data or full:
+                    changed_fields.append((index.split('_')[1], spec, old_data, new_data, desc))
+                    data_width = max(data_width, len(str(old_data)), len(str(new_data)))
+            data_width = 30
+            lines = []
+            def select_color(row):
+                old, new = row[2:4]
+                if old == new:
+                    return white, white, white|bold, white|bold, white
+                else:
+                    return white, white, red, green, white
+            string_template = ColorTemplate(
+                    '%%3s | %%-12s | %%-%ds | %%-%ds | %%s' % (data_width, data_width),
+                    default_color=all_reset+cyan,
+                    select_colors=select_color,
+                    )
+            numeric_template = ColorTemplate(
+                    '%%3s | %%-12s | %%%ds | %%%ds | %%s' % (data_width, data_width),
+                    default_color=all_reset+cyan,
+                    select_colors=select_color,
+                    )
+            for line in changed_fields:
+                index, spec, old, new, desc = line
+                if '$' in spec:
+                    lines.append(string_template(index, spec, old, new, desc))
+                else:
+                    lines.append(numeric_template(index, spec, old, new, desc))
+            echo('\n'.join(lines))
+            if os.isatty(sys.stdout.fileno()):
+                try:
+                    raw_input('press <enter> to continue')
+                except KeyboardInterrupt:
+                    abort('\n<Ctrl-C>, aborting')
+    echo('\nAdded:   %4d' % added)
+    echo('Deleted: %4d' % deleted)
+    echo('Changed: %4d' % changed)
 
 
 @Command(
