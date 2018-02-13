@@ -52,8 +52,8 @@ def main():
             default='quick',
             type=lambda f: f.lower(),
             ),
-        skip_copy=Spec('Skip copying files', FLAG),
-        skip_update=Spec('Skip updating OpenERP', FLAG),
+        skip_copy=Spec('Skip copying files', FLAG, None),
+        skip_update=Spec('Skip updating OpenERP', FLAG, None),
         dryrun=Spec('do not actually make changes', FLAG),
         list_records=Spec('list affected records', FLAG),
         )
