@@ -274,7 +274,7 @@ def handle_csms_full():
                 echo()
             added_records += 1
             if LIST_RECORDS:
-                echo('  F33:%s  %s' % (contact_key, fis_datom.name), end='  ')
+                echo('  F33:%s  %s' % (contact_key, values.name), end='  ')
                 print(repr(changes), end='')
                 echo()
             if not DRYRUN:
@@ -1505,7 +1505,7 @@ def convert_csms_rec(fis_rec):
     company.update(process_address(F33, fis_rec, key=fis_rec[F33.code], module='csms'))
     company.phone = fix_phone(fis_rec[F33.tele])
     contact = None
-    if fis_rec[F33.contact]:
+    if fis_rec[F33.contact] and fis_rec[F33.contact] != fis_rec[F33.name]:
         contact = AttrDict()
         contact.name = NameCase(fis_rec[F33.name])
         contact.xml_id = 'cntct_' + key
