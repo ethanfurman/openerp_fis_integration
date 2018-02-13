@@ -52,12 +52,12 @@ def main():
             default='quick',
             type=lambda f: f.lower(),
             ),
-
         skip_copy=Spec('Skip copying files', FLAG),
+        skip_update=Spec('Skip updating OpenERP', FLAG),
         dryrun=Spec('do not actually make changes', FLAG),
         list_records=Spec('list affected records', FLAG),
         )
-def fis_update(method, skip_copy, dryrun, list_records):
+def fis_update(method, skip_copy, skip_update, dryrun, list_records):
     """
     update FIS files from master, then FIS data in OpenERP
 
@@ -81,40 +81,41 @@ def fis_update(method, skip_copy, dryrun, list_records):
             files = ['%s/%s%s' % (path, pre, f) for f in active_files]
         # and grab them
         system('rsync --bwlimit=10 %s:%s %s/' % (master, ' :'.join(files), new))
-    system('chown -R openerp: /FIS')
-    config.network.fis_data_local_path.chmod(0o440, '*')
+        system('chown -R openerp: /FIS')
+        config.network.fis_data_local_path.chmod(0o440, '*')
     #
     # step 2: determine which files changed
     #
-    print('checking for changed files')
-    files = [
-        f for f in new.glob('O????') if
-            f.stat().st_mtime != old.stat(f.filename).st_mtime
-        ]
-    files.extend([
-        f for f in new.glob('O?????') if
-            f.stat().st_mtime != old.stat(f.filename).st_mtime
-        ])
-    files.extend([
-        f for f in new.glob('O??????') if
-            f.stat().st_mtime != old.stat(f.filename).st_mtime
-        ])
-    # strip path and leading {pre} from filenames
-    files = [f.filename[1:] for f in files]
-    print('changed files: %s [%s]' % (len(files), ', '.join(files)), verbose=1)
-    #
-    # step 3: get appropriate scripts, and execute them
-    #
-    FIS_mapping = updates.get_script_mapping()
-    for script, tables in FIS_mapping.items():
-        cmd = '/opt/bin/updates/%s %s --method=%s' % (script, ','.join(tables), method)
-        if dryrun:
-            cmd += ' --dryrun'
-        if list_records:
-            cmd += ' --list-records'
-        if script_verbosity:
-            cmd += ' -' + 'v' * script_verbosity
-        system(cmd)
+    if not skip_update:
+        print('checking for changed files')
+        files = [
+            f for f in new.glob('O????') if
+                f.stat().st_mtime != old.stat(f.filename).st_mtime
+            ]
+        files.extend([
+            f for f in new.glob('O?????') if
+                f.stat().st_mtime != old.stat(f.filename).st_mtime
+            ])
+        files.extend([
+            f for f in new.glob('O??????') if
+                f.stat().st_mtime != old.stat(f.filename).st_mtime
+            ])
+        # strip path and leading {pre} from filenames
+        files = [f.filename[1:] for f in files]
+        print('changed files: %s [%s]' % (len(files), ', '.join(files)), verbose=1)
+        #
+        # step 3: get appropriate scripts, and execute them
+        #
+        FIS_mapping = updates.get_script_mapping()
+        for script, tables in FIS_mapping.items():
+            cmd = '/opt/bin/updates/%s %s --method=%s' % (script, ','.join(tables), method)
+            if dryrun:
+                cmd += ' --dryrun'
+            if list_records:
+                cmd += ' --list-records'
+            if script_verbosity:
+                cmd += ' -' + 'v' * script_verbosity
+            system(cmd)
 
 
 def system(cmd, on_error='abort'):
