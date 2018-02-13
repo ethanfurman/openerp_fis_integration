@@ -16,7 +16,7 @@ from VSS.BBxXlate.fisData import fisData
 from VSS.utils import fix_phone, fix_date, Date, grouped
 import re
 import os
-    # import sys
+import sys
 
 C = Color
 grey = C.Dim | C.FG_White
@@ -53,12 +53,14 @@ def main(dryrun, list_records):
             default='quick',
             type=lambda m: m.lower(),
             ),
+        delete=Spec('delete records [default: send email]', FLAG,),
         )
-def fis_integration(files, method):
+def fis_integration(files, method, delete):
     echo('files: %r\nmethod: %r' % (files, method))
     global state_recs, country_recs, emp1, posm, vnms, csms
     global skipped_suppliers, vendor_suppliers, ven2sup
-    global models
+    global models, DELETE
+    DELETE = delete
     ven2sup = {}
     state_recs = dict([
         (r.name, (r.id, r.code, r.country_id))
@@ -141,8 +143,8 @@ def handle_csms_full():
     new_fis = []
     deleted_oe = []
     def select_color(row):
-        f, o, v = row
-        if o != v:
+        f, o, n = row
+        if o != n:
             return grey, oldv, newv
         else:
             return grey, white, white
@@ -208,7 +210,8 @@ def handle_csms_full():
                 print(repr(changes), end='')
                 echo()
             if not DRYRUN:
-                res.partner.write(oe_datom.xml_id, oe_datom.id, changes)
+                if not res.partner.write(oe_datom.xml_id, oe_datom.id, changes):
+                    error('unable to change', oe_datom.xml_id)
         #
         # contacts second
         #
@@ -250,6 +253,7 @@ def handle_csms_full():
                     record.append('%s%s' % (template(field, old_value, new_value), C.AllReset))
             changed_records += 1 if changes else 0
             if changes:
+                print('\n'.join(record))
                 changes['parent_id'] = parent_id
                 if LIST_RECORDS:
                     echo('  F33:%s  %s' % (contact_key, fis_datom.name), end='  ')
@@ -290,25 +294,35 @@ def handle_csms_full():
             values.id = customer_id
             fis_company_records[values.xml_id] = values
     #
-    # send email for deleted customers
+    # send email for deleted customers, and possibly delete them
     #
     if deleted_oe:
         customer_list = ['%6s  %s' % ('FIS ID', 'Name')]
         data = []
+        xml_ids = []
         for oe_datom in deleted_oe:
             xml_id = oe_datom.xml_id
             name = oe_datom.name
             data.append((xml_id, name))
+            xml_ids.append(xml_id)
         for rec in sorted(data, key=lambda r: r[1]):
             customer_list.append("%6s  %s" % rec)
+        if DELETE and not DRYRUN:
+            subject = 'Deleted customers  [csms, 33]'
+        else:
+            subject = "customers deleted in FIS... what action in OpenERP?  [csms, 33]"
+        if DELETE:
+            ids = res.partner.search([('xml_id','in',xml_ids)], context=context)
+            if not res.partner.delete(ids, context=context):
+                subject = "Unable to delete customers  [csms, 33]"
         mail(message=
                 "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
                 # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
                 # "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
                 # "Cc: Alyssa Corinne <alyssa@sunridgefarms.com>\n"
                 "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
-                "Subject: customers deleted in FIS... what action in OpenERP?  [csms, 33]\n"
-                "\n"
+                "Subject: %s\n"
+                "\n" % subject
                 + '\n'.join(customer_list),
                 )
     print('  %d records changed' % changed_records)
@@ -1691,8 +1705,19 @@ class Model(object):
         try:
             return self.table.create(pfm(values), context=context)
         except:
-            # cls, exc, tb = sys.exc_info()
-            # self.errors[self.abbr].append('FIS ID %s:%s create caused exception %r' % (self.module, key, exc))
+            cls, exc, tb = sys.exc_info()
+            self.errors[self.abbr].append('FIS ID %s:%s create caused exception %r' % (self.module, key, exc))
+            # error(''.join(format_exception(cls, exc, tb)))
+            return False
+
+    def delete(self, ids, context=None):
+        if context is None:
+            context = self.context
+        try:
+            return self.table.unlink(ids)
+        except:
+            cls, exc, tb = sys.exc_info()
+            self.errors[self.abbr].append('%s: deleting ID(s) %s caused exception %r' % (self.module, ', '.join([str(n) for n in ids]), exc))
             # error(''.join(format_exception(cls, exc, tb)))
             return False
 
@@ -1713,8 +1738,8 @@ class Model(object):
             self.table.write(ids, pfm(values), context=context)
             return True
         except:
-            # cls, exc, tb = sys.exc_info()
-            # self.errors[self.abbr].append('FIS ID %s:%s write caused exception %r' % (self.module, key, exc))
+            cls, exc, tb = sys.exc_info()
+            self.errors[self.abbr].append('FIS ID %s:%s write caused exception %r' % (self.module, key, exc))
             # error(format_exception(cls, exc, tb))
             return False
 
