@@ -252,6 +252,7 @@ def handle_csms_full():
                     record.append('%s%s' % (template(field, old_value, new_value), C.AllReset))
             changed_records += 1 if changes else 0
             if changes:
+                print('-' * 111)
                 print('\n'.join(record))
                 changes['parent_id'] = parent_id
                 if LIST_RECORDS:
@@ -308,12 +309,11 @@ def handle_csms_full():
             customer_list.append("%6s  %s" % rec)
         if DELETE and not DRYRUN:
             subject = 'Deleted customers  [csms, 33]'
-        else:
-            subject = "customers deleted in FIS... what action in OpenERP?  [csms, 33]"
-        if DELETE:
             ids = res.partner.search([('xml_id','in',xml_ids)], context=context)
             if not res.partner.delete(ids, context=context):
                 subject = "Unable to delete customers  [csms, 33]"
+        else:
+            subject = "customers deleted in FIS... what action in OpenERP?  [csms, 33]"
         mail(message=
                 "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
                 # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
@@ -1742,6 +1742,7 @@ class Model(object):
         if context is None:
             context = self.context
         try:
+            print('writing to %s using %s\n and %s' % (ids, values, context), verbose=2)
             self.table.write(ids, pfm(values), context=context)
             return True
         except:
