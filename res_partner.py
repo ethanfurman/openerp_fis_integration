@@ -259,6 +259,8 @@ class res_partner(xmlid, osv.Model):
                     updated_by_user = datas[0]['fis_updated_by_user'] or ''
                     if 'S' in updated_by_user:
                         values.pop('specials_notification', None)
+                    if 'N' in updated_by_user:
+                        values.pop('name', None)
                     if 'A' in updated_by_user:
                         values['fis_data_address_changed'] = True
                         for attr in ADDRESS_FIELDS:
@@ -269,6 +271,8 @@ class res_partner(xmlid, osv.Model):
                         piecemeal_values = values.copy()
                         if 'S' in updated_by_user:
                             piecemeal_values.pop('specials_notification', None)
+                        if 'N' in updated_by_user:
+                            piecemeal_values.pop('name', None)
                         if 'A' in updated_by_user:
                             if datas['fis_data_address'] and values['fis_data_address'] != datas['fis_data_address']:
                                 piecemeal_values['fis_data_address_changed'] = True
@@ -280,6 +284,8 @@ class res_partner(xmlid, osv.Model):
         else:
             # we only care if a latched field is being updated
             check_fis = ''
+            if 'name' in values:
+                check_fis += 'N'
             for field in ADDRESS_FIELDS:
                 if field in values:
                     check_fis += 'A'
@@ -294,6 +300,8 @@ class res_partner(xmlid, osv.Model):
                         if data['fis_data_address']:
                             # definitely an FIS record
                             updated_by_user = data['fis_updated_by_user'] or ''
+                            if 'N' in check_fis:
+                                updated_by_user += 'N'
                             if 'A' in check_fis:
                                 updated_by_user += 'A'
                             if 'S' in check_fis:
