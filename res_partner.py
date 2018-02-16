@@ -13,7 +13,7 @@ from fnx.xid import xmlid
 
 _logger = logging.getLogger(__name__)
 
-ADDRESS_FIELDS = 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id'
+ADDRESS_FIELDS = 'street', 'street2', 'city', 'state_id', 'zip', 'country_id'
 
 class Specials(fields.SelectionEnum):
     _order_ = 'neither catalog specials both default'
