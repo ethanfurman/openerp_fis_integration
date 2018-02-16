@@ -74,6 +74,33 @@ class res_partner(xmlid, osv.Model):
             children_ids.extend(partner['child_ids'])
         return children_ids
 
+    def _get_fis_address(self, cr, uid, ids, field_name, args, context=None):
+        result = {}
+        if not ids:
+            return result
+        datoms = self.browse(cr, uid, ids, context=context)
+        for datom in datoms:
+            name, street, street2 = datom.name, datom.street, datom.street2
+            city, state_id, postal = datom.city, datom.state_id, datom.zip
+            country_id = datom.country_id
+            state = state_id and state_id.code or ''
+            country = country_id and country_id.name or ''
+            if country == 'United States':
+                country = ''
+            result[datom['id']] = '\n'.join([
+                l
+                for l in (
+                    name or '',
+                    street or '',
+                    street2 or '',
+                    ('%s %s' % (', '.join([f for f in (city, state) if f]), postal)).strip(),
+                    country,
+                    )
+                if l.strip()
+                ])
+        return result
+
+
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
@@ -168,7 +195,18 @@ class res_partner(xmlid, osv.Model):
         'bulk_img9': fields.binary('Bulk Image', help='Picture of bulk installation.'),
         'bulk_pdf': fields.binary(string='Bulk Contract', help='PDF of contract.'),
         'bulk_pdf_filename': fields.char('Bulk PDF Filename'),
-        'fis_data_address': fields.text('FIS Name & Address', oldname='fis_data'),
+        'fis_data_address': fields.function(
+            _get_fis_address,
+            type='text',
+            string='FIS Name & Address',
+            oldname='fis_data',
+            store={
+                'res.partner': (
+                    lambda s, c, u, ids, ctx=None: ids,
+                    ['name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id'],
+                    10,
+                    )},
+            ),
         'fis_data_address_changed': fields.boolean('FIS data has changed', oldname='fis_data_changed'),
         'fis_updated_by_user': fields.char('Updated by user', size=12, oldname='updated_by_user'),
         }
@@ -181,21 +219,10 @@ class res_partner(xmlid, osv.Model):
         if context is None:
             context = {}
         if 'xml_id' in values and 'module' in values and values['xml_id'] and values['module']:
-            # we have an FIS record -- add appropriate fields
-            # save name/addr/cszc into fis_data_address field
-            state = self.pool.get('res.country.state').browse(cr, uid, values.get('state_id'), context=context)
-            country = self.pool.get('res.country').browse(cr, uid, values.get('country_id'), context=context)
-            values['fis_data_address'] = '\n'.join([
-                    values['name'] or '',
-                    values.get('street', ''),
-                    values.get('street2', ''),
-                    '%s, %s  %s' % (
-                        values.get('city', ''),
-                        state and state.name or '',
-                        values.get('zip', ''),
-                        ),
-                    country and country.name or '',
-                    ])
+            # we have an FIS record -- check for appropriate fields
+            if 'fis_data_address' not in values:
+                raise ValueError('missing required fis_data_address field for %s:%s'
+                        % (values['module'], values['xml_id']))
         if 'child_ids' in values:
             for _, _, cvals in values['child_ids']:
                 if cvals['specials_notification'] == Specials.company:
