@@ -175,7 +175,8 @@ class F341(FISenum):
 
 
 def get_changed_records(old_records, new_records, enum_schema, address_fields, ignore=lambda r: False):
-    # get changed records as list of (record, [(enum_schema_member, old_value, new_value), (...), ...]) tuples
+    # get changed records as list of
+    # (old_record, new_record, [(enum_schema_member, old_value, new_value), (...), ...]) tuples
     try:
         if issubclass(enum_schema, aenum.Enum):
             enum = enum_schema
@@ -218,22 +219,17 @@ def get_changed_records(old_records, new_records, enum_schema, address_fields, i
             continue
         if ignore(new_rec):
             continue
-        diff = []
         for field in address_fields:
             if new_rec[field] != old_rec[field]:
                 # add all the address fields and dump out of the loop
                 for field in address_fields:
-                    diff.append(field)
                     changed_values.append((field, old_rec[field], new_rec[field]))
                 break
         for field in enum_schema:
             if new_rec[field] != old_rec[field]:
-                diff.append(field)
                 changed_values.append((field, old_rec[field], new_rec[field]))
         if changed_values:
-            changes.append((new_rec, changed_values))
-        else:
-            continue
+            changes.append((old_rec, new_rec, changed_values))
     return changes, added, deleted
 
 def combine_by_value(key, records):
