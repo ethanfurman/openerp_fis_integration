@@ -8,7 +8,7 @@ from fis_integration.fis_schema import F27, F33, F47, F65, F74, F163
 from fnx.oe import mail
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase
 from VSS.BBxXlate.fisData import fisData
-from VSS.utils import all_equal, fix_phone, fix_date, var, Date
+from VSS.utils import fix_phone, fix_date, var, Date
 from fnx.xid import xmlid
 
 _logger = logging.getLogger(__name__)
@@ -239,48 +239,34 @@ class res_partner(xmlid, osv.Model):
         updating_from_fis = context.pop('fis-updates', False)
         datas = self.read(
                 cr, uid, ids,
-                fields=['id', 'fis_updated_by_user', 'fis_data_address', 'is_company',
+                fields=['id', 'name', 'fis_updated_by_user', 'fis_data_address', 'is_company',
                         'specials_notification', 'sn_catalog_type', 'sn_specials_type',
                         ],
                 context=context,
                 )
         # datas is a list of dicts
         if updating_from_fis:
-            if any(f in values for f in ADDRESS_FIELDS+('specials_notifications',)):
+            if any(f in values for f in ADDRESS_FIELDS+('specials_notifications','name')):
                 # if any address fields set, data must be a dict
                 #
                 # save name/addr/cszc into fis_data_address field
                 # if record has fis_updated_by_user set do not update name/addr/cszc
-                # ids is a single integer
-                if (
-                        all_equal(d['specials_notification'] for d in datas)
-                        and all_equal(d['fis_data_address'] for d in datas)
-                    ):
-                    updated_by_user = datas[0]['fis_updated_by_user'] or ''
+                #
+                # save the records individually
+                for data in datas:
+                    piecemeal_values = values.copy()
+                    updated_by_user = data['fis_updated_by_user']
                     if 'S' in updated_by_user:
-                        values.pop('specials_notification', None)
+                        piecemeal_values.pop('specials_notification', None)
                     if 'N' in updated_by_user:
-                        values.pop('name', None)
+                        piecemeal_values.pop('name', None)
                     if 'A' in updated_by_user:
-                        values['fis_data_address_changed'] = True
+                        piecemeal_values['fis_data_address_changed'] = True
                         for attr in ADDRESS_FIELDS:
-                            values.pop(attr, None)
-                else:
-                    # save the records individually
-                    for data in datas:
-                        piecemeal_values = values.copy()
-                        if 'S' in updated_by_user:
-                            piecemeal_values.pop('specials_notification', None)
-                        if 'N' in updated_by_user:
-                            piecemeal_values.pop('name', None)
-                        if 'A' in updated_by_user:
-                            if datas['fis_data_address'] and values['fis_data_address'] != datas['fis_data_address']:
-                                piecemeal_values['fis_data_address_changed'] = True
-                            for attr in ADDRESS_FIELDS:
-                                piecemeal_values.pop(attr, None)
-                        if not super(res_partner, self).write(cr, uid, data['id'], piecemeal_values, context=context):
-                            return False
-                    return True
+                            piecemeal_values.pop(attr, None)
+                    if not super(res_partner, self).write(cr, uid, data['id'], piecemeal_values, context=context):
+                        return False
+                return True
         else:
             # we only care if a latched field is being updated
             check_fis = ''
