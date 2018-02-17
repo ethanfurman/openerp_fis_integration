@@ -99,6 +99,7 @@ def fis_integration(files, method, delete):
 # helpers
 def handle_nvty(method):
     nvty_old = fisData(135, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
+    nvty_old
     # changed_records = 0
     # added_records = 0
     # changes, added, deleted = get_changed_fis_records(
@@ -118,7 +119,7 @@ def handle_nvty(method):
 
 
 def handle_csms(method):
-    print(box('processing CSMS', 'flag', '#',))
+    print('processing CSMS', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
     res = AttrDict()
     res.partner = Model(oe.get_model('res.partner'), 'csms', 'F33', context)
@@ -148,7 +149,7 @@ def handle_csms(method):
     #
     csms = fisData(33, keymatch='10%s ')
     print(csms.filename, verbose=2)
-    print(box('gathering data', 'flag'))
+    print('gathering data', border='flag')
     if method == 'quick':
         #
         # for a quick compare we can use the fis records as-is
@@ -243,7 +244,7 @@ def handle_csms(method):
                         'id', 'module', 'xml_id',
                         'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
                         'fis_valid', 'specials_notification', 'phone', 'is_company', 'customer',
-                        'fis_updated_by_user', 'active', 'fis_data_address', 'use_parent_address',
+                        'fis_updated_by_user', 'active', 'use_parent_address',
                         ],
                     context=context,
                     )
@@ -254,7 +255,7 @@ def handle_csms(method):
             if xml_id.startswith('cntct_'):
                 # do not update address from here -- it's either the default of "use parent's"
                 # or it's been changed by the user (same with specials_notification)
-                del datom.use_parent_address, datom.fis_data_address
+                del datom.use_parent_address
                 del datom.phone, datom.street, datom.street2
                 del datom.city, datom.state_id, datom.zip, datom.country_id
                 del datom.specials_notification
@@ -309,11 +310,10 @@ def handle_csms(method):
     #
     # process changes
     #
-    print(box('processing company changes', 'flag'))
+    print('processing company changes', border='flag')
     assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
             "old/new company records mismatch"
     changed_company_xml_ids = sorted(old_changed_company_records.keys())
-    echo('THERE ARE %d POSSIBLE CHANGES' % len(changed_company_xml_ids))
     for xml_id in changed_company_xml_ids:
         #
         # TODO: check actual values in OpenERP and remove "changes" that are already set
@@ -324,23 +324,26 @@ def handle_csms(method):
         new_record = new_changed_company_records[xml_id]
         assert old_record.keys() == new_record.keys(),\
                 ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
-                    ('|'.join(sorted(old_record.keys())), box(str(old_record), 'box'),
-                     '|'.join(sorted(new_record.keys())), box(str(new_record), 'box')))
-        if 'id' in old_record:
-            # old record is OpenERP's so it has the ID field already
-            new_record.id = old_record.id
-            # check for user-updated-address and specials while we're here
-            if 'A' in old_record.fis_updated_by_user:
+                    ('|'.join(sorted(old_record.keys())), box(str(old_record)),
+                     '|'.join(sorted(new_record.keys())), box(str(new_record))))
+        if method == 'full':
+            assert 'id' in old_record, box('id field missing for %r' % (xml_id, ))
+            # check for user-updated-address and specials
+            user_updates = old_record.fis_updated_by_user or ''
+            if 'A' in user_updates:
                 # drop all the address fields
-                del old_record.use_parent_address, old_record.fis_data_address
+                del old_record.use_parent_address
                 del old_record.street, old_record.street2
                 del old_record.city, old_record.state_id, old_record.zip, old_record.country_id
-                del new_record.use_parent_address, new_record.fis_data_address
+                del new_record.use_parent_address
                 del new_record.street, new_record.street2
                 del new_record.city, new_record.state_id, new_record.zip, new_record.country_id
-            if 'S' in old_record.fis_updated_by_user:
+            if 'S' in user_updates:
                 del old_record.specials_notification
                 del new_record.specials_notification
+            if 'N' in user_updates:
+                del old_record.name
+                del new_record.name
         elif xml_id in ids:
             # maybe this xml_id has already been seen?
             new_record.id = old_record.id = ids[xml_id]
@@ -351,14 +354,14 @@ def handle_csms(method):
         for key in old_record:
             if old_record[key] != new_record[key]:
                 changes[key] = new_record[key]
-                echo('%r and %r do not match' % (old_record[key], new_record[key]))
         #
         # if this is a "full" update, we already have ids, and the changes are accurate
         # otherwise, we need to get the ids, and see if the "changes" have already been
-        #   put in place on the OpenERP side
+        # put in place on the OpenERP side, as well as checking for user-updates that
+        # should not be overridden
         #
         if method == 'quick':
-            fields_to_check = changes.keys()
+            fields_to_check = changes.keys() + ['fis_updated_by_user']
             matches = res.partner.read(
                     domain=[('xml_id','=',xml_id),('module','=','F33')],
                     fields=fields_to_check,
@@ -371,17 +374,25 @@ def handle_csms(method):
             for field in changes:
                 if match[field] == changes[field]:
                     del changes[field]
+            user_updates = match.fis_updated_by_user or ''
+            if 'N' in user_updates:
+                changes.pop('name', None)
+            if 'S' in user_updates:
+                changes.pop('specials_notification', None)
+            if 'A' in user_updates:
+                for f in ('street', 'street2', 'city', 'state_id', 'zip', 'country_id'):
+                    changes.pop(f, None)
         # quick and full from here
         if changes:
             changed_count += 1
             if LIST_RECORDS:
                 echo('  F33:%s  %s' % (xml_id, new_record.name), end='  ')
-                print(repr(changes), end='')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
             if not DRYRUN:
                 res.partner.write(xml_id, new_record.id, changes)
 
-    print(box('processing contact changes', 'flag'))
+    print('processing contact changes', border='flag')
     assert set(old_changed_contact_records.keys()) == set(new_changed_contact_records.keys()),\
             "old/new contact records mismatch"
     changed_contact_xml_ids = sorted(old_changed_contact_records.keys())
@@ -395,8 +406,8 @@ def handle_csms(method):
         new_record = new_changed_contact_records[xml_id]
         assert old_record.keys() == new_record.keys(),\
                 ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
-                    ('|'.join(sorted(old_record.keys())), box(str(old_record), 'box'),
-                     '|'.join(sorted(new_record.keys())), box(str(new_record), 'box')))
+                    ('|'.join(sorted(old_record.keys())), box(str(old_record)),
+                     '|'.join(sorted(new_record.keys())), box(str(new_record))))
         if 'id' in old_record:
             # old record is OpenERP's so it has the ID field already
             new_record.id = old_record.id
@@ -428,14 +439,20 @@ def handle_csms(method):
             for field in changes:
                 if match[field] == changes[field]:
                     del changes[field]
-                else:
-                    echo('%r and %r do not match' % (match[field], changes[field]))
+            user_updates = match.fis_updated_by_user or ''
+            if 'N' in user_updates:
+                changes.pop('name', None)
+            if 'S' in user_updates:
+                changes.pop('specials_notification', None)
+            if 'A' in user_updates:
+                for f in ('street', 'street2', 'city', 'state_id', 'zip', 'country_id'):
+                    changes.pop(f, None)
         # quick and full from here
         if changes:
             changed_count += 1
             if LIST_RECORDS:
                 echo('  F33:%s  %s' % (xml_id, new_record.name), end='  ')
-                print(repr(changes), end='')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
             if not DRYRUN:
                 res.partner.write(xml_id, new_record.id, changes)
@@ -443,11 +460,9 @@ def handle_csms(method):
     #
     # add new customers
     #
-    print(box('adding records', 'flag'))
-    for company in added_company_records:
-        print('\nadding:', company, sep='\n', verbose=2)
+    print('adding company records', border='flag')
+    for key, company in added_company_records.items():
         # double-check that record doesn't already exist
-        key = company.xml_id
         customer_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F33')])
         if customer_id:
             [customer_id] = customer_id
@@ -457,7 +472,7 @@ def handle_csms(method):
             added_count += 1
             if LIST_RECORDS:
                 echo('  F33:%s  %s' % (key, company.name), end='  ')
-                print(repr(company), end='')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
                 echo()
             if not DRYRUN:
                 customer_id = res.partner.create(key, company)
@@ -467,10 +482,9 @@ def handle_csms(method):
     #
     # add new contacts
     #
-    for contact in added_company_records:
-        print('\nadding:', contact, sep='\n', verbose=2)
+    print('adding contact records', border='flag')
+    for key, contact in added_company_records.items():
         # double-check that record doesn't already exist
-        key = contact.xml_id
         parent_key = key[7:]
         customer_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F33')])
         if customer_id:
@@ -492,7 +506,7 @@ def handle_csms(method):
             added_count += 1
             if LIST_RECORDS:
                 echo('  F33:%s  %s' % (key, contact.name), end='  ')
-                print(repr(contact), end='')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in contact.items()), '||', end='')
                 echo()
             if not DRYRUN:
                 customer_id = res.partner.create(key, contact)
@@ -503,7 +517,7 @@ def handle_csms(method):
     #
     # send email for deleted customers
     #
-    print(box('deleting records', 'flag'))
+    print('deleting records', border='flag')
     if deleted_records:
         deleted_records = len(deleted_count)
         customer_list = ['%6s  %s' % ('FIS ID', 'Name')]
@@ -513,6 +527,7 @@ def handle_csms(method):
         for rec in sorted(data, key=lambda r: r[1]):
             customer_list.append("%6s  %s" % rec)
         if DELETE and not DRYRUN:
+            xml_ids = [datom.xml_id for datom in deleted_records]
             subject = 'Deleted customers  [csms, 33]'
             ids = res.partner.search([('xml_id','in',xml_ids)], context=context)
             if not res.partner.delete(ids, context=context):
@@ -533,411 +548,270 @@ def handle_csms(method):
     print('%d records added' % added_count)
     print('%d records deleted' % deleted_count)
 
-def handle_carrier_full():
-    context = {'fis-updates': True, 'active_test': False}
-    res = AttrDict()
-    res.partner = Model(oe.get_model('res.partner'), 'cnvzsv', 'F27', context)
-    cnvzsv = fisData(27, keymatch='SV10%s')
-    fis_company_records = AttrDict(default=AttrDict)
-    changed_records = 0
-    added_records = 0
-    #
-    # convert all the FIS records for comparison to the matching OpenERP records
-    #
-    print('converting FIS records')
-    for fis_rec in cnvzsv.values():
-        company = convert_carrier_rec(fis_rec)
-        fis_company_records[company.xml_id] = company
-    #
-    # now retrieve the OpenERP records that match the CNVZSV module
-    #
-    print('retrieving OpenERP records...')
-    oe_records = dict([
-        (r.xml_id, r)
-        for r in get_records(
-            oe, 'res.partner',
-            domain=[('module','=','F27')],
-            fields=[
-                'id', 'module', 'xml_id',
-                'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
-                'phone', 'fuel_surcharge', 'fis_data_address', 'fis_updated_by_user',
-                ],
-            context=context,
-            )])
-    #
-    # discern the changes
-    #
-    seen_fis = set()
-    # seen_oe = set()
-    new_fis = []
-    # deleted_fis = []
-    def select_color(row):
-        f, o, v = row
-        if o != v:
-            return grey, oldv, newv
-        else:
-            return grey, white, white
-    template = ColorTemplate(
-            '| %-21s | %-40s | %-40s |',
-            default_color=C.Dim|C.FG_Cyan,
-            select_colors=select_color,
-            multiline='wrap',
-            )
-    print('processing changes')
-    for fis_id, fis_datom in fis_company_records.items():
-        record = []
-        print('FIS:\n', fis_datom, verbose=3)
-        seen_fis.add(fis_id)
-        oe_datom = oe_records.get(fis_id)
-        if oe_datom is None:
-            new_fis.append(fis_datom)
-            continue
-        print('OpenERP:\n', oe_datom, verbose=3)
-        # compare the interesting fields
-        changes = {}
-        for field in ('name', 'phone', 'fuel_surcharge', 'fis_data_address'):
-            old_value, new_value = oe_datom[field], fis_datom[field]
-            if old_value != new_value:
-                changes[field] = fis_datom[field]
-            record.append('%s%s' % (template(field, old_value, new_value), C.AllReset))
-        record.append('Updated by user: %s%s%s' % (C.FG_Yellow, oe_datom.fis_updated_by_user, C.AllReset))
-        if 'A' not in (oe_datom.fis_updated_by_user or []):
-            for field in ('street', 'street2', 'city', 'state_id', 'zip', 'country_id'):
-                old_value, new_value =  oe_datom[field], fis_datom[field]
-                if old_value != new_value:
-                    changes[field] = new_value
-                record.append('%s%s' % (template(field, old_value, new_value), C.AllReset))
-        if (
-                script_verbosity > 1
-                and (
-                    ('fis_data_address' in changes and len(changes) > 1)
-                    or ('fis_data_address' not in changes and len(changes))
-                    )
-            ):
-            echo('\n' + '-' * 111)
-            echo('\n'.join(record))
-            echo('-' * 111)
-        # write the changes
-        changed_records += 1 if changes else 0
-        if changes:
-            if LIST_RECORDS:
-                echo('  F27:%s  %s' % (oe_datom.xml_id, changes.name), end='  ')
-                print(repr(changes), end='')
-                echo()
-            if not DRYRUN:
-                res.partner.write(oe_datom.xml_id, oe_datom.id, changes)
-    #
-    # create new records
-    #
-    added_records += len(new_fis)
-    for values in new_fis:
-        # double-check that record doesn't already exist
-        key = values.xml_id
-        name = values.name
-        if res.partner.search(domain=[('xml_id','=',key),('module','=','F27')]):
-            res.partner.error('FIS ID F27:%s (%s) already exists in OpenERP' % (key, name))
-        else:
-            added_records += 1
-            if LIST_RECORDS:
-                echo('  F27:%s  %s' % (key, name), end='  ')
-                print(repr(changes), end='')
-                echo()
-            if not DRYRUN:
-                res.partner.create(key, values)
-    print('  %d records changed' % changed_records)
-    print('  %d records added' % added_records)
-
 def handle_carrier(method):
-    print('\nprocessing CNVZsv...')
-    if method == 'full':
-        return handle_carrier_full()
+    print('processing CNVZsv', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
     res = AttrDict()
     res.partner = Model(oe.get_model('res.partner'), 'cnvzsv', 'F27', context)
+    # these are for tracking original old/new records
+    new_company_records = {}
+    old_company_records = {}
+    # these  are for tracking old/new versions of changed records
+    old_changed_company_records = {}
+    new_changed_company_records = {}
+    # these are for added/deleted records
+    added_company_records = {}
+    deleted_records = {}
+    # and the counts
+    changed_count = 0
+    added_count = 0
+    deleted_count = 0
+    ids = {}
+    #
+    # get the "old" data from:
+    # - quick -> old fis file
+    # - full -> current OpenERP data
+    #
     cnvzsv = fisData(27, keymatch='SV10%s')
     print(cnvzsv.filename, verbose=2)
-    cnvzsv_old = fisData(27, keymatch='SV10%s', data_path=config.network.fis_data_local_old_path)
-    changed_records = 0
-    added_records = 0
-    changes, added, deleted = get_changed_fis_records(
-            cnvzsv_old.values(),
-            cnvzsv.values(),
-            enum_schema=[
-                F27.name, F27.tele, F27.fuel_surcharge,
-                ],
-            address_fields=[
-                F27.addr1, F27.addr2, F27.addr3,
-                ],
-            )
-    changed_map = combine_by_value(F27, changes)
-    print('processing changes')
-    for changed_fields, records in changed_map.items():
-        print('changed fields:', changed_fields)
-        keys = [r[F27.code].strip() for r in records]
-        # get ids for existing records
-        oe_ids = res.partner.search(domain=[('module','=','F27'),('xml_id','in',keys)])
-        if not oe_ids:
-            # unable to find these "changed" records in OpenERP -- log, and move records
-            # to the add queue
-            for rec in records:
-                key = rec[F27.code]
-                name = BsnsCase(rec[F27.name])
-                res.partner.error('changed record F27:%s (%s) not found in OpenERP' % rec[F27.code])
-            continue
-        # changed_fields = (field_enum, new_value, field_enum, new_value, ...)
+    print('gathering data', border='flag')
+    if method == 'quick':
         #
-        # create values update dict for OpenERP
-        values = {}
-        address_done = False
-        sample_rec = records[0]
-        for field, value in grouped(changed_fields, 2):
-            if field is F27.name:
-                values['name'] = re.sub('sunridge', 'SunRidge', BsnsCase(records[0][F27.name]), flags=re.I)
-            elif field in (F27.addr1, F27.addr2, F27.addr3):
-                if address_done is True:
-                    continue
-                address_done = True
-                values.update(process_address(F27, sample_rec, key=sample_rec[F27.code], module='cnvzsv'))
-            elif field is F27.tele:
-                values['phone'] = fix_phone(value)
-            elif field is F27.fuel_surcharge:
-                values['fuel_surcharge'] = value.upper() == 'Y'
-        # and update OpenERP
-        assert values, "no changed fields?  problem with get_changed_fis_records or combine by value?"
-        changed_records += len(records)
-        if LIST_RECORDS:
-            for rec in records:
-                echo('  F27:%s  %s' % (rec.xml_id, rec.name), end='  ')
-                print(repr(changes), end='')
+        # for a quick compare we can use the fis records as-is
+        #
+        cnvzsv_old = fisData(27, keymatch='SV10%s', data_path=config.network.fis_data_local_old_path)
+        print(cnvzsv_old.filename, verbose=2)
+        print('collecting changed records')
+        changes, added, deleted = get_changed_fis_records(
+                cnvzsv_old.values(),
+                cnvzsv.values(),
+                enum_schema=[
+                    F27.name, F27.tele, F27.fuel_surcharge,
+                    ],
+                address_fields=[
+                    F27.addr1, F27.addr2, F27.addr3,
+                    ],
+                )
+        #
+        # we now have the subset of records that have changed, just need to separate them
+        # into old and new
+        #
+        print('sorting changed records')
+        for old, new, diffs in changes:
+            old_company = convert_carrier_rec(old)
+            old_company_records[old_company.xml_id] = old_company
+            new_company = convert_carrier_rec(new)
+            new_company_records[new_company.xml_id] = new_company
+            # changes at the FIS level don't always translate to changes at the OpenERP level
+            if old_company != new_company:
+                old_changed_company_records[old_company.xml_id] = old_company
+                new_changed_company_records[new_company.xml_id] = new_company
+            assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
+                    "old and new company records mismatch"
+        #
+        # and convert the new and deleted records
+        #
+        print('sorting new and deleted records')
+        for fis_rec in added:
+            company = convert_carrier_rec(fis_rec)
+            new_company_records[company.xml_id] = company
+            added_company_records[company.xml_id] = company
+        for fis_rec in deleted:
+            company = convert_carrier_rec(fis_rec)
+            old_company_records[company.xml_id] = company
+            deleted_records[company.xml_id] = company
+    elif method == 'full':
+        #
+        # when doing a full compare, we have to convert every single fis record before we can
+        # check for changes
+        #
+        all_fis_records = AttrDict()
+        for fis_rec in cnvzsv.values():
+            company = convert_carrier_rec(fis_rec)
+            all_fis_records[company.xml_id] = company
+        #
+        # retrieve the OpenERP records that match the CNVZsv module
+        #
+        print('retrieving OpenERP records')
+        all_oe_records = dict([
+                (r.xml_id, r)
+                for r in get_records(
+                    oe, 'res.partner',
+                    domain=[('module','=','F27')],
+                    fields=[
+                        'id', 'module', 'xml_id', 'is_carrier', 'is_company', 'use_parent_address',
+                        'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
+                        'phone', 'fuel_surcharge', 'fis_updated_by_user',
+                        ],
+                    context=context,
+                    )
+                ])
+        #
+        # now we can separate into new, changed, and deleted buckets
+        #
+        print('sorting changed, new, and deleted carrier records')
+        all_keys = set(all_fis_records.keys() + all_oe_records.keys())
+        for key in all_keys:
+            old_rec = all_oe_records.get(key)
+            new_rec = all_fis_records.get(key)
+            if old_rec is new_rec is None:
+                continue
+            if old_rec is None:
+                added_company_records[key] = new_rec
+                continue
+            if new_rec is None:
+                deleted_records[key] = old_rec
+                continue
+            # copy missing fields for proper equality testing
+            new_rec.id = old_rec.id
+            new_rec.fis_updated_by_user = old_rec.fis_updated_by_user
+            if new_rec == old_rec:
+                continue
+            #
+            # we have changes, save the records for later comparison
+            #
+            old_changed_company_records[key] = old_rec
+            new_changed_company_records[key] = new_rec
+        assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
+                "old and new company records mismatch"
+    else:
+        abort('unknown METHOD: %r' % (method, ))
+    #
+    # at this point, all records are in AttrDict format, divided by deleted, added, and changed
+    #
+    # process changes
+    #
+    print('processing carrier changes', border='flag')
+    assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
+            "old/new carrier records mismatch"
+    changed_company_xml_ids = sorted(old_changed_company_records.keys())
+    for xml_id in changed_company_xml_ids:
+        #
+        # figure out the changes
+        #
+        old_record = old_changed_company_records[xml_id]
+        new_record = new_changed_company_records[xml_id]
+        assert old_record.keys() == new_record.keys(),\
+                ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
+                    ('|'.join(sorted(old_record.keys())), box(str(old_record)),
+                     '|'.join(sorted(new_record.keys())), box(str(new_record))))
+        if method == 'full':
+            assert 'id' in old_record, box('id field missing for %r' % (xml_id, ))
+            # check for user-updated-address and specials
+            if 'A' in (old_record.fis_updated_by_user or ''):
+                # drop all the address fields
+                del old_record.use_parent_address
+                del old_record.street, old_record.street2
+                del old_record.city, old_record.state_id, old_record.zip, old_record.country_id
+                del new_record.use_parent_address
+                del new_record.street, new_record.street2
+                del new_record.city, new_record.state_id, new_record.zip, new_record.country_id
+        elif xml_id in ids:
+            # maybe this xml_id has already been seen?
+            new_record.id = old_record.id = ids[xml_id]
+        else:
+            # otherwise, we'll look it up when we check for changes against OpenERP
+            pass
+        changes = AttrDict()
+        for key in old_record:
+            if old_record[key] != new_record[key]:
+                changes[key] = new_record[key]
+        #
+        # if this is a "full" update, we already have ids, and the changes are accurate
+        # otherwise, we need to get the ids, and see if the "changes" have already been
+        #   put in place on the OpenERP side
+        #
+        if method == 'quick':
+            fields_to_check = changes.keys()
+            matches = res.partner.read(
+                    domain=[('xml_id','=',xml_id),('module','=','F27')],
+                    fields=fields_to_check,
+                    )
+            if not matches:
+                res.partner.error('changed company F27:%s not found in OpenERP' % xml_id)
+            [match] = matches
+            new_record.id = old_record.id = match.id
+            ids[xml_id] = match.id
+            for field in changes:
+                if match[field] == changes[field]:
+                    del changes[field]
+            user_updates = match.fis_updated_by_user or ''
+            if 'N' in user_updates:
+                changes.pop('name', None)
+            if 'S' in user_updates:
+                changes.pop('specials_notification', None)
+            if 'A' in user_updates:
+                for f in ('street', 'street2', 'city', 'state_id', 'zip', 'country_id'):
+                    changes.pop(f, None)
+        # quick and full from here
+        if changes:
+            changed_count += 1
+            if LIST_RECORDS:
+                echo('  F27:%s  %s' % (xml_id, new_record.name), end='  ')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
-        if not DRYRUN:
-            res.partner.write(keys, oe_ids, values)
+            if not DRYRUN:
+                res.partner.write(xml_id, new_record.id, changes)
     #
     # now add new carriers
     #
-    print('adding records')
-    for fis_rec in added:
-        print('\nadding:', fis_rec, sep='\n', verbose=2)
-        company = convert_carrier_rec(fis_rec)
-        key = company.xml_id
-        name = company.name
+    print('adding records', border='flag')
+    for key, company in added_company_records.items():
+        echo(company, border='box')
         # double-check that record doesn't already exist
-        if res.partner.search(domain=[('xml_id','=',key),('module','=','F27')]):
-            res.partner.error('FIS ID F27:%s (%s) already exists in OpenERP' % (key, name))
+        customer_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F27')])
+        if customer_id:
+            [customer_id] = customer_id
+            ids[key] = customer_id
+            res.partner.error('FIS ID F27:%s (%s) already exists in OpenERP' % (key, company.name))
         else:
-            added_records += 1
+            added_count += 1
             if LIST_RECORDS:
-                echo('  F27:%s  %s' % (key, values.name), end='  ')
-                print(repr(changes), end='')
+                echo('  F27:%s  %s' % (key, company.name), end='  ')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
                 echo()
             if not DRYRUN:
-                res.partner.create(key, values)
+                customer_id = res.partner.create(key, company)
+                if customer_id:
+                    company.id = customer_id
+                    ids[key] = customer_id
     #
     # send email for deleted carriers
     #
-    if deleted:
-        carrier_list = ['%6s  %s' % ('FIS ID', 'Name')]
+    print('deleting records', border='flag')
+    if deleted_records:
+        deleted_records = len(deleted_count)
+        customer_list = ['%6s  %s' % ('FIS ID', 'Name')]
         data = []
-        for rec in deleted:
-            xml_id = rec[F27.code]
-            name = BsnsCase(rec[F27.name])
-            data.append(xml_id, name)
+        for datom in deleted_records:
+            data.append(datom.key, datom.name)
         for rec in sorted(data, key=lambda r: r[1]):
-            carrier_list.append("%6s  %s" % rec)
+            customer_list.append("%6s  %s" % rec)
+        if DELETE and not DRYRUN:
+            xml_ids = [datom.xml_id for datom in deleted_records]
+            subject = 'Deleted customers  [cnvzsv, 27]'
+            ids = res.partner.search([('xml_id','in',xml_ids)], context=context)
+            if not res.partner.delete(ids, context=context):
+                subject = "Unable to delete customers  [cnvzsv, 27]"
+        else:
+            subject = "customers deleted in FIS... what action in OpenERP?  [cnvzsv, 27]"
         mail(message=
                 "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
                 # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
                 # "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
                 # "Cc: Alyssa Corinne <alyssa@sunridgefarms.com>\n"
                 "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
-                "Subject: carriers deleted in FIS... what action in OpenERP?  [cnvzsv, 27]\n"
-                "\n"
-                + '\n'.join(carrier_list),
+                "Subject: %s\n"
+                "\n" % subject
+                + '\n'.join(customer_list),
                 )
-    print('  %d records changed' % changed_records)
-    print('  %d records added' % added_records)
-
-def handle_emp1_full():
-    context = {'hr_welcome': False, 'fis-updates': True, 'active_test': False}
-    today = Date.today()
-    hr = AttrDict()
-    hr.employee = Model(oe.get_model('hr.employee'), 'emp1', 'F74-emp', context)
-    res = AttrDict()
-    res.partner = Model(oe.get_model('res.partner'), 'emp1', 'F74', context)
-    employee_records = []
-    changed_records = 0
-    added_records = 0
-    #
-    # convert all the FIS records for comparison to the matching OpenERP records
-    #
-    for fis_rec in hr.employee.values():
-        employee = convert_emp1_rec(fis_rec)
-        if employee is not None:
-            employee_records[employee.emp_num] = employee
-    #
-    # now retrieve the OpenERP records that match the CNVZSV module
-    #
-    print('retrieving OpenERP records...')
-    oe_records = dict([
-        (r.xml_id, r)
-        for r in get_records(
-            oe, 'hr.employee',
-            domain=[('module','=','F74')],
-            fields=[
-                'id', 'module', 'xml_id', 'identification_id',
-                'name', 'home_street', 'home_street2', 'home_city',
-                'home_state_id', 'home_zip', 'home_country_id', 'home_phone', 'ssnid',
-                'hire_date', 'fire_date', 'active' 'birthday', 'status_flag', 'pension_plan',
-                'pay_type', 'hourly_rate', 'last_raise', 'marital', 'gender',
-                'emergency_contact', 'emergency_number', 'federal_exemptions', 'state_exemptions',
-                ],
-            context=context,
-            )])
-    #
-    # discern the changes
-    #
-    seen_fis = set()
-    # seen_oe = set()
-    new_fis = []
-    # deleted_fis = []
-    def select_color(row):
-        f, o, v = row
-        if o != v:
-            return grey, oldv, newv
-        else:
-            return grey, white, white
-    template = ColorTemplate(
-            '| %-21s | %-40s | %-40s |',
-            default_color=C.Dim|C.FG_Cyan,
-            select_colors=select_color,
-            multiline='wrap',
-            )
-    print('--== PROCESSING CHANGES ==--')
-    for fis_id, fis_datom in employee_records.items():
-        record = []
-        print('FIS:\n', fis_datom, verbose=3)
-        seen_fis.add(fis_id)
-        oe_datom = oe_records.get(fis_id)
-        if oe_datom is None:
-            new_fis.append(fis_datom)
-            continue
-        print('OpenERP:\n', oe_datom, verbose=3)
-        # compare the interesting fields
-        changes = {}
-        for field in [
-                'name', 'home_street', 'home_street2', 'home_city',
-                'home_state_id', 'home_zip', 'home_country_id', 'home_phone', 'ssnid',
-                'hire_date', 'fire_date', 'active' 'birthday', 'status_flag', 'pension_plan',
-                'pay_type', 'hourly_rate', 'last_raise', 'marital', 'gender',
-                'emergency_contact', 'emergency_number', 'federal_exemptions', 'state_exemptions',
-                ]:
-            old_value, new_value = oe_datom[field], fis_datom[field]
-            if old_value != new_value:
-                changes[field] = fis_datom[field]
-            record.append('%s%s' % (template(field, old_value, new_value), C.AllReset))
-        # write the changes
-        print('\n'.join(record))
-        changed_records += 1 if changes else 0
-        if changes and not DRYRUN:
-            res.partner.write(oe_datom.xml_id, oe_datom.id, changes)
-    #
-    # add new records
-    #
-    print('--== ADDING RECORDS ==--')
-    active_test_needed = set()
-    birthday_test_needed = set()
-    if DRYRUN:
-        added_records += len(new_fis)
-    else:
-        for fis_datom in new_fis:
-            emp_num = fis_datom.emp_num
-            emp_name = fis_datom.emp_name
-            # check for existing res.partner record, and use it if it exists
-            rp_id = hr.employee.search(domain=[('module','=','F74'),('xml_id','=',emp_num)])
-            if rp_id:
-                rp_id = rp_id[0]
-            else:
-                # otherwise, try to create it, leaving it at False (0) on failure
-                rp_id = res.partner.create(emp_num, {'name': emp_name, 'xml_id': emp_num, 'module': 'F74'})
-            ## double-check that record doesn't already exist
-            employee_id = hr.employee.search(domain=[('xml_id','=',emp_num),('module','=','F74-emp')])
-            if employee_id:
-                employee_id = employee_id[0]
-                hr.employee.error('FIS ID F74-emp:%s (%s) already exists in OpenERP' % (emp_num, emp_name))
-            else:
-                added_records += 1
-                employee_id = hr.employee.create(emp_num, fis_datom)
-                if not employee_id:
-                    continue
-            if rp_id:
-                # update partner record with link to employee record
-                res.partner.write(emp_num, rp_id, {'employee_id': employee_id})
-            birthday_test_needed.add(employee_id)
-            active_test_needed.add(employee_id)
-    #
-    # check for suspect birthdates
-    #
-    if birthday_test_needed:
-        underage = today.replace(delta_year=-18).strftime(DEFAULT_SERVER_DATE_FORMAT)
-        overage = today.replace(delta_year=+65).strftime(DEFAULT_SERVER_DATE_FORMAT)
-        bad_birthdays = hr.employee.read(
-                domain=[('id','in',list(birthday_test_needed)),'|',('birthday','<',underage),('birthday','>',overage)],
-                fields=['id', 'birthday', 'name', 'xml_id'],
-                )
-        if bad_birthdays:
-            employee_list = []
-            for rec in bad_birthdays:
-                rec.name = NameCaseReversed(rec.name)
-                rec.birthday = Date.strptime(rec.birthday, DEFAULT_SERVER_DATE_FORMAT)#.strftime('%d-%b-%Y')
-            for rec in sorted(bad_birthdays, key=lambda r: r.name):
-                employee_list.append("%5s:  %s - %s" % (rec.xml_id, rec.birthday, rec.name))
-            mail(message=
-                    "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
-                    # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
-                    # "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
-                    # "Cc: Alyssa Corinne <alyssa@sunridgefarms.com>\n"
-                    "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
-                    "Subject: employees with suspect birthdates in FIS [emp1, 74]\n"
-                    "\n"
-                    + '\n'.join(employee_list),
-                    )
-    #
-    # check for (in)active records
-    #
-    if active_test_needed:
-        active_test = hr.employee.read(
-                domain=[('id','in',list(active_test_needed))],
-                fields=['id', 'hire_date', 'fire_date','xml_id'],
-                )
-        active = []
-        active_keys = []
-        inactive = []
-        inactive_keys = []
-        for rec in active_test:
-            if not rec.fire_date:
-                active.append(rec.id)
-                active_keys.append(rec.xml_id)
-            elif rec.fire_date < rec.hire_date:
-                active.append(rec.id)
-                active_keys.append(rec.xml_id)
-            else:
-                inactive.append(rec.id)
-                inactive_keys.append(rec.xml_id)
-        if active:
-            print('setting %d records active' % len(active_keys))
-            if not DRYRUN:
-                hr.employee.write(active_keys, active, {'active': True})
-        if inactive:
-            print('setting %d records inactive' % len(inactive_keys))
-            if not DRYRUN:
-                hr.employee.write(inactive_keys, inactive, {'active': False})
-
+    print('%d records changed' % changed_count)
+    print('%d records added' % added_count)
+    print('%d records deleted' % deleted_count)
 
 def handle_emp1(method):
     print('\nprocessing EMP1')
     print(emp1.filename, verbose=2)
-    if method == 'full':
-        return handle_emp1_full()
     context = {'hr_welcome': False, 'fis-updates': True, 'active_test': False}
     today = Date.today()
     hr = AttrDict()
@@ -1535,10 +1409,9 @@ def convert_emp1_rec(fis_rec):
     return employee
 
 def convert_carrier_rec(fis_rec):
-    print('\nadding:', fis_rec, sep='\n', verbose=2)
     company = AttrDict()
     company.name = re.sub('sunridge', 'SunRidge', BsnsCase(fis_rec[F27.name]), flags=re.I)
-    company.xml_id = company.identification_id = key = fis_rec[F27.code].strip()
+    company.xml_id = key = fis_rec[F27.code].strip()
     company.module = 'F27'
     company.is_company = True
     company.is_carrier = True
@@ -1556,7 +1429,7 @@ def convert_csms_rec(fis_rec):
     # - 'module', 'xml_id',
     # - 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
     # - 'fis_valid', 'specials_notification', 'phone', 'is_company', 'customer',
-    # - 'use_parent_address', 'active', 'fis_data_address',
+    # - 'use_parent_address', 'active'
     #
     # fields coming from OpenERP that are missing/invalid on the FIS side
     # - 'id', 'fis_updated_by_user'
@@ -1702,18 +1575,6 @@ def process_address(schema, fis_rec, key=None, module=None, home=False):
                     Model.errors[module].append("%s record %s has invalid country <%r>" % (module, key, country))
             else:
                 result['country_id'] = country_id
-    if not home:
-        result['fis_data_address'] = '\n'.join([
-                l
-                for l in (
-                    BsnsCase(fis_rec[schema.name]),
-                    addr1,
-                    addr2,
-                    ('%s %s' % (', '.join([f for f in (city, state) if f]), postal)).strip(),
-                    country,
-                    )
-                if l.strip()
-                ])
     return result
 
 def is_invalid_posm_record(rec):
@@ -1794,8 +1655,8 @@ class Model(object):
         if context is None:
             context = self.context
         try:
-            print(box('writing to %s using %s\n and %s' % (ids, pfm(values), context), 'box'), verbose=2)
-            print(box(str(self.table.write(ids, pfm(values), context=context)), 'box'), verbose=2)
+            print('writing to %s using %s\n and %s' % (ids, pfm(values), context), border='box', verbose=2)
+            print(str(self.table.write(ids, pfm(values), context=context)), border='box', verbose=2)
             return True
         except:
             cls, exc, tb = sys.exc_info()
