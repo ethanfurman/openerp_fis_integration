@@ -698,7 +698,8 @@ def handle_carrier(method):
         if method == 'full':
             assert 'id' in old_record, box('id field missing for %r' % (xml_id, ))
             # check for user-updated-address and specials
-            if 'A' in (old_record.fis_updated_by_user or ''):
+            user_updates = old_record.fis_updated_by_user or ''
+            if 'A' in user_updates:
                 # drop all the address fields
                 del old_record.use_parent_address
                 del old_record.street, old_record.street2
@@ -706,6 +707,12 @@ def handle_carrier(method):
                 del new_record.use_parent_address
                 del new_record.street, new_record.street2
                 del new_record.city, new_record.state_id, new_record.zip, new_record.country_id
+            if 'N' in user_updates:
+                del old_record.name
+                del new_record.name
+            if 'S' in user_updates:
+                del old_record.specials_notification
+                del new_record.specials_notification
         elif xml_id in ids:
             # maybe this xml_id has already been seen?
             new_record.id = old_record.id = ids[xml_id]
