@@ -218,11 +218,6 @@ class res_partner(xmlid, osv.Model):
     def create(self, cr, uid, values, context=None):
         if context is None:
             context = {}
-        if 'xml_id' in values and 'module' in values and values['xml_id'] and values['module']:
-            # we have an FIS record -- check for appropriate fields
-            if 'fis_data_address' not in values:
-                raise ValueError('missing required fis_data_address field for %s:%s'
-                        % (values['module'], values['xml_id']))
         if 'child_ids' in values:
             for _, _, cvals in values['child_ids']:
                 if cvals['specials_notification'] == Specials.company:
