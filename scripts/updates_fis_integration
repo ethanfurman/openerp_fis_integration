@@ -364,7 +364,7 @@ def handle_csms(method):
             fields_to_check = changes.keys() + ['fis_updated_by_user']
             matches = res.partner.read(
                     domain=[('xml_id','=',xml_id),('module','=','F33')],
-                    fields=fields_to_check,
+                    fields=fields_to_check+['fis_updated_by_user'],
                     )
             if not matches:
                 res.partner.error('changed company F33:%s not found in OpenERP' % xml_id)
@@ -429,7 +429,7 @@ def handle_csms(method):
             fields_to_check = changes.keys()
             matches = res.partner.read(
                     domain=[('xml_id','=',xml_id),('module','=','F33')],
-                    fields=fields_to_check,
+                    fields=fields_to_check+['fis_updated_by_user'],
                     )
             if not matches:
                 res.partner.error('changed contact F33:%s not found in OpenERP' % xml_id)
