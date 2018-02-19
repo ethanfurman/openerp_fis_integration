@@ -250,7 +250,7 @@ class res_partner(xmlid, osv.Model):
                 # save the records individually
                 for data in datas:
                     piecemeal_values = values.copy()
-                    updated_by_user = data['fis_updated_by_user']
+                    updated_by_user = data['fis_updated_by_user'] or ''
                     if 'S' in updated_by_user:
                         piecemeal_values.pop('specials_notification', None)
                     if 'N' in updated_by_user:
