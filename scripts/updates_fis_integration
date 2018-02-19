@@ -391,7 +391,6 @@ def handle_csms(method):
                 echo()
             if not DRYRUN:
                 res.partner.write(xml_id, new_record.id, changes)
-
     print('processing contact changes', border='flag')
     assert set(old_changed_contact_records.keys()) == set(new_changed_contact_records.keys()),\
             "old/new contact records mismatch"
@@ -499,9 +498,10 @@ def handle_csms(method):
                 parent_id = res.partner.search(domain=[('xml_id','=',parent_key),('module','=','F33')])
                 if parent_id:
                     contact.parent_id = parent_id[0]
+                    ids[parent_key] = parent_id
                 else:
-                    print('  unable to find parent')
-                    res.partner.error('unable to find parent (%r)' % (parent_key, ))
+                    print('  unable to find parent for %r' % key)
+                    res.partner.error('unable to find parent for %r (%r)' % (key, parent_key, ))
                     continue
             added_count += 1
             if LIST_RECORDS:
