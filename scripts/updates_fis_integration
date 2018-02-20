@@ -817,193 +817,304 @@ def handle_carrier(method):
     print('%d records deleted' % deleted_count)
 
 def handle_emp1(method):
-    print('\nprocessing EMP1')
+    print('processing EMP1', border='#')
     print(emp1.filename, verbose=2)
     context = {'hr_welcome': False, 'fis-updates': True, 'active_test': False}
-    today = Date.today()
+    # today = Date.today()
     hr = AttrDict()
     hr.employee = Model(oe.get_model('hr.employee'), 'emp1', 'F74-emp', context)
     res = AttrDict()
     res.partner = Model(oe.get_model('res.partner'), 'emp1', 'F74', context)
-    emp1_old = fisData(74, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
-    changed_records = 0
-    added_records = 0
-    changes, added, deleted = get_changed_fis_records(
-            emp1_old.values(),
-            emp1.values(),
-            enum_schema=[
-                F74.name, F74.ssn, F74.tele, F74.date_hired, F74.date_terminated,
-                F74.birth_date, F74.last_raise, F74.status_flag, F74.pay_type,
-                F74.marital_status, F74.pension_status, F74.gender, F74.emergency_contact,
-                F74.emergency_phone, F74.exempt_fed, F74.exempt_state, F74.hourly_rate,
-                ],
-            address_fields=[
-                F74.addr1, F74.addr2, F74.addr3,
-                ],
-            ignore=lambda r: int(r[F74.emp_num]) >= 9000,
-            )
-    changed_map = combine_by_value(F74, changes)
+    # these are for tracking original old/new records
+    new_employee_records = {}
+    old_employee_records = {}
+    # these  are for tracking old/new versions of changed records
+    old_changed_employee_records = {}
+    new_changed_employee_records = {}
+    # these are for added/deleted records
+    added_employee_records = {}
+    deleted_records = {}
+    # and counts and tests
+    changed_count = 0
+    added_count = 0
+    deleted_count = 0
+    ids = {}
     active_test_needed = set()
-    birthday_test_needed = set()
-    print('processing changes')
-    for changed_fields, records in changed_map.items():
-        # get ids for existing records
-        keys = [r[F74.emp_num].strip() for r in records]
-        oe_ids = hr.employee.search(domain=[('module','=','F74-emp'),('xml_id','in',keys)])
-        if not oe_ids:
-            # unable to find these "changed" records in OpenERP -- log, and move records
-            # to the add queue
-            for rec in records:
-                hr.employee.error('changed record F74:%s not found in OpenERP' % rec[F74.code])
-            continue
-        # changed_fields = (field_enum, new_value, field_enum, new_value, ...)
+    # birthday_test_needed = set()
+    #
+    # get the "old" data from:
+    # - quick -> old fis file
+    # - full -> current OpenERP data
+    #
+    print('gathering data', border='lined')
+    if method == 'quick':
         #
-        # create values update dict for OpenERP
-        values = {}
-        address_done = False
-        sample_rec = records[0]
-        for field, value in grouped(changed_fields, 2):
-            if field is F74.name:
-                values['name'] = re.sub('sunridge', 'SunRidge', NameCase(records[0][F74.name]), flags=re.I)
-            elif field in (F74.addr1, F74.addr2, F74.addr3):
-                if address_done is True:
-                    continue
-                address_done = True
-                values.update(process_address(F74, sample_rec, key=sample_rec[F74.emp_num], module='emp1', home=True))
-            elif field is F74.tele:
-                values['home_phone'] = fix_phone(value)
-            elif field is F74.ssn:
-                if len(value) == 9:
-                    value = '%s-%s-%s' % (value[:3], value[3:5], value[5:])
-                values['ssnid'] = value
-            elif field is F74.date_hired:
-                active_test_needed |= set(oe_ids)
-                values['hire_date'] = fix_date(value)
-            elif field is F74.date_terminated:
-                active_test_needed |= set(oe_ids)
-                values['fire_date'] = fix_date(value)
-            elif field is F74.birth_date:
-                birthday_test_needed |= set(oe_ids)
-                values['birthday'] = fix_date(value, delta_year=-100)
-            elif field is F74.status_flag:
-                values['status_flag'] = value
-            elif field is F74.pension_status:
-                values['pension_plan'] = value.upper() == 'Y'
-            elif field is F74.pay_type:
-                value['pay_type'] = ('salary', 'hourly')[value.upper() == 'H']
-            elif field is F74.hourly_rate:
-                values['hourly_rate'] = value
-            elif field is F74.last_raise:
-                values['last_raise'] = fix_date(value)
-            elif field is F74.exempt_fed:
-                values['federal_exemptions'] = int(value or 0)
-            elif field is F74.exempt_state:
-                values['state_exemptions'] = int(value or 0)
-            elif field is F74.emergency_contact:
-                values['emergency_contact'] = NameCase(value)
-            elif field is F74.emergency_phone:
-                values['emergency_number'] = fix_phone(value)
-            elif field is F74.marital_status:
-                values['marital'] = ('single', 'married')[value.upper() == 'M']
-            elif field is F74.gender:
-                values['gender'] = ('male', 'female')[value.upper() == 'F']
-        # and update OpenERP
-        assert values, "no changed fields?  problem with get_changed_fis_records or combine by value?"
-        changed_records += len(records)
-        if not DRYRUN:
-            hr.employee.write(keys, oe_ids, values)
+        # for a quick compare we can use the fis records as-is
+        #
+        emp1_old = fisData(74, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
+        print(emp1_old.filename, verbose=2)
+        print('collecting changed records')
+        changes, added, deleted = get_changed_fis_records(
+                emp1_old.values(),
+                emp1.values(),
+                enum_schema=[
+                    F74.name, F74.ssn, F74.tele, F74.date_hired, F74.date_terminated,
+                    F74.birth_date, F74.last_raise, F74.status_flag, F74.pay_type,
+                    F74.marital_status, F74.pension_status, F74.gender, F74.emergency_contact,
+                    F74.emergency_phone, F74.exempt_fed, F74.exempt_state, F74.hourly_rate,
+                    ],
+                address_fields=[
+                    F74.addr1, F74.addr2, F74.addr3,
+                    ],
+                ignore=lambda r: int(r[F74.emp_num]) >= 9000,
+                )
+        #
+        # we now have the subset of records that have changed, just need to separate them
+        # into old and new
+        #
+        print('sorting changed records')
+        for old, new, diffs in changes:
+            old_employee = convert_emp1_rec(old)
+            old_employee_records[old_employee.xml_id] = old_employee
+            new_employee = convert_emp1_rec(new)
+            new_employee_records[new_employee.xml_id] = new_employee
+            # changes at the FIS level don't always translate to changes at the OpenERP level
+            if old_employee != new_employee:
+                old_changed_employee_records[old_employee.xml_id] = old_employee
+                new_changed_employee_records[new_employee.xml_id] = new_employee
+            assert set(old_changed_employee_records.keys()) == set(new_changed_employee_records.keys()),\
+                    "old and new employee records mismatch"
+        #
+        # and convert the new and deleted records
+        #
+        print('sorting new and deleted records')
+        for fis_rec in added:
+            employee = convert_emp1_rec(fis_rec)
+            new_employee_records[employee.xml_id] = employee
+            added_employee_records[employee.xml_id] = employee
+        for fis_rec in deleted:
+            employee = convert_emp1_rec(fis_rec)
+            old_employee_records[employee.xml_id] = employee
+            deleted_records[employee.xml_id] = employee
+    elif method == 'full':
+        #
+        # when doing a full compare, we have to convert every single fis record before we can
+        # check for changes
+        #
+        all_fis_records = AttrDict()
+        for fis_rec in emp1.values():
+            employee = convert_emp1_rec(fis_rec)
+            if employee is None:
+                # print('skipping %r' % (fis_rec[F74.emp_num], ))
+                continue
+            all_fis_records[employee.xml_id] = employee
+        #
+        # retrieve the OpenERP records that match the CNVZsv module
+        #
+        print('retrieving OpenERP records')
+        all_oe_records = dict([
+                (r.xml_id, r)
+                for r in get_records(
+                    oe, 'hr.employee',
+                    domain=[('module','=','F74-emp')],
+                    fields=[
+                        'id', 'module', 'xml_id', 'name', 'employment_type', 'ssnid', 'home_phone',
+                        'home_street', 'home_street2', 'home_city', 'home_state_id', 'home_zip', 'home_country_id',
+                        'hire_date', 'fire_date', 'active', 'status_flag', 'pension_plan',
+                        'pay_type', 'hourly_rate', 'last_raise', 'marital', 'gender', 'identification_id',
+                        'emergency_contact', 'emergency_number', 'state_exemptions', 'federal_exemptions',
+                        ],
+                    context=context,
+                    )
+                ])
+        #
+        # now we can separate into new, changed, and deleted buckets
+        #
+        print('sorting changed, new, and deleted emp1 records')
+        all_keys = set(all_fis_records.keys() + all_oe_records.keys())
+        for key in all_keys:
+            old_rec = all_oe_records.get(key)
+            new_rec = all_fis_records.get(key)
+            if old_rec is new_rec is None:
+                continue
+            if old_rec is None:
+                added_employee_records[key] = new_rec
+                continue
+            if new_rec is None:
+                deleted_records[key] = old_rec
+                continue
+            # copy missing fields for proper equality testing
+            new_rec.id = old_rec.id
+            if new_rec == old_rec:
+                continue
+            #
+            # we have changes, save the records for later comparison
+            #
+            old_changed_employee_records[key] = old_rec
+            new_changed_employee_records[key] = new_rec
+        assert set(old_changed_employee_records.keys()) == set(new_changed_employee_records.keys()),\
+                "old and new employee records mismatch"
+    else:
+        abort('unknown METHOD: %r' % (method, ))
+    #
+    # at this point, all records are in AttrDict format, divided by deleted, added, and changed
+    #
+    # process changes
+    #
+    print('processing emp1 changes', border='lined')
+    assert set(old_changed_employee_records.keys()) == set(new_changed_employee_records.keys()),\
+            "old/new emp1 records mismatch"
+    changed_employee_xml_ids = sorted(old_changed_employee_records.keys())
+    for xml_id in changed_employee_xml_ids:
+        #
+        # figure out the changes
+        #
+        old_record = old_changed_employee_records[xml_id]
+        new_record = new_changed_employee_records[xml_id]
+        assert old_record.keys() == new_record.keys(),\
+                ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
+                    ('|'.join(sorted(old_record.keys())), box(str(old_record)),
+                     '|'.join(sorted(new_record.keys())), box(str(new_record))))
+        if method == 'full':
+            assert 'id' in old_record, box('id field missing for %r' % (xml_id, ))
+        elif xml_id in ids:
+            # maybe this xml_id has already been seen?
+            new_record.id = old_record.id = ids[xml_id]
+        else:
+            # otherwise, we'll look it up when we check for changes against OpenERP
+            pass
+        changes = AttrDict()
+        for key in old_record:
+            if old_record[key] != new_record[key]:
+                changes[key] = new_record[key]
+        #
+        # if this is a "full" update, we already have ids, and the changes are accurate
+        # otherwise, we need to get the ids, and see if the "changes" have already been
+        #   put in place on the OpenERP side
+        #
+        if method == 'quick':
+            fields_to_check = changes.keys()
+            matches = hr.employee.read(
+                    domain=[('xml_id','=',xml_id),('module','=','F74-emp')],
+                    fields=fields_to_check,
+                    )
+            if not matches:
+                hr.employee.error('changed employee F74-emp:%s not found in OpenERP' % xml_id)
+                continue
+            print(matches, border='box')
+            [match] = matches
+            new_record.id = old_record.id = match.id
+            ids[xml_id] = match.id
+            for field in changes:
+                if match[field] == changes[field]:
+                    del changes[field]
+        # quick and full from here
+        if changes:
+            changed_count += 1
+            if LIST_RECORDS:
+                echo('  F74-emp:%s  %s' % (xml_id, new_record.name), end='  ')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
+                echo()
+            if not DRYRUN:
+                hr.employee.write(xml_id, new_record.id, changes)
     #
     # now add new employees
     #
-    print('adding records')
-    if DRYRUN:
-        added_records += len(added)
-    else:
-        for fis_rec in added:
-            employee = convert_emp1_rec(fis_rec)
-            if employee is None:
-                continue
-            # check for existing res.partner record, and use it if it exists
-            emp_num = employee.xml_id
-            emp_name = employee.name
-            rp_id = hr.employee.search(domain=[('module','=','F74'),('xml_id','=',emp_num)])
-            if rp_id:
-                rp_id = rp_id[0]
-            else:
-                # otherwise, try to create it, leaving it at False (0) on failure
-                rp_id = res.partner.create(emp_num, {'name': emp_name, 'xml_id': emp_num, 'module': 'F74'})
-            ## double-check that record doesn't already exist
-            employee_id = hr.employee.search(domain=[('xml_id','=',emp_num),('module','=','F74-emp')])
-            if employee_id:
-                employee_id = employee_id[0]
-                hr.employee.error('FIS ID F74-emp:%s (%s) already exists in OpenERP' % (emp_num, emp_name))
-            else:
-                added_records += 1
-                employee_id = hr.employee.create(emp_num, values)
+    print('adding records', border='lined')
+    for key, employee in added_employee_records.items():
+        # double-check that record doesn't already exist
+        employee_id = hr.employee.search(domain=[('xml_id','=',key),('module','=','F74-emp')])
+        if employee_id:
+            [employee_id] = employee_id
+            ids[key] = employee_id
+            hr.employee.error('FIS ID F74-emp:%s (%s) already exists in OpenERP' % (key, employee.name))
+        else:
+            added_count += 1
+            if LIST_RECORDS:
+                echo('  F74-emp:%s  %s' % (key, employee.name), end='  ')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in employee.items()), '||', end='')
+                echo()
+            if not DRYRUN:
+                employee_id = hr.employee.create(key, employee)
                 if not employee_id:
                     continue
-            if rp_id:
-                # update partner record with link to employee record
-                res.partner.write(emp_num, rp_id, {'employee_id': employee_id})
-            birthday_test_needed.add(employee_id)
-            active_test_needed.add(employee_id)
+                employee.id = employee_id
+                ids[key] = employee_id
+                # check for existing res.partner record, and use it if it exists
+                emp_num = employee.xml_id
+                emp_name = employee.name
+                rp_id = hr.employee.search(domain=[('module','=','F74'),('xml_id','=',emp_num)])
+                if rp_id:
+                    # update res.partner record with employee link
+                    rp_id = rp_id[0]
+                    res.partner.write(emp_num, rp_id, {'employee_id': employee_id})
+                else:
+                    # otherwise, try to create it, leaving it at False (0) on failure
+                    rp_id = res.partner.create(
+                            emp_num,
+                            {'name': emp_name, 'xml_id': emp_num, 'module': 'F74', 'employee_id': employee_id},
+                            )
+
+
     #
     # send email for deleted employees
     #
-    if deleted:
+    if deleted_records:
+        deleted_count = len(deleted_records)
         employee_list = ['%6s  %-11s  %-11s  %s' % ('Emp. #', 'Start Date', 'End Date', 'Employee Name')]
         data = []
-        for rec in deleted:
-            emp_num = rec[F74.emp_num]
-            name = NameCaseReversed(rec[F74.name])
-            if rec[F74.date_hired]:
-                date_hired = fix_date(rec[F74.date_hired])
-            else:
-                date_hired = ''
-            if rec[F74.date_terminated]:
-                date_terminated = fix_date(rec[F74.date_terminated])
-            else:
-                date_terminated = ''
+        for emp_num, datom in deleted_records.items():
+            name = NameCaseReversed(datom.name)
+            date_hired = datom.hire_date or ''
+            date_terminated = datom.fire_date or ''
             data.append((emp_num, date_hired, date_terminated, name))
         for rec in sorted(data, key=lambda r: r[3]):
             employee_list.append("%6s  %-11s  %-11s  %s" % rec)
+        if DELETE and not DRYRUN:
+            xml_ids = [datom.xml_id for datom in deleted_records]
+            subject = 'Deleted employees  [emp1, 74]'
+            ids = hr.employee.search([('xml_id','in',xml_ids)], context=context)
+            if not hr.employee.delete(ids, context=context):
+                subject = "Unable to delete employees  [emp1, 74]"
+        else:
+            subject = "employees deleted in FIS... what action in OpenERP?  [emp1, 74]"
         mail(message=
                 "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
                 # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
                 # "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
                 # "Cc: Alyssa Corinne <alyssa@sunridgefarms.com>\n"
                 "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
-                "Subject: employees deleted in FIS... what action in OpenERP?\n"
-                "\n"
+                "Subject: %s\n"
+                "\n" % subject
                 + '\n'.join(employee_list),
                 )
     #
     # check for suspect birthdates
     #
-    if birthday_test_needed:
-        underage = today.replace(delta_year=-18).strftime(DEFAULT_SERVER_DATE_FORMAT)
-        overage = today.replace(delta_year=+65).strftime(DEFAULT_SERVER_DATE_FORMAT)
-        bad_birthdays = hr.employee.read(
-                domain=[('id','in',list(birthday_test_needed)),'|',('birthday','<',underage),('birthday','>',overage)],
-                fields=['id', 'birthday', 'name', 'xml_id'],
-                )
-        if bad_birthdays:
-            employee_list = []
-            for rec in bad_birthdays:
-                rec.name = NameCaseReversed(rec.name)
-                rec.birthday = Date.strptime(rec.birthday, DEFAULT_SERVER_DATE_FORMAT)#.strftime('%d-%b-%Y')
-            for rec in sorted(bad_birthdays, key=lambda r: r.name):
-                employee_list.append("%5s:  %s - %s" % (rec.xml_id, rec.birthday, rec.name))
-            mail(message=
-                    "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
-                    # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
-                    # "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
-                    # "Cc: Alyssa Corinne <alyssa@sunridgefarms.com>\n"
-                    "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
-                    "Subject: employees with suspect birthdates in FIS [emp1, 74]\n"
-                    "\n"
-                    + '\n'.join(employee_list),
-                    )
+    # if birthday_test_needed:
+    #     underage = today.replace(delta_year=-18).strftime(DEFAULT_SERVER_DATE_FORMAT)
+    #     overage = today.replace(delta_year=+65).strftime(DEFAULT_SERVER_DATE_FORMAT)
+    #     bad_birthdays = hr.employee.read(
+    #             domain=[('id','in',list(birthday_test_needed)),'|',('birthday','<',underage),('birthday','>',overage)],
+    #             fields=['id', 'birthday', 'name', 'xml_id'],
+    #             )
+    #     if bad_birthdays:
+    #         employee_list = []
+    #         for rec in bad_birthdays:
+    #             rec.name = NameCaseReversed(rec.name)
+    #             rec.birthday = Date.strptime(rec.birthday, DEFAULT_SERVER_DATE_FORMAT)#.strftime('%d-%b-%Y')
+    #         for rec in sorted(bad_birthdays, key=lambda r: r.name):
+    #             employee_list.append("%5s:  %s - %s" % (rec.xml_id, rec.birthday, rec.name))
+    #         mail(message=
+    #                 "From: FIS Integration Continuous Update <noreply@sunridgefarms.com>\n"
+    #                 # "To: Ron Giannini <rgiannini@sunridgefarms.com>\n"
+    #                 # "Cc: Emile van Sebille <emile@sunridgefarms.com>\n"
+    #                 # "Cc: Alyssa Corinne <alyssa@sunridgefarms.com>\n"
+    #                 "Cc: Ethan Furman <ethan@stoneleaf.us>\n"
+    #                 "Subject: employees with suspect birthdates in FIS [emp1, 74]\n"
+    #                 "\n"
+    #                 + '\n'.join(employee_list),
+    #                 )
     #
     # check for (in)active records
     #
@@ -1034,6 +1145,11 @@ def handle_emp1(method):
             print('setting %d records inactive' % len(inactive_keys))
             if not DRYRUN:
                 hr.employee.write(inactive_keys, inactive, {'active': False})
+    print(
+            '%d records changed\n%d records added\n%d records (maybe) deleted'
+                % (changed_count, added_count, deleted_count),
+            border='box',
+            )
 
 
 def handle_posm(method):
@@ -1381,7 +1497,6 @@ def handle_vnms(method):
                 )
 
 def convert_emp1_rec(fis_rec):
-    print('\nadding:', fis_rec, sep='\n', verbose=2)
     employee = AttrDict()
     employee.name = re.sub('sunridge', 'SunRidge', NameCase(fis_rec[F74.name]), flags=re.I)
     employee.xml_id = employee.identification_id = emp_num = fis_rec[F74.emp_num].strip()
@@ -1392,21 +1507,25 @@ def convert_emp1_rec(fis_rec):
     except (ValueError, TypeError):
         return None
     employee.employment_type = 'standard'
-    employee.pdate(process_address(F74, fis_rec, key=fis_rec[F74.emp_num], module='emp1', home=True))
+    employee.update(process_address(F74, fis_rec, key=fis_rec[F74.emp_num], module='emp1', home=True))
     employee.home_phone = fix_phone(fis_rec[F74.tele])
     ssn = fis_rec[F74.ssn]
     if len(ssn) == 9:
         ssn = '%s-%s-%s' % (ssn[:3], ssn[3:5], ssn[5:])
     employee.ssnid = ssn
-    employee.hire_date = hired = fix_date(fis_rec[F74.date_hired])
-    employee.fire_date = fired = fix_date(fis_rec[F74.date_terminated])
+    hired = fix_date(fis_rec[F74.date_hired])
+    employee.hire_date = hired and hired.strftime('%Y-%m-%d') or False
+    fired = fix_date(fis_rec[F74.date_terminated])
+    employee.fire_date = fired and fired.strftime('%Y-%m-%d') or False
     employee.active = (not fired or hired > fired)
-    employee.birthday = fix_date(fis_rec[F74.birth_date])
+    # emp_birthday = fix_date(fis_rec[F74.birth_date])
+    # employee.birthday = emp_birthday and emp_birthday.strftime('%Y-%m-%d') or False
     employee.status_flag = fis_rec[F74.status_flag]
     employee.pension_plan = fis_rec[F74.pension_status].upper() == 'Y'
     employee.pay_type = ('salary', 'hourly')[fis_rec[F74.pay_type].upper() == 'H']
     employee.hourly_rate = fis_rec[F74.hourly_rate]
-    employee.last_raise = fix_date(fis_rec[F74.last_raise])
+    last_raise = fix_date(fis_rec[F74.last_raise])
+    employee.last_raise = last_raise and last_raise.strftime('%Y-%m-%d') or False
     employee.marital = ('single', 'married')[fis_rec[F74.marital_status].upper() == 'M']
     employee.gender = ('male', 'female')[fis_rec[F74.gender].upper() == 'F']
     employee.emergency_contact = NameCase(fis_rec[F74.emergency_contact])
@@ -1551,37 +1670,36 @@ def process_address(schema, fis_rec, key=None, module=None, home=False):
         postal = PostalCode('', '')
         valid_address = False
     if home:
-        result['home_street'] = addr1
-        result['home_street2'] = addr2
-        result['home_city'] = city
-        result['home_zip'] = postal
-        result['home_country_id'] = False
-        result['home_state_id'] = False
+        sf = 'home_street'
+        s2f = 'home_street2'
+        cf = 'home_city'
+        sidf = 'home_state_id'
+        zf = 'home_zip'
+        kidf = 'home_country_id'
     else:
-        result['street'] = addr1
-        result['street2'] = addr2
-        result['city'] = city
-        result['zip'] = postal
-        result['country_id'] = False
-        result['state_id'] = False
+        sf = 'street'
+        s2f = 'street2'
+        cf = 'city'
+        sidf = 'state_id'
+        zf = 'zip'
+        kidf = 'country_id'
+    result[sf] = addr1
+    result[s2f] = addr2
+    result[cf] = city
+    result[zf] = postal
+    result[sidf] = False
+    result[kidf] = False
     if valid_address:
-        if state and home:
-            result['home_state_id'] = state_recs[state][0]
-            result['home_country_id'] = state_recs[state][2]
-        elif state:
-            result['state_id'] = state_recs[state][0]
-            result['country_id'] = country = state_recs[state][2]
-            if country.name == 'United States':
-                country = ''
-            else:
-                country = country.name
+        if state:
+            result[sidf] = state_recs[state][0]
+            result[kidf] = country = state_recs[state][2]
         elif country:
             country_id = country_recs.get(country, False)
             if country_id is False:
                 if module is not None:
                     Model.errors[module].append("%s record %s has invalid country <%r>" % (module, key, country))
             else:
-                result['country_id'] = country_id
+                result[kidf] = country_id
     return result
 
 def is_invalid_posm_record(rec):

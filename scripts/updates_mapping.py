@@ -3,4 +3,5 @@
     # 'POSM': 'fis_integration',
     # 'VNMS': 'fis_integration',
     'CNVZ': 'fis_integration',
+    'EMP1': 'fis_integration',
     }
