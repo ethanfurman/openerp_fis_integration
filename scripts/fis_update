@@ -10,6 +10,7 @@ from __future__ import print_function
 from scription import *
 from antipathy import Path
 from logging import getLogger, INFO, Formatter, handlers
+from pandaemonium import PidLockFile
 import os
 import updates
 updates.script_verbosity = script_verbosity
@@ -43,6 +44,8 @@ def main():
     old = config.network.fis_data_local_old_path
     new = config.network.fis_data_local_path
     active_files = config.network.fis_openerp_files.split()
+    with PidLockFile('/var/run/fis_update.pid'):
+        script_command()
 
 @Command(
         method=Spec(
