@@ -278,7 +278,7 @@ def handle_csms(method):
                 continue
             if old_rec is None:
                 if is_contact(new_rec):
-                    added_contact_records[key] = new
+                    added_contact_records[key] = new_rec
                 else:
                     added_company_records[key] = new_rec
                 continue
