@@ -486,13 +486,13 @@ def handle_csms(method):
     # add new contacts
     #
     print('adding contact records', border='flag')
-    for key, contact in added_company_records.items():
+    for key, contact in added_contact_records.items():
         # double-check that record doesn't already exist
         parent_key = key[7:]
-        customer_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F33')])
-        if customer_id:
-            [customer_id] = customer_id
-            ids[key] = customer_id
+        contact_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F33')])
+        if contact_id:
+            [contact_id] = contact_id
+            ids[key] = contact_id
             res.partner.error('FIS ID F33:%s (%s) already exists in OpenERP' % (key, contact.name))
         else:
             # look for parent and get id
@@ -513,11 +513,10 @@ def handle_csms(method):
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in contact.items()), '||', end='')
                 echo()
             if not DRYRUN:
-                customer_id = res.partner.create(key, contact)
-                if customer_id:
-                    ids[key] = customer_id
-                    contact.id = customer_id
-
+                contact_id = res.partner.create(key, contact)
+                if contact_id:
+                    ids[key] = contact_id
+                    contact.id = contact_id
     #
     # send email for deleted customers
     #
