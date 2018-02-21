@@ -11,6 +11,7 @@ from fis_schema import F27, F33, F65, F74, F163
 from fis_schema import get_changed_records as get_changed_fis_records, combine_by_value
 from openerplib import AttrDict, get_connection, get_records, Many2One, DEFAULT_SERVER_DATE_FORMAT
     # from traceback import format_exception
+from pandaemonium import PidLockFile
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, NameCaseReversed, PostalCode
 from VSS.BBxXlate.fisData import fisData
 from VSS.utils import fix_phone, fix_date, Date, grouped
@@ -31,6 +32,9 @@ newv = C.Normal | C.FG_Green
         list_records=Spec('list added/changed records', FLAG),
         )
 def main(dryrun, list_records):
+    # make sure we are the only one running
+    lock_file = PidLockFile('/var/run/fis_update.pid')
+    lock_file.seal()
     global config, oe, errors, DRYRUN, LIST_RECORDS, script_verbosity
     DRYRUN = LIST_RECORDS = False
     config = OrmFile('%s/config/fnx.ini' % os.environ['VIRTUAL_ENV'])
