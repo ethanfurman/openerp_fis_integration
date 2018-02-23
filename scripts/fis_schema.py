@@ -98,6 +98,7 @@ class F65(FISenum):
     contact =       'In$(39,15)'
     org_cert_file = 'In$(54,1)'
     cert_exp =      'In$(55,6)'
+    gl_exp_acct =   'On$'
 
 class F74(FISenum):
     "EMP1 - P/R EMPLOYEE MASTER BASIC RECORD MAINT/INQUIRY"
