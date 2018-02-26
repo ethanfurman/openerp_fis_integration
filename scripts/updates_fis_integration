@@ -316,7 +316,8 @@ def handle_csms(method):
     #
     # process changes
     #
-    print('processing company changes', border='flag')
+    if old_changed_company_records:
+        print('processing company changes', border='flag')
     assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
             "old/new company records mismatch"
     changed_company_xml_ids = sorted(old_changed_company_records.keys())
@@ -397,7 +398,8 @@ def handle_csms(method):
                 echo()
             if not DRYRUN:
                 res.partner.write(xml_id, new_record.id, changes)
-    print('processing contact changes', border='flag')
+    if old_changed_contact_records:
+        print('processing contact changes', border='flag')
     assert set(old_changed_contact_records.keys()) == set(new_changed_contact_records.keys()),\
             "old/new contact records mismatch"
     changed_contact_xml_ids = sorted(old_changed_contact_records.keys())
@@ -465,7 +467,8 @@ def handle_csms(method):
     #
     # add new customers
     #
-    print('adding company records', border='flag')
+    if added_company_records:
+        print('adding company records', border='flag')
     for key, company in added_company_records.items():
         # double-check that record doesn't already exist
         customer_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F33')])
@@ -487,7 +490,8 @@ def handle_csms(method):
     #
     # add new contacts
     #
-    print('adding contact records', border='flag')
+    if added_contact_records:
+        print('adding contact records', border='flag')
     for key, contact in added_contact_records.items():
         if not DRYRUN:
             # double-check that record doesn't already exist
@@ -523,11 +527,11 @@ def handle_csms(method):
     #
     # delete/deactivate customers
     #
-    if not DELETE:
-        print('deactivating customers', border='flag')
-    else:
-        print('deleting customers', border='flag')
     if deleted_records:
+        if not DELETE:
+            print('deactivating customers', border='flag')
+        else:
+            print('deleting customers', border='flag')
         if LIST_RECORDS:
             for key, rec in sorted(deleted_records.items()):
                 echo('  F163:%s  %s' % (key, rec.name))
@@ -539,9 +543,8 @@ def handle_csms(method):
             else:
                 res.partner.write('...', ids, {'active': False}, context=context)
     #
-    print('%d customers changed' % changed_count)
-    print('%d customers added' % added_count)
-    print('%d customers deleted' % deleted_count)
+    print('%d customers changed\n%d customers added\n%d customers %s'
+            % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]))
 
 def handle_carrier(method):
     print('processing CNVZsv', border=('flag', '#'))
@@ -676,7 +679,8 @@ def handle_carrier(method):
     #
     # process changes
     #
-    print('processing carrier changes', border='flag')
+    if old_changed_company_records:
+        print('processing carrier changes', border='flag')
     assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
             "old/new carrier records mismatch"
     changed_company_xml_ids = sorted(old_changed_company_records.keys())
@@ -757,7 +761,8 @@ def handle_carrier(method):
     #
     # now add new carriers
     #
-    print('adding carriers', border='flag')
+    if added_company_records:
+        print('adding carriers', border='flag')
     for key, company in added_company_records.items():
         echo(company, border='box')
         # double-check that record doesn't already exist
@@ -796,9 +801,8 @@ def handle_carrier(method):
             else:
                 res.partner.write('...', ids, {'active': False}, context=context)
     #
-    print('%d carriers changed' % changed_count)
-    print('%d carriers added' % added_count)
-    print('%d carriers deleted' % deleted_count)
+    print('%d carriers changed\n%d carriers added\n%d carriers %s'
+            % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]))
 
 def handle_emp1(method):
     print('processing EMP1', border='#')
@@ -886,6 +890,7 @@ def handle_emp1(method):
         # check for changes
         #
         all_fis_records = AttrDict()
+        print('retrieving FIS records')
         for fis_rec in emp1.values():
             employee = convert_emp1_rec(fis_rec)
             if employee is None:
@@ -945,7 +950,8 @@ def handle_emp1(method):
     #
     # process changes
     #
-    print('processing emp1 changes', border='lined')
+    if old_changed_employee_records:
+        print('processing emp1 changes', border='lined')
     assert set(old_changed_employee_records.keys()) == set(new_changed_employee_records.keys()),\
             "old/new emp1 records mismatch"
     changed_employee_xml_ids = sorted(old_changed_employee_records.keys())
@@ -1004,7 +1010,8 @@ def handle_emp1(method):
     #
     # now add new employees
     #
-    print('adding records', border='lined')
+    if added_employee_records:
+        print('adding records', border='lined')
     for key, employee in added_employee_records.items():
         # double-check that record doesn't already exist
         employee_id = hr.employee.search(domain=[('xml_id','=',key),('module','=','F74-emp')])
@@ -1038,13 +1045,11 @@ def handle_emp1(method):
                             emp_num,
                             {'name': emp_name, 'xml_id': emp_num, 'module': 'F74', 'employee_id': employee_id},
                             )
-
-
     #
     # deactivate employees  --  DO NOT DELETE
     #
-    print('deactivating employees', border='flag')
     if deleted_records:
+        print('deactivating employees', border='flag')
         if LIST_RECORDS:
             header_needed = True
             for emp_num, rec in sorted(deleted_records.items()):
@@ -1125,7 +1130,6 @@ def handle_emp1(method):
                 % (changed_count, added_count, deleted_count),
             border='box',
             )
-
 
 def handle_supplier(method):
     #
@@ -1312,7 +1316,8 @@ def handle_supplier(method):
     #
     # process company changes
     #
-    print('processing company changes', border='flag')
+    if old_changed_company_records:
+        print('processing company changes', border='flag')
     assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
             "old/new company records mismatch"
     changed_company_xml_ids = sorted(old_changed_company_records.keys())
@@ -1356,7 +1361,8 @@ def handle_supplier(method):
     #
     # add new companies
     #
-    print('adding company records', border='flag')
+    if added_company_records:
+        print('adding company records', border='flag')
     for key, company in added_company_records.items():
         # double-check that record doesn't already exist
         if not DRYRUN:
@@ -1379,7 +1385,8 @@ def handle_supplier(method):
     #
     # process contact changes
     #
-    print('processing contact changes', border='flag')
+    if old_changed_contact_records:
+        print('processing contact changes', border='flag')
     assert set(old_changed_contact_records.keys()) == set(new_changed_contact_records.keys()),\
             "old/new contact records mismatch"
     changed_contact_xml_ids = sorted(old_changed_contact_records.keys())
@@ -1423,7 +1430,8 @@ def handle_supplier(method):
     #
     # add new contacts
     #
-    print('adding contact records', border='flag')
+    if added_contact_records:
+        print('adding contact records', border='flag')
     for key, contact in added_contact_records.items():
         # double-check that record doesn't already exist
         if not DRYRUN:
@@ -1446,11 +1454,11 @@ def handle_supplier(method):
     #
     # deleted/deactivate suppliers
     #
-    if not DELETE:
-        print('deactivating records', border='flag')
-    else:
-        print('deleting records', border='flag')
     if deleted_records:
+        if not DELETE:
+            print('deactivating records', border='flag')
+        else:
+            print('deleting records', border='flag')
         # toss any records that don't already exist in OpenERP
         for key, rec in sorted(deleted_records.items()):
             if key not in ids:
@@ -1467,9 +1475,8 @@ def handle_supplier(method):
             else:
                 res.partner.write('...', ids, {'active': False}, context=context)
     #
-    print('%d records changed' % changed_count)
-    print('%d records added' % added_count)
-    print('%d records deleted' % deleted_count)
+    print('%d suppliers changed\n%d suppliers added\n%d suppliers %s'
+            % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]))
 
 
 def convert_emp1_rec(fis_rec):
