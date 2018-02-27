@@ -1471,10 +1471,6 @@ def handle_supplier(method):
     # deleted/deactivate suppliers
     #
     if deleted_records:
-        if not DELETE:
-            print('deactivating records', border='flag')
-        else:
-            print('deleting records', border='flag')
         # toss any records that don't already exist in OpenERP
         for key, rec in sorted(deleted_records.items()):
             if key not in ids:
@@ -1484,12 +1480,17 @@ def handle_supplier(method):
             elif LIST_RECORDS:
                 echo('  F163:%s  %s' % (key, rec.name))
         deleted_count = len(deleted_records)
-        if not DRYRUN:
-            ids = [ids[xml_id] for xml_id in deleted_records]
-            if DELETE:
-                res.partner.delete(ids, context=context)
+        if deleted_count:
+            if not DELETE:
+                print('deactivating records', border='flag')
             else:
-                res.partner.write('...', ids, {'active': False}, context=context)
+                print('deleting records', border='flag')
+            if not DRYRUN:
+                ids = [ids[xml_id] for xml_id in deleted_records]
+                if DELETE:
+                    res.partner.delete(ids, context=context)
+                else:
+                    res.partner.write('...', ids, {'active': False}, context=context)
     #
     print('%d suppliers changed\n%d suppliers added\n%d suppliers %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
