@@ -544,7 +544,9 @@ def handle_csms(method):
                 res.partner.write('...', ids, {'active': False}, context=context)
     #
     print('%d customers changed\n%d customers added\n%d customers %s'
-            % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]))
+            % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
+            border='box',
+            )
 
 def handle_carrier(method):
     print('processing CNVZsv', border=('flag', '#'))
@@ -785,11 +787,11 @@ def handle_carrier(method):
     #
     # delete/deactivate carriers
     #
-    if not DELETE:
-        print('deactivating carriers', border='flag')
-    else:
-        print('deleting carriers', border='flag')
     if deleted_records:
+        if not DELETE:
+            print('deactivating carriers', border='flag')
+        else:
+            print('deleting carriers', border='flag')
         if LIST_RECORDS:
             for key, rec in sorted(deleted_records.items()):
                 echo('  F163:%s  %s' % (key, rec.name))
@@ -802,7 +804,9 @@ def handle_carrier(method):
                 res.partner.write('...', ids, {'active': False}, context=context)
     #
     print('%d carriers changed\n%d carriers added\n%d carriers %s'
-            % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]))
+            % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
+            border='box',
+            )
 
 def handle_emp1(method):
     print('processing EMP1', border='#')
@@ -955,6 +959,7 @@ def handle_emp1(method):
     assert set(old_changed_employee_records.keys()) == set(new_changed_employee_records.keys()),\
             "old/new emp1 records mismatch"
     changed_employee_xml_ids = sorted(old_changed_employee_records.keys())
+    relevant_changes = False
     for xml_id in changed_employee_xml_ids:
         #
         # figure out the changes
@@ -1000,6 +1005,7 @@ def handle_emp1(method):
                     del changes[field]
         # quick and full from here
         if changes:
+            relevant_changes = True
             changed_count += 1
             if LIST_RECORDS:
                 echo('  F74-emp:%s  %s' % (xml_id, new_record.name), end='  ')
@@ -1007,6 +1013,8 @@ def handle_emp1(method):
                 echo()
             if not DRYRUN:
                 hr.employee.write(xml_id, new_record.id, changes)
+    if not relevant_changes:
+        print('...no relevant changes...')
     #
     # now add new employees
     #
@@ -1321,6 +1329,7 @@ def handle_supplier(method):
     assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
             "old/new company records mismatch"
     changed_company_xml_ids = sorted(old_changed_company_records.keys())
+    relevant_changes = False
     for xml_id in changed_company_xml_ids:
         #
         # TODO: check actual values in OpenERP and remove "changes" that are already set
@@ -1351,6 +1360,7 @@ def handle_supplier(method):
             if old_record[key] != new_record[key]:
                 changes[key] = new_record[key]
         if changes:
+            relevant_changes = True
             changed_count += 1
             if LIST_RECORDS:
                 echo('  F163:%s  %s' % (xml_id, new_record.name), end='  ')
@@ -1358,6 +1368,8 @@ def handle_supplier(method):
                 echo()
             if not DRYRUN:
                 res.partner.write(xml_id, new_record.id, changes)
+    if not relevant_changes:
+        print('...no relevant changes...')
     #
     # add new companies
     #
@@ -1390,6 +1402,7 @@ def handle_supplier(method):
     assert set(old_changed_contact_records.keys()) == set(new_changed_contact_records.keys()),\
             "old/new contact records mismatch"
     changed_contact_xml_ids = sorted(old_changed_contact_records.keys())
+    relevant_changes = False
     for xml_id in changed_contact_xml_ids:
         #
         # TODO: check actual values in OpenERP and remove "changes" that are already set
@@ -1420,6 +1433,7 @@ def handle_supplier(method):
             if old_record[key] != new_record[key]:
                 changes[key] = new_record[key]
         if changes:
+            relevant_changes = True
             changed_count += 1
             if LIST_RECORDS:
                 echo('  F163:%s  %s' % (xml_id, new_record.name), end='  ')
@@ -1427,6 +1441,8 @@ def handle_supplier(method):
                 echo()
             if not DRYRUN:
                 res.partner.write(xml_id, new_record.id, changes)
+    if not relevant_changes:
+        print('...no relevant changes...')
     #
     # add new contacts
     #
@@ -1476,7 +1492,9 @@ def handle_supplier(method):
                 res.partner.write('...', ids, {'active': False}, context=context)
     #
     print('%d suppliers changed\n%d suppliers added\n%d suppliers %s'
-            % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]))
+            % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
+            border='box',
+            )
 
 
 def convert_emp1_rec(fis_rec):
