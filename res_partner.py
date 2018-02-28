@@ -148,6 +148,7 @@ class res_partner(xmlid, osv.Model):
             'res_partner_partner_keyword', 'partner_id', 'keyword_id',
             'Keywords',
             ),
+        'fis_csms_terms': fields.many2one('fis.account.customer_terms', 'Terms'),
         'fis_org_cert': fields.boolean(
             'Organic Cert?',
             ),

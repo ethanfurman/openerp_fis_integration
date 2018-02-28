@@ -6,7 +6,7 @@ from __future__ import print_function
 from scription import *
 from aenum import Enum
 from collections import defaultdict
-from fis_schema import F27, F33, F65, F74, F163
+from fis_schema import F8, F27, F33, F65, F74, F163
     # from fis_scheam import F47
 from fis_schema import get_changed_records as get_changed_fis_records, combine_by_value
 from openerplib import AttrDict, get_connection, get_records, Many2One, DEFAULT_SERVER_DATE_FORMAT
@@ -63,7 +63,7 @@ def fis_integration(files, method, delete):
     # make sure we are the only one running
     lock_file = PidLockFile('/var/run/fis_update.pid')
     lock_file.seal()
-    global state_recs, country_recs, emp1, posm, vnms, csms
+    global state_recs, country_recs, customer_terms_recs
     global skipped_suppliers, vendor_suppliers, ven2sup, vendor_codes
     global models, DELETE
     DELETE = delete
@@ -78,22 +78,23 @@ def fis_integration(files, method, delete):
         ])
     for name, rec_id in country_recs.items():
         country_recs[rec_id] = name
-    csms = fisData(33, keymatch='10%s')
-    emp1 = fisData(74, keymatch='10%s')
-    vnms = fisData(65, keymatch='10%s')
-    posm = fisData(163, keymatch='10%s')
+    customer_terms_recs = dict([
+        (r.xml_id, r.id)
+        for r in get_records(oe, 'fis.account.customer_terms')
+        ])
     skipped_suppliers = set()
     vendor_suppliers = {}
     vendor_codes = set()
+    if 'cnvz' in files:
+        # handle_sales_reps(method)
+        handle_carrier(method)
+        handle_customer_terms(method)
     if 'emp1' in files:
         handle_emp1(method)
     if 'posm' in files or 'vnms' in files:
         handle_supplier(method)
     if 'csms' in files:
         handle_csms(method)
-    if 'cnvz' in files:
-        # handle_sales_reps(method)
-        handle_carrier(method)
     if 'nvty' in files:
         handle_nvty(method)
     for m, problems in sorted(Model.errors.items()):
@@ -180,9 +181,9 @@ def handle_csms(method):
         #
         print('sorting changed records')
         for old, new, diffs in changes:
-            old_company, old_contact = convert_csms_rec(old)
+            old_company, old_contact = convert_csms_rec(res.partner, old)
             old_company_records[old_company.xml_id] = old_company
-            new_company, new_contact = convert_csms_rec(new)
+            new_company, new_contact = convert_csms_rec(res.partner, new)
             new_company_records[new_company.xml_id] = new_company
             # changes at the FIS level don't always translate to changes at the OpenERP level
             if old_company != new_company:
@@ -211,14 +212,14 @@ def handle_csms(method):
         #
         print('sorting new and deleted records')
         for fis_rec in added:
-            company, contact = convert_csms_rec(fis_rec)
+            company, contact = convert_csms_rec(res.partner, fis_rec)
             new_company_records[company.xml_id] = company
             added_company_records[company.xml_id] = company
             if contact is not None:
                 new_contact_records[contact.xml_id] = contact
                 added_contact_records[contact.xml_id] = contact
         for fis_rec in deleted:
-            company, contact = convert_csms_rec(fis_rec)
+            company, contact = convert_csms_rec(res.partner, fis_rec)
             old_company_records[company.xml_id] = company
             deleted_records[company.xml_id] = company
             if contact is not None:
@@ -231,7 +232,7 @@ def handle_csms(method):
         #
         all_fis_records = AttrDict()
         for fis_rec in csms.values():
-            company, contact = convert_csms_rec(fis_rec)
+            company, contact = convert_csms_rec(res.partner, fis_rec)
             all_fis_records[company.xml_id] = company
             # process contact, if any
             if contact is not None:
@@ -247,7 +248,7 @@ def handle_csms(method):
                     oe, 'res.partner',
                     domain=[('module','=','F33')],
                     fields=[
-                        'id', 'module', 'xml_id',
+                        'id', 'module', 'xml_id', 'fis_csms_terms',
                         'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
                         'fis_valid', 'specials_notification', 'phone', 'is_company', 'customer',
                         'fis_updated_by_user', 'active', 'use_parent_address',
@@ -264,7 +265,7 @@ def handle_csms(method):
                 del datom.use_parent_address
                 del datom.phone, datom.street, datom.street2
                 del datom.city, datom.state_id, datom.zip, datom.country_id
-                del datom.specials_notification
+                del datom.specials_notification, datom.fis_csms_terms
                 old_contact_records[xml_id] = datom
             else:
                 old_company_records[xml_id] = datom
@@ -548,6 +549,161 @@ def handle_csms(method):
             border='box',
             )
 
+def handle_customer_terms(method):
+    print('processing CNVZd0', border=('flag', '#'))
+    context = {'fis-updates': True, 'active_test': False}
+    fis = AttrDict()
+    fis.account = AttrDict()
+    fis.account.customer_terms = Model(oe.get_model('fis.account.customer_terms'), 'cnvzd0', 'F8', context)
+    # these  are for tracking old/new versions of changed records
+    old_changed_terms_records = {}
+    new_changed_terms_records = {}
+    # these are for added/deleted records
+    added_terms_records = {}
+    deleted_records = {}
+    # and the counts
+    changed_count = 0
+    added_count = 0
+    deleted_count = 0
+    ids = {}
+    #
+    # get the "old" data from:
+    # - current OpenERP data
+    #
+    cnvzd0 = fisData(8, keymatch='D010%s')
+    print(cnvzd0.filename, verbose=2)
+    print('gathering data', border='flag')
+    #
+    # when doing a full compare, we have to convert every single fis record before we can
+    # check for changes
+    #
+    all_fis_records = AttrDict()
+    for fis_rec in cnvzd0.values():
+        terms = convert_customer_terms_rec(fis_rec)
+        all_fis_records[terms.xml_id] = terms
+    #
+    # retrieve the OpenERP records that match the CNVZsv module
+    #
+    print('retrieving OpenERP records')
+    all_oe_records = dict([
+            (r.xml_id, r)
+            for r in get_records(
+                oe, 'fis.account.customer_terms',
+                domain=[('module','=','F8')],
+                fields=[
+                    'id', 'module', 'xml_id', 'description',
+                    ],
+                context=context,
+                )
+            ])
+    #
+    # now we can separate into new, changed, and deleted buckets
+    #
+    print('sorting changed, new, and deleted customer terms records')
+    all_keys = set(all_fis_records.keys() + all_oe_records.keys())
+    for key in all_keys:
+        old_rec = all_oe_records.get(key)
+        new_rec = all_fis_records.get(key)
+        if old_rec is new_rec is None:
+            continue
+        if old_rec is None:
+            added_terms_records[key] = new_rec
+            continue
+        if new_rec is None:
+            deleted_records[key] = old_rec
+            continue
+        # copy missing fields for proper equality testing
+        new_rec.id = old_rec.id
+        if new_rec == old_rec:
+            continue
+        #
+        # we have changes, save the records for later comparison
+        #
+        old_changed_terms_records[key] = old_rec
+        new_changed_terms_records[key] = new_rec
+    assert set(old_changed_terms_records.keys()) == set(new_changed_terms_records.keys()),\
+            "old and new terms records mismatch"
+    #
+    # at this point, all records are in AttrDict format, divided by deleted, added, and changed
+    #
+    # process changes
+    #
+    if old_changed_terms_records:
+        print('processing customer terms changes', border='flag')
+    assert set(old_changed_terms_records.keys()) == set(new_changed_terms_records.keys()),\
+            "old/new customer terms records mismatch"
+    changed_terms_xml_ids = sorted(old_changed_terms_records.keys())
+    for xml_id in changed_terms_xml_ids:
+        #
+        # figure out the changes
+        #
+        old_record = old_changed_terms_records[xml_id]
+        new_record = new_changed_terms_records[xml_id]
+        assert old_record.keys() == new_record.keys(),\
+                ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
+                    ('|'.join(sorted(old_record.keys())), box(str(old_record)),
+                     '|'.join(sorted(new_record.keys())), box(str(new_record))))
+        changes = AttrDict()
+        for key in old_record:
+            if old_record[key] != new_record[key]:
+                changes[key] = new_record[key]
+        if changes:
+            changed_count += 1
+            if LIST_RECORDS:
+                echo('  F8:%s  %s' % (xml_id, new_record.description), end='  ')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
+                echo()
+            if not DRYRUN:
+                fis.account.customer_terms.write(xml_id, new_record.id, changes)
+    #
+    # now add new customer terms
+    #
+    if added_terms_records:
+        print('adding customer terms', border='flag')
+    for key, terms in added_terms_records.items():
+        echo(terms, border='box', verbose=2)
+        # double-check that record doesn't already exist
+        terms_id = fis.account.customer_terms.search(domain=[('xml_id','=',key),('module','=','F8')])
+        if terms_id:
+            [terms_id] = terms_id
+            ids[key] = terms_id
+            fis.account.customer_terms.error('FIS ID F8:%s (%s) already exists in OpenERP' % (key, terms.description))
+        else:
+            added_count += 1
+            if LIST_RECORDS:
+                echo('  F8:%s  %s' % (key, terms.description), end='  ')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in terms.items()), '||', end='')
+                echo()
+            if not DRYRUN:
+                terms_id = fis.account.customer_terms.create(key, terms)
+                if terms_id:
+                    terms.id = terms_id
+                    ids[key] = terms_id
+                    customer_terms_recs[terms.xml_id] = terms_id
+    #
+    # delete/deactivate customer terms
+    #
+    if deleted_records:
+        if not DELETE:
+            print('deactivating customer terms', border='flag')
+        else:
+            print('deleting customer terms', border='flag')
+        if LIST_RECORDS:
+            for key, rec in sorted(deleted_records.items()):
+                echo('  F163:%s  %s' % (key, rec.description))
+        deleted_count = len(deleted_records)
+        if not DRYRUN:
+            ids = [ids[xml_id] for xml_id in deleted_records]
+            if DELETE:
+                fis.account.customer_terms.delete(ids, context=context)
+            else:
+                fis.account.customer_terms.write('...', ids, {'active': False}, context=context)
+    #
+    print('%d customer terms changed\n%d customer terms added\n%d customer terms %s'
+            % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
+            border='box',
+            )
+
 def handle_carrier(method):
     print('processing CNVZsv', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
@@ -810,7 +966,6 @@ def handle_carrier(method):
 
 def handle_emp1(method):
     print('processing EMP1', border='#')
-    print(emp1.filename, verbose=2)
     context = {'hr_welcome': False, 'fis-updates': True, 'active_test': False}
     # today = Date.today()
     hr = AttrDict()
@@ -838,6 +993,8 @@ def handle_emp1(method):
     # - quick -> old fis file
     # - full -> current OpenERP data
     #
+    emp1 = fisData(74, keymatch='10%s')
+    print(emp1.filename, verbose=2)
     print('gathering data', border='lined')
     if method == 'quick':
         #
@@ -1147,7 +1304,10 @@ def handle_supplier(method):
     #
     # always use "full" method
     #
+    global posm, vnms
     print('processing POSM/VNMS', border=('box','#'))
+    vnms = fisData(65, keymatch='10%s')
+    posm = fisData(163, keymatch='10%s')
     print(posm.filename, verbose=2)
     print(vnms.filename, verbose=2)
     context = {'fis-updates': True, 'active_test': False}
@@ -1551,7 +1711,14 @@ def convert_carrier_rec(fis_rec):
     company.fuel_surcharge = fis_rec[F27.fuel_surcharge].upper() == 'Y'
     return company
 
-def convert_csms_rec(fis_rec):
+def convert_customer_terms_rec(fis_rec):
+    terms = AttrDict()
+    terms.xml_id = fis_rec[F8.code]
+    terms.module = 'F8'
+    terms.description = ' / '.join([t.strip() for t in fis_rec[F8.description].split('/')])
+    return terms
+
+def convert_csms_rec(model, fis_rec):
     #
     # creates an AttrDict with the following fields
     # - 'module', 'xml_id',
@@ -1598,6 +1765,9 @@ def convert_csms_rec(fis_rec):
     company.specials_notification = notify_by.value
     company.update(process_address(F33, fis_rec, key=fis_rec[F33.code], module='csms'))
     company.phone = fix_phone(fis_rec[F33.tele])
+    company.fis_csms_terms = customer_terms_recs.get(fis_rec[F33.payment_terms_id], False)
+    if not company.fis_csms_terms:
+        model.error('Terms code %r does not exist' % (fis_rec[F33.payment_terms_id], ))
     contact = None
     if fis_rec[F33.contact] and fis_rec[F33.contact] != fis_rec[F33.name]:
         contact = AttrDict()

@@ -1,3 +1,4 @@
+import account
 import company
 import hr_employee
 import product
@@ -8,4 +9,15 @@ import sample
 import wizard
 import report
 
-__all__ = ['company', 'hr_employee', 'product', 'res_config', 'res_partner', 'crm_lead', 'wizard', 'sample', 'report']
+__all__ = [
+    'account',
+    'company',
+    'hr_employee',
+    'product',
+    'res_config',
+    'res_partner',
+    'crm_lead',
+    'wizard',
+    'sample',
+    'report',
+    ]

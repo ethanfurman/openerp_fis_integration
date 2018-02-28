@@ -20,6 +20,15 @@ class FISenum(str, aenum.Enum):
     def __repr__(self):
         return "<%s.%s>" % (self.__class__.__name__, self._name_)
 
+class F8(FISenum):
+    """
+    CNVZD0 - Customer Payment Terms Codes
+    """
+    key_type                    = 'An$(1,2)'     #   0: Key Group = 'D0'
+    company_id                  = 'An$(3,2)'     #   1: Company Code
+    code                        = 'An$(5,1)'     #   2: Terms Code
+    description                 = 'Bn$'          #   3: Terms Description
+
 class F11(FISenum):
     "Sales Category codes"
     code = 'An$(5,2)'
@@ -61,6 +70,7 @@ class F33(FISenum):
     last_year_sales       = 'Pn'             # Prev Year Sales
     broker_id             = 'Gn$(1,3)'       # Broker Code
     salesrep              = 'Gn$(4,3)'       # Salesrep Code
+    payment_terms_id      = 'Gn$(19,1)'     # Payment Terms Code
     tele                  = 'Gn$(20,10)'     # Telephone Number
     bulk_cust_type        = 'Gn$(38,2)'      # Bulk Customer Type
     update_s_a            = 'Gn$(40,1)'      # Update S/A?

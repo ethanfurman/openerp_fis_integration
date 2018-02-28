@@ -43,6 +43,8 @@
                     @sn_specials_type $Specials_Sheet_By attrs="{'invisible': ['|',('specials_notification','in',['N','C',False]),'&',('specials_notification','=','D'),('parent_specials_notification','in',['N','C',False])], 'viewonly':[('specials_notification','=','D')]}"
                 @function position='after'
                     @department attrs="{'invisible': [('is_company','=', True)]}"
+                @user_id position='after'
+                    @fis_csms_terms readonly='1' options="{'no_open': True}"
                 @customer position='after'
                     @is_bulk attrs="{'invisible': [('customer','=',False)]}"
                 @supplier position='after'
