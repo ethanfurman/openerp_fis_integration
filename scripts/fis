@@ -500,7 +500,7 @@ def update_openerp(database, customers, suppliers, vendors, carriers, employees,
         filenum=Spec('file abbreviation or number to operate on', ),
         subset=Spec('subset template to match many records to', ),
         code=Spec('code to match with template', force_default='', type=lambda s: s and tuple(s.split(',') or s)),
-        fields=Spec('specific fields to display [default: all, counting starts with 0]', MULTI, type=int),
+        fields=Spec('specific fields to display', MULTI, type=int),
         )
 def values(filenum, subset, code, fields):
     if not fields:
