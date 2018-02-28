@@ -248,7 +248,7 @@ def handle_csms(method):
                     oe, 'res.partner',
                     domain=[('module','=','F33')],
                     fields=[
-                        'id', 'module', 'xml_id', 'fis_csms_terms',
+                        'id', 'module', 'xml_id', 'fis_csms_terms', 'fis_price_list',
                         'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
                         'fis_valid', 'specials_notification', 'phone', 'is_company', 'customer',
                         'fis_updated_by_user', 'active', 'use_parent_address',
@@ -266,6 +266,7 @@ def handle_csms(method):
                 del datom.phone, datom.street, datom.street2
                 del datom.city, datom.state_id, datom.zip, datom.country_id
                 del datom.specials_notification, datom.fis_csms_terms
+                del datom.fis_price_list
                 old_contact_records[xml_id] = datom
             else:
                 old_company_records[xml_id] = datom
@@ -1766,6 +1767,7 @@ def convert_csms_rec(model, fis_rec):
     company.update(process_address(F33, fis_rec, key=fis_rec[F33.code], module='csms'))
     company.phone = fix_phone(fis_rec[F33.tele])
     company.fis_csms_terms = customer_terms_recs.get(fis_rec[F33.payment_terms_id], False)
+    company.fis_price_list = fis_rec[F33.price_list_id].upper() or False
     if not company.fis_csms_terms:
         model.error('Terms code %r does not exist' % (fis_rec[F33.payment_terms_id], ))
     contact = None

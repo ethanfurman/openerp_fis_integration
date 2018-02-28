@@ -45,6 +45,7 @@
                     @department attrs="{'invisible': [('is_company','=', True)]}"
                 @user_id position='after'
                     @fis_csms_terms readonly='1' options="{'no_open': True}"
+                    @fis_price_list readonly='1'
                 @customer position='after'
                     @is_bulk attrs="{'invisible': [('customer','=',False)]}"
                 @supplier position='after'
