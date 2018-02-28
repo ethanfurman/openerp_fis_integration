@@ -1,0 +1,58 @@
+#!/usr/local/bin/python2.7
+
+from __future__ import print_function
+from scription import *
+
+INVENTORY = '/root/fis_inventory_items.txt'
+
+@Command(
+    items=Spec('item # to look up', usage='ITEM'),
+    )
+def forecast(*items):
+    print('--items: %r' % (items, ))
+    lookup = []
+    if items:
+        for item in items:
+            echo(_get_fis_info(item))
+    else:
+        while "more responses":
+            item = get_response('item -', default='exit')
+            if item == 'exit':
+                break
+            echo(_get_fis_info(item))
+
+
+def _get_fis_info(item):
+    print('--looking up %r' % (item, ))
+    cmd = '/home/basis2/pro5/pro5 -m512 -q -c/home/basis2/pro5/config.y2k /usr/fal/y2kpgms/fcastq - %s' % item
+    print('--%s' % cmd, verbose=2)
+    job = Execute(cmd, pty=False, timeout=5)
+    print('-------\njob stdout:\n%r\n---\njob stderr:\n%r\n-------' % (job.stdout, job.stderr), verbose=2)
+    result = '%s:ERROR:not found or 10 & 21 days not found' % (item, )
+    if job.returncode:
+        result = '%s:ERROR:%s' % (item, ' '.join(job.stdout.replace('\n','/').split()))
+    else:
+        lines = []
+        err = False
+        _10 = ''
+        _21 = ''
+        for line in job.stdout.split('\n'):
+            print(repr(line), verbose=3)
+            line = line.split()
+            print(repr(line), verbose=3)
+            if line and line[0].startswith('\x1b'):
+                line.pop(0)
+            line = ' '.join(line)
+            print('--%r' % line)
+            lines.append(line)
+            if line.startswith('10 '):
+                _10 = line
+            elif line.startswith('21 '):
+                _21 = line
+        if err:
+            result = 'ERR:%s:%s' % (item, ':'.join(lines))
+        else:
+            result = '%s:%s:%s' % (item, _10, _21)
+    return result
+
+Run()
