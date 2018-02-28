@@ -1,10 +1,11 @@
 #!/usr/local/sbin/suid-python --virtualenv
 from __future__ import print_function, unicode_literals
 
+from scription import *
 from aenum import Enum
 from collections import defaultdict
 from itertools import cycle
-from scription import *
+from openerplib import get_connection, get_records
 from VSS.BBxXlate import fisData as fd
 from VSS.BBxXlate.bbxfile import TableError
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, name_chars
@@ -17,7 +18,7 @@ import os
 import random
 import re
 import sys
-from openerplib import get_connection, get_records
+import time
 
 virtual_env = os.environ['VIRTUAL_ENV']
 config = OrmFile(Path('%s/config/fnx.ini' % virtual_env))
@@ -249,6 +250,58 @@ def field_check(filenum, which):
                 print('     %s: %s' % (field, ', '.join(repr(v) for v in values.items())), verbose=0)
         table.release()
 
+
+@Command(
+    all=('show all items', FLAG),
+    items=Spec('item number to look up', usage='ITEM'),
+    )
+def product_forecast(all, *items):
+    if all and items:
+        abort('cannot specify --all and ITEM(s)')
+    if script_verbosity:
+        writer = error
+    else:
+        writer = echo
+    if all:
+        items = []
+        nvty = fd('NVTY1', keymatch="%s101000    101**")   # 135
+        for item_rec in ProgressView(
+                iterable=nvty,
+                view_type='bar',
+                message='getting %d item numbers' % len(nvty)
+            ):
+            items.append(item_rec[F135.item_id])
+        print('%d items retrieved' % len(items), verbose=2)
+    elif not items:
+        items = []
+        while "more items":
+            item = get_response('item - ', default='exit')
+            if item == 'exit':
+                break
+            items.append(item)
+    else:
+        items = list(items)
+    items = ProgressView(
+            iterable=(i+'\n' for i in items + ['exit']),
+            view_type='bar',
+            total=len(items),
+            message='communicating with 11.11')
+    start = time.time()
+    with user_ids(0, 0):
+        result = Execute(
+                'ssh 192.168.11.111 /usr/local/bin/fis-query forecast',
+                pty=True,
+                input=items,
+                password_timeout=0,
+                )
+    stop = time.time()
+    minutes, seconds = divmod(stop-start, 60)
+    hours, minutes = divmod(minutes, 60)
+    output = result.stdout
+    for line in output.split('\n'):
+        if len(line.split(':')) == 3:
+            writer(line)
+    print('elapsed time: %d:%d:%d' % (hours, minutes, seconds))
 
 @Command(
         table=Spec('FIS table to query', type=int),
