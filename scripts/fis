@@ -1119,7 +1119,8 @@ def update_products(table, item_map, default_product_codes):
 
 def format_record(record, fields=None):
     lines = []
-    name_width = value_width = 0
+    name_width = 11
+    value_width = 40
     if not fields:
         fields = range(len(record.fieldlist))
     for i, row in enumerate(record.fieldlist):
