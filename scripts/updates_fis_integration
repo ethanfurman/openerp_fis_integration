@@ -2098,13 +2098,9 @@ class CustomerAging(NamedTuple):
     def __new__(cls, *values):
         new_values = [values[0]]
         for value in values[1:]:
-            echo('checking %r' % value)
             value = value.replace(',','')
-            echo('list char is %r' % value[-1:])
             if value[-1:] == '-':
-                echo('  moving minus sign')
                 value = '-' + value[:-1]
-            echo('  appending %r' % value)
             new_values.append(float(value))
         return NamedTuple.__new__(CustomerAging, *new_values)
 
