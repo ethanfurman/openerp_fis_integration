@@ -30,10 +30,14 @@ class F8(FISenum):
     description                 = 'Bn$'          #   3: Terms Description
 
 class F11(FISenum):
-    "Sales Category codes"
-    code = 'An$(5,2)'
-    desc = 'Cn$'
-    shelf_life = 'FN'
+    """
+    CNVZas - SALES CATEGORY MASTER
+    """
+    key_type                 = 'An$(1,2)'      #   0: KEY TYPE = as
+    company                  = 'An$(3,2)'      #   1: COMPANY
+    sales_category_id        = 'An$(5,2)'      #   2: Sales Category Code
+    desc                     = 'Cn$'           #   8: Description
+
 
 class F27(FISenum):
     "Carrier (Ship Via) Master File (key starts with SV)"
