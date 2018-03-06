@@ -53,7 +53,7 @@
                     @fuel_surcharge attrs="{'invisible':[('is_carrier','=',False)]}"
                 ~xpath expr="//page[@string='Sales & Purchases']/group/group[position()=2]" position='after'
                     ~group colspan='2' cols='2'
-                        ~label $Aging_Info for='fis_credit_net_due'
+                        ~label $Aging_Info for='fis_credit_current'
                         ~span .oe_form_group_cell .plain colspan='1'
                             ~table
                                 ~tr
