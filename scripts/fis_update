@@ -26,7 +26,7 @@ updates.script_verbosity = script_verbosity
 @Script()
 def main():
     print('getting logger', verbose=2)
-    global logger, master, path, pre, old, new, active_files, config
+    global logger, master, path, pre, old, new, active_files, extra_files, config
     logger = getLogger()
     logger.setLevel(INFO)
     _handler = handlers.RotatingFileHandler(
@@ -44,6 +44,7 @@ def main():
     old = config.network.fis_data_local_old_path
     new = config.network.fis_data_local_path
     active_files = config.network.fis_openerp_files.split()
+    extra_files = config.network.fis_extra_files.split()
     with PidLockFile('/var/run/fis_update.pid'):
         script_command()
 
@@ -82,12 +83,15 @@ def fis_update(method, skip_copy, skip_update, dryrun, list_records):
             files = '{path}/{pre}???? {path}/{pre}????? {path}/{pre}??????'.format(path=path, pre=pre).split()
         else:
             files = ['%s/%s%s' % (path, pre, f) for f in active_files]
-        # and grab them
+        # always add extra files
+        for filename in extra_files:
+            files.append('{path}/{name}'.format(path=path, name=filename))
+        # and grab the files
         system('rsync --bwlimit=10 %s:%s %s/' % (master, ' :'.join(files), new))
         system('chown -R openerp: /FIS')
         config.network.fis_data_local_path.chmod(0o440, '*')
     #
-    # step 2: determine which files changed
+    # step 2: determine which files changed (does not check extra_files
     #
     print('checking for changed files')
     files = [
