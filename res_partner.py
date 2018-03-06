@@ -149,6 +149,12 @@ class res_partner(xmlid, osv.Model):
             'Keywords',
             ),
         'fis_csms_terms': fields.many2one('fis.account.customer_terms', 'Terms'),
+        'fis_credit_limit': fields.float('Credit Limit'),
+        'fis_credit_current': fields.float('Current Balance'),
+        'fis_credit_10_days': fields.float('10 Day Balance'),
+        'fis_credit_20_days': fields.float('20 Day Balance'),
+        'fis_credit_30_days': fields.float('30 Day Balance'),
+        'fis_credit_total': fields.float('Total Balance'),
         'fis_price_list': fields.char('Price list code', size=1),
         'fis_org_cert': fields.boolean(
             'Organic Cert?',

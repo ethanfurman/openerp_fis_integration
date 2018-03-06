@@ -4,7 +4,7 @@
 from __future__ import print_function
 
 from scription import *
-from aenum import Enum
+from aenum import Enum, NamedTuple
 from collections import defaultdict
 from fis_schema import F8, F27, F33, F65, F74, F163
     # from fis_scheam import F47
@@ -135,7 +135,7 @@ def handle_csms(method):
     new_contact_records = {}
     old_company_records = {}
     old_contact_records = {}
-    # these  are for tracking old/new versions of changed records
+    # these are for tracking old/new versions of changed records
     old_changed_company_records = {}
     old_changed_contact_records = {}
     new_changed_company_records = {}
@@ -227,12 +227,17 @@ def handle_csms(method):
                 deleted_records[contact.xml_id] = contact
     elif method == 'full':
         #
+        # get the aging data (kept in a different format) -- only used in "full"
+        #
+        print('getting aging data')
+        aging_data = get_customer_aging('%s/customer_aging.txt' % config.network.fis_data_local_path)
+        #
         # when doing a full compare, we have to convert every single fis record before we can
         # check for changes
         #
         all_fis_records = AttrDict()
         for fis_rec in csms.values():
-            company, contact = convert_csms_rec(res.partner, fis_rec)
+            company, contact = convert_csms_rec(res.partner, fis_rec, aging_data)
             all_fis_records[company.xml_id] = company
             # process contact, if any
             if contact is not None:
@@ -251,7 +256,9 @@ def handle_csms(method):
                         'id', 'module', 'xml_id', 'fis_csms_terms', 'fis_price_list',
                         'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
                         'fis_valid', 'specials_notification', 'phone', 'is_company', 'customer',
-                        'fis_updated_by_user', 'active', 'use_parent_address',
+                        'fis_updated_by_user', 'active', 'use_parent_address', 'fis_credit_limit',
+                        'fis_credit_10_days', 'fis_credit_20_days', 'fis_credit_30_days',
+                        'fis_credit_current', 'fis_credit_total',
                         ],
                     context=context,
                     )
@@ -265,8 +272,9 @@ def handle_csms(method):
                 del datom.use_parent_address
                 del datom.phone, datom.street, datom.street2
                 del datom.city, datom.state_id, datom.zip, datom.country_id
-                del datom.specials_notification, datom.fis_csms_terms
-                del datom.fis_price_list
+                del datom.specials_notification, datom.fis_csms_terms, datom.fis_credit_current,
+                del datom.fis_price_list, datom.fis_credit_limit, datom.fis_credit_total
+                del datom.fis_credit_10_days, datom.fis_credit_20_days, datom.fis_credit_30_days
                 old_contact_records[xml_id] = datom
             else:
                 old_company_records[xml_id] = datom
@@ -1719,7 +1727,7 @@ def convert_customer_terms_rec(fis_rec):
     terms.description = ' / '.join([t.strip() for t in fis_rec[F8.description].split('/')])
     return terms
 
-def convert_csms_rec(model, fis_rec):
+def convert_csms_rec(model, fis_rec, aging=None):
     #
     # creates an AttrDict with the following fields
     # - 'module', 'xml_id',
@@ -1770,6 +1778,21 @@ def convert_csms_rec(model, fis_rec):
     company.fis_price_list = fis_rec[F33.price_list_id].upper() or False
     if not company.fis_csms_terms:
         model.error('Terms code %r does not exist' % (fis_rec[F33.payment_terms_id], ))
+    if aging is not None and key in aging:
+        account = aging[key]
+        company.fis_credit_limit = account.limit
+        company.fis_credit_current = account.current
+        company.fis_credit_10_days = account.d10
+        company.fis_credit_20_days = account.d20
+        company.fis_credit_30_days = account.d30
+        company.fis_credit_total = account.total
+    else:
+        company.fis_credit_limit = 0
+        company.fis_credit_current = 0
+        company.fis_credit_10_days = 0
+        company.fis_credit_20_days = 0
+        company.fis_credit_30_days = 0
+        company.fis_credit_total = 0
     contact = None
     if fis_rec[F33.contact] and fis_rec[F33.contact] != fis_rec[F33.name]:
         contact = AttrDict()
@@ -1870,6 +1893,17 @@ def convert_supplier_rec(key):
     if not company.name:
         company.active = False
     return company, contact
+
+def get_customer_aging(aging_file):
+    res = {}
+    with open(aging_file) as af:
+        lines = [line for line in af.read().split('\n') if line.strip()]
+    for line in lines:
+        key, rest = line.split(None, 1)
+        limit, salesrep, total, d0, d10, d20, d30 = line.rsplit(None, 8)[-7:]
+        res[key] = CustomerAging(key, limit, d0, d10, d20, d30, total)
+    return res
+
 
 _raise_lookup = object()
 class Specials(str, Enum):
@@ -2049,6 +2083,30 @@ class Model(object):
             self.errors[self.abbr].append('FIS ID %s:%s write caused exception %r' % (self.module, key, exc))
             # error(format_exception(cls, exc, tb))
             return False
+
+
+class CustomerAging(NamedTuple):
+    _order_ = "xml_id limit current d10 d20 d30 total"
+    xml_id = 'customer key'
+    limit = 'credit limit'
+    current = 'charges within 10 days'
+    d10 = 'charges between 11 and 20 days old'
+    d20 = 'charges between 21 and 30 days old'
+    d30 = 'charges over 30 days old'
+    total = 'total outstanding balance'
+
+    def __new__(cls, *values):
+        new_values = [values[0]]
+        for value in values[1:]:
+            echo('checking %r' % value)
+            value = value.replace(',','')
+            echo('list char is %r' % value[-1:])
+            if value[-1:] == '-':
+                echo('  moving minus sign')
+                value = '-' + value[:-1]
+            echo('  appending %r' % value)
+            new_values.append(float(value))
+        return NamedTuple.__new__(CustomerAging, *new_values)
 
 # old code
 # def handle_sales_reps():
