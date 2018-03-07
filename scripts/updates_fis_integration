@@ -336,6 +336,7 @@ def handle_csms(method):
     assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
             "old/new company records mismatch"
     changed_company_xml_ids = sorted(old_changed_company_records.keys())
+    relevant_changes = False
     for xml_id in changed_company_xml_ids:
         #
         # TODO: check actual values in OpenERP and remove "changes" that are already set
@@ -406,6 +407,7 @@ def handle_csms(method):
                     changes.pop(f, None)
         # quick and full from here
         if changes:
+            relevant_changes = True
             changed_count += 1
             if LIST_RECORDS:
                 echo('  F33:%s  %s' % (xml_id, new_record.name), end='  ')
@@ -413,11 +415,14 @@ def handle_csms(method):
                 echo()
             if not DRYRUN:
                 res.partner.write(xml_id, new_record.id, changes)
+    if not relevant_changes:
+        print('...no relevant changes...')
     if old_changed_contact_records:
         print('processing contact changes', border='flag')
     assert set(old_changed_contact_records.keys()) == set(new_changed_contact_records.keys()),\
             "old/new contact records mismatch"
     changed_contact_xml_ids = sorted(old_changed_contact_records.keys())
+    relevant_changes = False
     for xml_id in changed_contact_xml_ids:
         #
         # TODO: check actual values in OpenERP and remove "changes" that are already set
@@ -471,6 +476,7 @@ def handle_csms(method):
                     changes.pop(f, None)
         # quick and full from here
         if changes:
+            relevant_changes = True
             changed_count += 1
             if LIST_RECORDS:
                 echo('  F33:%s  %s' % (xml_id, new_record.name), end='  ')
@@ -478,30 +484,32 @@ def handle_csms(method):
                 echo()
             if not DRYRUN:
                 res.partner.write(xml_id, new_record.id, changes)
-
+    if not relevant_changes:
+        print('...no relevant changes...')
     #
     # add new customers
     #
     if added_company_records:
         print('adding company records', border='flag')
     for key, company in added_company_records.items():
-        # double-check that record doesn't already exist
-        customer_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F33')])
-        if customer_id:
-            [customer_id] = customer_id
-            ids[key] = customer_id
-            res.partner.error('FIS ID F33:%s (%s) already exists in OpenERP' % (key, company.name))
-        else:
-            added_count += 1
-            if LIST_RECORDS:
-                echo('  F33:%s  %s' % (key, company.name), end='  ')
-                print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
-                echo()
-            if not DRYRUN:
-                customer_id = res.partner.create(key, company)
-                if customer_id:
-                    company.id = customer_id
-                    ids[key] = customer_id
+        if not DRYRUN:
+            # double-check that record doesn't already exist
+            customer_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F33')])
+            if customer_id:
+                [customer_id] = customer_id
+                ids[key] = customer_id
+                res.partner.error('FIS ID F33:%s (%s) already exists in OpenERP' % (key, company.name))
+                continue
+        added_count += 1
+        if LIST_RECORDS:
+            echo('  F33:%s  %s' % (key, company.name), end='  ')
+            print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
+            echo()
+        if not DRYRUN:
+            customer_id = res.partner.create(key, company)
+            if customer_id:
+                company.id = customer_id
+                ids[key] = customer_id
     #
     # add new contacts
     #
@@ -516,6 +524,7 @@ def handle_csms(method):
                 [contact_id] = contact_id
                 ids[key] = contact_id
                 res.partner.error('FIS ID F33:%s (%s) already exists in OpenERP' % (key, contact.name))
+                continue
             else:
                 # look for parent and get id
                 contact.parent_id = ids.get(parent_key)
@@ -856,6 +865,7 @@ def handle_carrier(method):
     assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
             "old/new carrier records mismatch"
     changed_company_xml_ids = sorted(old_changed_company_records.keys())
+    relevant_changes = False
     for xml_id in changed_company_xml_ids:
         #
         # figure out the changes
@@ -923,6 +933,7 @@ def handle_carrier(method):
                     changes.pop(f, None)
         # quick and full from here
         if changes:
+            relevant_changes = True
             changed_count += 1
             if LIST_RECORDS:
                 echo('  F27:%s  %s' % (xml_id, new_record.name), end='  ')
@@ -930,30 +941,32 @@ def handle_carrier(method):
                 echo()
             if not DRYRUN:
                 res.partner.write(xml_id, new_record.id, changes)
+    if not relevant_changes:
+        print('...no relevant changes...')
     #
     # now add new carriers
     #
     if added_company_records:
         print('adding carriers', border='flag')
     for key, company in added_company_records.items():
-        echo(company, border='box')
-        # double-check that record doesn't already exist
-        customer_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F27')])
-        if customer_id:
-            [customer_id] = customer_id
-            ids[key] = customer_id
-            res.partner.error('FIS ID F27:%s (%s) already exists in OpenERP' % (key, company.name))
-        else:
-            added_count += 1
-            if LIST_RECORDS:
-                echo('  F27:%s  %s' % (key, company.name), end='  ')
-                print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
-                echo()
-            if not DRYRUN:
-                customer_id = res.partner.create(key, company)
-                if customer_id:
-                    company.id = customer_id
-                    ids[key] = customer_id
+        if not DRYRUN:
+            # double-check that record doesn't already exist
+            customer_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F27')])
+            if customer_id:
+                [customer_id] = customer_id
+                ids[key] = customer_id
+                res.partner.error('FIS ID F27:%s (%s) already exists in OpenERP' % (key, company.name))
+                continue
+        added_count += 1
+        if LIST_RECORDS:
+            echo('  F27:%s  %s' % (key, company.name), end='  ')
+            print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
+            echo()
+        if not DRYRUN:
+            customer_id = res.partner.create(key, company)
+            if customer_id:
+                company.id = customer_id
+                ids[key] = customer_id
     #
     # delete/deactivate carriers
     #
@@ -1192,38 +1205,39 @@ def handle_emp1(method):
     if added_employee_records:
         print('adding records', border='lined')
     for key, employee in added_employee_records.items():
-        # double-check that record doesn't already exist
-        employee_id = hr.employee.search(domain=[('xml_id','=',key),('module','=','F74-emp')])
-        if employee_id:
-            [employee_id] = employee_id
-            ids[key] = employee_id
-            hr.employee.error('FIS ID F74-emp:%s (%s) already exists in OpenERP' % (key, employee.name))
-        else:
-            added_count += 1
-            if LIST_RECORDS:
-                echo('  F74-emp:%s  %s' % (key, employee.name), end='  ')
-                print('||', '||'.join('%s -> %r' % (k, v) for k, v in employee.items()), '||', end='')
-                echo()
-            if not DRYRUN:
-                employee_id = hr.employee.create(key, employee)
-                if not employee_id:
-                    continue
-                employee.id = employee_id
+        if not DRYRUN:
+            # double-check that record doesn't already exist
+            employee_id = hr.employee.search(domain=[('xml_id','=',key),('module','=','F74-emp')])
+            if employee_id:
+                [employee_id] = employee_id
                 ids[key] = employee_id
-                # check for existing res.partner record, and use it if it exists
-                emp_num = employee.xml_id
-                emp_name = employee.name
-                rp_id = hr.employee.search(domain=[('module','=','F74'),('xml_id','=',emp_num)])
-                if rp_id:
-                    # update res.partner record with employee link
-                    rp_id = rp_id[0]
-                    res.partner.write(emp_num, rp_id, {'employee_id': employee_id})
-                else:
-                    # otherwise, try to create it, leaving it at False (0) on failure
-                    rp_id = res.partner.create(
-                            emp_num,
-                            {'name': emp_name, 'xml_id': emp_num, 'module': 'F74', 'employee_id': employee_id},
-                            )
+                hr.employee.error('FIS ID F74-emp:%s (%s) already exists in OpenERP' % (key, employee.name))
+                continue
+        added_count += 1
+        if LIST_RECORDS:
+            echo('  F74-emp:%s  %s' % (key, employee.name), end='  ')
+            print('||', '||'.join('%s -> %r' % (k, v) for k, v in employee.items()), '||', end='')
+            echo()
+        if not DRYRUN:
+            employee_id = hr.employee.create(key, employee)
+            if not employee_id:
+                continue
+            employee.id = employee_id
+            ids[key] = employee_id
+            # check for existing res.partner record, and use it if it exists
+            emp_num = employee.xml_id
+            emp_name = employee.name
+            rp_id = hr.employee.search(domain=[('module','=','F74'),('xml_id','=',emp_num)])
+            if rp_id:
+                # update res.partner record with employee link
+                rp_id = rp_id[0]
+                res.partner.write(emp_num, rp_id, {'employee_id': employee_id})
+            else:
+                # otherwise, try to create it, leaving it at False (0) on failure
+                rp_id = res.partner.create(
+                        emp_num,
+                        {'name': emp_name, 'xml_id': emp_num, 'module': 'F74', 'employee_id': employee_id},
+                        )
     #
     # deactivate employees  --  DO NOT DELETE
     #
@@ -1745,24 +1759,24 @@ def handle_supplier(method):
     if added_company_records:
         print('adding company records', border='flag')
     for key, company in added_company_records.items():
-        # double-check that record doesn't already exist
         if not DRYRUN:
+            # double-check that record doesn't already exist
             company_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F163')])
             if company_id:
                 [company_id] = company_id
                 ids[key] = company_id
                 res.partner.error('FIS ID F163:%s (%s) already exists in OpenERP' % (key, company.name))
-        else:
-            added_count += 1
-            if LIST_RECORDS:
-                echo('  F163:%s  %s' % (key, company.name), end='  ')
-                print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
-                echo()
-            if not DRYRUN:
-                company_id = res.partner.create(key, company)
-                if company_id:
-                    company.id = company_id
-                    ids[key] = company_id
+                continue
+        added_count += 1
+        if LIST_RECORDS:
+            echo('  F163:%s  %s' % (key, company.name), end='  ')
+            print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
+            echo()
+        if not DRYRUN:
+            company_id = res.partner.create(key, company)
+            if company_id:
+                company.id = company_id
+                ids[key] = company_id
     #
     # process contact changes
     #
@@ -1818,8 +1832,8 @@ def handle_supplier(method):
     if added_contact_records:
         print('adding contact records', border='flag')
     for key, contact in added_contact_records.items():
-        # double-check that record doesn't already exist
         if not DRYRUN:
+            # double-check that record doesn't already exist
             contact_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F163')])
             if contact_id:
                 [contact_id] = contact_id
@@ -2039,7 +2053,7 @@ def convert_supplier_rec(key):
     #
     # creates a contact AttrDict with the following fields
     # - 'module', 'xml_id', 'active', 'name', 'phone', 'fax',
-    # - 'is_company', 'customer', 'supplier', 'fis_valid', 
+    # - 'is_company', 'customer', 'supplier', 'fis_valid',
     #
     # fields coming from OpenERP that are missing/invalid on the FIS side
     # - 'id', 'fis_updated_by_user'
