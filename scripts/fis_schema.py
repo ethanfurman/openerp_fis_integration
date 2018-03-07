@@ -142,9 +142,19 @@ class F74(FISenum):
     hourly_rate       = 'R(0)'           # HOURLY RATE
 
 class F97(FISenum):
-    "Inventory Availablility Code"
-    code = 'An$(5,1)'
-    desc = 'Bn$'
+    """
+    CNVZaa - Inventory Availability Codes
+    """
+    key_type            = 'An$(1,2)'     #   0: Key Group = "aa"
+    company_id          = 'An$(3,2)'     #   1: Company Code
+    availability_id     = 'An$(5,1)'     #   2: Availability Code
+    desc                = 'Bn$'          #   3: Description
+    count_as_lost_sales = 'Cn$(1,1)'     #   4: Count as Lost Sales (Y/N)
+    lost_sales_category = 'Cn$(2,1)'     #   5: Lost Sales Category
+    availability        = 'Cn$(3,1)'     #   6: Availability(Y/N/D/H)
+                                         # (open) Cn$(4,2)
+    inv_print_msg       = 'Dn$'          #   8: Invoice Print Msg
+
 
 class F135(FISenum):
     "Products"

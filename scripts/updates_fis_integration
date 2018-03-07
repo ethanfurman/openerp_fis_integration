@@ -6,7 +6,7 @@ from __future__ import print_function
 from scription import *
 from aenum import Enum, NamedTuple
 from collections import defaultdict
-from fis_schema import F8, F11, F27, F33, F65, F74, F163
+from fis_schema import F8, F11, F27, F33, F65, F74, F97, F163
     # from fis_scheam import F47
 from fis_schema import get_changed_records as get_changed_fis_records, combine_by_value
 from openerplib import AttrDict, get_connection, get_records, Many2One, DEFAULT_SERVER_DATE_FORMAT
@@ -93,7 +93,8 @@ def fis_integration(files, method, delete):
         # handle_sales_reps(method)
         handle_carrier(method)
         handle_customer_terms()
-        handle_sales_category()
+        handle_product_category()
+        handle_product_location()
     if 'emp1' in files:
         handle_emp1(method)
     if 'posm' in files or 'vnms' in files:
@@ -1324,7 +1325,7 @@ def handle_emp1(method):
             border='box',
             )
 
-def handle_sales_category():
+def handle_product_category():
     #
     # always use "full" method
     #
@@ -1382,7 +1383,7 @@ def handle_sales_category():
     print('retrieving and converting FIS records')
     all_fis_records = AttrDict()
     for fis_rec in cnvzas.values():
-        category = convert_sales_category_rec(fis_rec)
+        category = convert_product_category_rec(fis_rec)
         all_fis_records[category.xml_id] = category
     #
     # now we can separate into new, changed, and deleted buckets
@@ -1423,15 +1424,15 @@ def handle_sales_category():
             category.parent_id = ids[category.parent_id]
         # double-check that record doesn't already exist
         if not DRYRUN:
-            category_id = product.category.search(domain=[('xml_id','=',key),('module','=','F163')])
+            category_id = product.category.search(domain=[('xml_id','=',key),('module','=','F11')])
             if category_id:
                 [category_id] = category_id
                 ids[key] = category_id
-                product.category.error('FIS ID F163:%s (%s) already exists in OpenERP' % (key, category.name))
+                product.category.error('FIS ID F11:%s (%s) already exists in OpenERP' % (key, category.name))
                 continue
         added_count += 1
         if LIST_RECORDS:
-            echo('  F163:%s  %s' % (key, category.name), end='  ')
+            echo('  F11:%s  %s' % (key, category.name), end='  ')
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in category.items()), '||', end='')
             echo()
         if not DRYRUN:
@@ -1482,7 +1483,7 @@ def handle_sales_category():
             relevant_changes = True
             changed_count += 1
             if LIST_RECORDS:
-                echo('  F163:%s  %s' % (xml_id, new_record.name), end='  ')
+                echo('  F11:%s  %s' % (xml_id, new_record.name), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
             if not DRYRUN:
@@ -1500,7 +1501,7 @@ def handle_sales_category():
             elif not all_oe_records[key].active:
                 deleted_records.pop(key)
             elif LIST_RECORDS:
-                echo('  F163:%s  %s' % (key, rec.name))
+                echo('  F11:%s  %s' % (key, rec.name))
         deleted_count = len(deleted_records)
         if deleted_count:
             if not DELETE:
@@ -1518,6 +1519,175 @@ def handle_sales_category():
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
             border='box',
             )
+
+def handle_product_location():
+    #
+    # always use "full" method
+    #
+    print('processing CNVZaa', border=('box','#'))
+    cnvzaa = fisData(97, keymatch='aa10%s')
+    print(cnvzaa.filename, verbose=2)
+    context = {'fis-updates': True, 'active_test': False}
+    # these  are for tracking old/new versions of changed records
+    old_changed_location_records = {}
+    new_changed_location_records = {}
+    # these are for added/deleted records
+    added_location_records = {}
+    deleted_records = {}
+    # and the counts
+    changed_count = 0
+    added_count = 0
+    deleted_count = 0
+    product = AttrDict()
+    product.location = Model(oe.get_model('product.available_at'), 'cnvzaa', 'F11', context)
+    #
+    # get the "old" data from:
+    # - full -> current OpenERP data
+    #
+    print('gathering data', border='flag')
+    #
+    # retrieve the OpenERP records that match the CNVZsv module
+    #
+    print('retrieving OpenERP records')
+    all_oe_records = dict([
+            (r.xml_id, r)
+            for r in get_records(
+                oe, 'product.available_at',
+                domain=[('module','=','F97')],
+                fields=[
+                    'id', 'module', 'xml_id', 'name', 'availability',
+                    ],
+                context=context,
+                )
+            ])
+    # and update ids
+    ids = dict([
+        (r.xml_id, r.id)
+        for r in all_oe_records.values()
+        ])
+    #
+    # when doing a full compare, we have to convert every single fis record before we can
+    # check for changes
+    #
+    print('retrieving and converting FIS records')
+    all_fis_records = AttrDict()
+    for fis_rec in cnvzaa.values():
+        location = convert_product_location_rec(fis_rec)
+        all_fis_records[location.xml_id] = location
+    #
+    # now we can separate into new, changed, and deleted buckets
+    #
+    print('sorting changed, new, and deleted customer category records')
+    all_keys = set(all_fis_records.keys() + all_oe_records.keys())
+    for key in all_keys:
+        old_rec = all_oe_records.get(key)
+        new_rec = all_fis_records.get(key)
+        if old_rec is new_rec is None:
+            continue
+        if old_rec is None:
+            added_location_records[key] = new_rec
+            continue
+        if new_rec is None:
+            deleted_records[key] = old_rec
+            continue
+        # copy missing fields for proper equality testing
+        new_rec.id = old_rec.id
+        if new_rec == old_rec:
+            continue
+        #
+        # we have changes, save the records for later comparison
+        #
+        old_changed_location_records[key] = old_rec
+        new_changed_location_records[key] = new_rec
+    #
+    # at this point, all records are in AttrDict format, divided by deleted, added, and changed
+    #
+    # add new locations
+    #
+    if added_location_records:
+        print('adding location records', border='flag')
+    for key, location in sorted(added_location_records.items()):
+        if not DRYRUN:
+            # double-check that record doesn't already exist
+            location_id = product.location.search(domain=[('xml_id','=',key),('module','=','F97')])
+            if location_id:
+                [location_id] = location_id
+                ids[key] = location_id
+                product.location.error('FIS ID F97:%s (%s) already exists in OpenERP' % (key, location.name))
+                continue
+        added_count += 1
+        if LIST_RECORDS:
+            echo('  F97:%s  %s' % (key, location.name), end='  ')
+            print('||', '||'.join('%s -> %r' % (k, v) for k, v in location.items()), '||', end='')
+            echo()
+        if not DRYRUN:
+            location_id = product.location.create(key, location)
+            if location_id:
+                location.id = location_id
+                ids[key] = location_id
+    #
+    # process changes
+    #
+    if old_changed_location_records:
+        print('processing location changes', border='flag')
+    assert set(old_changed_location_records.keys()) == set(new_changed_location_records.keys()),\
+            "old and new location records mismatch"
+    changed_location_xml_ids = sorted(old_changed_location_records.keys())
+    relevant_changes = False
+    for xml_id in changed_location_xml_ids:
+        #
+        # figure out the changes
+        #
+        old_record = old_changed_location_records[xml_id]
+        new_record = new_changed_location_records[xml_id]
+        assert old_record.keys() == new_record.keys(),\
+                ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
+                    ('|'.join(sorted(old_record.keys())), box(str(old_record)),
+                     '|'.join(sorted(new_record.keys())), box(str(new_record))))
+        assert 'id' in old_record, box('id field missing for %r' % (xml_id, ))
+        # check for user-updated-address and specials
+        changes = AttrDict()
+        for key in old_record:
+            if old_record[key] != new_record[key]:
+                changes[key] = new_record[key]
+        if changes:
+            relevant_changes = True
+            changed_count += 1
+            if LIST_RECORDS:
+                echo('  F97:%s  %s' % (xml_id, new_record.name), end='  ')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
+                echo()
+            if not DRYRUN:
+                product.location.write(xml_id, new_record.id, changes)
+    if not relevant_changes:
+        print('...no relevant changes...')
+    #
+    # deleted/deactivate locations
+    #
+    if deleted_records:
+        # toss any records that don't already exist in OpenERP
+        for key, rec in sorted(deleted_records.items()):
+            if key not in ids:
+                deleted_records.pop(key)
+            elif LIST_RECORDS:
+                echo('  F97:%s  %s' % (key, rec.name))
+        deleted_count = len(deleted_records)
+        if deleted_count:
+            if not DELETE:
+                print('deactivating records', border='flag')
+            else:
+                print('deleting records', border='flag')
+            if not DRYRUN:
+                ids = [ids[xml_id] for xml_id in deleted_records]
+                if DELETE:
+                    product.location.delete(ids, context=context)
+    #
+    print('%d locations changed\n%d locations added\n%d locations %s'
+            % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
+            border='box',
+            )
+
+
 
 def handle_supplier(method):
     #
@@ -1881,26 +2051,33 @@ def handle_supplier(method):
             )
 
 
-def convert_sales_category_rec(fis_rec):
+def convert_product_category_rec(fis_rec):
     assert SALEABLE_CATEGORY_ID is not None, "SALEABLE_CATEGORY_ID has not been set"
-    lines = []
     category = AttrDict()
     category.xml_id = key = fis_rec[F11.sales_category_id].strip()
-    lines.append(repr(key))
     category.module = 'F11'
     name = re.sub('sunridge', 'SunRidge', fis_rec[F11.desc].title(), flags=re.I)
     if len(key) == 1:
         name = key + ' - ' + name.strip('- ')
         category.parent_id = SALEABLE_CATEGORY_ID
-        lines.extend([name, repr(category.parent_id)])
     else:
         parent_key = key[0]
         category.parent_id = category_ids.get(parent_key, parent_key)
-        lines.extend([name, repr(category.parent_id)])
     category.name = name
     if not category.parent_id:
         raw_input('problems!!')
     return category
+
+def convert_product_location_rec(fis_rec):
+    location = AttrDict()
+    location.xml_id = fis_rec[F97.availability_id].strip()
+    location.module = 'F97'
+    location.name = re.sub('sunridge', 'SunRidge', fis_rec[F97.desc].title(), flags=re.I)
+    avail= fis_rec[F97.availability].upper()
+    if avail not in 'YN':
+        avail = False
+    location.availability = avail
+    return location
 
 
 def convert_emp1_rec(fis_rec):

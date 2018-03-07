@@ -58,6 +58,11 @@ class Forecast(NamedTuple):
     day_10 = 1, None, ForecastDetail()
     day_21 = 2, None, ForecastDetail()
 
+class ProductAvailability(fields.SelectionEnum):
+    _order_ = 'no yes'
+    no =  'N', 'No'
+    yes = 'Y', 'Yes'
+
 def _get_category_records(key_table, cr, uid, ids, context=None):
     if isinstance(ids, (int, long)):
         ids = [ids]
@@ -140,6 +145,7 @@ class product_available_at(xmlid, osv.Model):
         'name' : fields.char('Availability', size=50),
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
+        'availability': fields.selection(ProductAvailability, 'Availability'),
         'product_ids' : fields.one2many(
             'product.product',
             'avail',
