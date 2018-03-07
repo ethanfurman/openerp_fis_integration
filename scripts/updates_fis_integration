@@ -1743,10 +1743,16 @@ def handle_supplier(method):
         company, contact = convert_supplier_rec(key)
         # if company/contact are invalid, just put them in the deleted category
         all_fis_records[company.xml_id] = company
-        new_company_records[company.xml_id] = company
+        if '**NO LONGER HERE**' in company.name or '**OLDER/N.L.H. EMPLOYEE**' in company.name:
+            deleted_records[company.xml_id] = company
+        else:
+            new_company_records[company.xml_id] = company
         if contact is not None:
             all_fis_records[contact.xml_id] = contact
-            new_contact_records[contact.xml_id] = contact
+            if '**NO LONGER HERE**' in contact.name or '**OLDER/N.L.H. EMPLOYEE**' in contact.name:
+                deleted_records[contact.xml_id] = contact
+            else:
+                new_contact_records[contact.xml_id] = contact
     for code in sorted(vnms.keys()):
         key = code[2:]
         if key in vendor_codes:
@@ -1754,10 +1760,16 @@ def handle_supplier(method):
         company, contact = convert_supplier_rec(key)
         # if company/contact are invalid, just put them in the deleted category
         all_fis_records[company.xml_id] = company
-        new_company_records[company.xml_id] = company
+        if '**NO LONGER HERE**' in company.name or '**OLDER/N.L.H. EMPLOYEE**' in company.name:
+            deleted_records[company.xml_id] = company
+        else:
+            new_company_records[company.xml_id] = company
         if contact is not None:
             all_fis_records[contact.xml_id] = contact
-            new_contact_records[contact.xml_id] = contact
+            if '**NO LONGER HERE**' in contact.name or '**OLDER/N.L.H. EMPLOYEE**' in contact.name:
+                deleted_records[contact.xml_id] = contact
+            else:
+                new_contact_records[contact.xml_id] = contact
     #
     # retrieve the OpenERP records that match the POSM/VNMS module, and divvy them up into company
     # and contact records
