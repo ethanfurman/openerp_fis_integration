@@ -156,22 +156,28 @@ class F97(FISenum):
     inv_print_msg       = 'Dn$'          #   8: Invoice Print Msg
 
 
-class F135(FISenum):
-    "Products"
-    item_code = 'An$(1,6)'
-    available = 'Bn$(1,1)'
-    sales_category = 'Bn$(3,2)'
-    shelf_life = 'Bn$(69,2)'
-    trademarked = 'Bn$(117,2)'
-    name = 'Cn$(1,40)'
-    ship_size = 'Cn$(41,8)'
-    manager = 'Dn$(5,1)'
-    ean13 = 'Dn$(6,12)'
-    storage_location = 'Dn$(18,6)'
-    on_hand = 'I(6)'
-    committed = 'I(7)'
-    on_order = 'I(8)'
-    wholesale = 'I(23)'
+
+class F135(str, Enum):
+    """
+    NVTY1 - INVENTORY MASTER (STATUS & DESCRIPTION)
+    """
+    item_id                  = 'An$(1,6)'        #   0: Item Code
+    company_id               = 'An$(7,2)'        #   1: Company Code
+    warehouse_no             = 'An$(9,4)'        #   2: Warehouse Number
+    company                  = 'An$(13,6)'       #   3: 4 SPACES + COMPANY
+    key_type                 = 'An$(19,3)'       #   4: Key Type = '1**'
+    available                = 'Bn$(1,1)'        #   5: Available?
+    sales_category           = 'Bn$(3,2)'        #   7: Sales Category
+    trademarkd               = 'Bn$(117,2)'      #  48: TradeMarkd
+    kosher_category          = 'Bn$(119,1)'      #  49: Kosher Catg
+    catlog_loc               = 'Bn$(120,10)'     #  50: Catlog Loc
+    desc                     = 'Cn$(1,40)'       #  51: Description
+    size                     = 'Cn$(41,8)'       #  52: Size
+    upc_id                   = 'Dn$(6,12)'       #  55: UPC CODE
+    prim_loc                 = 'Dn$(18,6)'       #  56: Prim Loc
+    supplier                 = 'Gn$(1,6)'        #  81: Supplier
+    new_retail               = 'I(22)'           # 115: New Retail
+    new_whlsle               = 'I(23)'           # 116: New Whlsle
 
 class F163(FISenum):
     "Supplier Master"
