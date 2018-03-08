@@ -129,6 +129,8 @@ def handle_nvty(method):
     # changed_map = combine_by_value(F33, changes)
     # print('--== PROCESSING CHANGES --==')
     # for changed_fields, records in sorted(changed_map.items()):
+    combine_by_value
+    grouped
 
 
 def handle_csms(method):
@@ -2062,6 +2064,18 @@ def handle_supplier(method):
             border='box',
             )
 
+
+def convert_nvty_rec(fis_rec):
+    item = AttrDict()
+    item.name = re.sub('sunridge', 'SunRidge', NameCase(fis_rec[F74.name]), flags=re.I)
+    item.xml_id =  emp_num = fis_rec[F74.emp_num].strip()
+    item.module = 'F11'
+    try:
+        if int(emp_num) >= 9000:
+            return None
+    except (ValueError, TypeError):
+        return None
+    return item
 
 def convert_product_category_rec(fis_rec):
     assert SALEABLE_CATEGORY_ID is not None, "SALEABLE_CATEGORY_ID has not been set"
