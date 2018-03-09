@@ -37,8 +37,6 @@ ETC_CATEGORY_ID = None
         )
 def main(dryrun, list_records):
     # make sure we are the only one running
-    lock_file = PidLockFile('/var/run/fis_update.pid')
-    lock_file.seal()
     global config, oe, errors, DRYRUN, LIST_RECORDS, script_verbosity
     DRYRUN = LIST_RECORDS = False
     config = OrmFile('%s/config/fnx.ini' % os.environ['VIRTUAL_ENV'])
@@ -65,52 +63,157 @@ def main(dryrun, list_records):
         )
 def fis_integration(files, method, delete):
     # make sure we are the only one running
-    lock_file = PidLockFile('/var/run/fis_update.pid')
-    lock_file.seal()
     global state_recs, country_recs, customer_terms_recs
     global skipped_suppliers, vendor_suppliers, ven2sup, vendor_codes
     global models, DELETE
     DELETE = delete
-    ven2sup = {}
-    state_recs = dict([
-        (r.name, (r.id, r.code, r.country_id))
-        for r in get_records(oe, 'res.country.state')
-        ])
-    country_recs = dict([
-        (r.name, r.id)
-        for r in get_records(oe, 'res.country')
-        ])
-    for name, rec_id in country_recs.items():
-        country_recs[rec_id] = name
-    customer_terms_recs = dict([
-        (r.xml_id, r.id)
-        for r in get_records(oe, 'fis.account.customer_terms')
-        ])
-    skipped_suppliers = set()
-    vendor_suppliers = {}
-    vendor_codes = set()
-    if 'cnvz' in files:
-        # handle_sales_reps(method)
-        handle_carrier(method)
-        handle_customer_terms()
-        handle_product_category()
-        handle_product_location()
-    if 'emp1' in files:
-        handle_emp1(method)
-    if 'posm' in files or 'vnms' in files:
-        handle_supplier(method)
-    if 'csms' in files:
-        handle_csms(method)
-    if 'nvty' in files:
-        handle_nvty(method)
-    for m, problems in sorted(Model.errors.items()):
-        error(m,'\n============')
-        for p in problems:
-            error('  ', p)
-        error()
+    with PidLockFile('/var/run/fis_update.pid'):
+        ven2sup = {}
+        state_recs = dict([
+            (r.name, (r.id, r.code, r.country_id))
+            for r in get_records(oe, 'res.country.state')
+            ])
+        country_recs = dict([
+            (r.name, r.id)
+            for r in get_records(oe, 'res.country')
+            ])
+        for name, rec_id in country_recs.items():
+            country_recs[rec_id] = name
+        customer_terms_recs = dict([
+            (r.xml_id, r.id)
+            for r in get_records(oe, 'fis.account.customer_terms')
+            ])
+        skipped_suppliers = set()
+        vendor_suppliers = {}
+        vendor_codes = set()
+        if 'cnvz' in files:
+            # handle_sales_reps(method)
+            handle_carrier(method)
+            handle_customer_terms()
+            handle_product_category()
+            handle_product_location()
+        if 'emp1' in files:
+            handle_emp1(method)
+        if 'posm' in files or 'vnms' in files:
+            handle_supplier(method)
+        if 'csms' in files:
+            handle_csms(method)
+        if 'nvty' in files:
+            handle_nvty(method)
+        for m, problems in sorted(Model.errors.items()):
+            error(m,'\n============')
+            for p in problems:
+                error('  ', p)
+            error()
 
 # helpers
 def handle_nvty(method):
+    print('processing NVTY', border=('flag', '#'))
+    context = {'fis-updates': True, 'active_test': False}
+    product = AttrDict()
+    product.product = Model(oe.get_model('product.product'), 'nvty', 'F135', context)
+    # these are for tracking original old/new records
+    new_product_records = {}
+    old_product_records = {}
+    # these are for tracking old/new versions of changed records
+    old_changed_product_records = {}
+    new_changed_product_records = {}
+    # these are for added/deleted records
+    added_product_records = {}
+    deleted_records = {}
+    # and the counts
+    changed_count = 0
+    added_count = 0
+    deleted_count = 0
+    ids = {}
+    #
+    # get the "old" data from:
+    # - quick -> old fis file
+    # - full -> current OpenERP data
+    #
+    nvty = fisData(135, keymatch='10%s')
+    print(nvty.filename, verbose=2)
+    print('gathering data', border='flag')
+    if method == 'quick':
+        #
+        # for a quick compare we can use the fis records as-is
+        #
+        nvty_old = fisData(135, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
+        print(nvty_old.filename, verbose=2)
+        print('collecting changed records')
+        changes, added, deleted = get_changed_fis_records(
+                nvty_old.values(),
+                nvty.values(),
+                enum_schema=[
+                    F135.available, F135.sales_category, F135.trademarked, F135.kosher_category,
+                    F135.catalog_location, F135.desc, F135.size, F135.upc_no, F135.primary_location,
+                    F135.supplier_id, F135.new_retail, F135.new_wholesale
+                    ],
+                )
+        changed_map = combine_by_value(F135, changes)
+        #
+        # we now have the subset of records that have changed, just need to separate them
+        # into old and new
+        #
+        print('sorting changed records')
+        for diffs, recs in changed_map.items():
+            new_values = AttrDict()
+            # for fis_field, new_value in diffs:
+            #     if fis_field is F135.available:
+            #         pass
+            #     if fis_field is F135.:
+            #         pass
+            #     if fis_field is F135.:
+            #         pass
+            #     if fis_field is F135.:
+            #         pass
+            #     if fis_field is F135.:
+            #         pass
+            #     if fis_field is F135.:
+            #         pass
+            #     if fis_field is F135.:
+            #         pass
+            #     if fis_field is F135.:
+            #         pass
+            #     if fis_field is F135.:
+            #         pass
+            #     if fis_field is F135.:
+            #         pass
+            #     if fis_field is F135.:
+            #         pass
+            #     if fis_field is F135.:
+            #         pass
+
+
+            old_company, old_contact = convert_csms_rec(res.partner, old)
+            old_company_records[old_company.xml_id] = old_company
+            new_company, new_contact = convert_csms_rec(res.partner, new)
+            new_company_records[new_company.xml_id] = new_company
+            # changes at the FIS level don't always translate to changes at the OpenERP level
+            if old_company != new_company:
+                old_changed_company_records[old_company.xml_id] = old_company
+                new_changed_company_records[new_company.xml_id] = new_company
+            # determine if contacts are added, deleted, or changed
+            if old_contact is not None:
+                old_contact_records[old_contact.xml_id] = old_contact
+            if new_contact is not None:
+                new_contact_records[new_contact.xml_id] = new_contact
+            if old_contact == new_contact:
+                pass
+            elif old_contact is None:
+                added_contact_records[new_contact.xml_id] = new_contact
+            elif new_contact is None:
+                deleted_records[old_contact.xml_id] = old_contact
+            else:
+                old_changed_contact_records[old_contact.xml_id] = old_contact
+                new_changed_contact_records[new_contact.xml_id] = new_contact
+            assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
+                    "old and new company records mismatch"
+            assert set(old_changed_contact_records.keys()) == set(new_changed_contact_records.keys()),\
+                    "old and new contact records mismatch"
+        #
+        # and convert the new and deleted records
+        #
     nvty_old = fisData(135, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
     nvty_old
     # changed_records = 0
