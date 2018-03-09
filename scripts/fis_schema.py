@@ -157,7 +157,7 @@ class F97(FISenum):
 
 
 
-class F135(str, Enum):
+class F135(FISenum):
     """
     NVTY1 - INVENTORY MASTER (STATUS & DESCRIPTION)
     """
@@ -168,16 +168,16 @@ class F135(str, Enum):
     key_type                 = 'An$(19,3)'       #   4: Key Type = '1**'
     available                = 'Bn$(1,1)'        #   5: Available?
     sales_category           = 'Bn$(3,2)'        #   7: Sales Category
-    trademarkd               = 'Bn$(117,2)'      #  48: TradeMarkd
+    trademarked              = 'Bn$(117,2)'      #  48: TradeMarkd
     kosher_category          = 'Bn$(119,1)'      #  49: Kosher Catg
-    catlog_loc               = 'Bn$(120,10)'     #  50: Catlog Loc
+    catlog_location          = 'Bn$(120,10)'     #  50: Catlog Loc
     desc                     = 'Cn$(1,40)'       #  51: Description
     size                     = 'Cn$(41,8)'       #  52: Size
-    upc_id                   = 'Dn$(6,12)'       #  55: UPC CODE
-    prim_loc                 = 'Dn$(18,6)'       #  56: Prim Loc
-    supplier                 = 'Gn$(1,6)'        #  81: Supplier
+    upc_no                   = 'Dn$(6,12)'       #  55: UPC CODE
+    primary_location         = 'Dn$(18,6)'       #  56: Prim Loc
+    supplier_id              = 'Gn$(1,6)'        #  81: Supplier
     new_retail               = 'I(22)'           # 115: New Retail
-    new_whlsle               = 'I(23)'           # 116: New Whlsle
+    new_whlolesale           = 'I(23)'           # 116: New Whlsle
 
 class F163(FISenum):
     "Supplier Master"
@@ -267,15 +267,13 @@ def combine_by_value(key, records):
     # records with field changes in addr1, addr2, addr3, and postal cannot be combined
     print 'combine by value key: ', key
     changed_map = defaultdict(list)
-    for row in records:
+    for old_rec, new_rec, diffs in records:
         rec_key = []
-        fis_record = row[0]
-        for t in row[1:]:
-            for fis_field, old_value, new_value in t:
-                if fis_field in key:
-                    rec_key.append(fis_field)
-                    rec_key.append(new_value)
+        for fis_field, old_value, new_value in diffs:
+            if fis_field in key:
+                rec_key.append(fis_field)
+                rec_key.append(new_value)
         if rec_key:
-            changed_map[tuple(rec_key)].append(fis_record)
+            changed_map[tuple(rec_key)].append(new_rec)
     return changed_map
 
