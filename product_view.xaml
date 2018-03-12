@@ -90,7 +90,7 @@
                 @product_manager position='after'
                     @fis_location
                 @list_price position='after'
-                    @shipped_as
+                    @fis_shipping_size
                 @default_code position='replace'
                     @xml_id
                     @fis_name readonly='1'
@@ -104,7 +104,7 @@
                 @default_code position='replace'
                     @xml_id
                 @name position='after'
-                    @shipped_as
+                    @fis_shipping_size
 
         ~record #product_normal_action model='ir.actions.act_window'
             @name: Products

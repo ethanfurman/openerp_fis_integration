@@ -305,10 +305,11 @@ class product_product(xmlid, osv.Model):
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
-        'shipped_as': fields.char('Shipped as', size=50),
-        'avail': fields.many2one(
+        'fis_shipping_size': fields.char('Shipped as', size=50, oldname='shipped_as'),
+        'fis_availability_id': fields.many2one(
             'product.available_at',
             'Availability',
+            oldname='avail',
             ),
         'spcl_ship_instr': fields.text('Special Shipping Instructions'),
         'fis_location': fields.char('Location', size=6),
