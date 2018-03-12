@@ -1,5 +1,4 @@
 import aenum
-from collections import defaultdict
 from VSS.utils import LazyClassAttr
 
 class FISenum(str, aenum.Enum):
@@ -37,6 +36,7 @@ class F11(FISenum):
     company                  = 'An$(3,2)'      #   1: COMPANY
     sales_category_id        = 'An$(5,2)'      #   2: Sales Category Code
     desc                     = 'Cn$'           #   8: Description
+    shelf_life               = 'Fn'            #  11: MONTHS SHELF LIFE
 
 
 class F27(FISenum):
@@ -166,12 +166,12 @@ class F135(FISenum):
     warehouse_no             = 'An$(9,4)'        #   2: Warehouse Number
     company                  = 'An$(13,6)'       #   3: 4 SPACES + COMPANY
     key_type                 = 'An$(19,3)'       #   4: Key Type = '1**'
-    available                = 'Bn$(1,1)'        #   5: Available?
+    available_key            = 'Bn$(1,1)'        #   5: Available?
     sales_category           = 'Bn$(3,2)'        #   7: Sales Category
     trademarked              = 'Bn$(117,2)'      #  48: TradeMarkd
     kosher_category          = 'Bn$(119,1)'      #  49: Kosher Catg
     catlog_location          = 'Bn$(120,10)'     #  50: Catlog Loc
-    desc                     = 'Cn$(1,40)'       #  51: Description
+    description              = 'Cn$(1,40)'       #  51: Description
     size                     = 'Cn$(41,8)'       #  52: Size
     upc_no                   = 'Dn$(6,12)'       #  55: UPC CODE
     primary_location         = 'Dn$(18,6)'       #  56: Prim Loc
@@ -262,18 +262,4 @@ def get_changed_records(old_records, new_records, enum_schema, address_fields, i
         if changed_values:
             changes.append((old_rec, new_rec, changed_values))
     return changes, added, deleted
-
-def combine_by_value(key, records):
-    # records with field changes in addr1, addr2, addr3, and postal cannot be combined
-    print 'combine by value key: ', key
-    changed_map = defaultdict(list)
-    for old_rec, new_rec, diffs in records:
-        rec_key = []
-        for fis_field, old_value, new_value in diffs:
-            if fis_field in key:
-                rec_key.append(fis_field)
-                rec_key.append(new_value)
-        if rec_key:
-            changed_map[tuple(rec_key)].append(new_rec)
-    return changed_map
 
