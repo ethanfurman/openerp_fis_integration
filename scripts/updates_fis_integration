@@ -131,7 +131,7 @@ def handle_nvty(method):
     # - quick -> old fis file
     # - full -> current OpenERP data
     #
-    nvty = fisData(135, keymatch='10%s')
+    nvty = fisData(135, keymatch='%s101000    101**')
     print(nvty.filename, verbose=2)
     print('gathering data', border='flag')
     if method == 'quick':
@@ -145,45 +145,22 @@ def handle_nvty(method):
                 nvty_old.values(),
                 nvty.values(),
                 enum_schema=[
-                    F135.available, F135.sales_category, F135.trademarked, F135.kosher_category,
-                    F135.catalog_location, F135.desc, F135.size, F135.upc_no, F135.primary_location,
+                    F135.available_key, F135.sales_category, F135.trademarked,
+                    F135.catalog_location, F135.description, F135.size, F135.upc_no, F135.primary_location,
                     F135.supplier_id, F135.new_retail, F135.new_wholesale
                     ],
                 )
-        changed_map = combine_by_value(F135, changes)
+        #
+        # now convert just the changed records, then look for commonalities
+        #
+        changes = [convert_nvty_rec(r) for r in changes]
+        changed_map = combine_by_value(changes, allowed_combinations=...)
+
         #
         # we now have the subset of records that have changed, just need to separate them
         # into old and new
         #
         print('sorting changed records')
-        for diffs, recs in changed_map.items():
-            new_values = AttrDict()
-            # for fis_field, new_value in diffs:
-            #     if fis_field is F135.available:
-            #         pass
-            #     if fis_field is F135.:
-            #         pass
-            #     if fis_field is F135.:
-            #         pass
-            #     if fis_field is F135.:
-            #         pass
-            #     if fis_field is F135.:
-            #         pass
-            #     if fis_field is F135.:
-            #         pass
-            #     if fis_field is F135.:
-            #         pass
-            #     if fis_field is F135.:
-            #         pass
-            #     if fis_field is F135.:
-            #         pass
-            #     if fis_field is F135.:
-            #         pass
-            #     if fis_field is F135.:
-            #         pass
-            #     if fis_field is F135.:
-            #         pass
-
 
             old_company, old_contact = convert_csms_rec(res.partner, old)
             old_company_records[old_company.xml_id] = old_company
@@ -2170,14 +2147,34 @@ def handle_supplier(method):
 
 def convert_nvty_rec(fis_rec):
     item = AttrDict()
-    item.name = re.sub('sunridge', 'SunRidge', NameCase(fis_rec[F74.name]), flags=re.I)
-    item.xml_id =  emp_num = fis_rec[F74.emp_num].strip()
-    item.module = 'F11'
-    try:
-        if int(emp_num) >= 9000:
-            return None
-    except (ValueError, TypeError):
-        return None
+    item.name = re.sub('sunridge', 'SunRidge', NameCase(fis_rec[F135.description]), flags=re.I)
+    item.xml_id =  fis_rec[F135.item_id]
+    item.module = 'F135'
+    item.fis_available_id = product_available_at.get(fis_rec[F135.available_key], False)
+    item.sale_ok = # ... something here mapping available status from fis_available_id
+    item.categ_id = # ... something here mapping to category using fis_rec[F135.catalog_location]
+    item.trademarks = fis_rec[F135.trademarked]
+    item.ean13 = sanitize_ean13(fis_rec[F135.upc_no])
+    item.fis_location = fis_rec[F135.primary_location]
+
+    shipping_size = fis_nvty_rec[F135.ship_size].strip()
+    if shipping_size.lower() in ('each','1 each','1/each'):
+        shipping_size = '1 each'
+    elif shipping_size:
+        first, last = [], []
+        letters = False
+        for char in shipping_size:
+            if letters or char.isalpha():
+                last.append(char)
+                letters = True
+            else:
+                first.append(char)
+        if last == 'z':
+            last = 'oz'
+        shipping_size = ('%s %s' % (''.join(first).strip(), ''.join(last).strip())).strip()
+    item.fis_shipping_size = shipping_size
+
+
     return item
 
 def convert_product_category_rec(fis_rec):
@@ -2565,6 +2562,54 @@ def is_contact(obj):
     if not isinstance(obj, basestring):
         obj = obj.get('xml_id')
     return obj.startswith('cntct_')
+
+def combine_by_value(key, records):
+    # records with field changes in addr1, addr2, addr3, and postal cannot be combined
+    print 'combine by value key: ', key
+    changed_map = defaultdict(list)
+    for old_rec, new_rec, diffs in records:
+        rec_key = []
+        for fis_field, old_value, new_value in diffs:
+            if fis_field in key:
+                rec_key.append(fis_field)
+                rec_key.append(new_value)
+        if rec_key:
+            changed_map[tuple(rec_key)].append(new_rec)
+    return changed_map
+
+def sanitize_ean13(ean13):
+    """
+    Creates and returns a valid ean13 from an invalid one
+    """
+    if not ean13:
+        return "0000000000000"
+    ean13 = re.sub("[A-Za-z]", "0", ean13);
+    ean13 = re.sub("[^0-9]", "", ean13);
+    ean13 = ean13[:13]
+    if len(ean13) < 13:
+        ean13 = ean13 + '0' * (13-len(ean13))
+    return ean13[:-1] + str(ean_checksum(ean13))
+
+def ean_checksum(eancode):
+    """
+    returns the checksum of an ean string of length 13, returns -1 if the string has the wrong length
+    """
+    if len(eancode) <> 13:
+        return -1
+    oddsum=0
+    evensum=0
+    total=0
+    eanvalue=eancode
+    reversevalue = eanvalue[::-1]
+    finalean=reversevalue[1:]
+    for i in range(len(finalean)):
+        if i % 2 == 0:
+            oddsum += int(finalean[i])
+        else:
+            evensum += int(finalean[i])
+    total=(oddsum * 3) + evensum
+    check = int(10 - math.ceil(total % 10.0)) % 10
+    return check
 
 class Model(object):
 
