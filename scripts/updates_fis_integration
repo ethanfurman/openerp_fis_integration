@@ -29,6 +29,8 @@ newv = C.Normal | C.FG_Green
 SALEABLE_CATEGORY_XMLID = 'product_category_1'
 SALEABLE_CATEGORY_ID = None
 ETC_CATEGORY_ID = None
+CLEANING_CATEGORY_XMLID = 'pd_cleaning'
+
 
 # API
 @Script(
@@ -108,6 +110,7 @@ def fis_integration(files, method, delete):
 
 # helpers
 def handle_nvty(method):
+    global CLEANING_CATEGORY
     print('processing NVTY', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
     product = AttrDict()
@@ -131,6 +134,12 @@ def handle_nvty(method):
     # - quick -> old fis file
     # - full -> current OpenERP data
     #
+    # get dependent data
+    ir = AttrDict()
+    ir.model = AttrDict()
+    ir.model.data = Model(oe.get_model('ir.model.data'), 'imd', '', context)
+    # - cleaning category
+    CLEANING_CATEGORY = ir_model_data.get_object_reference(cr, uid, 'fnx_pd', 'pd_cleaning')[1]
     nvty = fisData(135, keymatch='%s101000    101**')
     print(nvty.filename, verbose=2)
     print('gathering data', border='flag')
@@ -2146,17 +2155,25 @@ def handle_supplier(method):
 
 
 def convert_nvty_rec(fis_rec):
+    # some fields come from non-FIS locations or are only update once per day -- those fields will not
+    # be evaluated here:
+    # - name -> get_product_descriptions()
+    # - fis_qty: _produced, _consumed, _purchased, _sold, _available
+    # - fis_10_day: _produced, _consumed, _purchased, _sold, _available
+    # - fis_21_day: _produced, _cosnumed, _purchased, _sold, _available
+
     item = AttrDict()
-    item.name = re.sub('sunridge', 'SunRidge', NameCase(fis_rec[F135.description]), flags=re.I)
     item.xml_id =  fis_rec[F135.item_id]
     item.module = 'F135'
+    item.active = True
     item.fis_available_id = product_available_at.get(fis_rec[F135.available_key], False)
     item.sale_ok = # ... something here mapping available status from fis_available_id
     item.categ_id = # ... something here mapping to category using fis_rec[F135.catalog_location]
+    item.list_price = fis_rec[F135.new_wholesale
     item.trademarks = fis_rec[F135.trademarked]
     item.ean13 = sanitize_ean13(fis_rec[F135.upc_no])
     item.fis_location = fis_rec[F135.primary_location]
-
+    #
     shipping_size = fis_nvty_rec[F135.ship_size].strip()
     if shipping_size.lower() in ('each','1 each','1/each'):
         shipping_size = '1 each'
@@ -2173,6 +2190,14 @@ def convert_nvty_rec(fis_rec):
             last = 'oz'
         shipping_size = ('%s %s' % (''.join(first).strip(), ''.join(last).strip())).strip()
     item.fis_shipping_size = shipping_size
+    #
+    shelf_life = float(fis_nvty_rec[F135.shelf_life_mos] or 0.0)
+    if not shelf_life and sales_category_rec:
+        # item.categ_id
+        shelf_life = float(sales_category_rec[F11.shelf_life] or 0.0) # FIXME
+    item.warranty = shelf_life
+    #
+
 
 
     return item
@@ -2443,6 +2468,24 @@ def get_customer_aging(aging_file):
         res[key] = CustomerAging(key, limit, d0, d10, d20, d30, total)
     return res
 
+def get_product_descriptions():
+    res = {}
+    job = Execute(
+            'sudo ssh %(host)s cat %(file)s' % {
+                'host': config.openerp.full_description_host,
+                'file': config.openerp.full_description_path,
+                },
+            pty=True,
+            password=config.openerp.pw,
+            )
+    text = job.stdout.split('\n')
+    for line in text:
+        match = re.match('(.{40})  \((\d{6})\)  (.*)$', line)
+        if match is None:
+            continue
+        fis_desc, item_code, full_desc = match.groups()
+        res[item_code] = full_desc
+    return res
 
 _raise_lookup = object()
 class Specials(str, Enum):

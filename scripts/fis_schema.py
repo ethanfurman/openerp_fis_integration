@@ -168,6 +168,7 @@ class F135(FISenum):
     key_type                 = 'An$(19,3)'       #   4: Key Type = '1**'
     available_key            = 'Bn$(1,1)'        #   5: Available?
     sales_category           = 'Bn$(3,2)'        #   7: Sales Category
+    shelf_life_mos           = 'Bn$(69,2)'       #  36: Discount Units (not really)
     trademarked              = 'Bn$(117,2)'      #  48: TradeMarkd
     kosher_category          = 'Bn$(119,1)'      #  49: Kosher Catg
     catlog_location          = 'Bn$(120,10)'     #  50: Catlog Loc
