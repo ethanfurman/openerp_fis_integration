@@ -96,6 +96,7 @@ class product_category(xmlid, osv.Model):
             string='Name',
             store={ 'product.category': (_get_category_records, ['name', 'parent_id'], 10) },
             ),
+        'fis_shelf_life': fields.float('Shelf life (mos)'),
         }
 
     def fis_updates(self, cr, uid, *args):
@@ -145,10 +146,10 @@ class product_available_at(xmlid, osv.Model):
         'name' : fields.char('Availability', size=50),
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
-        'availability': fields.selection(ProductAvailability, 'Availability'),
+        'available': fields.selection(ProductAvailability, 'Available for resale?'),
         'product_ids' : fields.one2many(
             'product.product',
-            'avail',
+            'fis_availability_id',
             'Products',
             ),
         }

@@ -396,7 +396,7 @@ def records(filenum, subset, code, fields, dbf_name):
                     used_fields.append((i, float))
         if dbf_name:
             print('dbf fields:\n  ', '\n   '.join(dbf_types))
-            table = dbf.Table(dbf_name, dbf_types).open()
+            table = dbf.Table(dbf_name, dbf_types).open(dbf.READ_WRITE)
     try:
         fields = [t[0] for t in used_fields]
         print('fields: %r' % (fields, ), border='flag', verbose=2)

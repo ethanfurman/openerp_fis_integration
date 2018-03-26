@@ -171,14 +171,15 @@ class F135(FISenum):
     shelf_life_mos           = 'Bn$(69,2)'       #  36: Discount Units (not really)
     trademarked              = 'Bn$(117,2)'      #  48: TradeMarkd
     kosher_category          = 'Bn$(119,1)'      #  49: Kosher Catg
-    catlog_location          = 'Bn$(120,10)'     #  50: Catlog Loc
+    catalog_location         = 'Bn$(120,10)'     #  50: Catlog Loc
     description              = 'Cn$(1,40)'       #  51: Description
     size                     = 'Cn$(41,8)'       #  52: Size
     upc_no                   = 'Dn$(6,12)'       #  55: UPC CODE
     primary_location         = 'Dn$(18,6)'       #  56: Prim Loc
     supplier_id              = 'Gn$(1,6)'        #  81: Supplier
+    qty_on_hand              = 'I(6)'            #  99: Qty on Hand
     new_retail               = 'I(22)'           # 115: New Retail
-    new_whlolesale           = 'I(23)'           # 116: New Whlsle
+    new_wholesale            = 'I(23)'           # 116: New Whlsle
 
 class F163(FISenum):
     "Supplier Master"

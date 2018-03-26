@@ -5,16 +5,18 @@ from __future__ import print_function
 
 from scription import *
 from aenum import Enum, NamedTuple
+from antipathy import Path
 from collections import defaultdict
-from fis_schema import F8, F11, F27, F33, F65, F74, F97, F163
+from fis_schema import F8, F11, F27, F33, F65, F74, F97, F135, F163
     # from fis_scheam import F47
-from fis_schema import get_changed_records as get_changed_fis_records, combine_by_value
+from fis_schema import get_changed_records as get_changed_fis_records
 from openerplib import AttrDict, get_connection, get_records, Many2One, DEFAULT_SERVER_DATE_FORMAT
     # from traceback import format_exception
 from pandaemonium import PidLockFile
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, NameCaseReversed, PostalCode
 from VSS.BBxXlate.fisData import fisData
-from VSS.utils import fix_phone, fix_date, Date, grouped
+from VSS.utils import fix_phone, fix_date, Date
+import math
 import re
 import os
 import sys
@@ -41,7 +43,7 @@ def main(dryrun, list_records):
     # make sure we are the only one running
     global config, oe, errors, DRYRUN, LIST_RECORDS, script_verbosity
     DRYRUN = LIST_RECORDS = False
-    config = OrmFile('%s/config/fnx.ini' % os.environ['VIRTUAL_ENV'])
+    config = OrmFile('%s/config/fnx.ini' % os.environ['VIRTUAL_ENV'], types={'_path': Path})
     oe = config.openerp
     oe = get_connection(hostname=oe.host, database=oe.db, login=oe.user, password=oe.pw)
     errors = defaultdict(list)
@@ -110,116 +112,268 @@ def fis_integration(files, method, delete):
 
 # helpers
 def handle_nvty(method):
-    global CLEANING_CATEGORY
+    global product_available_at, product_sales_category, product
     print('processing NVTY', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
     product = AttrDict()
     product.product = Model(oe.get_model('product.product'), 'nvty', 'F135', context)
     # these are for tracking original old/new records
-    new_product_records = {}
-    old_product_records = {}
-    # these are for tracking old/new versions of changed records
-    old_changed_product_records = {}
-    new_changed_product_records = {}
+    new_item_records = {}
+    old_item_records = {}
+    # these  are for tracking old/new versions of changed records
+    old_changed_item_records = {}
+    new_changed_item_records = {}
     # these are for added/deleted records
-    added_product_records = {}
+    added_item_records = {}
     deleted_records = {}
-    # and the counts
+    # the counts
     changed_count = 0
     added_count = 0
     deleted_count = 0
-    ids = {}
+    # get dependent data
+    product_available_at = dict([
+        (r.xml_id, r)
+        for r in get_records(
+            oe,
+            'product.available_at',
+            fields=['id','xml_id','available'],
+            )
+        ])
+    product_sales_category = dict([
+        (r.xml_id, r)
+        for r in get_records(
+            oe,
+            'product.category',
+            fields=['id','xml_id','fis_shelf_life'],
+            )
+        ])
     #
     # get the "old" data from:
     # - quick -> old fis file
     # - full -> current OpenERP data
     #
-    # get dependent data
-    ir = AttrDict()
-    ir.model = AttrDict()
-    ir.model.data = Model(oe.get_model('ir.model.data'), 'imd', '', context)
-    # - cleaning category
-    CLEANING_CATEGORY = ir_model_data.get_object_reference(cr, uid, 'fnx_pd', 'pd_cleaning')[1]
     nvty = fisData(135, keymatch='%s101000    101**')
     print(nvty.filename, verbose=2)
     print('gathering data', border='flag')
     if method == 'quick':
         #
-        # for a quick compare we can use the fis records as-is
+        # for a quick compare we can use the fis records as-is when looking for changes
         #
-        nvty_old = fisData(135, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
+        nvty_old = fisData(135, keymatch='%s101000    101**', data_path=config.network.fis_data_local_old_path)
         print(nvty_old.filename, verbose=2)
         print('collecting changed records')
         changes, added, deleted = get_changed_fis_records(
                 nvty_old.values(),
                 nvty.values(),
                 enum_schema=[
+                    F135.item_id,
                     F135.available_key, F135.sales_category, F135.trademarked,
                     F135.catalog_location, F135.description, F135.size, F135.upc_no, F135.primary_location,
-                    F135.supplier_id, F135.new_retail, F135.new_wholesale
+                    F135.supplier_id, F135.new_retail, F135.new_wholesale,
                     ],
+                address_fields=[],
                 )
-        #
-        # now convert just the changed records, then look for commonalities
-        #
-        changes = [convert_nvty_rec(r) for r in changes]
-        changed_map = combine_by_value(changes, allowed_combinations=...)
-
         #
         # we now have the subset of records that have changed, just need to separate them
         # into old and new
         #
         print('sorting changed records')
-
-            old_company, old_contact = convert_csms_rec(res.partner, old)
-            old_company_records[old_company.xml_id] = old_company
-            new_company, new_contact = convert_csms_rec(res.partner, new)
-            new_company_records[new_company.xml_id] = new_company
+        for old, new, diffs in changes:
+            old_item = convert_nvty_rec(old)
+            old_item_records[old_item.xml_id] = old_item
+            new_item = convert_nvty_rec(new)
+            new_item_records[new_item.xml_id] = new_item
             # changes at the FIS level don't always translate to changes at the OpenERP level
-            if old_company != new_company:
-                old_changed_company_records[old_company.xml_id] = old_company
-                new_changed_company_records[new_company.xml_id] = new_company
-            # determine if contacts are added, deleted, or changed
-            if old_contact is not None:
-                old_contact_records[old_contact.xml_id] = old_contact
-            if new_contact is not None:
-                new_contact_records[new_contact.xml_id] = new_contact
-            if old_contact == new_contact:
-                pass
-            elif old_contact is None:
-                added_contact_records[new_contact.xml_id] = new_contact
-            elif new_contact is None:
-                deleted_records[old_contact.xml_id] = old_contact
-            else:
-                old_changed_contact_records[old_contact.xml_id] = old_contact
-                new_changed_contact_records[new_contact.xml_id] = new_contact
-            assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
-                    "old and new company records mismatch"
-            assert set(old_changed_contact_records.keys()) == set(new_changed_contact_records.keys()),\
-                    "old and new contact records mismatch"
+            if old_item != new_item:
+                old_changed_item_records[old_item.xml_id] = old_item
+                new_changed_item_records[new_item.xml_id] = new_item
+            assert set(old_changed_item_records.keys()) == set(new_changed_item_records.keys()),\
+                    "old and new item records mismatch"
         #
         # and convert the new and deleted records
         #
-    nvty_old = fisData(135, keymatch='10%s', data_path=config.network.fis_data_local_old_path)
-    nvty_old
-    # changed_records = 0
-    # added_records = 0
-    # changes, added, deleted = get_changed_fis_records(
-    #         nvty_old.values(),
-    #         nvty.values(),
-    #         enum_schema=[
-    #             F33.name, F33.salesrep, F33.catalog_category, F33.this_year_sales,
-    #             F33.last_year_sales, F33.tele, F33.contact,
-    #             ],
-    #         address_fields=[
-    #             F33.addr1, F33.addr2, F33.addr3,
-    #             ],
-    #         )
-    # changed_map = combine_by_value(F33, changes)
-    # print('--== PROCESSING CHANGES --==')
-    # for changed_fields, records in sorted(changed_map.items()):
-    combine_by_value
-    grouped
+        for fis_rec in added:
+            rec = convert_nvty_rec(fis_rec)
+            added_item_records[rec.xml_id] = rec
+        for fis_rec in deleted:
+            rec = convert_nvty_rec(fis_rec)
+            deleted_records[rec.xml_id] = rec
+    elif method == 'full':
+        #
+        # get the forecast and description data -- only used in "full"
+        #
+        print('getting forecast data')
+        forecast_data = get_product_forecast()
+        print('getting description data')
+        description_data = get_product_descriptions()
+        #
+        # when doing a full compare, we have to convert every single fis record before we can
+        # check for changes
+        #
+        all_fis_records = dict([
+            (r.xml_id, r)
+            for r in
+                [convert_nvty_rec(f) for f in nvty.values()]
+            ])
+        # and update with forecasts and descriptions
+        for xml_id, rec in all_fis_records.items():
+            #
+            desc = description_data.get(xml_id)
+            rec.name = desc or rec.fis_name or False
+            #
+            forecast = forecast_data.get(xml_id)
+            rec.fis_qty_produced = 0
+            rec.fis_qty_consumed = 0
+            rec.fis_qty_purchased = 0
+            rec.fis_qty_sold = 0
+            rec.fis_qty_available = 0
+            rec.fis_10_day_produced = 0
+            rec.fis_10_day_consumed = 0
+            rec.fis_10_day_purchased = 0
+            rec.fis_10_day_sold = 0
+            rec.fis_10_day_available = 0
+            rec.fis_21_day_produced = 0
+            rec.fis_21_day_consumed = 0
+            rec.fis_21_day_purchased = 0
+            rec.fis_21_day_sold = 0
+            rec.fis_21_day_available = 0
+            if forecast is not None:
+                # the first four of the above values do not change
+                _, _10_day, _21_day = forecast
+                rec.fis_qty_available = rec.fis_qty_on_hand
+                rec.fis_10_day_produced = _10_day.produced
+                rec.fis_10_day_consumed = _10_day.consumed
+                rec.fis_10_day_purchased = _10_day.purchased
+                rec.fis_10_day_sold = _10_day.sold
+                rec.fis_10_day_available = rec.fis_qty_on_hand + sum(_10_day)
+                rec.fis_21_day_produced = _21_day.produced
+                rec.fis_21_day_consumed = _21_day.consumed
+                rec.fis_21_day_purchased = _21_day.purchased
+                rec.fis_21_day_sold = _21_day.sold
+                rec.fis_21_day_available = rec.fis_qty_on_hand + sum(_21_day)
+        #
+        # retrieve the OpenERP records that match the NVTY module
+        #
+        print('retrieving OpenERP records')
+        all_oe_records = dict([
+                (r.xml_id, r)
+                for r in get_records(
+                    oe, 'product.product',
+                    domain=[('module','=','F135')],
+                    fields=[
+                        'id', 'module', 'xml_id', 'active', 'name', 'fis_name', 'fis_qty_on_hand',
+                        'fis_availability_id', 'sale_ok', 'list_price', 'trademarks', 'ean13',
+                        'fis_location', 'fis_shipping_size', 'categ_id', 'warranty',
+                        'fis_qty_produced', 'fis_10_day_produced', 'fis_21_day_produced',
+                        'fis_qty_consumed', 'fis_10_day_consumed', 'fis_21_day_consumed',
+                        'fis_qty_purchased', 'fis_10_day_purchased', 'fis_21_day_purchased',
+                        'fis_qty_sold', 'fis_10_day_sold', 'fis_21_day_sold',
+                        'fis_qty_available', 'fis_10_day_available', 'fis_21_day_available',
+                        ],
+                    context=context,
+                    )
+                ])
+        print('sorting changed, new, and deleted product records')
+        all_keys = set(all_fis_records.keys() + all_oe_records.keys())
+        for key in all_keys:
+            old_rec = all_oe_records.get(key)
+            new_rec = all_fis_records.get(key)
+            if old_rec is new_rec is None:
+                continue
+            if old_rec is None:
+                added_item_records[key] = new_rec
+                continue
+            if new_rec is None:
+                deleted_records[key] = old_rec
+                continue
+            # copy missing fields for proper equality testing
+            new_rec.id = old_rec.id
+            if new_rec == old_rec:
+                continue
+            #
+            # we have changes, save the records for later comparison
+            #
+            old_changed_item_records[key] = old_rec
+            new_changed_item_records[key] = new_rec
+        assert set(old_changed_item_records.keys()) == set(new_changed_item_records.keys()),\
+                "old and new item records mismatch"
+    else:
+        abort('unknown METHOD: %r' % (method, ))
+    #
+    # at this point, all records are in AttrDict format, divided by deleted, added, and changed
+    #
+    # add new products
+    #
+    if added_item_records:
+        print('adding product records', border='flag')
+    xml_ids = [r.xml_id for r in added_item_records.values()]
+    existing_items = {}
+    if not DRYRUN:
+        for rec in product.product.read(
+                fields=['xml_id'], domain=[('xml_id','in',xml_ids),('module','=','F135')]
+            ):
+            existing_items[rec.xml_id] = rec
+    for xml_id, item in sorted(added_item_records.items()):
+        name = item.fis_name
+        if xml_id in existing_items:
+            product.product.error('FIS ID F135:%s (%s) already exists in OpenERP' % (xml_id, name))
+            continue
+        added_count += 1
+        if LIST_RECORDS:
+            echo('  F135:%s  %s' % (item.xml_id, name), end='  ')
+            print('||', '||'.join('%s -> %r' % (k, v) for k, v in item.items()), '||', end='')
+            echo()
+        if not DRYRUN:
+            product_id = product.product.create(item.xml_id, item)
+            if product_id:
+                item.id = product_id
+    #
+    # process changes
+    #
+    changed_map = combine_by_value(old_changed_item_records, new_changed_item_records)
+    if changed_map:
+        print('processing product changes', border='flag')
+    for changes, records in sorted(changed_map.items()):
+        # records are still FIS records
+        values = dict(changes)
+        xml_ids = [r.xml_id for r in records]
+        oe_ids = product.product.search([('module','=','F135'),('xml_id','in',xml_ids)])
+        # assert len(xml_ids) == len(oe_ids), box("unable to find all records in OpenREP\n---\n%r\n---\n%r" % (xml_ids, oe_ids))
+        changed_count += len(oe_ids)
+        if LIST_RECORDS:
+            for rec in records:
+                echo('  F135:%s  %s' % (xml_id, rec.fis_name))
+            print('   ||', '||'.join('%s -> %r' % (k, v) for k, v in values.items()), '||')
+            print('-' * 50)
+        if not DRYRUN:
+            product.product.write('|'.join(xml_ids), oe_ids, values)
+    #
+    # deleted/deactivate products
+    #
+    if deleted_records:
+        # get the ids of actually existing records
+        xml_ids = deleted_records.keys()
+        ids = product.product.search([('module','=','F135'),('xml_id','in',xml_ids)])
+        if ids:
+            deleted_count = len(ids)
+            if deleted_count:
+                if not DELETE:
+                    print('deactivating records', border='flag')
+                else:
+                    print('deleting records', border='flag')
+                if LIST_RECORDS:
+                    for xml_id, rec in sorted(deleted_records.items()):
+                        echo('  F135:%s  %s' % (xml_id, rec.fis_name))
+                if not DRYRUN:
+                    if DELETE:
+                        product.product.delete(ids, context=context)
+                    else:
+                        product.product.write('...', ids, {'active': False})
+    #
+    print('%d products changed\n%d products added\n%d products %s'
+            % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
+            border='box',
+            )
 
 
 def handle_csms(method):
@@ -1456,7 +1610,7 @@ def handle_product_category():
                 oe, 'product.category',
                 domain=[('module','=','F11')],
                 fields=[
-                    'id', 'module', 'xml_id', 'name', 'parent_id',
+                    'id', 'module', 'xml_id', 'name', 'parent_id', 'fis_shelf_life',
                     ],
                 context=context,
                 )
@@ -2161,20 +2315,23 @@ def convert_nvty_rec(fis_rec):
     # - fis_qty: _produced, _consumed, _purchased, _sold, _available
     # - fis_10_day: _produced, _consumed, _purchased, _sold, _available
     # - fis_21_day: _produced, _cosnumed, _purchased, _sold, _available
-
     item = AttrDict()
     item.xml_id =  fis_rec[F135.item_id]
     item.module = 'F135'
+    name = NameCase(fis_rec[F135.description].strip())
+    name = re.sub('sunridge', 'SunRidge', name, flags=re.I)
+    item.fis_name = name
     item.active = True
-    item.fis_available_id = product_available_at.get(fis_rec[F135.available_key], False)
-    item.sale_ok = # ... something here mapping available status from fis_available_id
-    item.categ_id = # ... something here mapping to category using fis_rec[F135.catalog_location]
-    item.list_price = fis_rec[F135.new_wholesale
+    availability = product_available_at.get(fis_rec[F135.available_key], False)
+    item.fis_availability_id = availability.id
+    item.sale_ok = availability.available
+    item.list_price = fis_rec[F135.new_wholesale]
     item.trademarks = fis_rec[F135.trademarked]
     item.ean13 = sanitize_ean13(fis_rec[F135.upc_no])
     item.fis_location = fis_rec[F135.primary_location]
+    item.fis_qty_on_hand = fis_rec[F135.qty_on_hand]
     #
-    shipping_size = fis_nvty_rec[F135.ship_size].strip()
+    shipping_size = fis_rec[F135.size].strip()
     if shipping_size.lower() in ('each','1 each','1/each'):
         shipping_size = '1 each'
     elif shipping_size:
@@ -2191,15 +2348,19 @@ def convert_nvty_rec(fis_rec):
         shipping_size = ('%s %s' % (''.join(first).strip(), ''.join(last).strip())).strip()
     item.fis_shipping_size = shipping_size
     #
-    shelf_life = float(fis_nvty_rec[F135.shelf_life_mos] or 0.0)
-    if not shelf_life and sales_category_rec:
-        # item.categ_id
-        shelf_life = float(sales_category_rec[F11.shelf_life] or 0.0) # FIXME
-    item.warranty = shelf_life
+    category_code = fis_rec[F135.sales_category].strip()
+    if len(category_code) == 2 and category_code[0] in 'OISG':
+        category_code = {'O':'0', 'I':'1', 'S':'5', 'G':'6'}[category_code[0]] + category_code[1]
+    category = product_sales_category.get(category_code)
+    if category is not None:
+        item.categ_id = category.id
+        cat_shelf_life = float(category.fis_shelf_life or 0.0)
+    else:
+        product.product.error("%r: invalid sales category code -- %r" % (item.xml_id, category_code))
+        cat_shelf_life = 0.0
     #
-
-
-
+    item.warranty = float(fis_rec[F135.shelf_life_mos] or cat_shelf_life)
+    #
     return item
 
 def convert_product_category_rec(fis_rec):
@@ -2207,6 +2368,7 @@ def convert_product_category_rec(fis_rec):
     category = AttrDict()
     category.xml_id = key = fis_rec[F11.sales_category_id].strip()
     category.module = 'F11'
+    category.fis_shelf_life = fis_rec[F11.shelf_life]
     name = re.sub('sunridge', 'SunRidge', fis_rec[F11.desc].title(), flags=re.I)
     if len(key) == 1:
         name = key + ' - ' + name.strip('- ')
@@ -2459,33 +2621,60 @@ def convert_supplier_rec(key):
     return company, contact
 
 def get_customer_aging(aging_file):
-    res = {}
-    with open(aging_file) as af:
+    aging_data = {}
+    with open(config.fis_data_local_path/'customer_aging.txt') as af:
         lines = [line for line in af.read().split('\n') if line.strip()]
     for line in lines:
         key, rest = line.split(None, 1)
         limit, salesrep, total, d0, d10, d20, d30 = line.rsplit(None, 8)[-7:]
-        res[key] = CustomerAging(key, limit, d0, d10, d20, d30, total)
-    return res
+        aging_data[key] = CustomerAging(key, limit, d0, d10, d20, d30, total)
+    return aging_data
 
 def get_product_descriptions():
-    res = {}
-    job = Execute(
-            'sudo ssh %(host)s cat %(file)s' % {
-                'host': config.openerp.full_description_host,
-                'file': config.openerp.full_description_path,
-                },
-            pty=True,
-            password=config.openerp.pw,
-            )
-    text = job.stdout.split('\n')
-    for line in text:
+    descriptions = {}
+    with open(config.network.fis_data_local_path/'product_descriptions.txt') as f:
+        lines = f.read().split('\n')
+    for line in lines:
         match = re.match('(.{40})  \((\d{6})\)  (.*)$', line)
-        if match is None:
+        if match:
+            fis_desc, item_code, full_desc = match.groups()
+            descriptions[item_code] = full_desc
+    return descriptions
+
+def get_product_forecast():
+    # parse the daily-updated file with the product forecasts
+    forecast = {}
+    with open(config.network.fis_data_local_path/'product_forecast.txt') as f:
+        lines = f.read().split('\n')
+    for i, line in enumerate(lines):
+        if not line.strip() or '-' not in line:
             continue
-        fis_desc, item_code, full_desc = match.groups()
-        res[item_code] = full_desc
-    return res
+        try:
+            text = line.split(' - ')[1]
+        except IndexError:
+            product.product.error('problem with forecast line #%d: %r' % (i, line))
+            continue
+        if 'ERROR' in text:
+            continue
+        try:
+            item_code, _10_day, _21_day = text.split(':')
+        except ValueError:
+            product.product.error('problem with forecast line #%d: %r' % (i, line))
+            continue
+        prod_in, purch, prod_out, sold = _10_day.split()[2:6]
+        prod_in = float(prod_in)
+        purch = float(purch)
+        prod_out = -(float(prod_out))
+        sold = -(float(sold))
+        _10_day = ForecastDetail(prod_in, purch, prod_out, sold)
+        prod_in, purch, prod_out, sold = _21_day.split()[2:6]
+        prod_in = float(prod_in)
+        purch = float(purch)
+        prod_out = -(float(prod_out))
+        sold = -(float(sold))
+        _21_day = ForecastDetail(prod_in, purch, prod_out, sold)
+        forecast[item_code] = Forecast(item_code, _10_day, _21_day)
+    return forecast
 
 _raise_lookup = object()
 class Specials(str, Enum):
@@ -2606,16 +2795,19 @@ def is_contact(obj):
         obj = obj.get('xml_id')
     return obj.startswith('cntct_')
 
-def combine_by_value(key, records):
-    # records with field changes in addr1, addr2, addr3, and postal cannot be combined
-    print 'combine by value key: ', key
+def combine_by_value(old_records, new_records):
+    all_keys = set(old_records.keys() + new_records.keys())
     changed_map = defaultdict(list)
-    for old_rec, new_rec, diffs in records:
+    for key in all_keys:
+        old_rec = old_records[key]
+        new_rec = new_records[key]
         rec_key = []
-        for fis_field, old_value, new_value in diffs:
-            if fis_field in key:
-                rec_key.append(fis_field)
-                rec_key.append(new_value)
+        for oe_field, new_value in new_rec.items():
+            if oe_field in ['xml_id', 'module', 'id']:
+                continue
+            old_value = old_rec[oe_field]
+            if old_value != new_value:
+                rec_key.append((oe_field, new_value))
         if rec_key:
             changed_map[tuple(rec_key)].append(new_rec)
     return changed_map
@@ -2653,6 +2845,43 @@ def ean_checksum(eancode):
     total=(oddsum * 3) + evensum
     check = int(10 - math.ceil(total % 10.0)) % 10
     return check
+
+def compare_records(old_records, new_records, ignore=lambda r: False):
+    # get changed records as list of
+    # (old_record, new_record, [(enum_schema_member, old_value, new_value), (...), ...]) tuples
+    changes = []
+    added = []
+    deleted = []
+    old_records_map = {}
+    new_records_map = {}
+    for rec in old_records:
+        key = rec.module, rec.xml_id
+        old_records_map[key] = rec
+    for rec in new_records:
+        key = rec.module, rec.xml_id
+        new_records_map[key] = rec
+    all_recs = set(new_records_map.keys() + old_records_map.keys())
+    for key in all_recs:
+        changed_values = []
+        new_rec = new_records_map.get(key)
+        old_rec = old_records_map.get(key)
+        if new_rec == old_rec:
+            continue
+        if new_rec is None:
+            deleted.append(old_rec)
+            continue
+        if old_rec is None:
+            added.append(new_rec)
+            continue
+        if ignore(new_rec):
+            continue
+        assert set(new_rec.keys()) == set(old_rec.keys()), 'key mismatch'
+        for field in new_rec.keys():
+            if new_rec[field] != old_rec[field]:
+                changed_values.append((field, old_rec[field], new_rec[field]))
+        if changed_values:
+            changes.append((old_rec, new_rec, changed_values))
+    return changes, added, deleted
 
 class Model(object):
 
@@ -2736,6 +2965,20 @@ class CustomerAging(NamedTuple):
                 value = '-' + value[:-1]
             new_values.append(float(value))
         return NamedTuple.__new__(CustomerAging, *new_values)
+
+
+class ForecastDetail(NamedTuple):
+    produced = 0, None, 0.0
+    purchased = 1, None, 0.0
+    consumed = 2, None, 0.0
+    sold = 3, None, 0.0
+
+
+class Forecast(NamedTuple):
+    item = 0, None, ''
+    day_10 = 1, None, ForecastDetail()
+    day_21 = 2, None, ForecastDetail()
+
 
 # old code
 # def handle_sales_reps():

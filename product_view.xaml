@@ -126,7 +126,7 @@
                 @name position='replace'
                     @name $Product filter_domain="['|',('name','ilike',self),('default_code','ilike',self),('xml_id','!=',False)]"
                 ~filter @filter_to_sell position='before'
-                    ~filter @fis_avail $Available domain="[('avail', '=', 'Available'),('xml_id','!=',False)]"
+                    ~filter @fis_avail $Available domain="[('fis_availability_id', '=', 'Available'),('xml_id','!=',False)]"
 
         ~record #product_normal_action model='ir.actions.act_window'
             @name: Products
@@ -159,7 +159,8 @@
             @arch type='xml'
                 @parent_id position='before'
                     ~group colspan='4'
-                        ~field name='xml_id'
+                        @xml_id
+                        @fis_shelf_life
 
         // add trademark
 
@@ -201,15 +202,25 @@
             @model: product.available_at
             @type: form
             @arch type='xml'
-                ~form $Locations
-                    @xml_id attrs="{'readonly':True}"
-                    @name colspan='4'
-                    ~notebook colspan='4'
-                        ~page $Products_at_this_location
-                            @product_ids nolabel='1'
-                                ~tree
-                                    @name
-                        ~page $Notes
+                ~form $Locations version='7.0'
+                    ~sheet
+                        ~div .oe_title
+                            ~div .oe_edit_only 
+                                ~label for='name' $Location_Description
+                            ~h1
+                                @name readonly='1'
+                            ~div
+                                ~label for='xml_id' string="FIS ID: " .oe_inline
+                                @xml_id attrs="{'readonly':True}" .oe_inline
+                            ~div
+                                ~label for='available' string='Resale:' .oe_inline
+                                @available .oe_inline
+                        ~notebook colspan='4'
+                            ~page $Products_at_this_location
+                                @product_ids nolabel='1' readonly='1'
+                                    ~tree
+                                        @name
+                            ~page $Notes
 
         ~record model='ir.ui.view' #product_available_at_tree
             @name: Product Locations
