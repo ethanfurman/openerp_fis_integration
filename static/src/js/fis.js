@@ -8,10 +8,13 @@ instance.web.form.NegativeFloatOkay = instance.web.form.FieldFloat.extend({
         var show_value = this.format_value(this.get('value'), '');
         console.log('zero_value is', this.options);
         var zero_value = this.options.zero_value || '0'
+        if (this.get('value') == 0) {
+            show_value = zero_value;
+        }
         if (!this.get("effective_readonly")) {
             this.$el.find('input').val(show_value);
         } else {
-            this.$(".oe_form_char_content").text(zero_value);
+            this.$(".oe_form_char_content").text(show_value);
         }
         if (value_okay) {
             this.$el.removeClass("fis_red");
@@ -29,10 +32,13 @@ instance.web.form.PositiveFloatOkay = instance.web.form.FieldFloat.extend({
         var show_value = this.format_value(this.get('value'), '');
         console.log('zero_value is', this.options);
         var zero_value = this.options.zero_value || '0'
+        if (this.get('value') == 0) {
+            show_value = zero_value;
+        }
         if (!this.get("effective_readonly")) {
             this.$el.find('input').val(show_value);
         } else {
-            this.$(".oe_form_char_content").text(zero_value);
+            this.$(".oe_form_char_content").text(show_value);
         }
         if (value_okay) {
             this.$el.removeClass("fis_red");
