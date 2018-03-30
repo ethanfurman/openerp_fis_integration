@@ -36,12 +36,13 @@ CLEANING_CATEGORY_XMLID = 'pd_cleaning'
 
 # API
 @Script(
-        dryrun=('do not make changes, only show what changes would be made', FLAG),
+        dryrun=Spec('do not make changes, only show what changes would be made', FLAG),
         list_records=Spec('list added/changed records', FLAG),
+        raise_on_exception=Spec('do not ignore exceptions', FLAG, abbrev=('r', 'raise')),
         )
-def main(dryrun, list_records):
+def main(dryrun, list_records, raise_on_exception):
     # make sure we are the only one running
-    global config, oe, errors, DRYRUN, LIST_RECORDS, script_verbosity
+    global config, oe, errors, DRYRUN, LIST_RECORDS, RAISE_ON_EXCEPTION, VIEW_TYPE, BORDER, script_verbosity
     DRYRUN = LIST_RECORDS = False
     config = OrmFile('%s/config/fnx.ini' % os.environ['VIRTUAL_ENV'], types={'_path': Path})
     oe = config.openerp
@@ -52,6 +53,9 @@ def main(dryrun, list_records):
         if not script_verbosity:
             script_verbosity = 1
     LIST_RECORDS = list_records
+    RAISE_ON_EXCEPTION = raise_on_exception
+    VIEW_TYPE = 'none' if LIST_RECORDS else 'percent'
+    BORDER = 'box' if LIST_RECORDS and script_verbosity > 1 else None
 
 @Command(
         files=Spec('changed FIS files', MULTIREQ, type=lambda f: f.lower()),
@@ -71,41 +75,43 @@ def fis_integration(files, method, delete):
     global skipped_suppliers, vendor_suppliers, ven2sup, vendor_codes
     global models, DELETE
     DELETE = delete
-    with PidLockFile('/var/run/fis_update.pid'):
-        ven2sup = {}
-        state_recs = dict([
-            (r.name, (r.id, r.code, r.country_id))
-            for r in get_records(oe, 'res.country.state')
-            ])
-        country_recs = dict([
-            (r.name, r.id)
-            for r in get_records(oe, 'res.country')
-            ])
-        for name, rec_id in country_recs.items():
-            country_recs[rec_id] = name
-        customer_terms_recs = dict([
-            (r.xml_id, r.id)
-            for r in get_records(oe, 'fis.account.customer_terms')
-            ])
-        skipped_suppliers = set()
-        vendor_suppliers = {}
-        vendor_codes = set()
-        if 'cnvz' in files:
-            # handle_sales_reps(method)
-            handle_carrier(method)
-            handle_customer_terms()
-            handle_product_category()
-            handle_product_location()
-        if 'emp1' in files:
-            handle_emp1(method)
-        if 'posm' in files or 'vnms' in files:
-            handle_supplier(method)
-        if 'csms' in files:
-            handle_csms(method)
-        if 'nvty' in files:
-            handle_nvty(method)
+    try:
+        with PidLockFile('/var/run/fis_update.pid'):
+            ven2sup = {}
+            state_recs = dict([
+                (r.name, (r.id, r.code, r.country_id))
+                for r in get_records(oe, 'res.country.state')
+                ])
+            country_recs = dict([
+                (r.name, r.id)
+                for r in get_records(oe, 'res.country')
+                ])
+            for name, rec_id in country_recs.items():
+                country_recs[rec_id] = name
+            customer_terms_recs = dict([
+                (r.xml_id, r.id)
+                for r in get_records(oe, 'fis.account.customer_terms')
+                ])
+            skipped_suppliers = set()
+            vendor_suppliers = {}
+            vendor_codes = set()
+            if 'cnvz' in files:
+                # handle_sales_reps(method)
+                handle_carrier(method)
+                handle_customer_terms()
+                handle_product_category()
+                handle_product_location()
+            if 'emp1' in files:
+                handle_emp1(method)
+            if 'posm' in files or 'vnms' in files:
+                handle_supplier(method)
+            if 'csms' in files:
+                handle_csms(method)
+            if 'nvty' in files:
+                handle_nvty(method)
+    finally:
         for m, problems in sorted(Model.errors.items()):
-            error(m,'\n============')
+            error('\n', m, border=('lined', '='), sep='')
             for p in problems:
                 error('  ', p)
             error()
@@ -117,6 +123,7 @@ def handle_nvty(method):
     context = {'fis-updates': True, 'active_test': False}
     product = AttrDict()
     product.product = Model(oe.get_model('product.product'), 'nvty', 'F135', context)
+    all_oe_records = {}
     # these are for tracking original old/new records
     new_item_records = {}
     old_item_records = {}
@@ -154,7 +161,7 @@ def handle_nvty(method):
     #
     nvty = fisData(135, keymatch='%s101000    101**')
     print(nvty.filename, verbose=2)
-    print('gathering data', border='flag')
+    print('gathering data')
     if method == 'quick':
         #
         # for a quick compare we can use the fis records as-is when looking for changes
@@ -174,14 +181,34 @@ def handle_nvty(method):
                 address_fields=[],
                 )
         #
-        # we now have the subset of records that have changed, just need to separate them
-        # into old and new
+        # we now have the subset of records that have changed, now fetch the OpenERP records
+        # to see if any meaningful changes
         #
-        print('sorting changed records')
-        for old, new, diffs in changes:
-            old_item = convert_nvty_rec(old)
-            old_item_records[old_item.xml_id] = old_item
+        all_xml_ids = [t[0][F135.item_id] for t in changes]
+        all_xml_ids.extend([f[F135.item_id] for f in added])
+        all_xml_ids.extend([f[F135.item_id] for f in deleted])
+        all_oe_records = dict([
+            (r.xml_id, r)
+            for r in product.product.read(
+                domain=[('module','=','F135'),('xml_id','in',all_xml_ids)],
+                fields=[
+                    'id', 'module', 'xml_id', 'active', 'name', 'fis_name', 'fis_qty_on_hand',
+                    'fis_availability_id', 'sale_ok', 'list_price', 'trademarks', 'ean13',
+                    'fis_location', 'fis_shipping_size', 'categ_id', 'warranty',
+                    ],
+                )
+            ])
+        for old, new, diffs in ProgressView(
+                iterable=changes,
+                message='sorting changed records',
+                view_type=VIEW_TYPE,
+            ):
+            xml_id = old[F135.item_id]
+            old_item = all_oe_records[xml_id]
+            old_item_records[xml_id] = old_item
             new_item = convert_nvty_rec(new)
+            # normalize fields
+            new_item.id = old_item.id
             new_item_records[new_item.xml_id] = new_item
             # changes at the FIS level don't always translate to changes at the OpenERP level
             if old_item != new_item:
@@ -189,11 +216,13 @@ def handle_nvty(method):
                 new_changed_item_records[new_item.xml_id] = new_item
             assert set(old_changed_item_records.keys()) == set(new_changed_item_records.keys()),\
                     "old and new item records mismatch"
+
         #
         # and convert the new and deleted records
         #
         for fis_rec in added:
             rec = convert_nvty_rec(fis_rec)
+            rec.name = rec.fis_name
             added_item_records[rec.xml_id] = rec
         for fis_rec in deleted:
             rec = convert_nvty_rec(fis_rec)
@@ -220,6 +249,8 @@ def handle_nvty(method):
             #
             desc = description_data.get(xml_id)
             rec.name = desc or rec.fis_name or False
+            if rec.name is False:
+                del rec.name
             #
             forecast = forecast_data.get(xml_id)
             rec.fis_qty_produced = 0
@@ -273,9 +304,13 @@ def handle_nvty(method):
                     context=context,
                     )
                 ])
-        print('sorting changed, new, and deleted product records')
+        # print('sorting changed, new, and deleted product records')
         all_keys = set(all_fis_records.keys() + all_oe_records.keys())
-        for key in all_keys:
+        for key in ProgressView(
+                iterable=sorted(all_keys),
+                message='sorting product records',
+                view_type=VIEW_TYPE,
+            ):
             old_rec = all_oe_records.get(key)
             new_rec = all_fis_records.get(key)
             if old_rec is new_rec is None:
@@ -288,7 +323,14 @@ def handle_nvty(method):
                 continue
             # copy missing fields for proper equality testing
             new_rec.id = old_rec.id
-            if new_rec == old_rec:
+            for field in old_rec.keys():
+                if field not in new_rec:
+                    new_rec[field] = old_rec[field]
+                    product.product.error(
+                            "%s: field %r missing from new record; using old value of %r"
+                                % (key, field, old_rec[field])
+                            )
+            if old_rec == new_rec or close_enough(old_rec, new_rec):
                 continue
             #
             # we have changes, save the records for later comparison
@@ -301,21 +343,17 @@ def handle_nvty(method):
         abort('unknown METHOD: %r' % (method, ))
     #
     # at this point, all records are in AttrDict format, divided by deleted, added, and changed
+    # new records are from FIS files, old records are from OpenERP
     #
     # add new products
     #
-    if added_item_records:
-        print('adding product records', border='flag')
-    xml_ids = [r.xml_id for r in added_item_records.values()]
-    existing_items = {}
-    if not DRYRUN:
-        for rec in product.product.read(
-                fields=['xml_id'], domain=[('xml_id','in',xml_ids),('module','=','F135')]
-            ):
-            existing_items[rec.xml_id] = rec
-    for xml_id, item in sorted(added_item_records.items()):
+    for xml_id, item in ProgressView(
+            iterable=sorted(added_item_records.items()),
+            message='adding new records',
+            view_type=VIEW_TYPE,
+        ):
         name = item.fis_name
-        if xml_id in existing_items:
+        if xml_id in all_oe_records:
             product.product.error('FIS ID F135:%s (%s) already exists in OpenERP' % (xml_id, name))
             continue
         added_count += 1
@@ -324,43 +362,54 @@ def handle_nvty(method):
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in item.items()), '||', end='')
             echo()
         if not DRYRUN:
-            product_id = product.product.create(item.xml_id, item)
+            product_id = product.product.create(xml_id, item)
             if product_id:
                 item.id = product_id
+                all_oe_records[xml_id] = item
     #
     # process changes
     #
     changed_map = combine_by_value(old_changed_item_records, new_changed_item_records)
-    if changed_map:
-        print('processing product changes', border='flag')
-    for changes, records in sorted(changed_map.items()):
-        # records are still FIS records
+    for changes, records in ProgressView(
+            iterable=sorted(changed_map.items()),
+            message='processing changed records',
+            view_type=VIEW_TYPE,
+        ):
         values = dict(changes)
         xml_ids = [r.xml_id for r in records]
         oe_ids = product.product.search([('module','=','F135'),('xml_id','in',xml_ids)])
-        # assert len(xml_ids) == len(oe_ids), box("unable to find all records in OpenREP\n---\n%r\n---\n%r" % (xml_ids, oe_ids))
         changed_count += len(oe_ids)
         if LIST_RECORDS:
+            body = []
             for rec in records:
-                echo('  F135:%s  %s' % (xml_id, rec.fis_name))
-            print('   ||', '||'.join('%s -> %r' % (k, v) for k, v in values.items()), '||')
-            print('-' * 50)
+                body.append(('  F135:%s  %s' % (xml_id, rec.fis_name)))
+            if script_verbosity > 1:
+                body.append('---')
+                body.append(str(AttrDict(changes)))
+            echo('\n'.join(body), border='box' if script_verbosity > 1 else None)
         if not DRYRUN:
-            product.product.write('|'.join(xml_ids), oe_ids, values)
+            product.product.write('|'.join(xml_ids), oe_ids, values, context={})
     #
     # deleted/deactivate products
     #
-    if deleted_records:
+    if not DELETE:
+        delete_message = 'deactivating old records'
+    else:
+        delete_message = 'deleting old records'
+    for _ in ProgressView(
+            iterable=(True, ),
+            message=delete_message,
+            view_type=VIEW_TYPE,
+        ):
         # get the ids of actually existing records
         xml_ids = deleted_records.keys()
-        ids = product.product.search([('module','=','F135'),('xml_id','in',xml_ids)])
+        if DELETE:
+            ids = [rec.id for key, rec in all_oe_records.items() if key in xml_ids]
+        else:
+            ids = [rec.id for key, rec in all_oe_records.items() if key in xml_ids and rec.active]
         if ids:
             deleted_count = len(ids)
             if deleted_count:
-                if not DELETE:
-                    print('deactivating records', border='flag')
-                else:
-                    print('deleting records', border='flag')
                 if LIST_RECORDS:
                     for xml_id, rec in sorted(deleted_records.items()):
                         echo('  F135:%s  %s' % (xml_id, rec.fis_name))
@@ -2308,6 +2357,21 @@ def handle_supplier(method):
             )
 
 
+def close_enough(old_rec, new_rec):
+    # if float values are close enough, copy the old one to the new one
+    for field_name in old_rec.keys():
+        old_value = old_rec[field_name]
+        new_value = new_rec[field_name]
+        ov_is_float = isinstance(old_value, float)
+        nv_is_float = isinstance(new_value, float)
+        if ov_is_float and nv_is_float:
+            if old_value - 0.000001 <= new_value <= old_value + 0.000001:
+                new_rec[field_name] = old_value
+    # now compare to see if equal
+    if old_rec != new_rec:
+        return False
+    return True
+
 def convert_nvty_rec(fis_rec):
     # some fields come from non-FIS locations or are only update once per day -- those fields will not
     # be evaluated here:
@@ -2350,13 +2414,13 @@ def convert_nvty_rec(fis_rec):
     #
     category_code = fis_rec[F135.sales_category].strip()
     if len(category_code) == 2 and category_code[0] in 'OISG':
-        category_code = {'O':'0', 'I':'1', 'S':'5', 'G':'6'}[category_code[0]] + category_code[1]
+        category_code = {'O':'0', 'I':'1', 'G':'6'}[category_code[0]] + category_code[1]
     category = product_sales_category.get(category_code)
     if category is not None:
         item.categ_id = category.id
         cat_shelf_life = float(category.fis_shelf_life or 0.0)
     else:
-        product.product.error("%r: invalid sales category code -- %r" % (item.xml_id, category_code))
+        product.product.error("%s: invalid sales category code -- %r" % (item.xml_id, category_code))
         cat_shelf_life = 0.0
     #
     item.warranty = float(fis_rec[F135.shelf_life_mos] or cat_shelf_life)
@@ -2377,8 +2441,6 @@ def convert_product_category_rec(fis_rec):
         parent_key = key[0]
         category.parent_id = category_ids.get(parent_key, parent_key)
     category.name = name
-    if not category.parent_id:
-        raw_input('problems!!')
     return category
 
 def convert_product_location_rec(fis_rec):
@@ -2906,10 +2968,11 @@ class Model(object):
             context = self.context
         try:
             return self.table.create(pfm(values), context=context)
-        except:
+        except Exception:
+            if RAISE_ON_EXCEPTION:
+                raise
             cls, exc, tb = sys.exc_info()
             self.errors[self.abbr].append('FIS ID %s:%s create caused exception %r' % (self.module, key, exc))
-            # error(''.join(format_exception(cls, exc, tb)))
             return False
 
     def delete(self, ids, context=None):
@@ -2917,10 +2980,11 @@ class Model(object):
             context = self.context
         try:
             return self.table.unlink(ids)
-        except:
+        except Exception:
+            if RAISE_ON_EXCEPTION:
+                raise
             cls, exc, tb = sys.exc_info()
             self.errors[self.abbr].append('%s: deleting ID(s) %s caused exception %r' % (self.module, ', '.join([str(n) for n in ids]), exc))
-            # error(''.join(format_exception(cls, exc, tb)))
             return False
 
     def read(self, **kwds):
@@ -2937,13 +3001,14 @@ class Model(object):
         if context is None:
             context = self.context
         try:
-            print('writing to %s using %s\n and %s' % (ids, pfm(values), context), border='box', verbose=2)
-            print(str(self.table.write(ids, pfm(values), context=context)), border='box', verbose=2)
+            print('writing to %s using %s\n and %s' % (ids, pfm(values), context), border='box', verbose=3)
+            self.table.write(ids, pfm(values), context=context)
             return True
-        except:
+        except Exception:
+            if RAISE_ON_EXCEPTION:
+                raise
             cls, exc, tb = sys.exc_info()
             self.errors[self.abbr].append('FIS ID %s:%s write caused exception %r' % (self.module, key, exc))
-            # error(format_exception(cls, exc, tb))
             return False
 
 
