@@ -47,7 +47,7 @@ def diff(filenum, keymatch, key, full, color, summary):
         filenum = int(filenum)
     fis_table = fd.fisData(filenum, keymatch=keymatch)
     fis_table_old = fd.fisData(filenum, keymatch=keymatch, data_path=config.network.fis_data_local_old_path)
-    print('using files: ', fis_table.filename, fis_table_old.filename, verbose=2)
+    print('using files: %s (%d) and %s (%d)' %(fis_table.filename, len(fis_table), fis_table_old.filename, len(fis_table_old)), verbose=2)
     new_records = []
     old_records = []
     if keymatch and key:
@@ -252,17 +252,50 @@ def field_check(filenum, which):
 
 
 @Command(
-    all=('show all items', FLAG),
+    quick=('use local copy of product descriptions', FLAG),
     items=Spec('item number to look up', usage='ITEM'),
     )
-def product_forecast(all, *items):
-    if all and items:
-        abort('cannot specify --all and ITEM(s)')
+def product_description(quick, *items):
+    "retrieve and save the latest product descriptions"
+    if not quick:
+        # get the data
+        print('getting data')
+        job = Execute(
+                'sudo ssh %(host)s cat %(file)s' % {
+                    'host': config.openerp.full_description_host,
+                    'file': config.openerp.full_description_path,
+                    },
+                pty=True,
+                password=config.pw,
+                )
+        if not job.returncode and not job.stderr:
+            with open(config.network.fis_data_local_path/'product_descriptions.txt', 'w') as f:
+                f.write(job.stdout)
+        print('data saved')
+    if items:
+        # display the requested items
+        print('reading data')
+        with open(config.network.fis_data_local_path/'product_descriptions.txt') as f:
+            lines = f.read().strip().split('\n')
+        print('looking for item(s)')
+        for line in lines:
+            match = re.match('(.{40})  \((\d{6})\)  (.*)$', line)
+            if match:
+                fis_desc, item_code, full_desc = match.groups()
+                if fis_desc in items:
+                    echo('%s:  %s' % (item_code, full_desc))
+
+
+@Command(
+    items=Spec('item number to look up', usage='ITEM'),
+    )
+def product_forecast(*items):
+    "retrieve and save the latest forecast data for ITEMS (default is all)"
     if script_verbosity:
         writer = error
     else:
         writer = echo
-    if all:
+    if not items:
         items = []
         nvty = fd.fisData('NVTY1', keymatch="%s101000    101**")   # 135
         for item_rec in ProgressView(
@@ -272,13 +305,6 @@ def product_forecast(all, *items):
             ):
             items.append(item_rec[F135.item_id])
         print('%d items retrieved' % len(items), verbose=2)
-    elif not items:
-        items = []
-        while "more items":
-            item = get_response('item - ', default='exit')
-            if item == 'exit':
-                break
-            items.append(item)
     else:
         items = list(items)
     items = ProgressView(
