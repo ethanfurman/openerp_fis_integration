@@ -11,3 +11,8 @@
             @name: Purchase Cost
             @category_id ref='fis_integration'
             @comment: The user is able to view product costing information.
+
+        ~record model='res.groups' #group_trademark_user
+            @name: Manage Trademarks
+            @category_id ref='fis_integration'
+            @comment: The user is able to manage trademarks.
