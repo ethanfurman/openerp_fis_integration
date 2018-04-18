@@ -1,23 +1,4 @@
-import aenum
-from VSS.utils import LazyClassAttr
-
-class FISenum(str, aenum.Enum):
-
-    FIS_names = LazyClassAttr(set, name='FIS_names')
-
-    def __init__(self, spec):
-        if '(' in spec:
-            fis_name, segment = spec.split('(', 1)
-            segment = segment.strip(' )')
-        else:
-            fis_name = spec
-            segment = None
-        self.fis_name = fis_name
-        self.segment = segment
-        self.__class__.FIS_names.add(fis_name)
-
-    def __repr__(self):
-        return "<%s.%s>" % (self.__class__.__name__, self._name_)
+from tools import FISenum
 
 class F8(FISenum):
     """
@@ -206,62 +187,4 @@ class F341(FISenum):
     desc =          'Bn$'
     short_desc =    'Cn$'
 
-
-def get_changed_records(old_records, new_records, enum_schema, address_fields, ignore=lambda r: False):
-    # get changed records as list of
-    # (old_record, new_record, [(enum_schema_member, old_value, new_value), (...), ...]) tuples
-    try:
-        if issubclass(enum_schema, aenum.Enum):
-            enum = enum_schema
-    except TypeError:
-            enum = type(enum_schema[0])
-    key_fields_name = list(enum)[0].fis_name
-    key_fields = [m for m in enum if m.fis_name == key_fields_name]
-    if address_fields is None:
-        address_fields = ()
-    enum_schema = [m for m in enum_schema if m not in address_fields]
-    changes = []
-    added = []
-    deleted = []
-    old_records_map = {}
-    new_records_map = {}
-    for rec in old_records:
-        key = []
-        for f in key_fields:
-            key.append(rec[f])
-        key = tuple(key)
-        old_records_map[key] = rec
-    for rec in new_records:
-        key = []
-        for f in key_fields:
-            key.append(rec[f])
-        key = tuple(key)
-        new_records_map[key] = rec
-    all_recs = set(new_records_map.keys() + old_records_map.keys())
-    for key in all_recs:
-        changed_values = []
-        new_rec = new_records_map.get(key)
-        old_rec = old_records_map.get(key)
-        if new_rec == old_rec:
-            continue
-        if new_rec is None:
-            deleted.append(old_rec)
-            continue
-        if old_rec is None:
-            added.append(new_rec)
-            continue
-        if ignore(new_rec):
-            continue
-        for field in address_fields:
-            if new_rec[field] != old_rec[field]:
-                # add all the address fields and dump out of the loop
-                for field in address_fields:
-                    changed_values.append((field, old_rec[field], new_rec[field]))
-                break
-        for field in enum_schema:
-            if new_rec[field] != old_rec[field]:
-                changed_values.append((field, old_rec[field], new_rec[field]))
-        if changed_values:
-            changes.append((old_rec, new_rec, changed_values))
-    return changes, added, deleted
 

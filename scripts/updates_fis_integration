@@ -8,12 +8,10 @@ from aenum import Enum, NamedTuple
 from antipathy import Path
 from collections import defaultdict
 from fis_schema import F8, F11, F27, F33, F65, F74, F97, F135, F163
-    # from fis_scheam import F47
-from fis_schema import get_changed_records as get_changed_fis_records
 from openerplib import AttrDict, get_connection, get_records
     # from traceback import format_exception
 from pandaemonium import PidLockFile
-from tools import combine_by_value, Model
+from tools import combine_by_value, Model, compare_fis_records as get_changed_fis_records
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, NameCaseReversed, PostalCode
 from VSS.BBxXlate.fisData import fisData
 from VSS.utils import fix_phone, fix_date

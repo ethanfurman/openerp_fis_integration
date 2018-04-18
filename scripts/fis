@@ -6,6 +6,7 @@ from aenum import Enum
 from collections import defaultdict
 from itertools import cycle
 from openerplib import get_connection, get_records
+from updates.tools import FISenum
 from VSS.BBxXlate import fisData as fd
 from VSS.BBxXlate.bbxfile import TableError
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, name_chars
@@ -1324,8 +1325,6 @@ def get_active_customers():
     echo('found %d active companies' % len(result))
     return result
 
-class FISenum(str, Enum):
-    pass
 
 if env.abbr == 'whc':
 
