@@ -4,6 +4,7 @@ scripts/recipe
 scripts/recipe.py
 scripts/fis_update
 scripts/fis_schema.py updates/fis_schema.py
+scripts/tools.py updates/tools.py
 scripts/updates.py updates/__init__.py
 scripts/updates_fis_integration updates/fis_integration
 scripts/updates_mapping.py updates/fis_integration_mapping.py
