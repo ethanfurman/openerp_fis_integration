@@ -60,8 +60,9 @@ def main():
         skip_update=Spec('Skip updating OpenERP', FLAG, None),
         dryrun=Spec('do not actually make changes', FLAG),
         list_records=Spec('list affected records', FLAG),
+        bw_limit=Spec('rate limit rsync command', OPTION, force_default=10),
         )
-def fis_update(method, skip_copy, skip_update, dryrun, list_records):
+def fis_update(method, skip_copy, skip_update, dryrun, list_records, bw_limit):
     """
     update FIS files from master, then FIS data in OpenERP
 
@@ -87,23 +88,24 @@ def fis_update(method, skip_copy, skip_update, dryrun, list_records):
         for filename in extra_files:
             files.append('{path}/{name}'.format(path=path, name=filename))
         # and grab the files
-        system('rsync --bwlimit=10 %s:%s %s/' % (master, ' :'.join(files), new))
+        system('rsync --bwlimit=%d %s:%s %s/' % (bw_limit, master, ' :'.join(files), new))
         system('chown -R openerp: /FIS')
         config.network.fis_data_local_path.chmod(0o440, '*')
     #
     # step 2: determine which files changed (does not check extra_files
     #
     print('checking for changed files')
+    print('  between %r and %r' % (old, new), verbose=2)
     files = [
-        f for f in new.glob('O????') if
+        f for f in new.glob('%s????' % pre) if
             f.stat().st_mtime != old.stat(f.filename).st_mtime
         ]
     files.extend([
-        f for f in new.glob('O?????') if
+        f for f in new.glob('%s?????' % pre) if
             f.stat().st_mtime != old.stat(f.filename).st_mtime
         ])
     files.extend([
-        f for f in new.glob('O??????') if
+        f for f in new.glob('%s??????' % pre) if
             f.stat().st_mtime != old.stat(f.filename).st_mtime
         ])
     # strip path and leading {pre} from filenames
@@ -115,13 +117,17 @@ def fis_update(method, skip_copy, skip_update, dryrun, list_records):
     if not skip_update:
         FIS_mapping = updates.get_script_mapping()
         for script, tables in FIS_mapping.items():
-            cmd = '/opt/bin/updates/%s %s --method=%s' % (script, ','.join(tables), method)
+            cmd = ('/opt/bin/updates/%s --method=%s'
+                % (script,
+                   method,
+                ))
             if dryrun:
                 cmd += ' --dryrun'
             if list_records:
                 cmd += ' --list-records'
             if script_verbosity:
                 cmd += ' -' + 'v' * script_verbosity
+            cmd += ' %s' % ' '.join(set(tables) & set(files))
             system(cmd)
 
 

@@ -504,6 +504,7 @@ class F328(str, Enum):
     units_produced          = 'Ln'              #  61: Units Produced
     no_of_lots_produced     = 'Mn'              #  62: No Of Lots Produced
     qty_on_order            = 'Nn'              #  63: Qty On Order
+
 class F329(str, Enum):
     """
     IFPP1 - SALES ORDER PRODUCTION PENDING - DETAIL
