@@ -10,16 +10,16 @@ from collections import defaultdict
 from fis_schema import F8, F11, F27, F33, F65, F74, F97, F135, F163
     # from fis_scheam import F47
 from fis_schema import get_changed_records as get_changed_fis_records
-from openerplib import AttrDict, get_connection, get_records, Many2One, DEFAULT_SERVER_DATE_FORMAT
+from openerplib import AttrDict, get_connection, get_records
     # from traceback import format_exception
 from pandaemonium import PidLockFile
+from tools import combine_by_value, Model
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, NameCaseReversed, PostalCode
 from VSS.BBxXlate.fisData import fisData
-from VSS.utils import fix_phone, fix_date, Date
+from VSS.utils import fix_phone, fix_date
 import math
 import re
 import os
-import sys
 
 C = Color
 grey = C.Dim | C.FG_White
@@ -31,7 +31,6 @@ newv = C.Normal | C.FG_Green
 SALEABLE_CATEGORY_XMLID = 'product_category_1'
 SALEABLE_CATEGORY_ID = None
 ETC_CATEGORY_ID = None
-CLEANING_CATEGORY_XMLID = 'pd_cleaning'
 
 
 # API
@@ -41,7 +40,6 @@ CLEANING_CATEGORY_XMLID = 'pd_cleaning'
         raise_on_exception=Spec('do not ignore exceptions', FLAG, abbrev=('r', 'raise')),
         )
 def main(dryrun, list_records, raise_on_exception):
-    # make sure we are the only one running
     global config, oe, errors, DRYRUN, LIST_RECORDS, RAISE_ON_EXCEPTION, VIEW_TYPE, BORDER, script_verbosity
     DRYRUN = LIST_RECORDS = False
     config = OrmFile('%s/config/fnx.ini' % os.environ['VIRTUAL_ENV'], types={'_path': Path})
@@ -58,24 +56,23 @@ def main(dryrun, list_records, raise_on_exception):
     BORDER = 'box' if LIST_RECORDS and script_verbosity > 1 else None
 
 @Command(
-        files=Spec('changed FIS files', MULTIREQ, type=lambda f: f.lower()),
+        files=Spec('changed FIS files', type=lambda f: f.lower()),
         method=Spec(
             'perform quick or full comparison [quick: compare against old FIS files;'
             ' full: compare against OpenERP records',
             OPTION,
             choices=['quick', 'full'],
-            default='quick',
             type=lambda m: m.lower(),
             ),
         delete=Spec('delete records [default: send email]', FLAG,),
         )
-def fis_integration(files, method, delete):
-    # make sure we are the only one running
+def fis_integration(method, delete, *files):
     global state_recs, country_recs, customer_terms_recs
     global skipped_suppliers, vendor_suppliers, ven2sup, vendor_codes
     global models, DELETE
     DELETE = delete
     try:
+        # make sure we are the only one running
         with PidLockFile('/var/run/fis_update.pid'):
             ven2sup = {}
             state_recs = dict([
@@ -117,12 +114,24 @@ def fis_integration(files, method, delete):
             error()
 
 # helpers
+#
+# For those helpers that treat 'quick' and 'full' diferently, there are two ways to calculate changes
+# in 'quick' mode after using get_changed_fis_records() to isolate the potential changes:
+#
+# - convert the new records into OpenERP records and retrieve the existing OpenERP
+#   records for comparison
+#
+# - partially convert the records (in case a full conversion is too messy), then complete
+#   the conversion later when it is determined the records are actually needed
+#
+
+
+
 def handle_nvty(method):
     global product_available_at, product_sales_category, product
     print('processing NVTY', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
-    product = AttrDict()
-    product.product = Model(oe.get_model('product.product'), 'nvty', 'F135', context)
+    product = Model(oe.get_model('product.product'), 'nvty', 'F135', context, RAISE_ON_EXCEPTION)
     all_oe_records = {}
     # these are for tracking original old/new records
     new_item_records = {}
@@ -189,7 +198,7 @@ def handle_nvty(method):
         all_xml_ids.extend([f[F135.item_id] for f in deleted])
         all_oe_records = dict([
             (r.xml_id, r)
-            for r in product.product.read(
+            for r in product.read(
                 domain=[('module','=','F135'),('xml_id','in',all_xml_ids)],
                 fields=[
                     'id', 'module', 'xml_id', 'active', 'name', 'fis_name', 'fis_qty_on_hand',
@@ -326,7 +335,7 @@ def handle_nvty(method):
             for field in old_rec.keys():
                 if field not in new_rec:
                     new_rec[field] = old_rec[field]
-                    product.product.error(
+                    product.error(
                             "%s: field %r missing from new record; using old value of %r"
                                 % (key, field, old_rec[field])
                             )
@@ -354,7 +363,7 @@ def handle_nvty(method):
         ):
         name = item.fis_name
         if xml_id in all_oe_records:
-            product.product.error('FIS ID F135:%s (%s) already exists in OpenERP' % (xml_id, name))
+            product.error('FIS ID F135:%s (%s) already exists in OpenERP' % (xml_id, name))
             continue
         added_count += 1
         if LIST_RECORDS:
@@ -362,7 +371,7 @@ def handle_nvty(method):
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in item.items()), '||', end='')
             echo()
         if not DRYRUN:
-            product_id = product.product.create(xml_id, item)
+            product_id = product.create(xml_id, item)
             if product_id:
                 item.id = product_id
                 all_oe_records[xml_id] = item
@@ -370,6 +379,7 @@ def handle_nvty(method):
     # process changes
     #
     changed_map = combine_by_value(old_changed_item_records, new_changed_item_records)
+    echo('%d items' % len(old_changed_item_records))
     for changes, records in ProgressView(
             iterable=sorted(changed_map.items()),
             message='processing changed records',
@@ -377,7 +387,7 @@ def handle_nvty(method):
         ):
         values = dict(changes)
         xml_ids = [r.xml_id for r in records]
-        oe_ids = product.product.search([('module','=','F135'),('xml_id','in',xml_ids)])
+        oe_ids = product.search([('module','=','F135'),('xml_id','in',xml_ids)])
         changed_count += len(oe_ids)
         if LIST_RECORDS:
             body = []
@@ -388,7 +398,7 @@ def handle_nvty(method):
                 body.append(str(AttrDict(changes)))
             echo('\n'.join(body), border='box' if script_verbosity > 1 else None)
         if not DRYRUN:
-            product.product.write('|'.join(xml_ids), oe_ids, values, context={})
+            product.write('|'.join(xml_ids), oe_ids, values, context={})
     #
     # deleted/deactivate products
     #
@@ -415,9 +425,9 @@ def handle_nvty(method):
                         echo('  F135:%s  %s' % (xml_id, rec.fis_name))
                 if not DRYRUN:
                     if DELETE:
-                        product.product.delete(ids, context=context)
+                        product.delete(ids, context=context)
                     else:
-                        product.product.write('...', ids, {'active': False})
+                        product.write('...', ids, {'active': False})
     #
     print('%d products changed\n%d products added\n%d products %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -428,8 +438,7 @@ def handle_nvty(method):
 def handle_csms(method):
     print('processing CSMS', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
-    res = AttrDict()
-    res.partner = Model(oe.get_model('res.partner'), 'csms', 'F33', context)
+    res_partner = Model(oe.get_model('res.partner'), 'csms', 'F33', context, RAISE_ON_EXCEPTION)
     # these are for tracking original old/new records
     new_company_records = {}
     new_contact_records = {}
@@ -481,9 +490,9 @@ def handle_csms(method):
         #
         print('sorting changed records')
         for old, new, diffs in changes:
-            old_company, old_contact = convert_csms_rec(res.partner, old)
+            old_company, old_contact = convert_csms_rec(res_partner, old)
             old_company_records[old_company.xml_id] = old_company
-            new_company, new_contact = convert_csms_rec(res.partner, new)
+            new_company, new_contact = convert_csms_rec(res_partner, new)
             new_company_records[new_company.xml_id] = new_company
             # changes at the FIS level don't always translate to changes at the OpenERP level
             if old_company != new_company:
@@ -512,14 +521,14 @@ def handle_csms(method):
         #
         print('sorting new and deleted records')
         for fis_rec in added:
-            company, contact = convert_csms_rec(res.partner, fis_rec)
+            company, contact = convert_csms_rec(res_partner, fis_rec)
             new_company_records[company.xml_id] = company
             added_company_records[company.xml_id] = company
             if contact is not None:
                 new_contact_records[contact.xml_id] = contact
                 added_contact_records[contact.xml_id] = contact
         for fis_rec in deleted:
-            company, contact = convert_csms_rec(res.partner, fis_rec)
+            company, contact = convert_csms_rec(res_partner, fis_rec)
             old_company_records[company.xml_id] = company
             deleted_records[company.xml_id] = company
             if contact is not None:
@@ -537,7 +546,7 @@ def handle_csms(method):
         #
         all_fis_records = AttrDict()
         for fis_rec in csms.values():
-            company, contact = convert_csms_rec(res.partner, fis_rec, aging_data)
+            company, contact = convert_csms_rec(res_partner, fis_rec, aging_data)
             all_fis_records[company.xml_id] = company
             # process contact, if any
             if contact is not None:
@@ -680,12 +689,12 @@ def handle_csms(method):
         #
         if method == 'quick':
             fields_to_check = changes.keys() + ['fis_updated_by_user']
-            matches = res.partner.read(
+            matches = res_partner.read(
                     domain=[('xml_id','=',xml_id),('module','=','F33')],
                     fields=fields_to_check+['fis_updated_by_user'],
                     )
             if not matches:
-                res.partner.error('changed company F33:%s not found in OpenERP' % xml_id)
+                res_partner.error('changed company F33:%s not found in OpenERP' % xml_id)
             [match] = matches
             new_record.id = old_record.id = match.id
             ids[xml_id] = match.id
@@ -709,7 +718,7 @@ def handle_csms(method):
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
             if not DRYRUN:
-                res.partner.write(xml_id, new_record.id, changes)
+                res_partner.write(xml_id, new_record.id, changes)
     if not relevant_changes:
         print('...no relevant changes...')
     if old_changed_contact_records:
@@ -750,12 +759,12 @@ def handle_csms(method):
         #
         if method == 'quick':
             fields_to_check = changes.keys()
-            matches = res.partner.read(
+            matches = res_partner.read(
                     domain=[('xml_id','=',xml_id),('module','=','F33')],
                     fields=fields_to_check+['fis_updated_by_user'],
                     )
             if not matches:
-                res.partner.error('changed contact F33:%s not found in OpenERP' % xml_id)
+                res_partner.error('changed contact F33:%s not found in OpenERP' % xml_id)
             [match] = matches
             new_record.id = old_record.id = match.id
             for field in changes:
@@ -778,7 +787,7 @@ def handle_csms(method):
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
             if not DRYRUN:
-                res.partner.write(xml_id, new_record.id, changes)
+                res_partner.write(xml_id, new_record.id, changes)
     if not relevant_changes:
         print('...no relevant changes...')
     #
@@ -789,11 +798,11 @@ def handle_csms(method):
     for key, company in added_company_records.items():
         if not DRYRUN:
             # double-check that record doesn't already exist
-            customer_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F33')])
+            customer_id = res_partner.search(domain=[('xml_id','=',key),('module','=','F33')])
             if customer_id:
                 [customer_id] = customer_id
                 ids[key] = customer_id
-                res.partner.error('FIS ID F33:%s (%s) already exists in OpenERP' % (key, company.name))
+                res_partner.error('FIS ID F33:%s (%s) already exists in OpenERP' % (key, company.name))
                 continue
         added_count += 1
         if LIST_RECORDS:
@@ -801,7 +810,7 @@ def handle_csms(method):
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
             echo()
         if not DRYRUN:
-            customer_id = res.partner.create(key, company)
+            customer_id = res_partner.create(key, company)
             if customer_id:
                 company.id = customer_id
                 ids[key] = customer_id
@@ -814,24 +823,24 @@ def handle_csms(method):
         if not DRYRUN:
             # double-check that record doesn't already exist
             parent_key = key[6:]
-            contact_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F33')])
+            contact_id = res_partner.search(domain=[('xml_id','=',key),('module','=','F33')])
             if contact_id:
                 [contact_id] = contact_id
                 ids[key] = contact_id
-                res.partner.error('FIS ID F33:%s (%s) already exists in OpenERP' % (key, contact.name))
+                res_partner.error('FIS ID F33:%s (%s) already exists in OpenERP' % (key, contact.name))
                 continue
             else:
                 # look for parent and get id
                 contact.parent_id = ids.get(parent_key)
                 if contact.parent_id is None:
                     print('  looking up parent id in OpenERP')
-                    parent_id = res.partner.search(domain=[('xml_id','=',parent_key),('module','=','F33')])
+                    parent_id = res_partner.search(domain=[('xml_id','=',parent_key),('module','=','F33')])
                     if parent_id:
                         contact.parent_id = parent_id[0]
                         ids[parent_key] = parent_id
                     else:
                         print('  unable to find parent for %r' % key)
-                        res.partner.error('unable to find parent for %r (%r)' % (key, parent_key, ))
+                        res_partner.error('unable to find parent for %r (%r)' % (key, parent_key, ))
                         continue
         added_count += 1
         if LIST_RECORDS:
@@ -839,7 +848,7 @@ def handle_csms(method):
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in contact.items()), '||', end='')
             echo()
         if not DRYRUN:
-            contact_id = res.partner.create(key, contact)
+            contact_id = res_partner.create(key, contact)
             if contact_id:
                 ids[key] = contact_id
                 contact.id = contact_id
@@ -856,11 +865,11 @@ def handle_csms(method):
                 echo('  F163:%s  %s' % (key, rec.name))
         deleted_count = len(deleted_records)
         if not DRYRUN:
-            ids = [ids[xml_id] for xml_id in deleted_records]
+            oe_ids = res_partner.search(domain=[('xml_id','in',deleted_records.keys())])
             if DELETE:
-                res.partner.delete(ids, context=context)
+                res_partner.delete(oe_ids, context=context)
             else:
-                res.partner.write('...', ids, {'active': False}, context=context)
+                res_partner.write('...', oe_ids, {'active': False}, context=context)
     #
     print('%d customers changed\n%d customers added\n%d customers %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -870,9 +879,7 @@ def handle_csms(method):
 def handle_customer_terms():
     print('processing CNVZd0', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
-    fis = AttrDict()
-    fis.account = AttrDict()
-    fis.account.customer_terms = Model(oe.get_model('fis.account.customer_terms'), 'cnvzd0', 'F8', context)
+    customer_terms = Model(oe.get_model('fis.account.customer_terms'), 'cnvzd0', 'F8', context, RAISE_ON_EXCEPTION)
     # these  are for tracking old/new versions of changed records
     old_changed_terms_records = {}
     new_changed_terms_records = {}
@@ -972,7 +979,7 @@ def handle_customer_terms():
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
             if not DRYRUN:
-                fis.account.customer_terms.write(xml_id, new_record.id, changes)
+                customer_terms.write(xml_id, new_record.id, changes)
     #
     # now add new customer terms
     #
@@ -981,11 +988,11 @@ def handle_customer_terms():
     for key, terms in added_terms_records.items():
         echo(terms, border='box', verbose=2)
         # double-check that record doesn't already exist
-        terms_id = fis.account.customer_terms.search(domain=[('xml_id','=',key),('module','=','F8')])
+        terms_id = customer_terms.search(domain=[('xml_id','=',key),('module','=','F8')])
         if terms_id:
             [terms_id] = terms_id
             ids[key] = terms_id
-            fis.account.customer_terms.error('FIS ID F8:%s (%s) already exists in OpenERP' % (key, terms.description))
+            customer_terms.error('FIS ID F8:%s (%s) already exists in OpenERP' % (key, terms.description))
         else:
             added_count += 1
             if LIST_RECORDS:
@@ -993,7 +1000,7 @@ def handle_customer_terms():
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in terms.items()), '||', end='')
                 echo()
             if not DRYRUN:
-                terms_id = fis.account.customer_terms.create(key, terms)
+                terms_id = customer_terms.create(key, terms)
                 if terms_id:
                     terms.id = terms_id
                     ids[key] = terms_id
@@ -1011,11 +1018,11 @@ def handle_customer_terms():
                 echo('  F163:%s  %s' % (key, rec.description))
         deleted_count = len(deleted_records)
         if not DRYRUN:
-            ids = [ids[xml_id] for xml_id in deleted_records]
+            oe_ids = customer_terms.search(domain=[('xml_id','in',deleted_records.keys())])
             if DELETE:
-                fis.account.customer_terms.delete(ids, context=context)
+                customer_terms.delete(oe_ids, context=context)
             else:
-                fis.account.customer_terms.write('...', ids, {'active': False}, context=context)
+                customer_terms.write('...', oe_ids, {'active': False}, context=context)
     #
     print('%d customer terms changed\n%d customer terms added\n%d customer terms %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -1025,8 +1032,7 @@ def handle_customer_terms():
 def handle_carrier(method):
     print('processing CNVZsv', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
-    res = AttrDict()
-    res.partner = Model(oe.get_model('res.partner'), 'cnvzsv', 'F27', context)
+    res_partner = Model(oe.get_model('res.partner'), 'cnvzsv', 'F27', context, RAISE_ON_EXCEPTION)
     # these are for tracking original old/new records
     new_company_records = {}
     old_company_records = {}
@@ -1206,12 +1212,12 @@ def handle_carrier(method):
         #
         if method == 'quick':
             fields_to_check = changes.keys()
-            matches = res.partner.read(
+            matches = res_partner.read(
                     domain=[('xml_id','=',xml_id),('module','=','F27')],
                     fields=fields_to_check,
                     )
             if not matches:
-                res.partner.error('changed company F27:%s not found in OpenERP' % xml_id)
+                res_partner.error('changed company F27:%s not found in OpenERP' % xml_id)
             [match] = matches
             new_record.id = old_record.id = match.id
             ids[xml_id] = match.id
@@ -1235,7 +1241,7 @@ def handle_carrier(method):
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
             if not DRYRUN:
-                res.partner.write(xml_id, new_record.id, changes)
+                res_partner.write(xml_id, new_record.id, changes)
     if not relevant_changes:
         print('...no relevant changes...')
     #
@@ -1246,11 +1252,11 @@ def handle_carrier(method):
     for key, company in added_company_records.items():
         if not DRYRUN:
             # double-check that record doesn't already exist
-            customer_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F27')])
+            customer_id = res_partner.search(domain=[('xml_id','=',key),('module','=','F27')])
             if customer_id:
                 [customer_id] = customer_id
                 ids[key] = customer_id
-                res.partner.error('FIS ID F27:%s (%s) already exists in OpenERP' % (key, company.name))
+                res_partner.error('FIS ID F27:%s (%s) already exists in OpenERP' % (key, company.name))
                 continue
         added_count += 1
         if LIST_RECORDS:
@@ -1258,7 +1264,7 @@ def handle_carrier(method):
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
             echo()
         if not DRYRUN:
-            customer_id = res.partner.create(key, company)
+            customer_id = res_partner.create(key, company)
             if customer_id:
                 company.id = customer_id
                 ids[key] = customer_id
@@ -1275,11 +1281,11 @@ def handle_carrier(method):
                 echo('  F163:%s  %s' % (key, rec.name))
         deleted_count = len(deleted_records)
         if not DRYRUN:
-            ids = [ids[xml_id] for xml_id in deleted_records]
+            oe_ids = res_partner.search(domain=[('xml_id','in',deleted_records.keys())])
             if DELETE:
-                res.partner.delete(ids, context=context)
+                res_partner.delete(oe_ids, context=context)
             else:
-                res.partner.write('...', ids, {'active': False}, context=context)
+                res_partner.write('...', oe_ids, {'active': False}, context=context)
     #
     print('%d carriers changed\n%d carriers added\n%d carriers %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -1290,10 +1296,8 @@ def handle_emp1(method):
     print('processing EMP1', border='#')
     context = {'hr_welcome': False, 'fis-updates': True, 'active_test': False}
     # today = Date.today()
-    hr = AttrDict()
-    hr.employee = Model(oe.get_model('hr.employee'), 'emp1', 'F74-emp', context)
-    res = AttrDict()
-    res.partner = Model(oe.get_model('res.partner'), 'emp1', 'F74', context)
+    hr_employee = Model(oe.get_model('hr.employee'), 'emp1', 'F74-emp', context, RAISE_ON_EXCEPTION)
+    res_partner = Model(oe.get_model('res.partner'), 'emp1', 'F74', context, RAISE_ON_EXCEPTION)
     # these are for tracking original old/new records
     new_employee_records = {}
     old_employee_records = {}
@@ -1468,12 +1472,12 @@ def handle_emp1(method):
         #
         if method == 'quick':
             fields_to_check = changes.keys()
-            matches = hr.employee.read(
+            matches = hr_employee.read(
                     domain=[('xml_id','=',xml_id),('module','=','F74-emp')],
                     fields=fields_to_check,
                     )
             if not matches:
-                hr.employee.error('changed employee F74-emp:%s not found in OpenERP' % xml_id)
+                hr_employee.error('changed employee F74-emp:%s not found in OpenERP' % xml_id)
                 continue
             print(matches, border='box')
             [match] = matches
@@ -1491,7 +1495,7 @@ def handle_emp1(method):
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
             if not DRYRUN:
-                hr.employee.write(xml_id, new_record.id, changes)
+                hr_employee.write(xml_id, new_record.id, changes)
     if not relevant_changes:
         print('...no relevant changes...')
     #
@@ -1502,11 +1506,11 @@ def handle_emp1(method):
     for key, employee in added_employee_records.items():
         if not DRYRUN:
             # double-check that record doesn't already exist
-            employee_id = hr.employee.search(domain=[('xml_id','=',key),('module','=','F74-emp')])
+            employee_id = hr_employee.search(domain=[('xml_id','=',key),('module','=','F74-emp')])
             if employee_id:
                 [employee_id] = employee_id
                 ids[key] = employee_id
-                hr.employee.error('FIS ID F74-emp:%s (%s) already exists in OpenERP' % (key, employee.name))
+                hr_employee.error('FIS ID F74-emp:%s (%s) already exists in OpenERP' % (key, employee.name))
                 continue
         added_count += 1
         if LIST_RECORDS:
@@ -1514,7 +1518,7 @@ def handle_emp1(method):
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in employee.items()), '||', end='')
             echo()
         if not DRYRUN:
-            employee_id = hr.employee.create(key, employee)
+            employee_id = hr_employee.create(key, employee)
             if not employee_id:
                 continue
             employee.id = employee_id
@@ -1522,14 +1526,14 @@ def handle_emp1(method):
             # check for existing res.partner record, and use it if it exists
             emp_num = employee.xml_id
             emp_name = employee.name
-            rp_id = hr.employee.search(domain=[('module','=','F74'),('xml_id','=',emp_num)])
+            rp_id = hr_employee.search(domain=[('module','=','F74'),('xml_id','=',emp_num)])
             if rp_id:
                 # update res.partner record with employee link
                 rp_id = rp_id[0]
-                res.partner.write(emp_num, rp_id, {'employee_id': employee_id})
+                res_partner.write(emp_num, rp_id, {'employee_id': employee_id})
             else:
                 # otherwise, try to create it, leaving it at False (0) on failure
-                rp_id = res.partner.create(
+                rp_id = res_partner.create(
                         emp_num,
                         {'name': emp_name, 'xml_id': emp_num, 'module': 'F74', 'employee_id': employee_id},
                         )
@@ -1553,8 +1557,8 @@ def handle_emp1(method):
                     echo("%6s  %-11s  %-11s  %s" % (emp_num, date_hired, date_terminated, name))
         deleted_count = len(deleted_records)
         if not DRYRUN:
-            ids = [ids[xml_id] for xml_id in deleted_records]
-            res.partner.write('...', ids, {'active': False}, context=context)
+            oe_ids = hr_employee.search(domain=[('xml_id','in',deleted_records.keys())])
+            hr_employee.write('...', oe_ids, {'active': False}, context=context)
     #
     #
     # check for suspect birthdates
@@ -1587,7 +1591,7 @@ def handle_emp1(method):
     # check for (in)active records
     #
     if active_test_needed:
-        active_test = hr.employee.read(
+        active_test = hr_employee.read(
                 domain=[('id','in',list(active_test_needed))],
                 fields=['id', 'hire_date', 'fire_date','xml_id'],
                 )
@@ -1608,11 +1612,11 @@ def handle_emp1(method):
         if active:
             print('setting %d records active' % len(active_keys))
             if not DRYRUN:
-                hr.employee.write(active_keys, active, {'active': True})
+                hr_employee.write(active_keys, active, {'active': True})
         if inactive:
             print('setting %d records inactive' % len(inactive_keys))
             if not DRYRUN:
-                hr.employee.write(inactive_keys, inactive, {'active': False})
+                hr_employee.write(inactive_keys, inactive, {'active': False})
     print(
             '%d records changed\n%d records added\n%d records (maybe) deleted'
                 % (changed_count, added_count, deleted_count),
@@ -1638,12 +1642,9 @@ def handle_product_category():
     changed_count = 0
     added_count = 0
     deleted_count = 0
-    product = AttrDict()
-    product.category = Model(oe.get_model('product.category'), 'cnvzas', 'F11', context)
-    ir = AttrDict()
-    ir.model = AttrDict()
-    ir.model.data = Model(oe.get_model('ir.model.data'), 'imd', '', context)
-    _, SALEABLE_CATEGORY_ID = ir.model.data.get_object_reference('product', SALEABLE_CATEGORY_XMLID)
+    product_category = Model(oe.get_model('product.category'), 'cnvzas', 'F11', context, RAISE_ON_EXCEPTION)
+    ir_model_data = Model(oe.get_model('ir.model.data'), 'imd', '', context, RAISE_ON_EXCEPTION)
+    _, SALEABLE_CATEGORY_ID = ir_model_data.get_object_reference('product', SALEABLE_CATEGORY_XMLID)
     #
     # get the "old" data from:
     # - full -> current OpenERP data
@@ -1682,7 +1683,7 @@ def handle_product_category():
     #
     # now we can separate into new, changed, and deleted buckets
     #
-    print('sorting changed, new, and deleted customer category records')
+    print('sorting changed, new, and deleted product category records')
     all_keys = set(all_fis_records.keys() + all_oe_records.keys())
     for key in all_keys:
         old_rec = all_oe_records.get(key)
@@ -1718,11 +1719,11 @@ def handle_product_category():
             category.parent_id = ids[category.parent_id]
         # double-check that record doesn't already exist
         if not DRYRUN:
-            category_id = product.category.search(domain=[('xml_id','=',key),('module','=','F11')])
+            category_id = product_category.search(domain=[('xml_id','=',key),('module','=','F11')])
             if category_id:
                 [category_id] = category_id
                 ids[key] = category_id
-                product.category.error('FIS ID F11:%s (%s) already exists in OpenERP' % (key, category.name))
+                product_category.error('FIS ID F11:%s (%s) already exists in OpenERP' % (key, category.name))
                 continue
         added_count += 1
         if LIST_RECORDS:
@@ -1730,7 +1731,7 @@ def handle_product_category():
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in category.items()), '||', end='')
             echo()
         if not DRYRUN:
-            category_id = product.category.create(key, category)
+            category_id = product_category.create(key, category)
             if category_id:
                 category.id = category_id
                 ids[key] = category_id
@@ -1781,7 +1782,7 @@ def handle_product_category():
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
             if not DRYRUN:
-                product.category.write(xml_id, new_record.id, changes)
+                product_category.write(xml_id, new_record.id, changes)
     if not relevant_changes:
         print('...no relevant changes...')
     #
@@ -1803,11 +1804,11 @@ def handle_product_category():
             else:
                 print('deleting records', border='flag')
             if not DRYRUN:
-                ids = [ids[xml_id] for xml_id in deleted_records]
+                oe_ids = product_category.search(domain=[('xml_id','in',deleted_records.keys())])
                 if DELETE:
-                    product.category.delete(ids, context=context)
+                    product_category.delete(oe_ids, context=context)
                 else:
-                    product.category.write('...', ids, {'active': False}, context=context)
+                    product_category.write('...', oe_ids, {'active': False}, context=context)
     #
     print('%d categories changed\n%d categories added\n%d categories %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -1832,8 +1833,7 @@ def handle_product_location():
     changed_count = 0
     added_count = 0
     deleted_count = 0
-    product = AttrDict()
-    product.location = Model(oe.get_model('product.available_at'), 'cnvzaa', 'F11', context)
+    product_location = Model(oe.get_model('product.available_at'), 'cnvzaa', 'F11', context, RAISE_ON_EXCEPTION)
     #
     # get the "old" data from:
     # - full -> current OpenERP data
@@ -1849,7 +1849,7 @@ def handle_product_location():
                 oe, 'product.available_at',
                 domain=[('module','=','F97')],
                 fields=[
-                    'id', 'module', 'xml_id', 'name', 'availability',
+                    'id', 'module', 'xml_id', 'name', 'available',
                     ],
                 context=context,
                 )
@@ -1903,11 +1903,11 @@ def handle_product_location():
     for key, location in sorted(added_location_records.items()):
         if not DRYRUN:
             # double-check that record doesn't already exist
-            location_id = product.location.search(domain=[('xml_id','=',key),('module','=','F97')])
+            location_id = product_location.search(domain=[('xml_id','=',key),('module','=','F97')])
             if location_id:
                 [location_id] = location_id
                 ids[key] = location_id
-                product.location.error('FIS ID F97:%s (%s) already exists in OpenERP' % (key, location.name))
+                product_location.error('FIS ID F97:%s (%s) already exists in OpenERP' % (key, location.name))
                 continue
         added_count += 1
         if LIST_RECORDS:
@@ -1915,7 +1915,7 @@ def handle_product_location():
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in location.items()), '||', end='')
             echo()
         if not DRYRUN:
-            location_id = product.location.create(key, location)
+            location_id = product_location.create(key, location)
             if location_id:
                 location.id = location_id
                 ids[key] = location_id
@@ -1952,7 +1952,7 @@ def handle_product_location():
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
             if not DRYRUN:
-                product.location.write(xml_id, new_record.id, changes)
+                product_location.write(xml_id, new_record.id, changes)
     if not relevant_changes:
         print('...no relevant changes...')
     #
@@ -1972,9 +1972,9 @@ def handle_product_location():
             else:
                 print('deleting records', border='flag')
             if not DRYRUN:
-                ids = [ids[xml_id] for xml_id in deleted_records]
+                oe_ids = product_location.search(domain=[('xml_id','in',deleted_records.keys())])
                 if DELETE:
-                    product.location.delete(ids, context=context)
+                    product_location.delete(oe_ids, context=context)
     #
     print('%d locations changed\n%d locations added\n%d locations %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -1998,9 +1998,8 @@ def handle_supplier(method):
     print(posm.filename, verbose=2)
     print(vnms.filename, verbose=2)
     context = {'fis-updates': True, 'active_test': False}
-    res = AttrDict()
     # on the OpenERP side, supplier records use F163 as the FIS module
-    res.partner = Model(oe.get_model('res.partner'), 'posm/vnms', 'F163', context)
+    res_partner = Model(oe.get_model('res.partner'), 'posm/vnms', 'F163', context, RAISE_ON_EXCEPTION)
     # these are for tracking original old/new records
     new_company_records = {}
     old_company_records = {}
@@ -2226,7 +2225,7 @@ def handle_supplier(method):
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
             if not DRYRUN:
-                res.partner.write(xml_id, new_record.id, changes)
+                res_partner.write(xml_id, new_record.id, changes)
     if not relevant_changes:
         print('...no relevant changes...')
     #
@@ -2237,11 +2236,11 @@ def handle_supplier(method):
     for key, company in added_company_records.items():
         if not DRYRUN:
             # double-check that record doesn't already exist
-            company_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F163')])
+            company_id = res_partner.search(domain=[('xml_id','=',key),('module','=','F163')])
             if company_id:
                 [company_id] = company_id
                 ids[key] = company_id
-                res.partner.error('FIS ID F163:%s (%s) already exists in OpenERP' % (key, company.name))
+                res_partner.error('FIS ID F163:%s (%s) already exists in OpenERP' % (key, company.name))
                 continue
         added_count += 1
         if LIST_RECORDS:
@@ -2249,7 +2248,7 @@ def handle_supplier(method):
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
             echo()
         if not DRYRUN:
-            company_id = res.partner.create(key, company)
+            company_id = res_partner.create(key, company)
             if company_id:
                 company.id = company_id
                 ids[key] = company_id
@@ -2299,7 +2298,7 @@ def handle_supplier(method):
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
             if not DRYRUN:
-                res.partner.write(xml_id, new_record.id, changes)
+                res_partner.write(xml_id, new_record.id, changes)
     if not relevant_changes:
         print('...no relevant changes...')
     #
@@ -2310,11 +2309,11 @@ def handle_supplier(method):
     for key, contact in added_contact_records.items():
         if not DRYRUN:
             # double-check that record doesn't already exist
-            contact_id = res.partner.search(domain=[('xml_id','=',key),('module','=','F163')])
+            contact_id = res_partner.search(domain=[('xml_id','=',key),('module','=','F163')])
             if contact_id:
                 [contact_id] = contact_id
                 ids[key] = contact_id
-                res.partner.error('FIS ID F163:%s (%s) already exists in OpenERP' % (key, contact.name))
+                res_partner.error('FIS ID F163:%s (%s) already exists in OpenERP' % (key, contact.name))
                 continue
         added_count += 1
         if LIST_RECORDS:
@@ -2322,7 +2321,7 @@ def handle_supplier(method):
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in contact.items()), '||', end='')
             echo()
         if not DRYRUN:
-            contact_id = res.partner.create(key, contact)
+            contact_id = res_partner.create(key, contact)
             if contact_id:
                 contact.id = contact_id
                 ids[key] = contact_id
@@ -2345,11 +2344,11 @@ def handle_supplier(method):
             else:
                 print('deleting records', border='flag')
             if not DRYRUN:
-                ids = [ids[xml_id] for xml_id in deleted_records]
+                oe_ids = res_partner.search(domain=[('xml_id','in',deleted_records.keys())])
                 if DELETE:
-                    res.partner.delete(ids, context=context)
+                    res_partner.delete(oe_ids, context=context)
                 else:
-                    res.partner.write('...', ids, {'active': False}, context=context)
+                    res_partner.write('...', oe_ids, {'active': False}, context=context)
     #
     print('%d suppliers changed\n%d suppliers added\n%d suppliers %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -2388,7 +2387,10 @@ def convert_nvty_rec(fis_rec):
     item.active = True
     availability = product_available_at.get(fis_rec[F135.available_key], False)
     item.fis_availability_id = availability.id
-    item.sale_ok = availability.available
+    sale_ok = availability.available
+    if isinstance(sale_ok, basestring):
+        sale_ok = sale_ok.upper() == 'Y'
+    item.sale_ok = sale_ok
     item.list_price = fis_rec[F135.new_wholesale]
     item.trademarks = fis_rec[F135.trademarked]
     item.ean13 = sanitize_ean13(fis_rec[F135.upc_no])
@@ -2420,7 +2422,7 @@ def convert_nvty_rec(fis_rec):
         item.categ_id = category.id
         cat_shelf_life = float(category.fis_shelf_life or 0.0)
     else:
-        product.product.error("%s: invalid sales category code -- %r" % (item.xml_id, category_code))
+        product.error("%s: invalid sales category code -- %r" % (item.xml_id, category_code))
         cat_shelf_life = 0.0
     #
     item.warranty = float(fis_rec[F135.shelf_life_mos] or cat_shelf_life)
@@ -2451,7 +2453,7 @@ def convert_product_location_rec(fis_rec):
     avail= fis_rec[F97.availability].upper()
     if avail not in 'YN':
         avail = False
-    location.availability = avail
+    location.available = avail
     return location
 
 
@@ -2684,7 +2686,7 @@ def convert_supplier_rec(key):
 
 def get_customer_aging(aging_file):
     aging_data = {}
-    with open(config.fis_data_local_path/'customer_aging.txt') as af:
+    with open(config.network.fis_data_local_path/'customer_aging.txt') as af:
         lines = [line for line in af.read().split('\n') if line.strip()]
     for line in lines:
         key, rest = line.split(None, 1)
@@ -2714,14 +2716,14 @@ def get_product_forecast():
         try:
             text = line.split(' - ')[1]
         except IndexError:
-            product.product.error('problem with forecast line #%d: %r' % (i, line))
+            product.error('problem with forecast line #%d: %r' % (i, line))
             continue
         if 'ERROR' in text:
             continue
         try:
             item_code, _10_day, _21_day = text.split(':')
         except ValueError:
-            product.product.error('problem with forecast line #%d: %r' % (i, line))
+            product.error('problem with forecast line #%d: %r' % (i, line))
             continue
         prod_in, purch, prod_out, sold = _10_day.split()[2:6]
         prod_in = float(prod_in)
@@ -2756,24 +2758,6 @@ class Specials(str, Enum):
             if default is not _raise_lookup:
                 return default
         raise LookupError('%r not found in %s' % (text, cls.__name__))
-
-def pfm(values):
-    "prepare values dict for marshalling"
-    result = {}
-    for k, v in values.items():
-        if v is None:
-            result[k] = False
-        elif isinstance(v, Date):
-            result[k] = v.strftime(DEFAULT_SERVER_DATE_FORMAT)
-        elif isinstance(v, Many2One):
-            result[k] = v.id
-        elif isinstance(v, PostalCode):
-            result[k] = v.code
-        elif isinstance(v, Enum):
-            result[k] = v.value
-        else:
-            result[k] = v
-    return result
 
 def process_address(schema, fis_rec, key=None, module=None, home=False):
     if module is not None and key is None:
@@ -2857,23 +2841,6 @@ def is_contact(obj):
         obj = obj.get('xml_id')
     return obj.startswith('cntct_')
 
-def combine_by_value(old_records, new_records):
-    all_keys = set(old_records.keys() + new_records.keys())
-    changed_map = defaultdict(list)
-    for key in all_keys:
-        old_rec = old_records[key]
-        new_rec = new_records[key]
-        rec_key = []
-        for oe_field, new_value in new_rec.items():
-            if oe_field in ['xml_id', 'module', 'id']:
-                continue
-            old_value = old_rec[oe_field]
-            if old_value != new_value:
-                rec_key.append((oe_field, new_value))
-        if rec_key:
-            changed_map[tuple(rec_key)].append(new_rec)
-    return changed_map
-
 def sanitize_ean13(ean13):
     """
     Creates and returns a valid ean13 from an invalid one
@@ -2907,110 +2874,6 @@ def ean_checksum(eancode):
     total=(oddsum * 3) + evensum
     check = int(10 - math.ceil(total % 10.0)) % 10
     return check
-
-def compare_records(old_records, new_records, ignore=lambda r: False):
-    # get changed records as list of
-    # (old_record, new_record, [(enum_schema_member, old_value, new_value), (...), ...]) tuples
-    changes = []
-    added = []
-    deleted = []
-    old_records_map = {}
-    new_records_map = {}
-    for rec in old_records:
-        key = rec.module, rec.xml_id
-        old_records_map[key] = rec
-    for rec in new_records:
-        key = rec.module, rec.xml_id
-        new_records_map[key] = rec
-    all_recs = set(new_records_map.keys() + old_records_map.keys())
-    for key in all_recs:
-        changed_values = []
-        new_rec = new_records_map.get(key)
-        old_rec = old_records_map.get(key)
-        if new_rec == old_rec:
-            continue
-        if new_rec is None:
-            deleted.append(old_rec)
-            continue
-        if old_rec is None:
-            added.append(new_rec)
-            continue
-        if ignore(new_rec):
-            continue
-        assert set(new_rec.keys()) == set(old_rec.keys()), 'key mismatch'
-        for field in new_rec.keys():
-            if new_rec[field] != old_rec[field]:
-                changed_values.append((field, old_rec[field], new_rec[field]))
-        if changed_values:
-            changes.append((old_rec, new_rec, changed_values))
-    return changes, added, deleted
-
-class Model(object):
-
-    models = []
-    errors = defaultdict(list)
-
-    def __init__(self, table, abbr, module, context):
-        self.models.append(self)
-        self.table = table
-        self.abbr = abbr
-        self.module = module
-        self.context = context
-
-    def __getattr__(self, name):
-        return getattr(self.table, name)
-
-    def error(self, msg):
-        self.errors[self.abbr].append(msg)
-
-    def create(self, key, values, context=None):
-        if context is None:
-            context = self.context
-        try:
-            return self.table.create(pfm(values), context=context)
-        except Exception:
-            if RAISE_ON_EXCEPTION:
-                raise
-            cls, exc, tb = sys.exc_info()
-            self.errors[self.abbr].append('FIS ID %s:%s create caused exception %r' % (self.module, key, exc))
-            return False
-
-    def delete(self, ids, context=None):
-        if context is None:
-            context = self.context
-        try:
-            return self.table.unlink(ids)
-        except Exception:
-            if RAISE_ON_EXCEPTION:
-                raise
-            cls, exc, tb = sys.exc_info()
-            self.errors[self.abbr].append('%s: deleting ID(s) %s caused exception %r' % (self.module, ', '.join([str(n) for n in ids]), exc))
-            return False
-
-    def read(self, **kwds):
-        if 'context' not in kwds:
-            kwds['context'] = self.context
-        return get_records(self.table, **kwds)
-
-    def search(self, domain, context=None):
-        if context is None:
-            context = self.context
-        return self.table.search(domain, context=context)
-
-    def write(self, key, ids, values, context=None):
-        if context is None:
-            context = self.context
-        try:
-            print('writing to %s using %s\n and %s' % (ids, pfm(values), context), border='box', verbose=3)
-            self.table.write(ids, pfm(values), context=context)
-            return True
-        except Exception:
-            if RAISE_ON_EXCEPTION:
-                raise
-            cls, exc, tb = sys.exc_info()
-            self.errors[self.abbr].append('FIS ID %s:%s write caused exception %r' % (self.module, key, exc))
-            return False
-
 
 class CustomerAging(NamedTuple):
     _order_ = "xml_id limit current d10 d20 d30 total"
