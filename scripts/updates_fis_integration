@@ -875,7 +875,7 @@ def handle_csms(method):
             )
 
 def handle_customer_terms():
-    print('processing CNVZd0', border=('flag', '#'))
+    print('processing CNVZd0 (customer terms)', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
     customer_terms = Model(oe.get_model('fis.account.customer_terms'), 'cnvzd0', 'F8', context, RAISE_ON_EXCEPTION)
     # these  are for tracking old/new versions of changed records
@@ -1028,7 +1028,7 @@ def handle_customer_terms():
             )
 
 def handle_carrier(method):
-    print('processing CNVZsv', border=('flag', '#'))
+    print('processing CNVZsv (shipping carriers)', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
     res_partner = Model(oe.get_model('res.partner'), 'cnvzsv', 'F27', context, RAISE_ON_EXCEPTION)
     # these are for tracking original old/new records
@@ -1625,7 +1625,7 @@ def handle_product_category():
     #
     # always use "full" method
     #
-    print('processing CNVZas', border=('box','#'))
+    print('processing CNVZas (product sales category)', border=('box','#'))
     global SALEABLE_CATEGORY_ID, ETC_CATEGORY_ID, category_ids
     cnvzas = fisData(11, keymatch='as10%s')
     print(cnvzas.filename, verbose=2)
@@ -1817,7 +1817,7 @@ def handle_product_location():
     #
     # always use "full" method
     #
-    print('processing CNVZaa', border=('box','#'))
+    print('processing CNVZaa (product location)', border=('box','#'))
     cnvzaa = fisData(97, keymatch='aa10%s')
     print(cnvzaa.filename, verbose=2)
     context = {'fis-updates': True, 'active_test': False}
