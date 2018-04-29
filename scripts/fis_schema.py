@@ -186,8 +186,8 @@ class F163(FISenum):
     addr1            = 'Cn$',          3     # Address 1
     addr2            = 'Dn$',          4     # Address 2
     addr3            = 'En$',          5     # Address 3
-    teleo            = 'Gn$',          7     # TELEPHONE NO.
-    fax_no           = 'Hn$',          8     # Fax Number
+    tele             = 'Gn$',          7     # TELEPHONE NO.
+    fax              = 'Hn$',          8     # Fax Number
     vendor           = 'In$(10,6)',   22     # VENDOR NUMBER
     org_cert_file    = 'Mn$(1,1)',    30     # Org Cert on File?
     non_gmo          = 'Mn$(2,1)',    31     # Non-GMO Vendor?
