@@ -116,6 +116,10 @@ def compare_fis_records(old_records, new_records, enum_schema, address_fields, i
         changed_values = []
         new_rec = new_records_map.get(key)
         old_rec = old_records_map.get(key)
+        if new_rec and ignore(new_rec):
+            continue
+        if old_rec and ignore(old_rec):
+            continue
         if new_rec == old_rec:
             continue
         if new_rec is None:
@@ -123,8 +127,6 @@ def compare_fis_records(old_records, new_records, enum_schema, address_fields, i
             continue
         if old_rec is None:
             added.append(new_rec)
-            continue
-        if ignore(new_rec):
             continue
         for field in address_fields:
             if new_rec[field] != old_rec[field]:
@@ -183,6 +185,8 @@ class Model(object):
             self.errors[self.abbr].append('%s: deleting ID(s) %s caused exception %r' % (self.module, ', '.join([str(n) for n in ids]), exc))
             return False
 
+    unlink = delete
+
     def read(self, **kwds):
         if 'context' not in kwds:
             kwds['context'] = self.context
@@ -210,18 +214,23 @@ class Model(object):
 
 class FISenum(str, Enum):
 
+    _init_ = 'value sequence'
+    _order_ = lambda m: m.sequence
+
     FIS_names = LazyClassAttr(set, name='FIS_names')
 
-    def __init__(self, spec):
-        if '(' in spec:
-            fis_name, segment = spec.split('(', 1)
+    def __new__(cls, value, *args):
+        enum = str.__new__(cls, value)
+        if '(' in value:
+            fis_name, segment = value.split('(', 1)
             segment = segment.strip(' )')
         else:
-            fis_name = spec
+            fis_name = value
             segment = None
-        self.fis_name = fis_name
-        self.segment = segment
-        self.__class__.FIS_names.add(fis_name)
+        enum.fis_name = fis_name
+        enum.segment = segment
+        enum.__class__.FIS_names.add(fis_name)
+        return enum
 
     def __repr__(self):
         return "<%s.%s>" % (self.__class__.__name__, self._name_)
