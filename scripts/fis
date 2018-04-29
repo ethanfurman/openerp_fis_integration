@@ -22,7 +22,7 @@ import sys
 import time
 
 virtual_env = os.environ['VIRTUAL_ENV']
-config = OrmFile(Path('%s/config/fnx.ini' % virtual_env))
+config = OrmFile(Path('%s/config/fnx.ini' % virtual_env), types={'_path':Path})
 env = config.env
 
 # SOURCE = Path('/var/fis/production/')
@@ -261,18 +261,20 @@ def product_description(quick, *items):
     if not quick:
         # get the data
         print('getting data')
-        job = Execute(
-                'sudo ssh %(host)s cat %(file)s' % {
-                    'host': config.openerp.full_description_host,
-                    'file': config.openerp.full_description_path,
-                    },
-                pty=True,
-                password=config.pw,
-                )
-        if not job.returncode and not job.stderr:
+        with user_ids(0, 0):
+            job = Execute(
+                    'ssh %(host)s cat %(file)s' % {
+                        'host': config.openerp.full_description_host,
+                        'file': config.openerp.full_description_path,
+                        },
+                    pty=True,
+                    )
+        if job.returncode or job.stderr:
+            abort(job.stderr, returncode=job.returncode)
+        else:
             with open(config.network.fis_data_local_path/'product_descriptions.txt', 'w') as f:
                 f.write(job.stdout)
-        print('data saved')
+            print('data saved')
     if items:
         # display the requested items
         print('reading data')
