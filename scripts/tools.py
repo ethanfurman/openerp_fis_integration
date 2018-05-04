@@ -81,7 +81,7 @@ def compare_records(old_records, new_records, ignore=lambda r: False):
             changes.append((old_rec, new_rec, changed_values))
     return changes, added, deleted
 
-def compare_fis_records(old_records, new_records, enum_schema, address_fields, ignore=lambda r: False):
+def compare_fis_records(old_records, new_records, enum_schema, address_fields, ignore=lambda r: False, key=None):
     # get changed records as list of
     # (old_record, new_record, [(enum_schema_member, old_value, new_value), (...), ...]) tuples
     try:
@@ -89,8 +89,11 @@ def compare_fis_records(old_records, new_records, enum_schema, address_fields, i
             enum = enum_schema
     except TypeError:
             enum = type(enum_schema[0])
-    key_fields_name = list(enum)[0].fis_name
-    key_fields = [m for m in enum if m.fis_name == key_fields_name]
+    if key is None:
+        key_fields_name = list(enum)[0].fis_name
+        key_fields = [m for m in enum if m.fis_name == key_fields_name]
+    else:
+        key_fields = key
     if address_fields is None:
         address_fields = ()
     enum_schema = [m for m in enum_schema if m not in address_fields]
