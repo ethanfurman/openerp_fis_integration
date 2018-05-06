@@ -2689,6 +2689,8 @@ def get_customer_aging(aging_file):
     try:
         for line in lines:
             key, rest = line.split(None, 1)
+            if key.endswith(':'):
+                key, rest = rest[0], rest[1:]
             limit, salesrep, total, d0, d10, d20, d30 = line.rsplit(None, 8)[-7:]
             aging_data[key] = CustomerAging(key, limit, d0, d10, d20, d30, total)
         return aging_data
