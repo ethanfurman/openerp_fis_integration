@@ -202,6 +202,7 @@ def handle_nvty(method):
                     'id', 'module', 'xml_id', 'active', 'name', 'fis_name', 'fis_qty_on_hand',
                     'fis_availability_id', 'sale_ok', 'list_price', 'trademarks', 'ean13',
                     'fis_location', 'fis_shipping_size', 'categ_id', 'warranty',
+                    'default_code',
                     ],
                 )
             ])
@@ -307,6 +308,7 @@ def handle_nvty(method):
                         'fis_qty_purchased', 'fis_10_day_purchased', 'fis_21_day_purchased',
                         'fis_qty_sold', 'fis_10_day_sold', 'fis_21_day_sold',
                         'fis_qty_available', 'fis_10_day_available', 'fis_21_day_available',
+                        'default_code',
                         ],
                     context=context,
                     )
@@ -2379,6 +2381,7 @@ def convert_nvty_rec(fis_rec):
     item = AttrDict()
     item.xml_id =  fis_rec[F135.item_id]
     item.module = 'F135'
+    item.default_code = item.xml_id
     name = NameCase(fis_rec[F135.description].strip())
     name = re.sub('sunridge', 'SunRidge', name, flags=re.I)
     item.fis_name = name
