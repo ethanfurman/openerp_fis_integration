@@ -239,3 +239,13 @@ class FISenum(str, Enum):
         return "<%s.%s>" % (self.__class__.__name__, self._name_)
 
 
+class allow_exception(object):
+
+    def __init__(self, *allowed):
+        self.allowed = allowed
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, cls, exc, tb):
+        return cls in self.allowed
