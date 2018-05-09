@@ -61,8 +61,9 @@ def main():
         dryrun=Spec('do not actually make changes', FLAG),
         list_records=Spec('list affected records', FLAG),
         bw_limit=Spec('rate limit rsync command', OPTION, force_default=10),
+        abort_on_error=Spec('abort on error', FLAG),
         )
-def fis_update(method, skip_copy, skip_update, dryrun, list_records, bw_limit):
+def fis_update(method, skip_copy, skip_update, dryrun, list_records, bw_limit, abort_on_error):
     """
     update FIS files from master, then FIS data in OpenERP
 
@@ -129,10 +130,10 @@ def fis_update(method, skip_copy, skip_update, dryrun, list_records, bw_limit):
             if script_verbosity:
                 cmd += ' -' + 'v' * script_verbosity
             cmd += ' %s' % ' '.join(set(tables) & set(files))
-            system(cmd)
+            system(cmd, abort_on_error)
 
 
-def system(cmd, on_error='abort'):
+def system(cmd, abort_on_error=False):
     with user_ids(0, 0):
         print('--== running "%s" . . .: ' % cmd, end='', verbose=1)
         job = Execute(cmd, pty=True)
@@ -149,7 +150,7 @@ def system(cmd, on_error='abort'):
             if job.stderr.strip():
                 error(job.stderr.strip())
                 error('==========================================')
-            if on_error == 'abort':
+            if abort_on_error:
                 abort()
         elif job.stdout.strip():
             print('---- stdout ----', verbose=1)
