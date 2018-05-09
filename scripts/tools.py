@@ -170,10 +170,10 @@ class Model(object):
         try:
             return self.table.create(pfm(values), context=context)
         except Exception:
-            if self.raise_on_exception:
-                raise
             cls, exc, tb = exc_info()
             self.errors[self.abbr].append('FIS ID %s:%s create caused exception %r' % (self.module, key, exc))
+            if self.raise_on_exception:
+                raise
             return False
 
     def delete(self, ids, context=None):
@@ -182,10 +182,10 @@ class Model(object):
         try:
             return self.table.unlink(ids)
         except Exception:
-            if self.raise_on_exception:
-                raise
             cls, exc, tb = exc_info()
             self.errors[self.abbr].append('%s: deleting ID(s) %s caused exception %r' % (self.module, ', '.join([str(n) for n in ids]), exc))
+            if self.raise_on_exception:
+                raise
             return False
 
     unlink = delete
@@ -208,10 +208,10 @@ class Model(object):
             self.table.write(ids, pfm(values), context=context)
             return True
         except Exception:
-            if self.raise_on_exception:
-                raise
             cls, exc, tb = exc_info()
             self.errors[self.abbr].append('FIS ID %s:%s write caused exception %r' % (self.module, key, exc))
+            if self.raise_on_exception:
+                raise
             return False
 
 
