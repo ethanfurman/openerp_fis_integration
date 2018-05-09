@@ -248,4 +248,4 @@ class allow_exception(object):
         return self
 
     def __exit__(self, cls, exc, tb):
-        return cls in self.allowed
+        return isinstance(exc, self.allowed)
