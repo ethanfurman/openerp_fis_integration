@@ -11,7 +11,7 @@ from fis_schema import F8, F11, F27, F33, F65, F74, F97, F135, F163
 from openerplib import AttrDict, get_connection, get_records
     # from traceback import format_exception
 from pandaemonium import PidLockFile
-from tools import combine_by_value, Model, compare_fis_records as get_changed_fis_records
+from tools import allow_exception, combine_by_value, Model, compare_fis_records as get_changed_fis_records
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, NameCaseReversed, PostalCode
 from VSS.BBxXlate.fisData import fisData
 from VSS.utils import fix_phone, fix_date
@@ -90,20 +90,25 @@ def fis_integration(method, delete, *files):
             skipped_suppliers = set()
             vendor_suppliers = {}
             vendor_codes = set()
-            if 'cnvz' in files:
-                # handle_sales_reps(method)
-                handle_carrier(method)
-                handle_customer_terms()
-                handle_product_category()
-                handle_product_location()
-            if 'emp1' in files:
-                handle_emp1(method)
-            if 'posm' in files or 'vnms' in files:
-                handle_supplier(method)
-            if 'csms' in files:
-                handle_csms(method)
-            if 'nvty' in files:
-                handle_nvty(method)
+            with allow_exception(Exception):
+                if 'cnvz' in files:
+                    # handle_sales_reps(method)
+                    handle_carrier(method)
+                    handle_customer_terms()
+                    handle_product_category()
+                    handle_product_location()
+            with allow_exception(Exception):
+                if 'emp1' in files:
+                    handle_emp1(method)
+            with allow_exception(Exception):
+                if 'posm' in files or 'vnms' in files:
+                    handle_supplier(method)
+            with allow_exception(Exception):
+                if 'csms' in files:
+                    handle_csms(method)
+            with allow_exception(Exception):
+                if 'nvty' in files:
+                    handle_nvty(method)
     finally:
         for m, problems in sorted(Model.errors.items()):
             error('\n', m, border=('lined', '='), sep='')
