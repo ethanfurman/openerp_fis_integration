@@ -186,7 +186,10 @@ class product_template(osv.Model):
 class product_product(xmlid, osv.Model):
     'Adds Available column and shipped_as columns'
     _name = 'product.product'
-    _inherit = 'product.product'
+    _inherit = ['product.product', 'fnx_fs.fs']
+
+    _fnxfs_path = 'product'
+    _fnxfs_path_fields = ['xml_id', 'name']
 
     # trademark_expiry
     # trademark_state
@@ -502,6 +505,13 @@ class product_product(xmlid, osv.Model):
                 sts = TrademarkStatus.dead
             values[field] = sts
         return result
+
+    def fnxfs_folder_name(self, records):
+        "return name of folder to hold related files"
+        res = {}
+        for record in records:
+            res[record['id']] = record['xml_id'] or record['name']
+        return res
 
     def fis_updates(self, cr, uid, *args):
         """

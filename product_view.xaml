@@ -11,6 +11,11 @@
             @inherit_id ref='product.product_normal_form_view'
             @priority eval='7'
             @arch type='xml'
+                ~xpath expr="//form/div[@class='oe_chatter']" position='before'
+                    ~div .fnxfs_files attrs="{'invisible': [('fnxfs_files','=',False)]}"
+                        ~newline
+                        ~label for='fnxfs_files' $Related_Documents
+                        @fnxfs_files colspan='4' nolabel='1' context="{'fnxfs_folder':'draft'}"
                 ~page $Information position='after'
                     ~page $Shipping_Instructions
                         @spcl_ship_instr nolabel='1' placeholder='Special shipping instructions here...'

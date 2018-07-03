@@ -12,6 +12,7 @@
             "auth_signup",
             "crm",
             "fnx",
+	    "fnx_fs",
             "hr",
             "product",
             "project",
