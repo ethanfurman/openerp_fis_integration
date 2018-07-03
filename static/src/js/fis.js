@@ -1,4 +1,4 @@
-openerp_FieldMany2ManyTagsEmail = function(instance) {
+openerp_FieldFloatRepr = function(instance) {
 var _t = instance.web._t;
 
 instance.web.form.NegativeFloatOkay = instance.web.form.FieldFloat.extend({
