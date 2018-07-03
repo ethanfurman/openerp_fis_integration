@@ -11,7 +11,8 @@
             @inherit_id ref='product.product_normal_form_view'
             @priority eval='7'
             @arch type='xml'
-                ~xpath expr="//form/div[@class='oe_chatter']" position='before'
+                ~xpath expr="//form/sheet" position='inside'
+                    ~hr colspan='4'
                     ~div .fnxfs_files attrs="{'invisible': [('fnxfs_files','=',False)]}"
                         ~newline
                         ~label for='fnxfs_files' $Related_Documents
@@ -357,6 +358,22 @@
 
         ~report model='fis_integration.product_traffic' name='fis_integration.product_traffic.selected_records' header='True' auto='True' multi='True' xml='fis_integration/report/product-traffic.xml' xsl='fis_integration/report/product-traffic.xsl' $Product_Traffic #report_fis_integration_product_traffic
 
+        ~record model='ir.actions.server' #product_product_upload_action
+           @name: Upload Files
+           @type: ir.actions.server
+           @model_id ref='model_product_product'
+           @state: code
+           @code: action = self.fnxfs_menu_upload(cr, uid, context.get('active_ids'), context=context)
+
+        ~record model='ir.values' #product_product_upload_value
+           @name: Upload Files
+           @action_id ref='product_product_upload_action'
+           @value eval="'ir.actions.server,' + str(ref('product_product_upload_action'))"
+           @key: action
+           @model_id ref='model_product_product'
+           @model: product.product
+           @key2: client_action_multi
+
     ~data noupdate='1'
 
         ~record model='ir.cron' #product_location_update
@@ -429,4 +446,3 @@
             @function: _delete_stale_entries
             @args: ()
             @nextcall: 2015-03-07 05:30:00
-
