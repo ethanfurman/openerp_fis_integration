@@ -3,6 +3,7 @@ from aenum import NamedTuple
 from antipathy import Path
 from dbf import Date
 from fis_integration.fis_schema import F11, F97, F135, F341
+from fnx_fs.fields import files
 from scription import Execute, OrmFile
 from VSS.BBxXlate.fisData import fisData
 from VSS.address import NameCase
@@ -462,6 +463,7 @@ class product_product(xmlid, osv.Model):
             string='21-day Available',
             help='Qty available in the next 21 days',
             ),
+        'fnxfs_files': files('', string='Available Files'),
         }
 
     def update_trademark_state(self, cr, uid, ids=None, arg=None, context=None):
