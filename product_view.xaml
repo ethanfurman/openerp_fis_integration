@@ -322,6 +322,8 @@
 
         ~menuitem @Traffic #fis_integration_product_traffic parent='base.menu_product' action='action_fis_integration_product_traffic' groups='base.group_user'
 
+        ~menuitem @Suppliers #fis_integration_suppliers parent='base.menu_product' action='base.action_partner_supplier_form'
+
         // product traffic more actions
 
         ~record model='ir.actions.server' #action_state_ordered
