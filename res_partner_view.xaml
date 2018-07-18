@@ -203,7 +203,7 @@
             @view_mode: tree
             @help: Manage the partner keywords in order to better classify them for tracking and analysis purposes. A partner may have several keywords.
 
-        ~menuitem name='Partner Keywords' action='action_partner_keyword_form' sequence='5' parent='base.menu_config_address_book' groups='base.group_sale_salesman' #menu_partner_category_form
+        ~menuitem name='Partner Keywords' action='action_partner_keyword_form' sequence='5' parent='base.menu_config_address_book' groups='base.group_sale_salesman' #menu_partner_keyword
 
     ~data noupdate='1'
 
