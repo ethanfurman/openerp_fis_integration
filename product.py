@@ -2,7 +2,7 @@ from collections import defaultdict
 from aenum import NamedTuple
 from antipathy import Path
 from dbf import Date
-from fis_integration.fis_schema import F11, F97, F135, F341
+from fis_integration.scripts.fis_schema import F11, F97, F135, F341
 from fnx_fs.fields import files
 from scription import Execute, OrmFile
 from VSS.BBxXlate.fisData import fisData

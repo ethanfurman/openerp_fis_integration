@@ -118,7 +118,7 @@ def fis_update(method, skip_copy, skip_update, dryrun, list_records, bw_limit, a
     if not skip_update:
         FIS_mapping = updates.get_script_mapping()
         print('FIS_mapping:\n   ', '\n   '.join(['%s: %r' % (k, v) for k, v in FIS_mapping.items()]), sep='', verbose=2)
-        for script, tables in FIS_mapping.items():
+        for script, tables in sorted(FIS_mapping.items()):
             cmd = ('/opt/bin/updates/%s --method=%s'
                 % (script,
                    method,

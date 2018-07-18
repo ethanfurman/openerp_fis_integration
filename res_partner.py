@@ -4,7 +4,7 @@ from collections import defaultdict
 from itertools import groupby
 from osv import osv, fields
 # from tools.misc import EnumNoAlias
-from fis_integration.fis_schema import F27, F33, F47, F65, F74, F163
+from fis_integration.scripts.fis_schema import F27, F33, F47, F65, F74, F163
 from fnx.oe import mail
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase
 from VSS.BBxXlate.fisData import fisData

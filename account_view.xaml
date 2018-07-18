@@ -1,0 +1,23 @@
+!!! xml1.0
+~openerp
+    ~data
+
+        ~record model='ir.ui.view' #fis_account_salesperson_tree_view
+            @name: fis.account.salesperson.tree.view
+            @model: fis.account.salesperson
+            @arch type='xml'
+                ~tree $Salespersons editable='top'
+                    @user_id
+                    @xml_id
+                    @fis_name
+
+        ~record model='ir.actions.act_window' #fis_account_salesperson_action
+            @name: Salespersons
+            @type: ir.actions.act_window
+            @res_model: fis.account.salesperson
+            @view_type: form
+            @view_mode: tree
+            @help: Manage salesperson abbreviations user assignment.
+
+        ~menuitem name='Salespersons' action='fis_account_salesperson_action' sequence='11' parent='base.menu_base_config' groups='base.group_no_one' #menu_salesperson_abbreviation
+
