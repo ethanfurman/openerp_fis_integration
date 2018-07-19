@@ -2773,6 +2773,7 @@ def convert_csms_rec(model, fis_rec, aging=None):
         contact.specials_notification = Specials.company
         contact.fis_valid = company.fis_valid
         contact.active = company.active
+        contact.user_id = company.user_id
     return company, contact
 
 def convert_supplier_rec(key):
