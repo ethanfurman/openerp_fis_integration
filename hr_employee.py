@@ -1,6 +1,7 @@
 import logging
 from osv import osv, fields
 from fnx.xid import xmlid
+from fnx_fs.fields import files
 from hr.selections import EmploymentType as ET
 
 _logger = logging.getLogger(__name__)
@@ -13,7 +14,10 @@ class hr_employee(xmlid, osv.Model):
     Add fields being mirrored from FIS.
     """
     _name = 'hr.employee'
-    _inherit = 'hr.employee'
+    _inherit = ['hr.employee', 'fnx_fs.fs']
+
+    _fnxfs_path = 'human_resources/documents'
+    _fnxfs_path_fields = ['xml_id', 'name']
 
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
@@ -41,6 +45,7 @@ class hr_employee(xmlid, osv.Model):
         'pension_plan': fields.boolean('Pension Plan'),
         # XXX: moved into hr
         'agency': fields.char('Agency', size=128),
+        'fnxfs_files': files('', string='Documents'),
         }
 
     fields.apply_groups(
@@ -64,4 +69,11 @@ class hr_employee(xmlid, osv.Model):
                     'message': 'Employment Status can not be blank.',
                     }
             res['value'] = {'employment_type': 'temporary'}
+        return res
+
+    def fnxfs_folder_name(self, records):
+        "return name of folder to hold related files"
+        res = {}
+        for record in records:
+            res[record['id']] = record['xml_id'] or record['name']
         return res
