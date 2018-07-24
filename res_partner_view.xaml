@@ -29,6 +29,12 @@
             @inherit_id ref='base.view_partner_form'
             @priority eval='16'
             @arch type='xml'
+                ~xpath expr="//form/sheet" position='inside'
+                    ~hr colspan='4'
+                    ~div .fnxfs_files
+                        ~newline
+                        ~label for='fnxfs_files' $Related_Documents
+                        @fnxfs_files colspan='4' nolabel='1'
                 @is_company position='attributes'
                     ~attribute @on_change: onchange_type(is_company, specials_notification, sn_catalog_type, sn_specials_type)
                 @category_id position='after'

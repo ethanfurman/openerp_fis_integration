@@ -6,6 +6,7 @@ from osv import osv, fields
 # from tools.misc import EnumNoAlias
 from fis_integration.scripts.fis_schema import F27, F33, F47, F65, F74, F163
 from fnx.oe import mail
+from fnx_fs.fields import files
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase
 from VSS.BBxXlate.fisData import fisData
 from VSS.utils import fix_phone, fix_date, var, Date
@@ -46,7 +47,10 @@ class res_partner(xmlid, osv.Model):
     Inherits partner and makes the external_id visible and modifiable
     """
     _name = 'res.partner'
-    _inherit = 'res.partner'
+    _inherit = ['res.partner', 'fnx_fs.fs']
+
+    _fnxfs_path = 'res_partner'
+    _fnxfs_path_fields = ['xml_id', 'name']
 
     def _get_specials_type(self, cr, uid, ids, field_names, args, context=None):
         res = {}
@@ -217,6 +221,7 @@ class res_partner(xmlid, osv.Model):
             ),
         'fis_data_address_changed': fields.boolean('FIS data has changed', oldname='fis_data_changed'),
         'fis_updated_by_user': fields.char('Updated by user', size=12, oldname='updated_by_user'),
+        'fnxfs_files': files('', string='Available Files'),
         }
 
     _defaults = {
@@ -300,6 +305,13 @@ class res_partner(xmlid, osv.Model):
                             return False
                     return True
         return super(res_partner, self).write(cr, uid, ids, values, context=context)
+
+    def fnxfs_folder_name(self, records):
+        "return name of folder to hold related files"
+        res = {}
+        for record in records:
+            res[record['id']] = record['xml_id'] or record['name']
+        return res
 
     def name_get(self, cr, uid, ids, context=None):
         if isinstance(ids, (int, long)):
