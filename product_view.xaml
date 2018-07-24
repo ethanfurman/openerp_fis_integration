@@ -13,10 +13,10 @@
             @arch type='xml'
                 ~xpath expr="//form/sheet" position='inside'
                     ~hr colspan='4'
-                    ~div .fnxfs_files attrs="{'invisible': [('fnxfs_files','=',False)]}"
+                    ~div .fnxfs_files
                         ~newline
                         ~label for='fnxfs_files' $Related_Documents
-                        @fnxfs_files colspan='4' nolabel='1' context="{'fnxfs_folder':'draft'}"
+                        @fnxfs_files colspan='4' nolabel='1'
                 ~page $Information position='after'
                     ~page $Shipping_Instructions
                         @spcl_ship_instr nolabel='1' placeholder='Special shipping instructions here...'
