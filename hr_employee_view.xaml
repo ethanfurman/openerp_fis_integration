@@ -4,18 +4,57 @@
 
         // regular employees
 
+        ~record model='ir.ui.view' #fis_integration_fleet_view_employee_form
+            @name: fis_integration.fleet.hr.employee.form
+            @model: hr.employee
+            @inherit_id ref='fleet_hr.fleet_hr_driver_form'
+            @priority eval='15'
+            @arch type='xml'
+                ~xpath expr="//form/sheet/notebook/page[@string='Fleet Information']" position='inside'
+                    ~hr
+                    ~div .fnxfs_files
+                        ~newline
+                        ~label for='fleet_fnxfs_files' $Fleet_Related_Documents
+                        @fleet_fnxfs_files colspan='4' nolabel='1'
+
+        ~record model='ir.ui.view' #fis_integration_insurance_view_employee_form
+            @name: fis_integration.insurance.hr.employee.form
+            @model: hr.employee
+            @inherit_id ref='hr_insurance.hr_employee_insurance_form'
+            @priority eval='15'
+            @arch type='xml'
+                ~xpath expr="//form/sheet/notebook/page[@name='insurance']" position='inside'
+                    ~hr
+                    ~div .fnxfs_files
+                        ~newline
+                        ~label for='insurance_fnxfs_files' $Insurance_Related_Documents
+                        @insurance_fnxfs_files colspan='4' nolabel='1'
+
+        ~record model='ir.ui.view' #fis_integration_workers_comp_view_employee_form
+            @name: fis_integration.workers_comp.hr.employee.form
+            @model: hr.employee
+            @inherit_id ref='hr_workers_comp.hr_employee_workers_comp_form'
+            @priority eval='15'
+            @arch type='xml'
+                ~xpath expr="//form/sheet/notebook/page[@name='Claims']" position='inside'
+                    ~hr
+                    ~div .fnxfs_files
+                        ~newline
+                        ~label for='workers_comp_fnxfs_files' $Workers_Comp_Related_Documents
+                        @workers_comp_fnxfs_files colspan='4' nolabel='1'
+
         ~record model='ir.ui.view' #fis_integration_view_employee_form
             @name: fis_integration.hr.employee.form
             @model: hr.employee
             @inherit_id ref='hr.view_employee_form'
             @priority eval='15'
             @arch type='xml'
-                ~xpath expr="//form/sheet/notebook" position='inside'
-                    ~page @Documents $Documents groups='base.group_hr_manager'
-                        ~div .fnxfs_files
-                            ~newline
-                            ~label for='fnxfs_files' $Related_Documents
-                            @fnxfs_files colspan='4' nolabel='1'
+                ~xpath expr="//form/sheet/notebook/page[@string='Employee Relations']" position='inside'
+                    ~hr
+                    ~div .fnxfs_files
+                        ~newline
+                        ~label for='relations_fnxfs_files' $Employee_Relations_Documents
+                        @relations_fnxfs_files colspan='4' nolabel='1'
                 ~xpath expr="//form[@string='Employee']" position='attributes'
                     ~attribute @create: false
                 ~xpath expr="//field[@name='otherid']" position='attributes'

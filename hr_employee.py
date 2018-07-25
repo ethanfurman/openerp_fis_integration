@@ -45,7 +45,10 @@ class hr_employee(xmlid, osv.Model):
         'pension_plan': fields.boolean('Pension Plan'),
         # XXX: moved into hr
         'agency': fields.char('Agency', size=128),
-        'fnxfs_files': files('', string='Documents'),
+        'relations_fnxfs_files': files('', string='Relations Documents'),
+        'fleet_fnxfs_files': files('', string='Fleet Documents'),
+        'insurance_fnxfs_files': files('', string='Insurance Documents'),
+        'workers_comp_fnxfs_files': files('', string='Workers Comp Documents'),
         }
 
     fields.apply_groups(
