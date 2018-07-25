@@ -5,7 +5,8 @@ from sys import exc_info
 from aenum import Enum
 from dbf import Date
 from openerplib import DEFAULT_SERVER_DATE_FORMAT, Many2One, get_records
-from scription import print
+from scription import print, error
+from traceback import format_exception
 from VSS.address import PostalCode
 from VSS.utils import LazyClassAttr
 
@@ -248,4 +249,8 @@ class allow_exception(object):
         return self
 
     def __exit__(self, cls, exc, tb):
-        return isinstance(exc, self.allowed)
+        if isinstance(exc, self.allowed):
+            # print error for future reference
+            error(format_exception(*exc_info()), border='box')
+            return True
+        return False
