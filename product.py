@@ -300,8 +300,11 @@ class product_product(xmlid, osv.Model):
                 fields=['state_trademark_expiry', 'federal_trademark_expiry'],
                 context=context,
             ):
-            print datom
-            expiry = TrademarkExpiry(datom['id'], datom['state_trademark_expiry'], datom['federal_trademark_expiry'])
+            expiry = TrademarkExpiry(
+                    datom['id'],
+                    datom['state_trademark_expiry'],
+                    datom['federal_trademark_expiry'],
+                    )
             res[expiry.id] = expiry.earliest()
         return res
 
@@ -386,56 +389,56 @@ class product_product(xmlid, osv.Model):
                 },
             ),
         'trademark_state': fields.function(
-                _trademark_state,
-                fnct_inv=True,
-                multi='trademark',
-                type='selection',
-                string='Trademark status',
-                selection = TrademarkStatus,
-                store={
-                    'product.product': (
-                        lambda table, cr, uid, ids, ctx: ids,
-                        [   'state_trademark_expiry', 'state_trademark_renewal',
-                            'federal_trademark_expiry', 'federal_trademark_renewal',
-                            ],
-                        10,
-                    )},
-                ),
+            _trademark_state,
+            fnct_inv=True,
+            multi='trademark',
+            type='selection',
+            string='Trademark status',
+            selection = TrademarkStatus,
+            store={
+                'product.product': (
+                    lambda table, cr, uid, ids, ctx: ids,
+                    [   'state_trademark_expiry', 'state_trademark_renewal',
+                        'federal_trademark_expiry', 'federal_trademark_renewal',
+                        ],
+                    10,
+                )},
+            ),
         'state_trademark': fields.char('State Trademark', size=128),
         'state_trademark_expiry': fields.date('State Trademark expires', oldname='trademark_expiry_year'),
         'state_trademark_renewal': fields.date('State Trademark renewal submitted', oldname='trademark_renewal_date'),
         'state_trademark_state': fields.function(
-                _trademark_state,
-                fnct_inv=True,
-                multi='trademark',
-                type='selection',
-                string='State Trademark Status',
-                selection = TrademarkStatus,
-                store={
-                    'product.product': (
-                        lambda table, cr, uid, ids, ctx: ids,
-                        ['state_trademark_expiry', 'state_trademark_renewal'],
-                        10,
-                    )},
-                oldname='trademark_state',
-                ),
+            _trademark_state,
+            fnct_inv=True,
+            multi='trademark',
+            type='selection',
+            string='State Trademark Status',
+            selection = TrademarkStatus,
+            store={
+                'product.product': (
+                    lambda table, cr, uid, ids, ctx: ids,
+                    ['state_trademark_expiry', 'state_trademark_renewal'],
+                    10,
+                )},
+            oldname='trademark_state',
+            ),
         'federal_trademark': fields.char('Federal Trademark', size=128),
         'federal_trademark_expiry': fields.date('Federal Trademark expires'),
         'federal_trademark_renewal': fields.date('Federal Trademark renewal submitted'),
         'federal_trademark_state': fields.function(
-                _trademark_state,
-                fnct_inv=True,
-                multi='trademark',
-                type='selection',
-                string='Federal Trademark status',
-                selection = TrademarkStatus,
-                store={
-                    'product.product': (
-                        lambda table, cr, uid, ids, ctx: ids,
-                        ['federal_trademark_expiry', 'federal_trademark_renewal'],
-                        10,
-                    )},
-                ),
+            _trademark_state,
+            fnct_inv=True,
+            multi='trademark',
+            type='selection',
+            string='Federal Trademark status',
+            selection = TrademarkStatus,
+            store={
+                'product.product': (
+                    lambda table, cr, uid, ids, ctx: ids,
+                    ['federal_trademark_expiry', 'federal_trademark_renewal'],
+                    10,
+                )},
+            ),
         'fis_qty_produced': fields.float(
             string='Quantity Produced Today',
             ),
