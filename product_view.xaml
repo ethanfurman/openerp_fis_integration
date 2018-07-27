@@ -197,8 +197,8 @@
             @view_mode: tree,form,kanban
             @view_id ref='fis_integration.product_trademark_list_view'
             @search_view_id ref='product_trademark_search'
-            @context eval="{'search_default_type_trademark_all':1}"
-            @domain eval="[('trademarks','!=',False)]"
+            @context: {}
+            @domain: [('trademarks','!=',False)]
 
         ~menuitem @Trademarks #product_trademarked parent='base.menu_product' action='product_trademark_action' groups='base.group_sale_salesman'
 
