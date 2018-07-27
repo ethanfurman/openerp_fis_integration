@@ -48,6 +48,18 @@ class TrademarkStatusKey(NamedTuple):
                 res[field] = self[i]
         return res
 
+class TrademarkExpiry(NamedTuple):
+    id = 0, 'record id'
+    state = 1, 'trademark expiration at the state level', False
+    federal = 2, 'trademark expiration at the federal level', False
+    def earliest(self):
+        if not self.state:
+            return self.federal
+        elif not self.federal:
+            return self.state
+        else:
+            (self.state, self.federal)[self.state > self.federal]
+
 class ForecastDetail(NamedTuple):
     produced = 0, None, 0.0
     purchased = 1, None, 0.0
@@ -281,6 +293,18 @@ class product_product(xmlid, osv.Model):
         else:
             return id_res
 
+    def _trademark_expiry(self, cr, uid, ids, field_name, arg, context=None):
+        res = {}
+        for datom in self.read(
+                cr, uid, ids,
+                fields=['state_trademark_expiry', 'federal_trademark_expiry'],
+                context=context,
+            ):
+            print datom
+            expiry = TrademarkExpiry(datom['id'], datom['state_trademark_expiry'], datom['federal_trademark_expiry'])
+            res[expiry.id] = expiry.earliest()
+        return res
+
     def _cost_link(self, cr, uid, ids, field_name, arg, context=None):
         if isinstance(ids, (int, long)):
             ids = [ids]
@@ -349,6 +373,18 @@ class product_product(xmlid, osv.Model):
         'label_text': fields.text('Label Text'),
         'docs': fields.html('Documents'),
         'trademarks': fields.char(string='Trademark', size=2, oldname='trademark'),
+        'trademark_expiry': fields.function(
+            _trademark_expiry,
+            type='date',
+            string='Expiration date',
+            store={
+                'product.product': (
+                    lambda s, c, u, ids, ctx=None: ids,
+                    ['state_trademark_expiry', 'federal_trademark_expiry'],
+                    10,
+                    ),
+                },
+            ),
         'trademark_state': fields.function(
                 _trademark_state,
                 fnct_inv=True,
