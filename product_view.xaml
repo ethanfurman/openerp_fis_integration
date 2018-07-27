@@ -185,6 +185,7 @@
             @model: product.product
             @arch type='xml'
                 ~search $Search_Trademark
+                    ~filter $Incomplete_Trademarked @type_trademark_incomplete domain="[('trademarks','!=',False),('state_trademark','=',False),('federal_trademark','=',False)]"
                     ~filter $Active_Trademarked @type_trademark_active domain="[('trademark_state','in',['active','aging','dying','renewing'])]"
                     ~filter $Expiring_Trademarked @type_trademark_expiring domain="[('trademark_state','in',['aging','dying','renewing'])]"
                     ~filter $Inactive_Trademarked @type_trademark_inactive domain="[('trademark_state','=','dead')]"
