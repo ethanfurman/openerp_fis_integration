@@ -14,7 +14,7 @@ def pfm(values):
     "prepare values dict for marshalling"
     result = {}
     for k, v in values.items():
-        if v is None:
+        if not v:
             result[k] = False
         elif isinstance(v, Date):
             result[k] = v.strftime(DEFAULT_SERVER_DATE_FORMAT)
