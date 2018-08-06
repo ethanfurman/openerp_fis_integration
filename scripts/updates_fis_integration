@@ -2761,9 +2761,11 @@ def convert_csms_rec(model, fis_rec, aging=None):
     else:
         # TODO check for open orders
         pass
+    missing_salesreps = set()
     salesrep = fis_rec[F33.salesrep]
     sr = sales_person_recs.get(salesrep, False)
-    if not sr or not sr.user_id:
+    if (not sr or not sr.user_id) and salesrep not in missing_salesreps:
+        missing_salesreps.add(salesrep)
         error('no salesrep match found for %r' % (salesrep, ))
         company.user_id = False
     else:
