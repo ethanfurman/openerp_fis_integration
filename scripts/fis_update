@@ -62,8 +62,9 @@ def main():
         list_records=Spec('list affected records', FLAG),
         bw_limit=Spec('rate limit rsync command', OPTION, force_default=10),
         abort_on_error=Spec('abort on error', FLAG),
+        extra=Spec('extra arguments for subscripts', OPTION),
         )
-def fis_update(method, skip_copy, skip_update, dryrun, list_records, bw_limit, abort_on_error):
+def fis_update(method, skip_copy, skip_update, dryrun, list_records, bw_limit, abort_on_error, **extra):
     """
     update FIS files from master, then FIS data in OpenERP
 
@@ -93,25 +94,26 @@ def fis_update(method, skip_copy, skip_update, dryrun, list_records, bw_limit, a
         system('chown -R openerp: /FIS')
         config.network.fis_data_local_path.chmod(0o440, '*')
     #
-    # step 2: determine which files changed (does not check extra_files
+    # step 2: determine which files changed (only if quick, does not check extra_files)
     #
-    print('checking for changed files')
-    print('  between %r and %r' % (old, new), verbose=2)
-    files = [
-        f for f in new.glob('%s????' % pre) if
-            f.stat().st_mtime != old.stat(f.filename).st_mtime
-        ]
-    files.extend([
-        f for f in new.glob('%s?????' % pre) if
-            f.stat().st_mtime != old.stat(f.filename).st_mtime
-        ])
-    files.extend([
-        f for f in new.glob('%s??????' % pre) if
-            f.stat().st_mtime != old.stat(f.filename).st_mtime
-        ])
-    # strip path and leading {pre} from filenames
-    files = [f.filename[1:] for f in files]
-    print('changed file candidates: %s [%s]' % (len(files), ', '.join(files)), verbose=1)
+    if method == 'quick':
+        print('checking for changed files')
+        print('  between %r and %r' % (old, new), verbose=2)
+        files = [
+            f for f in new.glob('%s????' % pre) if
+                f.stat().st_mtime != old.stat(f.filename).st_mtime
+            ]
+        files.extend([
+            f for f in new.glob('%s?????' % pre) if
+                f.stat().st_mtime != old.stat(f.filename).st_mtime
+            ])
+        files.extend([
+            f for f in new.glob('%s??????' % pre) if
+                f.stat().st_mtime != old.stat(f.filename).st_mtime
+            ])
+        # strip path and leading {pre} from filenames
+        files = [f.filename[1:] for f in files]
+        print('changed file candidates: %s [%s]' % (len(files), ', '.join(files)), verbose=1)
     #
     # step 3: get appropriate scripts, and execute them
     #
@@ -129,7 +131,13 @@ def fis_update(method, skip_copy, skip_update, dryrun, list_records, bw_limit, a
                 cmd += ' --list-records'
             if script_verbosity:
                 cmd += ' -' + 'v' * script_verbosity
-            cmd += ' %s' % ' '.join(set(tables) & set(files))
+            if method == 'quick':
+                cmd += ' %s' % ' '.join(set(tables) & set(files))
+            if extra:
+                cmd += ' %s' % ' '.join(['%s=%s' % (k, v) for k, v in sorted(extra.items())])
+            else:
+                # sync all tables for "full" update
+                cmd += ' %s' % ' '.join(set(tables))
             system(cmd, abort_on_error)
 
 
@@ -139,22 +147,22 @@ def system(cmd, abort_on_error=False):
         job = Execute(cmd, pty=True)
         print(job.returncode, '==--', verbose=1)
         if job.returncode or job.stderr:
-            # unable to copy files -- abort
-            error('Error with command (returncode %r):' % (job.returncode, ))
-            error('------------------ cmd  ------------------')
-            error(cmd)
+            if not script_verbosity:
+                error('Error with command (returncode %r):' % (job.returncode, ))
+                error('---- cmd  ----')
+                error(cmd)
             if job.stdout.strip():
-                error('----------------- stdout -----------------')
-                error(job.stdout.strip())
-            error('----------------- stderr -----------------')
+                error('---- stdout ----')
+                error('\n'.join(['   %s' % l for l in job.stdout.strip().split('\n')]))
+            error('---- stderr ----')
             if job.stderr.strip():
-                error(job.stderr.strip())
+                error('\n'.join(['   %s' % l for l in job.stderr.strip().split('\n')]))
                 error('==========================================')
             if abort_on_error:
                 abort()
         elif job.stdout.strip():
             print('---- stdout ----', verbose=1)
-            print(job.stdout.strip(), verbose=1)
-            print('=' * 25, verbose=1)
+            print('\n'.join(['   %s' % l for l in job.stdout.strip().split('\n')]), verbose=1)
+            print('==========================================', verbose=1)
 
 Main()

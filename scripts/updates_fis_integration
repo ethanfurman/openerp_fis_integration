@@ -30,6 +30,16 @@ SALEABLE_CATEGORY_XMLID = 'product_category_1'
 SALEABLE_CATEGORY_ID = None
 ETC_CATEGORY_ID = None
 
+# TODO: implement EXTRA handling for
+#       - EMP1
+#       - POSM/VNMS
+#       - CSMS
+#       - NVTY          --> done
+#       - CNVZd0
+#       - CNVZz
+#       - CNVZsv
+#       - CNVZas
+#       - CNVZaa
 
 # API
 @Script(
@@ -63,12 +73,14 @@ def main(dryrun, list_records, raise_on_exception):
             type=lambda m: m.lower(),
             ),
         delete=Spec('delete records [default: send email]', FLAG,),
+        extra=Spec('misc key-value pairs', OPTION),
         )
-def fis_integration(method, delete, *files):
+def fis_integration(method, delete, *files, **extra):
     global state_recs, country_recs, customer_terms_recs
     global skipped_suppliers, vendor_suppliers, ven2sup, vendor_codes
-    global models, DELETE
+    global models, DELETE, EXTRA
     DELETE = delete
+    EXTRA = extra
     try:
         # make sure we are the only one running
         with PidLockFile('/var/run/fis_update.pid'):
@@ -133,6 +145,7 @@ def fis_integration(method, delete, *files):
 def handle_nvty(method):
     global product_available_at, product_sales_category, product
     print('processing NVTY', border=('flag', '#'))
+    examine = EXTRA.get('NVTY')
     context = {'fis-updates': True, 'active_test': False}
     product = Model(oe.get_model('product.product'), 'nvty', 'F135', context, RAISE_ON_EXCEPTION)
     all_oe_records = {}
@@ -257,6 +270,8 @@ def handle_nvty(method):
             for r in
                 [convert_nvty_rec(f) for f in nvty.values()]
             ])
+        if examine:
+            echo(examine, all_fis_records.get(examine), sep='\n---\n', border='box')
         # and update with forecasts and descriptions
         for xml_id, rec in all_fis_records.items():
             #
@@ -266,6 +281,8 @@ def handle_nvty(method):
                 del rec.name
             #
             forecast = forecast_data.get(xml_id)
+            if xml_id == examine:
+                echo('forecast', forecast, sep='\n---\n', border='box')
             rec.fis_qty_produced = 0
             rec.fis_qty_consumed = 0
             rec.fis_qty_purchased = 0
@@ -318,6 +335,8 @@ def handle_nvty(method):
                     context=context,
                     )
                 ])
+        if examine:
+            echo(examine, all_oe_records.get(examine), sep='\n---\n', border='box')
         # print('sorting changed, new, and deleted product records')
         all_keys = set(all_fis_records.keys() + all_oe_records.keys())
         for key in ProgressView(
@@ -351,6 +370,8 @@ def handle_nvty(method):
             #
             old_changed_item_records[key] = old_rec
             new_changed_item_records[key] = new_rec
+            if key == examine:
+                echo(key, old_rec, new_rec, sep='\n---\n', box='border')
         assert set(old_changed_item_records.keys()) == set(new_changed_item_records.keys()),\
                 "old and new item records mismatch"
     else:
@@ -402,6 +423,13 @@ def handle_nvty(method):
                 body.append('---')
                 body.append(str(AttrDict(changes)))
             echo('\n'.join(body), border='box' if script_verbosity > 1 else None)
+        if examine in xml_ids:
+            echo(
+                    'changing %s to' % examine,
+                    '\n'.join(['%s = %r' % (k, v) for k, v in sorted(values.items())]),
+                    sep='\n---\n',
+                    border='box',
+                    )
         if not DRYRUN:
             product.write('|'.join(xml_ids), oe_ids, values, context={})
     #
@@ -418,6 +446,8 @@ def handle_nvty(method):
         ):
         # get the ids of actually existing records
         xml_ids = deleted_records.keys()
+        if examine in xml_ids:
+            echo('deleting', examine, border='box')
         if DELETE:
             ids = [rec.id for key, rec in all_oe_records.items() if key in xml_ids]
         else:
