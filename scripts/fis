@@ -24,6 +24,7 @@ import time
 virtual_env = os.environ['VIRTUAL_ENV']
 config = OrmFile(Path('%s/config/fnx.ini' % virtual_env), types={'_path':Path})
 env = config.env
+PRODUCT_FORECAST = '/FIS/data/product_forecast.txt'
 
 # SOURCE = Path('/var/fis/production/')
 # ARCHIVE = Path('/var/openerp/archive/production/')
@@ -326,11 +327,12 @@ def product_forecast(*items):
     stop = time.time()
     minutes, seconds = divmod(stop-start, 60)
     hours, minutes = divmod(minutes, 60)
-    output = result.stdout
-    for line in output.split('\n'):
-        if len(line.split(':')) == 3:
-            writer(line)
+    output = [l for l in result.stdout.strip().split('\n') if len(l.split(':')) == 3]
+    with open(PRODUCT_FORECAST, 'w') as f:
+        f.write('\n'.join(output))
+    writer('\n'.join(output))
     print('elapsed time: %d:%d:%d' % (hours, minutes, seconds))
+
 
 @Command(
         table=Spec('FIS table to query', type=int),
