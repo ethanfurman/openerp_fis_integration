@@ -147,22 +147,24 @@ def system(cmd, abort_on_error=False):
         job = Execute(cmd, pty=True)
         print(job.returncode, '==--', verbose=1)
         if job.returncode or job.stderr:
+            v_level = 0
             if not script_verbosity:
-                error('Error with command (returncode %r):' % (job.returncode, ))
-                error('---- cmd  ----')
-                error(cmd)
-            if job.stdout.strip():
-                error('---- stdout ----')
-                error('\n'.join(['   %s' % l for l in job.stdout.strip().split('\n')]))
+                echo('Error with command (returncode %r):' % (job.returncode, ))
+                echo('---- cmd  ----')
+                echo(cmd)
+        else:
+            v_level = 1
+        if job.stdout.strip():
+            print('---- stdout ----', verbose=v_level)
+            print('\n'.join(['   %s' % l for l in job.stdout.strip().split('\n')]), verbose=v_level)
+            if v_level:
+                print('==========================================', verbose=1)
+        if job.returncode or job.stderr:
             error('---- stderr ----')
             if job.stderr.strip():
                 error('\n'.join(['   %s' % l for l in job.stderr.strip().split('\n')]))
                 error('==========================================')
             if abort_on_error:
                 abort()
-        elif job.stdout.strip():
-            print('---- stdout ----', verbose=1)
-            print('\n'.join(['   %s' % l for l in job.stdout.strip().split('\n')]), verbose=1)
-            print('==========================================', verbose=1)
 
 Main()
