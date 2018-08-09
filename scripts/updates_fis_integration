@@ -123,7 +123,8 @@ def fis_integration(method, delete, *files, **extra):
                     handle_nvty(method)
     finally:
         for m, problems in sorted(Model.errors.items()):
-            error('\n', m, border=('lined', '='), sep='')
+            error()
+            error(m, border=('lined', '='), sep='')
             for p in problems:
                 error('  ', p)
             error()
@@ -2718,7 +2719,7 @@ def convert_customer_terms_rec(fis_rec):
     terms.description = ' / '.join([t.strip() for t in fis_rec[F8.description].split('/')])
     return terms
 
-def convert_csms_rec(model, fis_rec, aging=None):
+def convert_csms_rec(model, fis_rec, aging=None, _missing_reps=set()):
     #
     # creates an AttrDict with the following fields
     # - 'module', 'xml_id',
@@ -2761,13 +2762,13 @@ def convert_csms_rec(model, fis_rec, aging=None):
     else:
         # TODO check for open orders
         pass
-    missing_salesreps = set()
     salesrep = fis_rec[F33.salesrep]
     sr = sales_person_recs.get(salesrep, False)
-    if (not sr or not sr.user_id) and salesrep not in missing_salesreps:
-        missing_salesreps.add(salesrep)
-        error('no salesrep match found for %r' % (salesrep, ))
+    if not sr or not sr.user_id:
         company.user_id = False
+        if salesrep not in _missing_reps:
+            _missing_reps.add(salesrep)
+            error('no salesrep match found for %r' % (salesrep, ))
     else:
         company.user_id = sr.user_id.id
     notify_by = Specials.get_member(fis_rec[F33.catalog_category].upper(), Specials.neither)
