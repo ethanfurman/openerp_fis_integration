@@ -405,6 +405,12 @@ class product_product(xmlid, osv.Model):
                 )},
             ),
         'state_trademark': fields.char('State Trademark', size=128),
+        'state_trademark_class_ids': fields.many2many(
+                'fis_integration.trademark.class',
+                'product_trademark_class_rel', 'product_id', 'class_id',
+                string='State Trademark Class',
+                old_name='state_trademark_class',
+                ),
         'state_trademark_expiry': fields.date('State Trademark expires', oldname='trademark_expiry_year'),
         'state_trademark_renewal': fields.date('State Trademark renewal submitted', oldname='trademark_renewal_date'),
         'state_trademark_state': fields.function(
@@ -917,3 +923,28 @@ class product_traffic(osv.Model):
             return True
         return super(product_traffic, self).write(cr, uid, ids, values, context=context)
 
+
+class product_trademark_class(osv.Model):
+    _name = 'fis_integration.trademark.class'
+    _description = 'State trademark class'
+    _order = 'number'
+    _rec_name = 'number'
+
+    _columns = {
+        'number': fields.char('Class number', size=12, required=True),
+        'description': fields.char('Class description', size=128, oldname='name'),
+        }
+
+    def name_get(self, cr, uid, ids, context=None):
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        res = []
+        for rec in self.read(cr, uid, ids, fields=['number', 'description'], context=context):
+            id = rec['id']
+            num = rec['number']
+            desc = rec['description']
+            if desc:
+                res.append((id, '%s: %s' % (num, desc)))
+            else:
+                res.append((id, num))
+        return res

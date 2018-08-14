@@ -27,6 +27,7 @@
                                 @state_trademark_state readonly='1'
                                 @state_trademark_expiry on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
                                 @state_trademark_renewal on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
+                                @state_trademark_class_ids widget='many2many_tags'
                             ~group
                                 @federal_trademark
                                 @federal_trademark_state readonly='1'
@@ -201,7 +202,25 @@
             @context: {}
             @domain: [('trademarks','!=',False)]
 
-        ~menuitem @Trademarks #product_trademarked parent='base.menu_product' action='product_trademark_action' groups='base.group_sale_salesman'
+        ~menuitem name='Trademarked Products' #product_trademarked parent='base.menu_product' action='product_trademark_action' groups='base.group_sale_salesman'
+
+        ~record #product_trademark_class_list_view model='ir.ui.view'
+            @name: Product Trademark Class
+            @model: fis_integration.trademark.class
+            @arch type='xml'
+                ~tree $Trademark_Class editable='top'
+                    @number
+                    @description
+
+        ~record #product_trademark_class_action model='ir.actions.act_window'
+            @name: Trademark Class
+            @type: ir.actions.act_window
+            @res_model: fis_integration.trademark.class
+            @view_type: form
+            @view_mode: tree, kanban
+            @view_id ref='fis_integration.product_trademark_class_list_view'
+
+        ~menuitem name='Trademark Class' #product_trademark_class_menu parent='product.prod_config_main' action='product_trademark_class_action' groups='fis_integration.group_trademark_user'
 
         // Add product available at entries
 
