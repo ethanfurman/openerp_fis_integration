@@ -19,5 +19,5 @@
             @view_mode: tree
             @help: Manage salesperson abbreviations user assignment.
 
-        ~menuitem name='Salespersons' action='fis_account_salesperson_action' sequence='11' parent='base.menu_base_config' groups='base.group_no_one' #menu_salesperson_abbreviation
+        ~menuitem name='Salespersons' action='fis_account_salesperson_action' sequence='11' parent='base.menu_base_config' groups='base.group_sale_manager' #menu_salesperson_abbreviation
 
