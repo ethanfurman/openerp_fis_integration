@@ -30,7 +30,7 @@ def main():
     logger = getLogger()
     logger.setLevel(INFO)
     _handler = handlers.RotatingFileHandler(
-            '/var/log/openerp/update_fis.log',
+            '%s/var/log/openerp/update_fis.log' % os.environ['VIRTUAL_ENV'],
             maxBytes=1024*1024*1024,
             backupCount=30,
             )
