@@ -8,6 +8,7 @@ from aenum import Enum, NamedTuple
 from antipathy import Path
 from collections import defaultdict
 from fis_schema import F8, F11, F27, F33, F47, F65, F74, F97, F135, F163
+from logging import INFO, getLogger, Formatter, handlers
 from openerplib import AttrDict, get_connection, get_records
     # from traceback import format_exception
 from pandaemonium import PidLockFile
@@ -18,6 +19,19 @@ from VSS.utils import fix_phone, fix_date
 import math
 import re
 import os
+
+virtualenv = os.environ['VIRTUAL_ENV']
+logger = getLogger()
+logger.setLevel(INFO)
+_handler = handlers.RotatingFileHandler(
+        '%s/var/log/openerp/fis_updates.log' % virtualenv,
+        maxBytes=1024*1024,
+        backupCount=30,
+        )
+_formatter = Formatter('%(process)06d %(asctime)s %(name)-25s %(message)s')
+_handler.setFormatter(_formatter)
+logger.addHandler(_handler)
+del _handler, _formatter
 
 C = Color
 grey = C.Dim | C.FG_White
@@ -50,7 +64,7 @@ ETC_CATEGORY_ID = None
 def main(dryrun, list_records, raise_on_exception):
     global config, oe, errors, DRYRUN, LIST_RECORDS, RAISE_ON_EXCEPTION, VIEW_TYPE, BORDER, script_verbosity
     DRYRUN = LIST_RECORDS = False
-    config = OrmFile('%s/config/fnx.ini' % os.environ['VIRTUAL_ENV'], types={'_path': Path})
+    config = OrmFile('%s/config/fnx.ini' % virtualenv, types={'_path': Path})
     oe = config.openerp
     oe = get_connection(hostname=oe.host, database=oe.db, login=oe.user, password=oe.pw)
     errors = defaultdict(list)
@@ -62,6 +76,8 @@ def main(dryrun, list_records, raise_on_exception):
     RAISE_ON_EXCEPTION = raise_on_exception
     VIEW_TYPE = 'none' if LIST_RECORDS else 'percent'
     BORDER = 'box' if LIST_RECORDS and script_verbosity > 1 else None
+    global logger
+    logger = getLogger('orders')
 
 @Command(
         files=Spec('changed FIS files', type=lambda f: f.lower()),
@@ -419,7 +435,7 @@ def handle_nvty(method):
         if LIST_RECORDS:
             body = []
             for rec in records:
-                body.append(('  F135:%s  %s' % (xml_id, rec.fis_name)))
+                body.append(('  F135:%s  %s' % (rec.xml_id, rec.fis_name)))
             if script_verbosity > 1:
                 body.append('---')
                 body.append(str(AttrDict(changes)))
@@ -458,7 +474,7 @@ def handle_nvty(method):
             if deleted_count:
                 if LIST_RECORDS:
                     for xml_id, rec in sorted(deleted_records.items()):
-                        echo('  F135:%s  %s' % (xml_id, rec.fis_name))
+                        echo('  F135:%s  %s' % (rec.xml_id, rec.fis_name))
                 if not DRYRUN:
                     if DELETE:
                         product.delete(ids, context=context)
