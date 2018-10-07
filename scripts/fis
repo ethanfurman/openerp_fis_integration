@@ -26,9 +26,9 @@ config = OrmFile(Path('%s/config/fnx.ini' % virtual_env), types={'_path':Path})
 env = config.env
 PRODUCT_FORECAST = '/FIS/data/product_forecast.txt'
 
-# SOURCE = Path('/var/fis/production/')
-# ARCHIVE = Path('/var/openerp/archive/production/')
-# ERRORS = Path('/var/openerp/archive/production/error')
+# SOURCE = Path('%s/var/fis/production/' % virtual_env)
+# ARCHIVE = Path('%s/var/openerp/archive/production/' % virtual_env)
+# ERRORS = Path('%s/var/openerp/archive/production/error' % virtual_env)
 
 # API
 @Command(
@@ -71,16 +71,8 @@ def diff(filenum, keymatch, key, full, color, summary):
         old_records_map = {}
         new_records_map = {}
         for rec in fis_table_old.values():
-            # key = []
-            # for f in key_fields:
-            #     key.append(rec[f])
-            # key = tuple(key)
             old_records_map[rec.rec[0]] = rec
         for rec in fis_table.values():
-            # key = []
-            # for f in key_fields:
-            #     key.append(rec[f])
-            # key = tuple(key)
             new_records_map[rec.rec[0]] = rec
         all_recs = set(new_records_map.keys() + old_records_map.keys())
         for key in all_recs:

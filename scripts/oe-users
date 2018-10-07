@@ -13,7 +13,8 @@ from urllib2 import urlopen, URLError
 from VSS.address import NameCase
 from VSS.utils import crc32
 
-config = '%s/config/fnx.ini' % os.environ['VIRTUAL_ENV']
+virtual_env = os.environ['VIRTUAL_ENV']
+config = '%s/config/fnx.ini' % virtual_env
 
 @Script()
 def main():
@@ -68,8 +69,8 @@ def create(force, users):
     "create files needed by openerp_user_update"
     force = force or force_update
     # get last archived files
-    arch_dept = Path('/var/openerp/archive/empsWithDepts.*').glob()
-    arch_user = Path('/var/openerp/archive/falconUsersImport.*').glob()
+    arch_dept = Path('%s/var/openerp/archive/empsWithDepts.*' % virtual_env).glob()
+    arch_user = Path('%s/var/openerp/archive/falconUsersImport.*' % virtual_env).glob()
     last_arch_dept = sorted(arch_dept, key=lambda a: a.ext)[-1]
     last_arch_user = sorted(arch_user, key=lambda a: a.ext)[-1]
     with dbf.Table(config.users.emp_table, default_data_types={'C':dbf.Char}) as employees:

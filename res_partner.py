@@ -222,6 +222,10 @@ class res_partner(xmlid, osv.Model):
         'fis_data_address_changed': fields.boolean('FIS data has changed', oldname='fis_data_changed'),
         'fis_updated_by_user': fields.char('Updated by user', size=12, oldname='updated_by_user'),
         'fnxfs_files': files('', string='Available Files'),
+        'create_date': fields.datetime('Created', readonly=True),
+        'create_uid': fields.many2one('res.users', string='Created by', readonly=True),
+        'write_date': fields.datetime('Last changed', readonly=True),
+        'write_uid': fields.many2one('res.users', string='Last changed by', readonly=True),
         }
 
     _defaults = {

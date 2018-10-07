@@ -383,53 +383,7 @@
 
     ~data noupdate='1'
 
-        ~record model='ir.cron' #product_location_update
-            @name: Product Locations Update
-            @interval_number: 1
-            @interval_type: days
-            @numbercall: -1
-            @doall eval='False'
-            @model eval="'product.available_at'"
-            @function eval="'fis_updates'"
-            @args eval="'()'"
-            @nextcall eval="'2013-04-09 20:00:00'"
-            @priority: 100
-
-        ~record model="ir.cron" #product_category_update
-            @name: Product Categories Update
-            @interval_number: 1
-            @interval_type: days
-            @numbercall: -1
-            @doall eval="False"
-            @model eval="'product.category'"
-            @function eval="'fis_updates'"
-            @args eval="'()'"
-            @nextcall eval="'2013-04-09 20:15:00'"
-            @priority: 100
-
-        ~record model='ir.cron' #product_inventory_update
-            @name: Product Inventory Update
-            @interval_number: 1
-            @interval_type: days
-            @numbercall: -1
-            @doall eval="False"
-            @model eval="'product.product'"
-            @function eval="'fis_updates'"
-            @args eval="'()'"
-            @nextcall eval="'2013-04-09 21:00:00'"
-            @priority: 200
-
-        ~record model='ir.cron' #production_line_update
-            @name: Production Line Update
-            @interval_number: 1
-            @interval_type: days
-            @numbercall: -1
-            @doall eval="False"
-            @model eval="'fis_integration.production_line'"
-            @function eval="'fis_updates'"
-            @args eval="'()'"
-            @nextcall eval="'2014-03-14 20:30:00'"
-            @priority: 100
+        // Scheduled jobs, OpenERP
 
         ~record model='ir.cron' #production_trademark_days_remaining_update
             @name: Trademark Days Remaining Update
@@ -453,3 +407,25 @@
             @function: _delete_stale_entries
             @args: ()
             @nextcall: 2015-03-07 05:30:00
+
+        // Scheduled jobs, O/S
+
+        ~record model='ir.cron' #product_forecast
+            @name: Get forecast data for next three weeks
+            @interval_number: 1
+            @interval_type: days
+            @numbercall: -1
+            @doall eval='False'
+            @type: external
+            @args: /opt/bin/fis product-forecast
+            @nextcall: 2018-09-04 01:00:00
+
+        ~record model='ir.cron' #product_description
+            @name: Get standardized product descriptions
+            @interval_number: 1
+            @interval_type: days
+            @numbercall: -1
+            @doall eval='False'
+            @type: external
+            @args: /opt/bin/fis product-description
+            @nextcall: 2018-09-04 01:00:00
