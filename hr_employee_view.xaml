@@ -64,7 +64,7 @@
                 @identification_id position='attributes'
                     ~attribute @attrs: {'invisible': [('xml_id','!=',False)]}
                 @identification_id position='after'
-                    @xml_id $FIS_Employee_No attrs="{'invisible': [('xml_id','=',False)]}"
+                    @xml_id $FIS_Employee_No attrs="{'invisible': [('xml_id','=',False)]}" groups='base.group_hr_manager'
                 @employment_type position='attributes'
                     ~attribute @attrs: {'readonly': [('xml_id','!=',False),('employment_type','=','standard')]}
                     ~attribute @on_change: change_employment_type(employment_type, xml_id)
