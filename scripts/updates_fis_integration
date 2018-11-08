@@ -251,9 +251,10 @@ def handle_nvty(method):
             rec = convert_nvty_rec(fis_rec)
             rec.name = rec.fis_name
             added_item_records[rec.xml_id] = rec
-        for fis_rec in deleted:
-            rec = convert_nvty_rec(fis_rec)
-            deleted_records[rec.xml_id] = rec
+        # XXX: disable for now in hopes of removing false inactive designations
+        # for fis_rec in deleted:
+        #     rec = convert_nvty_rec(fis_rec)
+        #     deleted_records[rec.xml_id] = rec
     elif method == 'full':
         #
         # get the forecast and description data -- only used in "full"
