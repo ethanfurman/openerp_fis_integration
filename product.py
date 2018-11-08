@@ -932,7 +932,7 @@ class product_trademark_class(osv.Model):
 
     _columns = {
         'number': fields.char('Class number', size=12, required=True),
-        'description': fields.char('Class description', size=128, oldname='name'),
+        'description': fields.text('Class description', size=128, oldname='name'),
         }
 
     def name_get(self, cr, uid, ids, context=None):
