@@ -58,6 +58,7 @@ def main():
         config.users.reset_photos.unlink()
     else:
         reset_photos = False
+    print('force update: %s\nphoto reset: %s' % (force_update, reset_photos), verbose=2)
 
 
 @Command(
@@ -146,23 +147,35 @@ def create(force, users):
         )
 def photos(reset, users):
     reset = reset or reset_photos
+    print('employee table:', config.users.emp_table, verbose=2)
     with dbf.Table(config.users.emp_table, default_data_types={'C':dbf.Char}) as employees:
+        print('  %d records' % len(employees), verbose=2)
         for record in employees:
             try:
                 user = user_map[record.login]
             except KeyError:
                 print('%s is missing from OpenERP' % record.login)
                 continue
-            if not reset and record.image_crc != crc32(user.image):
+            if users and record.login not in users:
+                continue
+            print('checking %s:' % record.login, end='', verbose=3)
+            if not reset and record.image_crc == crc32(user.image):
+                print('  same', verbose=3)
                 continue
             try:
+                print('  updating from %s' % config.users.photo_location % record.emp_num, end='', verbose=3)
                 pic = urlopen(config.users.photo_location % record.emp_num).read()
+                print('  success', verbose=3)
             except URLError:
+                print('  failed', verbose=3)
                 continue
             image = b64encode(pic)
             try:
+                print('  writing to OpenERP...', end='', verbose=3)
                 res_users.write(user.id, dict(image=image))
+                print('  success', verbose=3)
             except Fault:
+                print('  failed', verbose=3)
                 continue
             # not sure what next line is supposed to do
             # user.update(res_users.read(user.id))
