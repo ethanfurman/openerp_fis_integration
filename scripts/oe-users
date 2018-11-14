@@ -186,11 +186,20 @@ def photos(reset, users):
             dbf.write(record, image_crc=crc32(user.image))
     # process hr photos
     employees = get_records(hr, fields=['id','image_crc','xml_id'])
+    no_image = set()
     for e in employees:
-        pic = urlopen(config.users.photo_location % record.emp_num).read()
-        pic_crc = crc32(pic)
+        try:
+            pic = urlopen(config.users.photo_location % e.id).read()
+            print(config.users.photo_location % e.id)
+        except Exception, exc:
+            no_image.add(config.users.photo_location % e.id)
+            pic_crc = False
+            image = False
+        else:
+            pic_crc = str(crc32(pic))
+            image = b64encode(pic)
         if not e.image_crc or e.image_crc != pic_crc or reset:
-            hr.write(e.id, dict(image=pic, image_crc=pic_crc))
+            hr.write(e.id, dict(image=image, image_crc=pic_crc))
 
 
 
