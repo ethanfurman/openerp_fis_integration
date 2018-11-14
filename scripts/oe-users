@@ -146,8 +146,9 @@ def create(force, users):
 @Command(
         reset=('reset creation of new files', FLAG),
         users=('only include these users', MULTI),
+        ids=('only include these employee ids', MULTI),
         )
-def photos(reset, users):
+def photos(reset, users, ids):
     "add photos to both user login accounts and hr accounts"
     reset = reset or reset_photos
     # process user photos
@@ -185,22 +186,29 @@ def photos(reset, users):
             # user.update(res_users.read(user.id))
             dbf.write(record, image_crc=crc32(user.image))
     # process hr photos
-    employees = get_records(hr, fields=['id','image_crc','xml_id'])
+    domain = []
+    if ids:
+        domain = [('xml_id','in',ids)]
+    employees = get_records(hr, domain=domain, fields=['id','name', 'image_crc','xml_id'])
     no_image = set()
     for e in employees:
+        pic_path = config.users.photo_location % e.xml_id
+        print('checking %r\n  id: %r\n  xml_id: %r\n  path: %r' % (e.name, e.id, e.xml_id, pic_path))
         try:
-            pic = urlopen(config.users.photo_location % e.id).read()
-            print(config.users.photo_location % e.id)
+            pic = urlopen(pic_path).read()
+            print(' ', pic_path)
         except Exception, exc:
-            no_image.add(config.users.photo_location % e.id)
+            print('    ', exc)
+            no_image.add(pic_path)
             pic_crc = False
             image = False
         else:
             pic_crc = str(crc32(pic))
             image = b64encode(pic)
         if not e.image_crc or e.image_crc != pic_crc or reset:
+            print('  updating record with %s' % (pic_crc, ))
             hr.write(e.id, dict(image=image, image_crc=pic_crc))
-
+        print()
 
 
 @Command()
