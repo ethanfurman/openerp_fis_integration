@@ -19,7 +19,7 @@ config = '%s/config/fnx.ini' % virtual_env
 @Script()
 def main():
     global config, localhost, res_users, res_groups, users, groups, res_partner, partners
-    global user_map, partner_map, force_update, reset_photos
+    global user_map, partner_map, force_update, reset_photos, hr
     config = OrmFile(config, types={'_path':Path})
     localhost = get_connection(
             hostname=config.openerp.host,
@@ -27,6 +27,8 @@ def main():
             login=config.openerp.user,
             password=config.openerp.pw,
             )
+    print('getting hr.employee')
+    hr = localhost.get_model('hr.employee')
     print('getting res.users')
     res_users = localhost.get_model('res.users')
     print('getting res.groups')
@@ -146,7 +148,9 @@ def create(force, users):
         users=('only include these users', MULTI),
         )
 def photos(reset, users):
+    "add photos to both user login accounts and hr accounts"
     reset = reset or reset_photos
+    # process user photos
     print('employee table:', config.users.emp_table, verbose=2)
     with dbf.Table(config.users.emp_table, default_data_types={'C':dbf.Char}) as employees:
         print('  %d records' % len(employees), verbose=2)
@@ -180,6 +184,14 @@ def photos(reset, users):
             # not sure what next line is supposed to do
             # user.update(res_users.read(user.id))
             dbf.write(record, image_crc=crc32(user.image))
+    # process hr photos
+    employees = get_records(hr, fields=['id','image_crc','xml_id'])
+    for e in employees:
+        pic = urlopen(config.users.photo_location % record.emp_num).read()
+        pic_crc = crc32(pic)
+        if not e.image_crc or e.image_crc != pic_crc or reset:
+            hr.write(e.id, dict(image=pic, image_crc=pic_crc))
+
 
 
 @Command()
