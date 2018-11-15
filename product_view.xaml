@@ -98,6 +98,9 @@
                     @fis_location
                 @list_price position='after'
                     @fis_shipping_size
+                    ~hr colspan='2'
+                    @prop65
+                    @prop65_info
                 @default_code position='replace'
                     @xml_id
                     @fis_name readonly='1'

@@ -29,6 +29,13 @@ LabelLinks = (
     "Plone/LabelDirectory/%s/%sMK.bmp",
     )
 
+class Prop65(fields.SelectionEnum):
+    _order_ = 'none reproductive cancer both'
+    none = 'N - free of / below trigger level'
+    reproductive = 'R - can cause reproductive harm'
+    cancer = 'C - can cause cancer'
+    both = 'B - can cause cancer and/or reproductive harm'
+
 class TrademarkStatus(fields.SelectionEnum):
     _order_ = 'dead dying renewing aging active'
     dead = 'Dead'
@@ -509,6 +516,8 @@ class product_product(xmlid, osv.Model):
             help='Qty available in the next 21 days',
             ),
         'fnxfs_files': files('', string='Available Files'),
+        'prop65': fields.selection(Prop65, string='Req. Prop 65 warning'),
+        'prop65_info': fields.text('Addl. Prop 65 info'),
         }
 
     def update_trademark_state(self, cr, uid, ids=None, arg=None, context=None):
