@@ -11,6 +11,8 @@
             @inherit_id ref='product.product_normal_form_view'
             @priority eval='7'
             @arch type='xml'
+                ~xpath expr="//form/sheet/div/div[@name='options']/label" position='replace'
+                    ~label for='sale_ok' $Catalog_Item
                 ~xpath expr="//form/sheet" position='inside'
                     ~hr colspan='4'
                     ~div .fnxfs_files
