@@ -2599,10 +2599,8 @@ def convert_nvty_rec(fis_rec):
     item.active = True
     availability = product_available_at.get(fis_rec[F135.available_key], False)
     item.fis_availability_id = availability.id
-    sale_ok = availability.available
-    if isinstance(sale_ok, basestring):
-        sale_ok = sale_ok.upper() == 'Y'
-    item.sale_ok = sale_ok
+    # sale_ok actually tracks whether item is in the catalog
+    item.sale_ok = len(fis_rec[F135.catalog_location]) == 10
     item.list_price = fis_rec[F135.new_wholesale]
     item.trademarks = fis_rec[F135.trademarked]
     item.ean13 = sanitize_ean13(fis_rec[F135.upc_no])
