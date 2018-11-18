@@ -1,0 +1,66 @@
+#!/usr/local/sbin/suid-python --virtualenv
+
+# imports
+from __future__ import print_function
+
+from scription import *
+from antipathy import Path
+from openerplib import get_connection, get_records
+
+import dbf
+import os
+
+VIRTUAL_ENV = os.environ['VIRTUAL_ENV']
+CONFIG = Path('%s/config/fnx.ini' % VIRTUAL_ENV)
+PRODUCT_TABLE = Path('%s/product_active_tracker.dbf' % VIRTUAL_ENV)
+
+@Command()
+def check_active_products():
+    # compare the last_activ field in the dbf with the current
+    # active field in OpenERP
+    settings = OrmFile(CONFIG, section='openerp')
+    oe = get_connection(
+            hostname=settings.host,
+            database=settings.db,
+            login=settings.user,
+            password=settings.pw,
+            )
+    product_table = dbf.Table(PRODUCT_TABLE, default_data_types='enhanced')
+    oe_records = dict([
+        (r.xml_id, r)
+        for r in get_records(
+            oe, 'product.product',
+            domain=[('xml_id','!=',False)],
+            fields=['id','xml_id','name','active'],
+            context={'active_test':False},
+            )])
+    changed = []
+    with product_table:
+        product_index = product_table.create_index(lambda p: p.xml_id)
+        for xml_id, oe_item in sorted(oe_records.items()):
+            try:
+                product = product_index[xml_id][0]
+            except IndexError:
+                changed.append('unable to locate %r, adding' % xml_id)
+                product_table.append({
+                    'xml_id': xml_id,
+                    'last_activ': oe_item.active,
+                    })
+                continue
+            if product.last_activ and not oe_item.active:
+                changed.append('item %s was changed to inactive' % (product.xml_id, ))
+                with product:
+                    product.last_activ = False
+            elif not product.last_activ and oe_item.active:
+                changed.append('item %s was changed to active' % (product.xml_id, ))
+                with product:
+                    product.last_activ = True
+    # send email with changes
+    if changed:
+        mail(message=
+            'To: ethan@stoneleaf.us\nSubject: product active changes\n\n%s'
+            % ('\n'.join(changed),)
+            )
+        echo('\n'.join(changed))
+
+Main()
