@@ -398,19 +398,9 @@ def records(filenum, subset, code, fields, dbf_name):
                 max_spec_width = max(max_spec_width, len(spec.strip()))
                 width = fis_table.field_widths[i]
                 field_widths.append(width)
-                field_name = convert_name(name, 10)
-                if field_name in dbf_names:
-                    print('duplicate name:', field_name, verbose=2)
-                    prior = dbf_names.index(field_name)
-                    print('  found at:', prior, verbose=2)
-                    alt_name = convert_name(name, 9)
-                    dbf_names[prior] = alt_name
-                    dbf_types[prior] = dbf_types[prior].replace(field_name, alt_name)
-                    print('  reset to:', dbf_names[prior], verbose=2)
-                    print('  and:     ', dbf_types[prior], verbose=2)
-                    field_name = alt_name + '2'
+                field_name = convert_name(name, 10, dbf_names)
                 dbf_names.append(field_name)
-                name = convert_name(name)
+                name = convert_name(name, 50)
                 if '$' in spec:
                     dbf_types.append('%s C(%d)' % (field_name, width))
                     used_fields.append((i, str))
@@ -498,7 +488,7 @@ def schema(filenum, output, number):
         for i, field in enumerate(table['fields']):
             name, spec = field[1:4:2]
             comment = name
-            name = convert_name(name)
+            name = convert_name(name, 50)
             lines.append((name, spec, i, comment))
         #calculate widths
         max_name = max([len(n) for n, s, i, c in lines])
@@ -1170,7 +1160,8 @@ def format_record(record, fields=None):
                 lines.append('%5d | %*s | %*s | %s' % (i+1, -name_width, row[3], value_width, value, row[1]))
     return lines
 
-def convert_name(name, max_len=50):
+def convert_name(name, max_len, existing_names=()):
+    original_name = name
     name = name.lower()
     if '(' in name:
         name = name.split('(')[0]
@@ -1188,30 +1179,47 @@ def convert_name(name, max_len=50):
     name = ' '.join(pieces)
     if name.startswith(('key type', 'key group')):
         name = 'key type'
-    member = []
+    members = []
     # name substitution
     for i, piece in enumerate(re.sub('\W+', ' ', name).split()):
         if i == 0 and piece[0].isdigit():
             piece = numbers.get(piece, piece)
         else:
             piece = common.get(piece, piece)
-        member.append(piece)
+        members.append(piece)
     # shrink further as necessary
     def no_under(names):
         return ''.join(names)
     def pop_under(names):
+        # if we get down to only one name, just trim it to desired size
+        if len(names) == 1:
+            return names[0][:max_len]
         names.pop()
         return '_'.join(names)
-    name = '_'.join(member)
+    name = '_'.join(members)
     shrinker = cycle([no_under, pop_under])
+    # shrink name if needed
     if len(name) > max_len:
         # first try uncommon abbr
-        for i, m in enumerate(member):
-            member[i] = uncommon.get(m, m)
-        name = '_'.join(member)
+        for i, m in enumerate(members):
+            members[i] = uncommon.get(m, m)
+        name = '_'.join(members)
     while len(name) > max_len:
         func = next(shrinker)
-        name = func(member)
+        name = func(members)
+    # check for name already being used
+    for suffix in range(1, 10):
+        if name not in existing_names:
+            break
+        else:
+            suffix = str(suffix)
+            name = name[:-1] + suffix
+    else:
+        # name still taken
+        raise Exception(
+                'unable to convert %r\nexisting names: '
+                % (original_name, ', '.join(existing_names)
+                ))
     return name
 
 numbers = {
@@ -1241,12 +1249,17 @@ numbers = {
 common = {
     'account':      'acct',
     'adjustment':   'adj',
+    'allocated':    'alctd',
     'allowance':    'allwnc',
     'amount':       'amt',
     'authority':    'auth',
+    'average':      'avg',
+    'beginning':    'bgng',
+    'category':     'cat',
     'center':       'ctr',
     'centering':    'ctr',
     'check':        'chk',
+    'cost':         'cst',
     'credit':       'cr',
     'credits':      'crs',
     'customer':     'cust',
@@ -1255,20 +1268,36 @@ common = {
     'department':   'dept',
     'description':  'desc',
     'discount':     'disc',
+    'each':         'ea',
+    'formula':      'frml',
     'ingredient':   'ingr',
+    'kosher':       'kshr',
     'length':       'len',
+    'level':        'lvl',
     'invoice':      'inv',
+    'maximum':      'max',
+    'mesg':         'msg',
+    'method':       'mthd',
+    'minimum':      'min',
     'number':       'no',
     'numbers':      'nos',
     'payment':      'pymt',
+    'package':      'pkg',
+    'packaging':    'pkgg',
+    'price':        'prc',
     'product':      'prod',
     'production':   'prod',
     'position':     'pos',
     'quantity':     'qty',
+    'redemption':   'rdmtn',
     'revision':     'rev',
+    'rounding':     'rndg',
     'sequence':     'seq',
+    'stock':        'stk',
     'string':       'str',
     'transaction':  'trans',
+    'warehouse':    'wrhse',
+    'wholesale':    'whlsl',
     }
 
 uncommon = {
