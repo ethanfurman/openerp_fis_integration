@@ -937,23 +937,28 @@ class product_trademark_class(osv.Model):
     _name = 'fis_integration.trademark.class'
     _description = 'State trademark class'
     _order = 'number'
-    _rec_name = 'number'
+    _rec_name = 'name'
 
-    _columns = {
-        'number': fields.char('Class number', size=12, required=True),
-        'description': fields.text('Class description', size=128, oldname='name'),
-        }
-
-    def name_get(self, cr, uid, ids, context=None):
+    def _calc_name(self, cr, uid, ids, field_name=None, arg=None, context=None):
         if isinstance(ids, (int, long)):
             ids = [ids]
-        res = []
-        for rec in self.read(cr, uid, ids, fields=['number', 'description'], context=context):
-            id = rec['id']
-            num = rec['number']
-            desc = rec['description']
-            if desc:
-                res.append((id, '%s: %s' % (num, desc)))
-            else:
-                res.append((id, num))
+        res = {}
+        if not ids or field_name != 'name':
+            return res
+        for rec in self.read(cr, uid, ids, fields=['number','category'], context=context):
+            res[rec['id']] = '%s: %s' % (rec['number'], rec['category'])
         return res
+
+    _columns = {
+        'name': fields.function(
+            _calc_name,
+            type='char',
+            size=64,
+            store={
+                'fis_integration.trademark.class':
+                        (lambda s, c, u, ids, ctx=None: ids, ['number','category'], 10),
+                        }),
+        'number': fields.integer('Number', size=12, required=True),
+        'category': fields.char('Category', size=64, required=True),
+        'description': fields.text('Class description', required=True, oldname='name'),
+        }

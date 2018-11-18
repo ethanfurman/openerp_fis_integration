@@ -215,6 +215,7 @@
             @arch type='xml'
                 ~tree $Trademark_Class editable='top'
                     @number
+                    @category
                     @description
 
         ~record #product_trademark_class_action model='ir.actions.act_window'
