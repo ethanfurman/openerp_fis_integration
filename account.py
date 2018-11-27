@@ -33,7 +33,7 @@ class fis_account_salesperson(xmlid, osv.Model):
         'user_id': fields.many2one(
                 'res.users',
                 'Salesperson',
-                domain=[('groups_id','=',fields.ref('group_sale_salesman'))],
+                domain=[('groups_id','=',fields.ref('base.group_sale_salesman'))],
                 ),
         }
 
