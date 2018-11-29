@@ -16,3 +16,9 @@
             @name: Manage Trademarks
             @category_id ref='fis_integration'
             @comment: The user is able to manage trademarks.
+
+        ~record model='res.users' #user_fis_daemon
+            @login: fis_daemon
+            @active eval='True'
+            @name: FIS
+            @customer eval='False'
