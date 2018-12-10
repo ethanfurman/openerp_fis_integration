@@ -13,12 +13,12 @@
             @arch type='xml'
                 ~xpath expr="//form/sheet/div/div[@name='options']/label" position='replace'
                     ~label for='sale_ok' $Catalog_Item
-                ~xpath expr="//form/sheet" position='inside'
+                ~xpath expr="//page[@string='Information']" position='inside'
                     ~hr colspan='4'
                     ~div .fnxfs_files
                         ~newline
                         ~label for='fnxfs_files' $Related_Documents
-                        @fnxfs_files colspan='4' nolabel='1'
+                        @fnxfs_files colspan='4' nolabel='1' options="{'no_embed': True}"
                 ~page $Information position='after'
                     ~page $Shipping_Instructions
                         @spcl_ship_instr nolabel='1' placeholder='Special shipping instructions here...'

@@ -15,9 +15,11 @@ class res_partner_merge(osv.TransientModel):
         }
 
     def merge(self, cr, uid, ids, context=None):
+        print '\nmerge\n'
         pass
 
     def default_get(self, cr, uid, fields=None, context=None):
+        print '\ndefault_get(%s, %s, %s, %s)' % (cr, uid, fields, context)
         ctx = context or {}
         source_ids = ctx.get('active_ids', [])
         if not source_ids or 'possible_records' not in (fields or []):
@@ -60,9 +62,11 @@ class res_partner_merge(osv.TransientModel):
                 (p['state'][1], p['city'], (chr(0), chr(1))[bool(p['parent_name'])])
             )
         result['possible_records'] = partners
+        print '--> %s' % result
         return result
 
     def create(self, cr, uid, values, context=None):
+        print '\ncreate(%s, %s, %s, context=%s)' % (cr, uid, values, context)
         # perform sanity check
         # - if any FIS companies in group they are either Master or Exclude
         # - one, and only one, record is marked as Master, and it is a company
@@ -234,7 +238,10 @@ class res_partner_merge(osv.TransientModel):
                         context=context)
             # done!
         # return to normal programming ;)
-        return super(res_partner_merge, self).create(cr, uid, values, context=context)
+        print '--> using: %s' % values
+        result = super(res_partner_merge, self).create(cr, uid, values, context=context)
+        print '--> %s' % (result, )
+        return result
 
 
 class res_partner_merge_sub(osv.TransientModel):
