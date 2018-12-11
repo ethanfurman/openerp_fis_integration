@@ -15,7 +15,7 @@
                     ~div .fnxfs_files
                         ~newline
                         ~label for='fleet_fnxfs_files' $Fleet_Related_Documents
-                        @fleet_fnxfs_files colspan='4' nolabel='1'
+                        @fleet_fnxfs_files colspan='4' nolabel='1' options="{'no_embed': True}"
 
         ~record model='ir.ui.view' #fis_integration_insurance_view_employee_form
             @name: fis_integration.insurance.hr.employee.form
@@ -27,8 +27,8 @@
                     ~hr
                     ~div .fnxfs_files
                         ~newline
-                        ~label for='insurance_fnxfs_files' $Insurance_Related_Documents
-                        @insurance_fnxfs_files colspan='4' nolabel='1'
+                        ~label for='insurance_fnxfs_files' $Supporting_Documents
+                        @insurance_fnxfs_files colspan='4' nolabel='1' options="{'no_embed': True}"
 
         ~record model='ir.ui.view' #fis_integration_workers_comp_view_employee_form
             @name: fis_integration.workers_comp.hr.employee.form
@@ -41,7 +41,7 @@
                     ~div .fnxfs_files
                         ~newline
                         ~label for='workers_comp_fnxfs_files' $Workers_Comp_Related_Documents
-                        @workers_comp_fnxfs_files colspan='4' nolabel='1'
+                        @workers_comp_fnxfs_files colspan='4' nolabel='1' options="{'no_embed': True}"
 
         ~record model='ir.ui.view' #fis_integration_view_employee_form
             @name: fis_integration.hr.employee.form
@@ -54,7 +54,7 @@
                     ~div .fnxfs_files
                         ~newline
                         ~label for='relations_fnxfs_files' $Employee_Relations_Documents
-                        @relations_fnxfs_files colspan='4' nolabel='1'
+                        @relations_fnxfs_files colspan='4' nolabel='1' options="{'no_embed': True}"
                 ~xpath expr="//form[@string='Employee']" position='attributes'
                     ~attribute @create: false
                 ~xpath expr="//field[@name='otherid']" position='attributes'
