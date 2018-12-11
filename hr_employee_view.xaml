@@ -2,6 +2,22 @@
 ~openerp
     ~data
 
+        // job descriptions
+
+        ~record model='ir.ui.view' #fis_integration_view_hr_job_form
+            @name: fis_integration.fleet.hr.job.form
+            @model: hr.job
+            @inherit_id ref='hr.view_hr_job_form'
+            @priority eval='15'
+            @arch type='xml'
+                ~xpath expr="//form/sheet" position='inside'
+                    ~hr
+                    ~div .fnxfs_files
+                        ~newline
+                        ~label for='job_fnxfs_files' $Related_Documents
+                        @job_fnxfs_files colspan='4' nolabel='1' options="{'no_embed': True}"
+
+
         // regular employees
 
         ~record model='ir.ui.view' #fis_integration_fleet_view_employee_form

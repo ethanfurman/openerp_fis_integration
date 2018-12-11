@@ -80,3 +80,16 @@ class hr_employee(xmlid, osv.Model):
         for record in records:
             res[record['id']] = record['xml_id'] or record['name']
         return res
+
+
+class hr_job(osv.Model):
+    "Add files field"
+    _name = 'hr.job'
+    _inherit = ['hr.job', 'fnx_fs.fs']
+
+    _fnxfs_path = 'human_resources/documents'
+    _fnxfs_path_fields = ['name']
+
+    _columns = {
+        'job_fnxfs_files': files('job_positions', string='Job Positions Documents'),
+        }
