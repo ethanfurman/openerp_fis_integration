@@ -359,7 +359,7 @@ def update():
                     print('creating user: %s\n\twith: %s' % (login, values))
                     id = res_users.create(values)
                 except Exception, exc:
-                    error('unable to create user:\n----------------------')
+                    error('unable to create user:\n======================')
                     error(str(exc).replace('\\n','\n'))
                     row = row + ['unable to create user']
                     failed.append(row)
