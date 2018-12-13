@@ -515,7 +515,7 @@ class product_product(xmlid, osv.Model):
             string='21-day Available',
             help='Qty available in the next 21 days',
             ),
-        'fnxfs_files': files('', string='Available Files'),
+        'fnxfs_files': files('general', string='Available Files'),
         'prop65': fields.selection(Prop65, string='Req. Prop 65 warning'),
         'prop65_info': fields.text('Addl. Prop 65 info'),
         }
@@ -566,7 +566,7 @@ class product_product(xmlid, osv.Model):
         "return name of folder to hold related files"
         res = {}
         for record in records:
-            res[record['id']] = record['xml_id'] or record['name']
+            res[record['id']] = record['xml_id'] or ("%s-%d" % (record['name'], record['id']))
         return res
 
     def fis_updates(self, cr, uid, *args):

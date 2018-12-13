@@ -221,7 +221,7 @@ class res_partner(xmlid, osv.Model):
             ),
         'fis_data_address_changed': fields.boolean('FIS data has changed', oldname='fis_data_changed'),
         'fis_updated_by_user': fields.char('Updated by user', size=12, oldname='updated_by_user'),
-        'fnxfs_files': files('', string='Available Files'),
+        'fnxfs_files': files('general', string='Available Files'),
         'create_date': fields.datetime('Created', readonly=True),
         'create_uid': fields.many2one('res.users', string='Created by', readonly=True),
         'write_date': fields.datetime('Last changed', readonly=True),
@@ -314,7 +314,7 @@ class res_partner(xmlid, osv.Model):
         "return name of folder to hold related files"
         res = {}
         for record in records:
-            res[record['id']] = record['xml_id'] or record['name']
+            res[record['id']] = record['xml_id'] or ("%s-%d" % (record['name'], record['id']))
         return res
 
     def name_get(self, cr, uid, ids, context=None):

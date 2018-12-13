@@ -78,7 +78,7 @@ class hr_employee(xmlid, osv.Model):
         "return name of folder to hold related files"
         res = {}
         for record in records:
-            res[record['id']] = record['xml_id'] or record['name']
+            res[record['id']] = record['xml_id'] or ("%s-%d" % (record['name'], record['id']))
         return res
 
 
