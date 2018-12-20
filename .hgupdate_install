@@ -1,8 +1,8 @@
-scripts/fis
-scripts/oe-users
+scripts/fis --suid
+scripts/oe-users --suid
 scripts/recipe
 scripts/recipe.py
-scripts/fis_update
+scripts/fis_update --suid
 scripts/fis_schema.py updates/fis_schema.py
 scripts/tools.py updates/tools.py
 scripts/updates.py updates/__init__.py
