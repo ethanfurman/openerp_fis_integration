@@ -411,7 +411,7 @@ def update():
             error(p, end='\n\n')
         error()
         error(tb)
-        error('-' * 50)
+        error('=' * 50)
     if failed:
         with open(config.users.failed, 'a') as csv:
             csv.write('old_login,new_login,password,active,groups,name,error\n')
