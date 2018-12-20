@@ -1,4 +1,4 @@
-#!/usr/local/sbin/suid-python
+#!/usr/local/sbin/suid-python --virtualenv
 """\
 Update OpenERP tables from FIS source files.
 
