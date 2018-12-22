@@ -5,8 +5,8 @@ class sample_product(osv.Model):
     _inherit = 'sample.product'
 
     _columns = {
-        'xml_id': fields.related('product_id', 'xml_id', string='FIS ID'),
-        'module': fields.related('product_id', 'module', string='FIS Module'),
+        'xml_id': fields.related('product_id', 'xml_id', string='FIS ID', type='char'),
+        'module': fields.related('product_id', 'module', string='FIS Module', type='char'),
         }
 
     def name_search(self, cr, uid, name='', args=None, operator='ilike', context=None, limit=100):
