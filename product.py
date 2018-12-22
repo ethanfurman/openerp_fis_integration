@@ -359,6 +359,7 @@ class product_product(xmlid, osv.Model):
             ),
         'fis_qty_makeable': fields.float(
             string='Immediately Producible',
+            digits=(15,3),
             help="How much can be made with current inventory.",
             ),
         'label_server_stub': fields.function(
