@@ -22,16 +22,17 @@
                 ~page $Information position='after'
                     ~page $Shipping_Instructions
                         @spcl_ship_instr nolabel='1' placeholder='Special shipping instructions here...'
-                    ~page $Trademarks attrs="{'invisible':[('trademarks','=',False)]}"
-                        ~group $Trademarks
-                            ~group
+                    ~page string='Trademarks & Registrations' attrs="{'invisible':[('trademarks','=',False)]}"
+                        ~group
+                            ~group $State
                                 @state_trademark
                                 @state_trademark_state readonly='1'
                                 @state_trademark_expiry on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
                                 @state_trademark_renewal on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
                                 @state_trademark_class_ids widget='many2many_tags'
-                            ~group
+                            ~group $Federal
                                 @federal_trademark
+                                @federal_trademark_no
                                 @federal_trademark_state readonly='1'
                                 @federal_trademark_expiry on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
                                 @federal_trademark_renewal on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"

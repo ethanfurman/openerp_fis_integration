@@ -436,15 +436,16 @@ class product_product(xmlid, osv.Model):
                 )},
             oldname='trademark_state',
             ),
-        'federal_trademark': fields.char('Federal Trademark', size=128),
-        'federal_trademark_expiry': fields.date('Federal Trademark expires'),
-        'federal_trademark_renewal': fields.date('Federal Trademark renewal submitted'),
+        'federal_trademark': fields.char('Federal Registration', size=128),
+        'federal_trademark_no': fields.char('Federal Registration #', size=128),
+        'federal_trademark_expiry': fields.date('Federal Registration expires'),
+        'federal_trademark_renewal': fields.date('Federal Registration renewal submitted'),
         'federal_trademark_state': fields.function(
             _trademark_state,
             fnct_inv=True,
             multi='trademark',
             type='selection',
-            string='Federal Trademark status',
+            string='Federal Registration status',
             selection = TrademarkStatus,
             store={
                 'product.product': (
