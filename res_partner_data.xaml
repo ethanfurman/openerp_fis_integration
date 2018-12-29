@@ -1,0 +1,13 @@
+!!!xml1.0
+
+~openerp
+    ~data noupdate='0'
+
+        // mail message subtypes
+
+        ~record model='mail.message.subtype' #mt_fis_integration_contact
+            @name: Contact changes
+            @res_model: res.partner
+            @default eval='True'
+            @sequence eval='1'
+            @description: Contact info updated.

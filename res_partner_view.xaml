@@ -94,6 +94,7 @@
                         @email2
                     @facebook widget='url'
                     @twitter widget='url'
+                    @updated
                 @comment position='before'
                     ~group $Certifications attrs="{'invisible': ['|',('is_company','=',False), ('supplier','=',False)]}"
                         ~group

@@ -47,7 +47,8 @@ class res_partner(xmlid, osv.Model):
     Inherits partner and makes the external_id visible and modifiable
     """
     _name = 'res.partner'
-    _inherit = ['res.partner', 'fnx_fs.fs']
+    _inherit = ['res.partner', 'fnx_fs.fs', 'mail.thread']
+    _mail_flat_thread = False
 
     _fnxfs_path = 'res_partner'
     _fnxfs_path_fields = ['xml_id', 'name']
@@ -104,12 +105,59 @@ class res_partner(xmlid, osv.Model):
                 ])
         return result
 
-
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
         'fis_valid': fields.boolean('Valid FIS code?'),
         'fis_active': fields.boolean('Active Partner?'),
+        'name': fields.char(
+            track_visibility='onchange',
+            track_subtype='fis_integration.mt_fis_integration_contact'
+            ),
+        'street': fields.char(
+            track_visibility='onchange',
+            track_subtype='fis_integration.mt_fis_integration_contact'
+            ),
+        'street2': fields.char(
+            track_visibility='onchange',
+            track_subtype='fis_integration.mt_fis_integration_contact'
+            ),
+        'city': fields.char(
+            track_visibility='onchange',
+            track_subtype='fis_integration.mt_fis_integration_contact'
+            ),
+        'state_id': fields.many2one(
+            track_visibility='onchange',
+            track_subtype='fis_integration.mt_fis_integration_contact'
+            ),
+        'zip': fields.char(
+            track_visibility='onchange',
+            track_subtype='fis_integration.mt_fis_integration_contact'
+            ),
+        'country_id':fields.many2one(
+            track_visibility='onchange',
+            track_subtype='fis_integration.mt_fis_integration_contact'
+            ),
+        'email': fields.char(
+            track_visibility='onchange',
+            track_subtype='fis_integration.mt_fis_integration_contact'
+            ),
+        'phone': fields.char(
+            track_visibility='onchange',
+            track_subtype='fis_integration.mt_fis_integration_contact'
+            ),
+        'fax': fields.char(
+            track_visibility='onchange',
+            track_subtype='fis_integration.mt_fis_integration_contact'
+            ),
+        'mobile': fields.char(
+            track_visibility='onchange',
+            track_subtype='fis_integration.mt_fis_integration_contact'
+            ),
+        'child_ids': fields.one2many(
+            track_visibility='onchange',
+            track_subtype='fis_integration.mt_fis_integration_contact'
+            ),
         'specials_notification': fields.selection(
             Specials,
             string='Pricing Notifications',
