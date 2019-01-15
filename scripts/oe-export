@@ -1,0 +1,235 @@
+#!/usr/local/sbin/suid-python --virtualenv
+from __future__ import print_function
+
+import os
+from antipathy import Path
+from openerplib import get_connection, get_records, AttrDict, Query
+from scription import *
+import re
+
+virtual_env = os.environ['VIRTUAL_ENV']
+config = '%s/config/fnx.ini' % virtual_env
+
+TEST = [
+        'xml_id',
+        'hr_insurance_choice_ids/year_month',
+        'hr_insurance_choice_ids/medical',
+        'hr_insurance_choice_ids/dental',
+        'hr_insurance_choice_ids/vision',
+        'hr_insurance_choice_ids/life',
+        'name_related',
+        'home_country_id/name',
+        'home_country_id/code',
+        ]
+
+TEST_DOMAIN = [('name_related','in',['Abraham S. Cohen','Aurelia Garcia'])]
+
+@Script()
+def main():
+    global oe
+    cfg = OrmFile(config, types={'_path':Path})
+    oe = get_connection(
+            hostname=cfg.openerp.host,
+            database=cfg.openerp.db,
+            login=cfg.openerp.user,
+            password=cfg.openerp.pw,
+            )
+
+@Command(
+    name=('name of export', REQUIRED),
+    to_file=Spec('file to store results in', REQUIRED, type=Path),
+    domain=Spec('domain to restrict record selection', OPTION, force_default=[], type=eval),
+    table=('name of OpenERP table (only needed if multiple saved exports with same name', OPTION),
+    )
+def oe_export(name, to_file, domain, table):
+    found = []
+    for export in get_records(oe, 'ir.exports', domain=[('name','=',name)]):
+        found.append(export.resource)
+        if table and export.resource == table:
+            break
+    else:
+        # no exact match, check only one match found
+        if not found:
+            abort('no export found with name of %r' % (name, ))
+        elif len(found) > 1:
+            abort('multiple matches for %r:\npossible tables: %s'
+                    % (name, ', '.join(found)))
+    # at this point, export is the one we want
+    table = export.resource
+    fields_ids = export.export_fields
+    fields = [
+            f['name']
+            for f in get_records(
+                oe,
+                'ir.exports.line',
+                domain=[('id','in',fields_ids)],
+                fields=['name'],
+                )]
+    q = Query(oe.get_model(table), domain=domain, fields=fields[:])
+    #
+    write_xls(export.name, q, fields, to_file)
+
+
+@Command(
+    table=('name of table', REQUIRED),
+    fields=('fields to extract', MULTIREQ),
+    to_file=Spec('file to store results in', REQUIRED, type=Path),
+    domain=Spec('domain to restrict record selection', OPTION, force_default=[], type=eval),
+    )
+def adhoc(table, fields, to_file, domain):
+    fields = list(fields)
+    q = Query(oe.get_model(table), domain=domain, fields=fields[:])
+    #
+    write_xls(table, q, fields, to_file)
+
+
+@Command()
+@Alias('list')
+def list_exports():
+    for export in get_records(oe, 'ir.exports'):
+        echo('%-60s [%s]' % (export.name, export.resource))
+
+# helpers
+
+def write_xls(sheet_name, query, fields, file):
+    import xlwt
+    workbook = xlwt.Workbook()
+    worksheet = workbook.add_sheet(sheet_name)
+    #
+    for i, fieldname in enumerate(fields):
+        worksheet.write(0, i, query.names[fieldname])
+        worksheet.col(i).width = 8000 # around 220 pixels
+        # TODO: calculate width base on column contents
+    #
+    i = 0
+    for r in query.records:
+        er = ExpandedRow(fields, r)
+        for row in er:
+            i += 1
+            for cell_index, cell_value in enumerate(row):
+                if isinstance(cell_value, basestring):
+                    cell_value = re.sub("\r", " ", cell_value)
+                if cell_value is False:
+                    cell_value = None
+                worksheet.write(i, cell_index, cell_value)
+    workbook.save(file)
+
+class counter(object):
+
+    def __init__(self, start=0):
+        self.value = start
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        current = self.value
+        self.value += 1
+        return current
+
+    next = __next__
+
+class ExpandedRow(object):
+    "converts an ordered dict into an ordered list of lists"
+
+    def __init__(self, fields, record):
+        # fields = [
+        #   'xml_id',
+        #   'hr_insurance_choice_ids/year_month',
+        #   'hr_insurance_choice_ids/medical',
+        #   'hr_insurance_choice_ids/dental',
+        #   'hr_insurance_choice_ids/vision',
+        #   'hr_insurance_choice_ids/life',
+        #   'name_related',
+        #   'home_country_id/name',
+        #   'home_country_id/code',
+        #   ]
+        #
+        # record = {
+        #   'id': 8274
+        #   'xml_id': 1374,
+        # 	'hr_insurance_choice_ids': [
+        #           {
+        #            'id': 810,
+        #            'year_month': '2018-07',
+        #            'medical':'children',
+        #            'dental':'children',
+        #            'vision':'children',
+        #            'life':'self',
+        #           },
+        #           {
+        #            'id': 81820,
+        #            'year_month': '2018-06',
+        #            'medical':'children',
+        #            'dental':'children',
+        #            'vision':'children',
+        #            'life':'self',
+        #           }],
+        #   'name_related': 'Vishan Vishal Dimri',
+        #   'home_country_id': {'id':235, 'name':'United States', 'code':'US'},
+        rows = []
+        row = []
+        for k, v in record.items():
+            if k in fields:
+                row.append(v)
+            elif any([f.startswith(k+'/') for f in fields]):
+                sub_fields = [f.split('/',1)[1] for f in fields if f.startswith(k+'/')]
+                if v:
+                    # many2one = dict
+                    # x2many = list
+                    if isinstance(v, list):
+                        sub_row = []
+                        for er in [ExpandedRow(sub_fields, w) for w in v]:
+                            for sr in er:
+                                sub_row.append(sr)
+                    elif isinstance(v, AttrDict):
+                        if v:
+                            sub_row = [[v[f] for f in sub_fields]]
+                        else:
+                            sub_row = [[None] * len(sub_fields)]
+                    else:
+                        raise TypeError('invalid type: %r [%r]' % (type(v), v))
+                else:
+                    sub_row = [[None] * len(sub_fields)]
+                row.append(sub_row)
+        for i in counter():
+            line = []
+            remaining = False
+            for item in row:
+                if not isinstance(item, list):
+                    if i:
+                        # not first line
+                        line.append(None)
+                    else:
+                        # first line
+                        line.append(item)
+                else:
+                    if len(item) > i:
+                        line.extend(item[i])
+                        remaining = True
+                    else:
+                        if item:
+                            line.extend([None] * len(item[0]))
+                        else:
+                            line.extend([None])
+            rows.append(line)
+            if not remaining:
+                break
+        if rows:
+            last_row = rows[-1]
+            if all([c is None for c in last_row]):
+                rows.pop()
+        self.rows = rows
+
+    def __iter__(self):
+        return iter(self.rows)
+
+    def __len__(self):
+        return len(self.rows)
+
+    def __repr__(self):
+        return repr(self.rows)
+
+
+# run it
+Main()
