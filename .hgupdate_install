@@ -1,6 +1,6 @@
 scripts/fis --suid
 scripts/oe-users --suid
-scripts/oe_export
+scripts/oe-export
 scripts/recipe
 scripts/recipe.py
 scripts/fis_update --suid
