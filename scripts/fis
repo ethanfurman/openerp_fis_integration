@@ -1269,7 +1269,6 @@ common = {
     'description':  'desc',
     'discount':     'disc',
     'each':         'ea',
-    'formula':      'frml',
     'ingredient':   'ingr',
     'kosher':       'kshr',
     'length':       'len',
@@ -1303,6 +1302,7 @@ common = {
 uncommon = {
     'adjust':       'adj',
     'company':      'comp',
+    'formula':      'frml',
     'other':        'oth',
     'total':        'ttl',
     }
