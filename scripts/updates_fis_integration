@@ -216,9 +216,9 @@ def handle_nvty(method):
                 nvty.values(),
                 enum_schema=[
                     F135.item_id,
-                    F135.available_key, F135.sales_category, F135.trademarked,
-                    F135.catalog_location, F135.description, F135.size, F135.upc_no, F135.primary_location,
-                    F135.supplier_id, F135.new_retail, F135.new_wholesale,
+                    F135.available_key, F135.sales_cat, F135.trademarkd,
+                    F135.catalog_location, F135.desc, F135.size, F135.upc_no, F135.primary_location,
+                    F135.supplier_id, F135.new_retail, F135.new_whlsl,
                     ],
                 address_fields=[],
                 )
@@ -2593,7 +2593,7 @@ def convert_nvty_rec(fis_rec):
     item.xml_id =  fis_rec[F135.item_id]
     item.module = 'F135'
     item.default_code = item.xml_id
-    name = NameCase(fis_rec[F135.description].strip())
+    name = NameCase(fis_rec[F135.descr].strip())
     name = re.sub('sunridge', 'SunRidge', name, flags=re.I)
     item.fis_name = name
     item.active = True
@@ -2601,8 +2601,8 @@ def convert_nvty_rec(fis_rec):
     item.fis_availability_id = availability.id
     # sale_ok actually tracks whether item is in the catalog
     item.sale_ok = len(fis_rec[F135.catalog_location]) == 10
-    item.list_price = fis_rec[F135.new_wholesale]
-    item.trademarks = fis_rec[F135.trademarked]
+    item.list_price = fis_rec[F135.new_whlsl]
+    item.trademarks = fis_rec[F135.trademarkd]
     item.ean13 = sanitize_ean13(fis_rec[F135.upc_no])
     item.fis_location = fis_rec[F135.primary_location]
     item.fis_qty_on_hand = fis_rec[F135.qty_on_hand]
@@ -2624,7 +2624,7 @@ def convert_nvty_rec(fis_rec):
         shipping_size = ('%s %s' % (''.join(first).strip(), ''.join(last).strip())).strip()
     item.fis_shipping_size = shipping_size
     #
-    category_code = fis_rec[F135.sales_category].strip()
+    category_code = fis_rec[F135.sales_cat].strip()
     if len(category_code) == 2 and category_code[0] in 'OISG':
         category_code = {'O':'0', 'I':'1', 'G':'6'}[category_code[0]] + category_code[1]
     category = product_sales_category.get(category_code)

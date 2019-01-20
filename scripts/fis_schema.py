@@ -367,30 +367,133 @@ class F97(FISenum):
     inv_print_msg       = 'Dn$',      8     #   8: Invoice Print Msg
 
 
-
 class F135(FISenum):
     """
     NVTY1 - INVENTORY MASTER (STATUS & DESCRIPTION)
     """
-    item_id            = 'An$(1,6)',      0     #   0: Item Code
-    company_id         = 'An$(7,2)',      1     #   1: Company Code
-    warehouse_no       = 'An$(9,4)',      2     #   2: Warehouse Number
-    company            = 'An$(13,6)',     3     #   3: 4 SPACES + COMPANY
-    key_type           = 'An$(19,3)',     4     #   4: Key Type = '1**'
-    available_key      = 'Bn$(1,1)',      5     #   5: Available?
-    sales_category     = 'Bn$(3,2)',      7     #   7: Sales Category
-    shelf_life_mos     = 'Bn$(69,2)',    36     #  36: Discount Units (not really)
-    trademarked        = 'Bn$(117,2)',   48     #  48: TradeMarkd
-    kosher_category    = 'Bn$(119,1)',   49     #  49: Kosher Catg
-    catalog_location   = 'Bn$(120,10)',  50     #  50: Catlog Loc
-    description        = 'Cn$(1,40)',    51     #  51: Description
-    size               = 'Cn$(41,8)',    52     #  52: Size
-    upc_no             = 'Dn$(6,12)',    55     #  55: UPC CODE
-    primary_location   = 'Dn$(18,6)',    56     #  56: Prim Loc
-    supplier_id        = 'Gn$(1,6)',     81     #  81: Supplier
-    qty_on_hand        = 'I(6)',         99     #  99: Qty on Hand
-    new_retail         = 'I(22)',       115     # 115: New Retail
-    new_wholesale      = 'I(23)',       116     # 116: New Whlsle
+    #
+    _init_ = "value sequence"
+    _order_ = lambda m: m.sequence
+    #
+    item_id                 = 'An$(1,6)',      0     # Item Code
+    company_id              = 'An$(7,2)',      1     # Company Code
+    wrhse_no                = 'An$(9,4)',      2     # Warehouse Number
+    company                 = 'An$(13,6)',     3     # 4 SPACES + COMPANY
+    key_type                = 'An$(19,3)',     4     # Key Type = '1**'
+    available_key           = 'Bn$(1,1)',      5     # Available?
+    contract_item           = 'Bn$(2,1)',      6     # Contract Item?
+    sales_cat               = 'Bn$(3,2)',      7     # Sales Category
+    gl_cat                  = 'Bn$(5,1)',      8     # G/L Category
+    wrhse_cat               = 'Bn$(6,1)',      9     # Warehouse Category
+    inv_units               = 'Bn$(7,2)',     10     # Inv Units
+    pric_units              = 'Bn$(9,2)',     11     # Pric Units
+    po_units                = 'Bn$(11,2)',    12     # P/O Units
+    rtl_units               = 'Bn$(13,2)',    13     # Rtl Units
+    rabbi_flag              = 'Bn$(15,1)',    14     # Rabbi Flag
+    msg_cd_oper_inst        = 'Bn$(16,2)',    15     # MESG CD - OPER INST
+    msg_cd_ordr_prt         = 'Bn$(18,2)',    16     # MESG CD - ORDR PRT
+    msg_cd_po_prt           = 'Bn$(20,2)',    17     # MESG CD - PO PRT
+    msg_cd_inv_prt          = 'Bn$(22,2)',    18     # MESG CD - INV PRT
+    fresh_froz_dry          = 'Bn$(24,1)',    19     # FRESH/FROZ/DRY
+    lot_control             = 'Bn$(25,1)',    20     # Lot Control?
+    catch_wgt               = 'Bn$(26,1)',    21     # CATCH WGT?
+    substitutes             = 'Bn$(27,1)',    22     # SUBSTITUTES?
+    other_pkgg              = 'Bn$(28,1)',    23     # OTHER PACKAGING?
+    abc_flag                = 'Bn$(29,1)',    24     # ABC Flag
+    whlsle_tax              = 'Bn$(30,1)',    25     # Whlsle Tax?
+    catalog_section         = 'Bn$(31,4)',    26     # Catalog Section
+    item_flag               = 'Bn$(35,1)',    27     # Item Flag
+    supl_item               = 'Bn$(36,12)',   28     # Supl Item
+    target_item             = 'Bn$(48,1)',    29     # Target Item(Y/N)
+    pct_cst_to_whlse        = 'Bn$(49,6)',    30     # Pct Cost to Whlse
+    pct_whlse_to_retail     = 'Bn$(55,6)',    31     # Pct Whlse to Retail
+    whlse_rndg_mthd         = 'Bn$(61,1)',    32     # Whlse Rounding Method
+    retail_rndg_mthd        = 'Bn$(62,1)',    33     # Retail Rounding Method
+    ca_rdmtn_id             = 'Bn$(63,2)',    34     # CA Redemption Code
+                                                     # (open) Bn$(65,4)
+    shelf_life_mos          = 'Bn$(69,2)',    36     # Discount Units (not really)
+    safety_stk              = 'Bn$(71,2)',    37     # Safety Stock (Wks)
+    promo_cycle             = 'Bn$(73,2)',    38     # Promo Cycle (MM)
+    manf_to_order           = 'Bn$(75,1)',    39     # Manf to Order?
+    new_old_item_id         = 'Bn$(76,6)',    40     # New/Old Item Code
+    split_case_id           = 'Bn$(82,1)',    41     # Split Case Code
+    frt_units               = 'Bn$(83,2)',    42     # Frt Units
+    po_un_wgt               = 'Bn$(85,10)',   43     # P/O Un Wgt
+    formula_ingr            = 'Bn$(95,10)',   44     # Formula - Ingr
+    formula_pkg             = 'Bn$(105,10)',  45     # Formula - Pkg
+    non_gmo                 = 'Bn$(115,1)',   46     # Non-GMO?
+    key_acct_item           = 'Bn$(116,1)',   47     # Key Acct Item?
+    trademarkd              = 'Bn$(117,2)',   48     # TradeMarkd
+    kshr_catg               = 'Bn$(119,1)',   49     # Kosher Catg
+    catalog_location        = 'Bn$(120,10)',  50     # Catlog Loc
+    desc                    = 'Cn$(1,40)',    51     # Description
+    size                    = 'Cn$(41,8)',    52     # Size
+    retl_subpk              = 'Dn$(1,4)',     53     # Retl Subpk
+    po_catg_id              = 'Dn$(5,1)',     54     # P/O Catg Code
+    upc_no                  = 'Dn$(6,12)',    55     # UPC CODE
+    primary_location        = 'Dn$(18,6)',    56     # Prim Loc
+    primary_loc_ea          = 'Dn$(24,6)',    57     # Primary Loc - EA
+    upstock_locs_1_8        = 'Dn$(30,48)',   58     # Upstock Locs 1-8 (6 chars ea)
+    gl_acct_sales           = 'En$',          59     # G/L Account - Sales
+    dt_ava_dis              = 'Fn$(1,6)',     60     # Dt Ava/Dis
+    date_last_sale          = 'Fn$(7,6)',     61     # Date Last Sale
+    dt_lst_rcp              = 'Fn$(13,6)',    62     # Dt Lst Rcp
+    date_added              = 'Fn$(19,6)',    63     # Date Added
+    old_fob_eff_date        = 'Fn$(25,6)',    64     # Old FOB Eff  date
+    old_fob_exp_date        = 'Fn$(31,6)',    65     # Old FOB Exp Date
+    new_fob_eff_date        = 'Fn$(37,6)',    66     # New FOB Eff Date
+    new_fob_exp_date        = 'Fn$(43,6)',    67     # New FOB Exp Date
+    old_landed_cst_eff_date = 'Fn$(49,6)',    68     # Old Landed Cost Eff Date
+    old_landed_cst_exp_date = 'Fn$(55,6)',    69     # Old Landed Cost Exp Date
+    new_landed_eff_dt       = 'Fn$(61,6)',    70     # New Landed Eff Dt
+    new_landed_cst_exp_date = 'Fn$(67,6)',    71     # New Landed Cost Exp Date
+    date_last_new_cst       = 'Fn$(73,6)',    72     # Date Last New Cost
+    date_last_cst_change    = 'Fn$(79,6)',    73     # Date Last Cost Change
+    author_last_cst_change  = 'Fn$(85,6)',    74     # Author Last Cost Change
+    dt_lst_cnt              = 'Fn$(91,6)',    75     # Dt Lst Cnt
+    hold_date               = 'Fn$(97,6)',    76     # Hold Date
+    old_ea_prc              = 'Fn$(105,10)',  77     # Old Each Price
+    new_ea_prc              = 'Fn$(113,8)',   78     # New EA Prc
+    first_rec_dt            = 'Fn$(121,6)',   79     # 1st Rec Dt
+    first_sale_dt           = 'Fn$(127,6)',   80     # 1st Sale Dt
+    supplier_id             = 'Gn$(1,6)',     81     # Supplier
+    ea_pack_qty             = 'Gn$(7,6)',     82     # Each Pack Quantity
+                                                     # (open) Gn$(13,6)
+    count_supp              = 'Gn$(19,6)',    84     # Count Supp
+    whsl_subpk              = 'Gn$(25,6)',    85     # Whsl Subpk
+    un_pallet               = 'Gn$(31,6)',    86     # Un/Pallet
+    usage_cd                = 'Gn$(37,1)',    87     # Usage Cd
+                                                     # (open) Gn$(38,10)
+    phy_count               = 'Gn$(48,7)',    89     # Phy Count
+    upstock_qty             = 'Gn$(55,7)',    90     # Upstock Qty
+    loc_max                 = 'Gn$(62,6)',    91     # Loc Max
+    case_dimn               = 'Gn$(68,10)',   92     # Case Dimn
+    net_un_wt               = 'I(0)',         93     # Net Un Wt
+    grs_un_wt               = 'I(1)',         94     # Grs Un Wt
+    un_ic_un                = 'I(2)',         95     # $ un/IC un
+    sls_un_c                = 'I(3)',         96     # # Sls UN /MC
+    reorder_pt              = 'I(4)',         97     # Reorder Pt
+    max_stk_lvl             = 'I(5)',         98     # MAXIMUM STOCK LEVEL
+    qty_on_hand             = 'I(6)',         99     # Qty on Hand
+    ic_units_committed      = 'I(7)',        100     # I/C Units Committed
+    ic_units_on_order       = 'I(8)',        101     # I/C Units On Order
+    avg_cst                 = 'I(9)',        102     # Average Cost
+    last_fob_cst            = 'I(10)',       103     # Last FOB Cost
+    unit_cube               = 'I(11)',       104     # Unit Cube
+    qty_alctd               = 'I(12)',       105     # Quantity Allocated
+    mtd_unit_sales          = 'I(13)',       106     # MTD Unit Sales
+    ytd_unit_sales          = 'I(14)',       107     # YTD Unit Sales
+    bgng_balance            = 'I(15)',       108     # Beginning Balance
+    old_retail              = 'I(16)',       109     # Old Retail
+    old_whlsl               = 'I(17)',       110     # Old Wholesale
+    old_landed_cst          = 'I(18)',       111     # Old Landed Cost
+    old_fob_cst             = 'I(19)',       112     # Old FOB Cost
+    frght_hndlg             = 'I(20)',       113     # Frght/Hndlg
+    disc_allow_amt          = 'I(21)',       114     # Disc/Allow Amt
+    new_retail              = 'I(22)',       115     # New Retail
+    new_whlsle              = 'I(23)',       116     # New Whlsle
+    new_landed              = 'I(24)',       117     # New Landed
+    new_fob_cst             = 'I(25)',       118     # New FOB Cost
 
 
 class F163(FISenum):
@@ -512,6 +615,180 @@ class F220(FISenum):
     conv_factor          = 'Ln$',         27     # Conv Factor (to P/O units)
     promo_exp_date       = 'Mn$(1,6)',    28     # Promo Exp Date
     promo_eff_date       = 'Mn$(7,6)',    29     # Promo Eff Date
+
+
+class F320(FISenum):
+    """
+    IFMS - FORMULA MASTER FILE
+    """
+    #
+    _init_ = "value sequence"
+    _order_ = lambda m: m.sequence
+    #
+    company_id            = 'An$(1,2)',     0     # Company Code
+    formula_id            = 'An$(3,10)',    1     # Formula Code
+                                                  # (Open) An$(13,2)
+    rev_no                = 'An$(15,3)',    3     # Revision Number
+    key_type              = 'An$(18,1)',    4     # Key Group = "0"
+    desc                  = 'Bn$',          5     # Description
+    coating               = 'Cn$',          6     # Project Number (not really)
+    date_issued           = 'Dn$(1,6)',     7     # Date Issued
+    date_revised          = 'Dn$(7,6)',     8     # Date Revised
+    date_of_last_run      = 'Dn$(13,6)',    9     # Date Of Last Run
+    date_put_on_hold      = 'Dn$(19,6)',   10     # Date Put On Hold
+    date_written          = 'Dn$(25,6)',   11     # Date Written
+    approved_by           = 'Dn$(31,3)',   12     # Approved By
+    changed_by            = 'Dn$(34,3)',   13     # Changed By
+    change_approved_by    = 'Dn$(37,3)',   14     # Change Approved By
+    date_to_retest        = 'Dn$(40,3)',   15     # Date to Retest
+    last_sales_ord        = 'En$(1,6)',    16     # Last Sales Ord. #
+    last_cust             = 'En$(7,6)',    17     # Last Customer #
+    dept_id               = 'En$(13,2)',   18     # Department Code
+    color                 = 'En$(15,20)',  19     # Color
+    formulated_by         = 'Fn$(1,3)',    20     # Formulated By
+    formula_type          = 'Fn$(4,1)',    21     # Formula Type
+    ok_to_use             = 'Fn$(5,1)',    22     # Ok To Use?
+    hold_reason           = 'Fn$(6,2)',    23     # Hold Reason
+    change_reason_id      = 'Fn$(8,2)',    24     # Change Reason Code
+    test_w_milk           = 'Fn$(10,1)',   25     # Test W. Milk?
+    tablet_type           = 'Fn$(11,3)',   26     # Tablet Type
+    normal_prod_line      = 'Fn$(14,2)',   27     # Normal Production Line
+    serving_size_units    = 'Fn$(16,2)',   28     # Serving Size Units
+    bulk_item_id          = 'Fn$(18,6)',   29     # Bulk Item Code
+                                                  # (open) Fn$(24,2)
+    prod_units            = 'Fn$(26,2)',   31     # Production Units
+    allergens             = 'Fn$(28,8)',   32     # Alpha Sort Key (not really)
+    std_batch_sizes       = 'Fn$(36,1)',   33     # Std Batch Sizes? (Y/N)
+    tube_size             = 'Fn$(37,2)',   34     # Tube Size
+                                                  # (open) Fn$(39,2)
+    label_name            = 'Gn$',         36     # Label Name
+    reference_no          = 'Hn$',         37     # Reference No.
+    previous_reference_no = 'In$',         38     # Previous Reference No.
+    comment_line_1        = 'Jn$',         39     # Comment Line 1
+    comment_line_2        = 'Kn$',         40     # Comment Line 2
+    serving_size          = 'An',          41     # Serving Size
+    expected_yield        = 'Bn',          42     # Expected Yield %
+    hardness_range_low    = 'Cn',          43     # Hardness Range - Low
+    hardness_range_high   = 'Dn',          44     # Hardness Range - High
+    mos_shelf_life        = 'En',          45     # Mos Shelf Life
+                                                  # (open) Fn
+    largest_batch_size    = 'Gn',          47     # Largest Batch Size
+    weight_10             = 'Hn',          48     # Weight/10
+                                                  # (Open) In
+                                                  # (Open) Jn
+class F328(FISenum):
+    """
+    IFPP0 - SALES ORDER PRODUCTION PENDING - HEADER
+    """
+    #
+    _init_ = "value sequence"
+    _order_ = lambda m: m.sequence
+    #
+    company_id           = 'An$(1,2)',      0     # Company Code
+    order_no             = 'An$(3,6)',      1     # Order Number
+    release_no           = 'An$(9,2)',      2     # Release No
+    seq_no               = 'An$(11,3)',     3     # Sequence No
+    record_type_0000     = 'An$(14,4)',     4     # Record Type = '0000'
+    batch_id_a           = 'Bn$(1,1)',      5     # Batch Id - A
+    formula_type         = 'Bn$(2,1)',      6     # Formula Type (P/L/T/X/V/K)
+    prod_order_printed   = 'Bn$(3,1)',      7     # Prod Order Printed? (Y/N)
+    pkgg_order_printed   = 'Bn$(4,1)',      8     # Packaging Order Printed (Y/N)
+    lot_nos_assigned     = 'Bn$(5,1)',      9     # Lot Numbers Assigned (Y/N)
+    batching_auto_manual = 'Bn$(6,1)',     10     # Batching Auto/Manual (A/M)
+    recommit_necessary   = 'Bn$(7,1)',     11     # Recommit Necessary (Y/N)
+    produced             = 'Bn$(8,1)',     12     # Produced (Y/N/P/X)
+    type                 = 'Bn$(9,1)',     13     # Type (S/M/X)
+    spec_prod_changes    = 'Bn$(10,1)',    14     # Spec Prod Changes (Y/N)
+                                                  # (open) Bn$(11,2)
+    order_confirmed      = 'Bn$(13,1)',    16     # Order Confirmed?
+                                                  # (open) Bn$(14,7)
+    prod_no              = 'Cn$(1,8)',     18     # Product Number
+    label                = 'Cn$(9,6)',     19     # Label
+    pallets              = 'Cn$(15,4)',    20     # Pallets
+    formula_id           = 'Cn$(19,10)',   21     # Formula Code
+    formula_rev          = 'Cn$(29,3)',    22     # Formula Revision
+    prod_color           = 'Cn$(32,18)',   23     # Product Color
+    tablet_type          = 'Cn$(50,3)',    24     # Tablet Type
+    hardness_range       = 'Cn$(53,8)',    25     # Hardness Range
+    thickness            = 'Cn$(61,13)',   26     # Thickness
+    label_claim          = 'Cn$(74,5)',    27     # Label Claim
+    current_status       = 'Cn$(79,2)',    28     # Current Status
+    requested_date       = 'Cn$(81,6)',    29     # Requested Date
+    addl_so_refs         = 'Cn$(87,24)',   30     # Addl S/O Refs
+    label_name           = 'Cn$(111,40)',  31     # Label Name
+    serving_size_units   = 'Cn$(151,2)',   32     # Serving Size Units
+    bult_item_units      = 'Cn$(153,2)',   33     # Bult Item Units
+    fingoods_units       = 'Cn$(155,2)',   34     # Fin.Goods Units
+    dept_id              = 'Cn$(157,2)',   35     # Department Code
+    prod_line            = 'Cn$(159,2)',   36     # Production Line
+                                                  # (open) Cn$(161,2)
+    instruction_line_1   = 'Dn$',          38     # Instruction Line 1
+    instruction_line_2   = 'En$',          39     # Instruction Line 2
+    prod_scheduled_date  = 'Fn$(1,6)',     40     # Production Scheduled Date
+    date_lot_no_assgnd   = 'Fn$(7,6)',     41     # Date Lot No Assgnd
+    prod_date            = 'Fn$(13,6)',    42     # Production Date
+    scheduled_date       = 'Fn$(19,6)',    43     # Scheduled Date
+    warning_ids          = 'Gn$',          44     # Warning Codes
+    item_key             = 'Hn$',          45     # Item Key (Inventory)
+    lot_no_range_1       = 'In$',          46     # Lot No Range 1
+    lot_no_range_2       = 'Jn$',          47     # Lot No Range 2
+    lot_no_range_3       = 'Kn$',          48     # Lot No Range 3
+    lot_nos_produced     = 'Ln$',          49     # Lot Nos Produced
+    units_ordered        = 'An',           50     # Units Ordered
+    prod_qty             = 'Bn',           51     # Production Qty
+    no_of_batches_a      = 'Cn',           52     # Number Of Batches - A
+    no_of_batches_b      = 'Dn',           53     # Number Of Batches - B
+    batch_weight_a       = 'En',           54     # Batch Weight - A
+    batch_weight_b       = 'Fn',           55     # Batch Weight - B
+    batch_size           = 'Gn',           56     # Batch Size (Units) - A
+    batch_size           = 'Hn',           57     # Batch Size (Units) - B
+    weight_10            = 'In',           58     # Weight/10
+                                                  # (open) Jn
+    fg_qty_to_use        = 'Kn',           60     # F.G. Qty To Use
+    units_produced       = 'Ln',           61     # Units Produced
+    no_of_lots_produced  = 'Mn',           62     # No Of Lots Produced
+    qty_on_order         = 'Nn',           63     # Qty On Order
+
+
+class F329(FISenum):
+    """
+    IFPP1 - SALES ORDER PRODUCTION PENDING - DETAIL
+    """
+    #
+    _init_ = "value sequence"
+    _order_ = lambda m: m.sequence
+    #
+    company_id             = 'An$(1,2)',    0     # Company Code
+    order_no               = 'An$(3,6)',    1     # Order Number
+    release_no             = 'An$(9,2)',    2     # Release No
+    sales_order_seq        = 'An$(11,3)',   3     # Sales Order Seq
+    key_type               = 'An$(14,1)',   4     # Key Type = "1"
+    formula_line_no        = 'An$(15,3)',   5     # Formula Line No
+    ingr_code_batch_1      = 'Bn$(1,8)',    6     # Ingredient Code - Batch 1
+    ingr_code_batch_2      = 'Bn$(9,8)',    7     # Ingredient Code - Batch 2
+    item_type_batch_1      = 'Cn$(1,1)',    8     # Item Type - Batch 1
+    item_type_batch_2      = 'Cn$(2,1)',    9     # Item Type - Batch 2
+                                                  # (open) Cn$(3,2)
+    units_batch_1          = 'Dn$(1,2)',   11     # Units - Batch 1
+    units_batch_2          = 'Dn$(3,2)',   12     # Units - Batch 2
+                                                  # (open) Dn$(5,2)
+                                                  # (open) Dn$(7,2)
+    desc                   = 'En$',        15     # Description (Item Or Msg)
+    label_claim            = 'Fn$',        16     # Label Claim
+    over                   = 'Gn$',        17     # % Over
+                                                  # (open) Hn$
+    pct_in_formula_batch_1 = 'A(1)',       19     # Pct In Formula - Batch 1
+    pct_in_formula_batch_2 = 'A(2)',       20     # Pct In Formula - Batch 2
+                                                  # (open) A(3)
+                                                  # (open) A(4)
+    qty_batch_1            = 'B(1)',       23     # Quantity - Batch 1
+    qty_batch_2            = 'B(2)',       24     # Quantity - Batch 2
+    qty_committed_batch_1  = 'B(3)',       25     # Qty Committed - Batch 1
+    qty_committed_batch_2  = 'B(4)',       26     # Qty Committed - Batch 2
+                                                  # (open) C(1)
+                                                  # (open) C(2)
+    wip_qty_batch_1        = 'C(3)',       29     # WIP Qty - Batch 1
+                                                  # (open) C(4)
 
 
 class F341(FISenum):
