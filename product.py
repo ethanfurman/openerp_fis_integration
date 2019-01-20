@@ -2,20 +2,15 @@ from collections import defaultdict
 from aenum import NamedTuple
 from antipathy import Path
 from dbf import Date
-from fis_integration.scripts.fis_schema import F11, F97, F135, F341
 from fnx_fs.fields import files
 from scription import Execute, OrmFile
-from VSS.BBxXlate.fisData import fisData
-from VSS.address import NameCase
 from fnx import date
 from fnx.oe import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
 from openerp import SUPERUSER_ID, CONFIG_DIR
-from openerp.addons.product.product import sanitize_ean13
 from openerp.exceptions import ERPError
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period
 from osv import osv, fields
-from scripts import recipe
 import logging
 import re
 
@@ -119,43 +114,6 @@ class product_category(xmlid, osv.Model):
         'fis_shelf_life': fields.float('Shelf life (mos)'),
         }
 
-    def fis_updates(self, cr, uid, *args):
-        _logger.info("product.category.fis_updates starting...")
-        module = 'F11'
-        xml_id_map = self.get_xml_id_map(cr, uid, module=module)
-        category_recs = dict((r.id, r) for r in self.browse(cr, uid, xml_id_map.values()))
-        category_codes = {}
-        for key, id in xml_id_map.items():
-            rec = category_recs[id]
-            category_codes[key] = dict(name=rec.name, id=rec.id, parent_id=rec.parent_id)
-        cnvz = fisData(11, keymatch='as10%s')
-        for i in (1, 2):
-            for category_rec in cnvz:
-                result = {}
-                result['xml_id'] = key = category_rec[F11.code].strip()
-                result['module'] = 'F11'
-                if len(key) != i:
-                    continue
-                name = re.sub('sunridge', 'SunRidge', category_rec[F11.desc].title(), flags=re.I)
-                if len(key) == 1:
-                    name = key + ' - ' + name.strip('- ')
-                result['name'] = name
-                if key in category_codes:
-                    result['parent_id'] = category_codes[key]['parent_id']['id']
-                    self.write(cr, uid, category_codes[key]['id'], result)
-                else:
-                    if len(key) == 1:
-                        result['parent_id'] = 2
-                    else:
-                        try:
-                            result['parent_id'] = category_codes[key[:1]]['id']
-                        except KeyError:
-                            result['parent_id'] = category_codes['9']['id']
-                    new_id = self.create(cr, uid, result)
-                    category_codes[key] = dict(name=result['name'], id=new_id, parent_id=result['parent_id'])
-        _logger.info(self._name +  " done!")
-        return True
-
 
 class product_available_at(xmlid, osv.Model):
     "tracks availablility options for products"
@@ -173,24 +131,6 @@ class product_available_at(xmlid, osv.Model):
             'Products',
             ),
         }
-
-    def fis_updates(self, cr, uid, *args):
-        _logger.info("product.available_at.auto-update starting...")
-        module = 'F97'
-        avail_codes = self.get_xml_id_map(cr, uid, module=module)
-        cnvz = fisData(97, keymatch='aa10%s')
-        for avail_rec in cnvz:
-            result = {}
-            result['xml_id'] = key = avail_rec[F97.code].upper()
-            result['module'] = module
-            result['name'] = re.sub('sunridge', 'SunRidge', avail_rec[F97.desc].title(), flags=re.I)
-            if key in avail_codes:
-                self.write(cr, uid, avail_codes[key], result)
-            else:
-                new_id = self.create(cr, uid, result)
-                avail_codes[key] = new_id
-        _logger.info(self._name + " done!")
-        return True
 
 
 class product_template(osv.Model):
@@ -571,111 +511,6 @@ class product_product(xmlid, osv.Model):
             res[record['id']] = record['xml_id'] or ("%s-%d" % (record['name'], record['id']))
         return res
 
-    def fis_updates(self, cr, uid, *args):
-        """
-        scans FIS product table and either updates product info or
-        adds new products to table
-        """
-        _logger.info("product.product.fis_updates starting...")
-        # get the full descriptions
-        desc_map = self._get_descriptions()
-        # get the tables we'll need
-        product_module = 'F135'
-        category_module = 'F11'
-        location_module = 'F97'
-        prod_cat = self.pool.get('product.category')
-        prod_avail = self.pool.get('product.available_at')
-        prod_items = self
-        ir_model_data = self.pool.get('ir.model.data')
-        # and the cleaning category
-        cleaning_cat = ir_model_data.get_object_reference(cr, uid, 'fnx_pd', 'pd_cleaning')[1]
-        # create a mapping of id -> res_id for available_at (location)
-        avail_ids = prod_avail.search(cr, uid, [('module','=',location_module)])
-        avail_recs = prod_avail.browse(cr, uid, avail_ids)
-        avail_codes = dict([(r['xml_id'], r['id']) for r in avail_recs])
-        # create a mapping of id -> res_id for categories
-        cat_ids = prod_cat.search(cr, uid, [('module','=',category_module)])
-        cat_recs = prod_cat.browse(cr, uid, cat_ids)
-        cat_codes = dict([(r.xml_id, r.id) for r in cat_recs])
-        # create a mapping of id -> res_id for product items
-        prod_xml_id_map = self.get_xml_id_map(cr, uid, module=product_module)
-        prod_recs = prod_items.browse(cr, uid, prod_xml_id_map.values())
-        synced_prods = {}
-        unsynced_prods = {}
-        for rec in prod_recs:
-            if rec.xml_id:
-                synced_prods[rec.xml_id] = rec
-            elif rec.default_code:
-                unsynced_prods[rec.default_code] = rec
-        nvty = fisData(135, keymatch='%s101000    101**')
-        cnvz = fisData(11, keymatch='as10%s')
-        # create a mapping of id -> 10- & 21- quantities
-        prod_forecast_qtys = self._get_forecast_quantities(cr, uid, [])
-        # loop 1: update all the independent data
-        for inv_rec in nvty:
-            fis_sales_rec = cnvz.get(inv_rec[F135.sales_category])
-            values = self._get_fis_values(inv_rec, fis_sales_rec)
-            key = values['xml_id']
-            values['name'] = desc_map.get(key)
-            if values['name'] is None:
-                values['name'] = values['fis_name']
-            item, _10_day, _21_day = prod_forecast_qtys.get(key) or Forecast()
-            values['fis_qty_produced'] = 0
-            values['fis_qty_consumed'] = 0
-            values['fis_qty_purchased'] = 0
-            values['fis_qty_sold'] = 0
-            values['fis_qty_available'] = values['fis_qty_on_hand']
-            values['fis_10_day_produced'] = _10_day.produced
-            values['fis_10_day_consumed'] = _10_day.consumed
-            values['fis_10_day_purchased'] = _10_day.purchased
-            values['fis_10_day_sold'] = _10_day.sold
-            values['fis_10_day_available'] = values['fis_qty_on_hand'] + sum(_10_day)
-            values['fis_21_day_produced'] = _21_day.produced
-            values['fis_21_day_consumed'] = _21_day.consumed
-            values['fis_21_day_purchased'] = _21_day.purchased
-            values['fis_21_day_sold'] = _21_day.sold
-            values['fis_21_day_available'] = values['fis_qty_on_hand'] + sum(_21_day)
-            if key.startswith('90000'):
-                values['categ_id'] = cleaning_cat
-                values['sale_ok'] = False
-                del values['avail']
-            else:
-                try:
-                    values['categ_id'] = cat_codes[values['categ_id']]
-                except KeyError:
-                    _logger.warning("Unable to add/update product %s because of missing category %r" % (key, values['categ_id']))
-                    continue
-                try:
-                    values['avail'] = avail_codes[values['avail']]
-                except KeyError:
-                    _logger.warning("Unable to add/update product %s because of missing location %r" % (key, values['avail']))
-                    continue
-            if key in synced_prods:
-                prod_rec = synced_prods[key]
-                prod_items.write(cr, uid, prod_rec['id'], values)
-            elif key in unsynced_prods:
-                prod_rec = unsynced_prods[key]
-                prod_items.write(cr, uid, prod_rec.id, values)
-            else:
-                id = prod_items.create(cr, uid, values)
-                values['trademark_state'] = 'dead'
-                prod_rec = prod_items.browse(cr, uid, [id])[0]
-                synced_prods[key] = prod_rec
-        # loop 2: update the dependent data
-        for inv_rec in nvty:
-            values = {}
-            key = inv_rec[F135.item_code]
-            values['fis_qty_makeable'] = recipe.make_on_hand(inv_rec[F135.item_code])
-            if key in synced_prods:
-                prod_rec = synced_prods[key]
-                prod_items.write(cr, uid, prod_rec['id'], values)
-            elif key in unsynced_prods:
-                prod_rec = unsynced_prods[key]
-                prod_items.write(cr, uid, prod_rec.id, values)
-        # and we're done
-        _logger.info(self._name + " done!")
-        return True
-
     def _get_descriptions(self):
         res = {}
         config = OrmFile(Path(CONFIG_DIR)/'fnx.ini', section='openerp')
@@ -696,49 +531,6 @@ class product_product(xmlid, osv.Model):
             res[item_code] = full_desc
         return res
 
-    def _get_fis_values(self, fis_nvty_rec, sales_category_rec):
-        values = {}
-        values['xml_id'] = values['default_code'] = fis_nvty_rec[F135.item_code]
-        name = NameCase(fis_nvty_rec[F135.name].strip())
-        name = re.sub('sunridge', 'SunRidge', name, flags=re.I)
-        values['fis_name'] = name
-        values['module'] = 'F135'
-        categ_id = fis_nvty_rec[F135.sales_category].strip()
-        if len(categ_id) == 2 and categ_id[0] in 'OISG':
-            categ_id = {'O':'0', 'I':'1', 'S':'5', 'G':'6'}[categ_id[0]] + categ_id[1]
-        values['categ_id'] = categ_id
-        values['ean13'] = sanitize_ean13(fis_nvty_rec[F135.ean13])
-        values['active'] = 1
-        values['sale_ok'] = 1
-        values['list_price'] = fis_nvty_rec[F135.wholesale]
-        values['avail'] = fis_nvty_rec[F135.available].upper()
-        values['fis_location'] = fis_nvty_rec[F135.storage_location]
-        sl = fis_nvty_rec[F135.shelf_life]
-        values['warranty'] = sl = float(fis_nvty_rec[F135.shelf_life] or 0.0)
-        if not sl and sales_category_rec:
-            values['warranty'] = float(sales_category_rec[F11.shelf_life] or 0.0)
-        values['fis_qty_on_hand'] = fis_nvty_rec[F135.on_hand]
-        values['trademarks'] = fis_nvty_rec[F135.trademarked].strip() or False
-        if not values['trademarks']:
-            values['trademark_state'] = False
-
-        shipped_as = fis_nvty_rec[F135.ship_size].strip()
-        if shipped_as.lower() in ('each','1 each','1/each'):
-            shipped_as = '1 each'
-        elif shipped_as:
-            first, last = [], []
-            letters = False
-            for char in shipped_as:
-                if letters or char.isalpha():
-                    last.append(char)
-                    letters = True
-                else:
-                    first.append(char)
-            if last == 'z':
-                last = 'oz'
-            shipped_as = ''.join(first).strip() + ' ' + ''.join(last).strip()
-        values['shipped_as'] = shipped_as
-        return values
 
     def _get_forecast_quantities(self, cr, uid, ids, context=None):
         data = self.read(cr, uid, [('id','!=',0)], fields=['id', 'xml_id', 'module'], context=context)
@@ -801,24 +593,6 @@ class production_line(xmlid, osv.Model):
                 }
             ),
         }
-
-    def fis_updates(self, cr, uid, *args):
-        _logger.info("fis_integration.production_line.auto-update starting...")
-        module = 'F341'
-        avail_codes = self.get_xml_id_map(cr, uid, module=module)
-        cnvz = fisData(341, keymatch='f10%s')
-        for avail_rec in cnvz:
-            result = {}
-            result['xml_id'] = key = avail_rec[F341.code].upper()
-            result['module'] = module
-            result['desc'] = re.sub('sunridge', 'SunRidge', avail_rec[F341.desc].title(), flags=re.I)
-            if key in avail_codes:
-                self.write(cr, uid, avail_codes[key], result)
-            else:
-                new_id = self.create(cr, uid, result)
-                avail_codes[key] = new_id
-        _logger.info(self._name + " done!")
-        return True
 
 
 class product_traffic(osv.Model):
