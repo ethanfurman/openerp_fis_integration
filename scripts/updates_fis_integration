@@ -218,7 +218,7 @@ def handle_nvty(method):
                     F135.item_id,
                     F135.available_key, F135.sales_cat, F135.trademarkd,
                     F135.catalog_location, F135.desc, F135.size, F135.upc_no, F135.primary_location,
-                    F135.supplier_id, F135.new_retail, F135.new_whlsl,
+                    F135.supplier_id, F135.new_retail, F135.new_whlsle,
                     ],
                 address_fields=[],
                 )
