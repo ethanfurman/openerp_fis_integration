@@ -2593,7 +2593,7 @@ def convert_nvty_rec(fis_rec):
     item.xml_id =  fis_rec[F135.item_id]
     item.module = 'F135'
     item.default_code = item.xml_id
-    name = NameCase(fis_rec[F135.descr].strip())
+    name = NameCase(fis_rec[F135.desc].strip())
     name = re.sub('sunridge', 'SunRidge', name, flags=re.I)
     item.fis_name = name
     item.active = True
