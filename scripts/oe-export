@@ -83,10 +83,14 @@ def adhoc(table, fields, to_file, domain):
     write_xls(table, q, fields, to_file)
 
 
-@Command()
+@Command(
+        table=("show exports for TABLE", )
+        )
 @Alias('list')
-def list_exports():
+def list_exports(table):
     for export in get_records(oe, 'ir.exports'):
+        if table and export.resource != table:
+            continue
         echo('%-60s [%s]' % (export.name, export.resource))
 
 # helpers
