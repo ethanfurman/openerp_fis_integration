@@ -707,7 +707,7 @@ def handle_csms(method):
         #
         old_record = old_changed_company_records[xml_id]
         new_record = new_changed_company_records[xml_id]
-        assert old_record.keys() == new_record.keys(),\
+        assert set(old_record.keys()) == set(new_record.keys()),\
                 ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
                     ('|'.join(sorted(old_record.keys())), box(str(old_record)),
                      '|'.join(sorted(new_record.keys())), box(str(new_record))))
@@ -793,7 +793,7 @@ def handle_csms(method):
         #
         old_record = old_changed_contact_records[xml_id]
         new_record = new_changed_contact_records[xml_id]
-        assert old_record.keys() == new_record.keys(),\
+        assert set(old_record.keys()) == set(new_record.keys()),\
                 ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
                     ('|'.join(sorted(old_record.keys())), box(str(old_record)),
                      '|'.join(sorted(new_record.keys())), box(str(new_record))))
@@ -1022,7 +1022,7 @@ def handle_customer_terms():
         #
         old_record = old_changed_terms_records[xml_id]
         new_record = new_changed_terms_records[xml_id]
-        assert old_record.keys() == new_record.keys(),\
+        assert set(old_record.keys()) == set(new_record.keys()),\
                 ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
                     ('|'.join(sorted(old_record.keys())), box(str(old_record)),
                      '|'.join(sorted(new_record.keys())), box(str(new_record))))
@@ -1175,7 +1175,7 @@ def handle_sales_reps():
         #
         old_record = old_changed_sales_reps[xml_id]
         new_record = new_changed_sales_reps[xml_id]
-        assert old_record.keys() == new_record.keys(),\
+        assert set(old_record.keys()) == set(new_record.keys()),\
                 ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
                     ('|'.join(sorted(old_record.keys())), box(str(old_record)),
                      '|'.join(sorted(new_record.keys())), box(str(new_record))))
@@ -1384,7 +1384,7 @@ def handle_carrier(method):
         #
         old_record = old_changed_company_records[xml_id]
         new_record = new_changed_company_records[xml_id]
-        assert old_record.keys() == new_record.keys(),\
+        assert set(old_record.keys()) == set(new_record.keys()),\
                 ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
                     ('|'.join(sorted(old_record.keys())), box(str(old_record)),
                      '|'.join(sorted(new_record.keys())), box(str(new_record))))
@@ -1660,7 +1660,7 @@ def handle_emp1(method):
         #
         old_record = old_changed_employee_records[xml_id]
         new_record = new_changed_employee_records[xml_id]
-        assert old_record.keys() == new_record.keys(),\
+        assert set(old_record.keys()) == set(new_record.keys()),\
                 ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
                     ('|'.join(sorted(old_record.keys())), box(str(old_record)),
                      '|'.join(sorted(new_record.keys())), box(str(new_record))))
@@ -1967,7 +1967,7 @@ def handle_product_category():
         #
         old_record = old_changed_category_records[xml_id]
         new_record = new_changed_category_records[xml_id]
-        assert old_record.keys() == new_record.keys(),\
+        assert set(old_record.keys()) == set(new_record.keys()),\
                 ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
                     ('|'.join(sorted(old_record.keys())), box(str(old_record)),
                      '|'.join(sorted(new_record.keys())), box(str(new_record))))
@@ -2145,7 +2145,7 @@ def handle_product_location():
         #
         old_record = old_changed_location_records[xml_id]
         new_record = new_changed_location_records[xml_id]
-        assert old_record.keys() == new_record.keys(),\
+        assert set(old_record.keys()) == set(new_record.keys()),\
                 ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
                     ('|'.join(sorted(old_record.keys())), box(str(old_record)),
                      '|'.join(sorted(new_record.keys())), box(str(new_record))))
@@ -2334,7 +2334,7 @@ def handle_supplier(method):
         new_rec.fis_updated_by_user = old_rec.fis_updated_by_user
         # for now, we don't want the FIS active status overwriting the OpenERP active status
         del new_rec.active, old_rec.active
-        assert new_rec.keys() == old_rec.keys(), box(
+        assert set(new_rec.keys()) == set(old_rec.keys()), box(
                 "keys mismatch\n---\nold record:\n%s\n---\nnew record:\n%s"
                 % (old_rec.keys(), new_rec.keys())
                 )
@@ -2375,7 +2375,7 @@ def handle_supplier(method):
         del new_rec.use_parent_address
         # for now, we don't want the FIS active status overwriting the OpenERP active status
         del new_rec.active, old_rec.active
-        assert new_rec.keys() == old_rec.keys(), '\n'+box(
+        assert set(new_rec.keys()) == set(old_rec.keys()), '\n'+box(
                 "keys mismatch\n---\nold record:\n%s\n---\nnew record:\n%s"
                 % ('\n'.join(old_rec.keys()), '\n'.join(new_rec.keys()))
                 )
@@ -2407,7 +2407,7 @@ def handle_supplier(method):
         #
         old_record = old_changed_company_records[xml_id]
         new_record = new_changed_company_records[xml_id]
-        assert old_record.keys() == new_record.keys(),\
+        assert set(old_record.keys()) == set(new_record.keys()),\
                 ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
                     ('|'.join(sorted(old_record.keys())), box(str(old_record)),
                      '|'.join(sorted(new_record.keys())), box(str(new_record))))
@@ -2480,7 +2480,7 @@ def handle_supplier(method):
         #
         old_record = old_changed_contact_records[xml_id]
         new_record = new_changed_contact_records[xml_id]
-        assert old_record.keys() == new_record.keys(),\
+        assert set(old_record.keys()) == set(new_record.keys()),\
                 ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
                     ('|'.join(sorted(old_record.keys())), box(str(old_record)),
                      '|'.join(sorted(new_record.keys())), box(str(new_record))))
