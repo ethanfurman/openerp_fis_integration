@@ -400,7 +400,7 @@ class F135(FISenum):
     substitutes             = 'Bn$(27,1)',    22     # SUBSTITUTES?
     other_pkgg              = 'Bn$(28,1)',    23     # OTHER PACKAGING?
     abc_flag                = 'Bn$(29,1)',    24     # ABC Flag
-    whlsle_tax              = 'Bn$(30,1)',    25     # Whlsle Tax?
+    whlsl_tax               = 'Bn$(30,1)',    25     # Whlsle Tax?
     catalog_section         = 'Bn$(31,4)',    26     # Catalog Section
     item_flag               = 'Bn$(35,1)',    27     # Item Flag
     supl_item               = 'Bn$(36,12)',   28     # Supl Item
@@ -491,7 +491,7 @@ class F135(FISenum):
     frght_hndlg             = 'I(20)',       113     # Frght/Hndlg
     disc_allow_amt          = 'I(21)',       114     # Disc/Allow Amt
     new_retail              = 'I(22)',       115     # New Retail
-    new_whlsle              = 'I(23)',       116     # New Whlsle
+    new_whlsl               = 'I(23)',       116     # New Whlsle
     new_landed              = 'I(24)',       117     # New Landed
     new_fob_cst             = 'I(25)',       118     # New FOB Cost
 
