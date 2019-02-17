@@ -145,6 +145,29 @@ def fis_integration(method, delete, *files, **extra):
                 error('  ', p)
             error()
 
+@Command()
+def aging():
+    aging_data = get_customer_aging('%s/customer_aging.txt' % config.network.fis_data_local_path)
+    res_partner = oe.get_model('res.partner')
+    customers = get_records(
+            oe, 'res.partner',
+            domain=[('is_customer','=',True),('xml_id','!=',False)],
+            fields=['id'],
+            )
+    for xml_id, aging in aging_data.items():
+        id = customers[xml_id]
+        res_partner.write(
+                id,
+                {
+                    'fis_credit_limit':   aging.limit,
+                    'fis_credit_current': aging.current,
+                    'fis_credit_10_days': aging.d10,
+                    'fis_credit_20_days': aging.d20,
+                    'fis_credit_30_days': aging.d30,
+                    'fis_credit_total':   aging.total,
+                    },
+                )
+
 # helpers
 #
 # For those helpers that treat 'quick' and 'full' diferently, there are two ways to calculate changes
