@@ -86,9 +86,10 @@ def fis_update(method, skip_copy, skip_update, dryrun, list_records, bw_limit, a
             files = '{path}/{pre}???? {path}/{pre}????? {path}/{pre}??????'.format(path=path, pre=pre).split()
         else:
             files = ['%s/%s%s' % (path, pre, f) for f in active_files]
-        # always add extra files
-        for filename in extra_files:
-            files.append('{path}/{name}'.format(path=path, name=filename))
+        # add extra files iff method is full
+        if method == 'full':
+            for filename in extra_files:
+                files.append('{path}/{name}'.format(path=path, name=filename))
         # and grab the files
         system('rsync --bwlimit=%d %s:%s %s/' % (bw_limit, master, ' :'.join(files), new))
         system('chown -R openerp: /FIS')
