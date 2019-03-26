@@ -2712,8 +2712,19 @@ def convert_emp1_rec(fis_rec):
     fired = fix_date(fis_rec[F74.date_terminated])
     employee.fire_date = fired and fired.strftime('%Y-%m-%d') or False
     employee.active = (not fired or hired > fired)
-    # emp_birthday = fix_date(fis_rec[F74.birth_date])
-    # employee.birthday = emp_birthday and emp_birthday.strftime('%Y-%m-%d') or False
+    # employee birth dates are stored extra weirdly: if the year is 99 or less
+    #   then the it's 19xx, but if any hex digits are present then the year is
+    #   1740 + xx
+    text = fis_rec[F74.birth_date]
+    emp_birthday = None
+    if text:
+        month, day, year = int(text[:2]), int(text[2:4]), text[4:]
+        if year.isdigit():
+            year = 1900 + int(year)
+        else:
+            year = 1740 + int(year, 16)
+        emp_birthday = '%d-%d-%d' % (year, month, day)
+    employee.birthday = emp_birthday or False
     employee.status_flag = fis_rec[F74.status_flag]
     employee.pension_plan = fis_rec[F74.pension_status].upper() == 'Y'
     employee.pay_type = ('salary', 'hourly')[fis_rec[F74.pay_type].upper() == 'H']
