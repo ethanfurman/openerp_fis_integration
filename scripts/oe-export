@@ -24,6 +24,8 @@ TEST = [
 
 TEST_DOMAIN = [('name_related','in',['Abraham S. Cohen','Aurelia Garcia'])]
 
+ALL_ACTIVE = [(1,'=',1)]
+
 @Script()
 def main():
     global oe
@@ -38,7 +40,7 @@ def main():
 @Command(
     name=('name of export', REQUIRED),
     to_file=Spec('file to store results in', REQUIRED, type=Path),
-    domain=Spec('domain to restrict record selection', OPTION, force_default=[], type=eval),
+    domain=Spec('domain to restrict record selection', OPTION, force_default=ALL_ACTIVE, type=eval),
     table=('name of OpenERP table (only needed if multiple saved exports with same name', OPTION),
     )
 def oe_export(name, to_file, domain, table):
@@ -74,7 +76,7 @@ def oe_export(name, to_file, domain, table):
     table=('name of table', REQUIRED),
     fields=('fields to extract', MULTIREQ),
     to_file=Spec('file to store results in', REQUIRED, type=Path),
-    domain=Spec('domain to restrict record selection', OPTION, force_default=[], type=eval),
+    domain=Spec('domain to restrict record selection', OPTION, force_default=ALL_ACTIVE, type=eval),
     )
 def adhoc(table, fields, to_file, domain):
     fields = list(fields)
@@ -87,7 +89,7 @@ def adhoc(table, fields, to_file, domain):
         table=("show exports for TABLE", )
         )
 @Alias('list')
-def list_exports(table):
+def list_exports(table=None):
     for export in get_records(oe, 'ir.exports'):
         if table and export.resource != table:
             continue
