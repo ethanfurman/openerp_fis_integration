@@ -149,13 +149,20 @@ def fis_integration(method, delete, *files, **extra):
 def aging():
     aging_data = get_customer_aging('%s/customer_aging.txt' % config.network.fis_data_local_path)
     res_partner = oe.get_model('res.partner')
-    customers = get_records(
-            oe, 'res.partner',
-            domain=[('is_customer','=',True),('xml_id','!=',False)],
-            fields=['id'],
-            )
+    customers = dict([
+            (r.xml_id, r.id)
+            for r in get_records(
+                oe, 'res.partner',
+                domain=[('customer','=',True),('xml_id','!=',False)],
+                fields=['id','xml_id'],
+                )])
+    not_found = []
     for xml_id, aging in aging_data.items():
-        id = customers[xml_id]
+        try:
+            id = customers[xml_id]
+        except KeyError:
+            not_found.append(xml_id)
+            continue
         res_partner.write(
                 id,
                 {
@@ -167,6 +174,7 @@ def aging():
                     'fis_credit_total':   aging.total,
                     },
                 )
+    error('unable to find OpenERP records matching: %r' % ', '.join(not_found))
 
 # helpers
 #
@@ -1628,7 +1636,7 @@ def handle_emp1(method):
                     oe, 'hr.employee',
                     domain=[('module','=','F74-emp')],
                     fields=[
-                        'id', 'module', 'xml_id', 'name', 'employment_type', 'ssnid', 'home_phone',
+                        'id', 'module', 'xml_id', 'name', 'employment_type', 'ssnid', 'birthday', 'home_phone',
                         'home_street', 'home_street2', 'home_city', 'home_state_id', 'home_zip', 'home_country_id',
                         'hire_date', 'fire_date', 'active', 'status_flag', 'pension_plan',
                         'pay_type', 'hourly_rate', 'last_raise', 'marital', 'gender', 'identification_id',
@@ -2357,10 +2365,11 @@ def handle_supplier(method):
         new_rec.fis_updated_by_user = old_rec.fis_updated_by_user
         # for now, we don't want the FIS active status overwriting the OpenERP active status
         del new_rec.active, old_rec.active
-        assert set(new_rec.keys()) == set(old_rec.keys()), box(
-                "keys mismatch\n---\nold record:\n%s\n---\nnew record:\n%s"
-                % (old_rec.keys(), new_rec.keys())
-                )
+        if set(new_rec.keys()) != set(old_rec.keys()):
+            error('old_rec: %r  -- new_rec: %r' % (type(old_rec), type(new_rec)))
+            error('old_rec._values.keys() --> %r\nnew_rec._values.keys() --> %r' % (
+                old_rec._values.keys(), new_rec._values.keys()))
+            raise AssertionError('old_rec/new_rec keys mismatch')
         if new_rec == old_rec:
             continue
         #
@@ -2368,8 +2377,9 @@ def handle_supplier(method):
         #
         old_changed_company_records[key] = old_rec
         new_changed_company_records[key] = new_rec
-    assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
-            "old and new company records mismatch"
+    if set(old_changed_company_records.keys()) != set(new_changed_company_records.keys()):
+        error('old_rec: %r  -- new_rec: %r' % (type(old_changed_company_records), type(new_changed_company_records)))
+        raise AssertionError('old_changed_company_records/new_changed_company_records keys mismatch')
     #
     print('sorting contact records into changed, new, and deleted')
     all_keys = set(new_contact_records.keys() + old_contact_records.keys())

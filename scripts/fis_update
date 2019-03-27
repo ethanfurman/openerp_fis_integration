@@ -12,6 +12,7 @@ from antipathy import Path
 from logging import getLogger, INFO, Formatter, handlers
 from pandaemonium import PidLockFile
 import os
+import time
 import updates
 updates.script_verbosity = script_verbosity
 
@@ -122,6 +123,11 @@ def fis_update(method, skip_copy, skip_update, dryrun, list_records, bw_limit, a
         FIS_mapping = updates.get_script_mapping()
         print('FIS_mapping:\n   ', '\n   '.join(['%s: %r' % (k, v) for k, v in FIS_mapping.items()]), sep='', verbose=2)
         for script, tables in sorted(FIS_mapping.items()):
+            if method == 'quick':
+                tables = set(tables) & set(files)
+            else:
+                # sync all tables for "full" update
+                tables = set(tables)
             cmd = ('/opt/bin/updates/%s --method=%s'
                 % (script,
                    method,
@@ -132,14 +138,30 @@ def fis_update(method, skip_copy, skip_update, dryrun, list_records, bw_limit, a
                 cmd += ' --list-records'
             if script_verbosity:
                 cmd += ' -' + 'v' * script_verbosity
-            if method == 'quick':
-                cmd += ' %s' % ' '.join(set(tables) & set(files))
             if extra:
                 cmd += ' %s' % ' '.join(['%s=%s' % (k, v) for k, v in sorted(extra.items())])
-            else:
-                # sync all tables for "full" update
-                cmd += ' %s' % ' '.join(set(tables))
-            system(cmd, abort_on_error)
+            # process the tables one at a time since we are having memory errors
+            # when we try to do them all at once
+            # additionally, if the command errored out due to connectivity issues, rerun
+            # the command
+            for table in tables:
+                command = '%s %s' % (cmd, table)
+                attempts = 0
+                while True:
+                    attempts += 1
+                    try:
+                        system(command, abort_on_error)
+                    except ServiceUnavailable:
+                        # wait five minutes for system to come back up
+                        if attempts > 5:
+                            # but only five times
+                            break
+                        time.sleep(420)
+                    else:
+                        break
+
+class ServiceUnavailable(Exception):
+    "presented when unable to communicate with OpenERP server"
 
 
 def system(cmd, abort_on_error=False):
@@ -167,5 +189,7 @@ def system(cmd, abort_on_error=False):
                 error('==========================================')
             if abort_on_error:
                 abort()
+            if job.returncode == Exit.Unavailable:
+                raise ServiceUnavailable
 
 Main()
