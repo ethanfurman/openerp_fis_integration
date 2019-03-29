@@ -573,8 +573,9 @@ def update_openerp(database, customers, suppliers, vendors, carriers, employees,
         subset=Spec('subset template to match many records to', ),
         code=Spec('code to match with template', force_default='', type=lambda s: s and tuple(s.split(',') or s)),
         fields=Spec('specific fields to display', MULTI, type=int),
+        counts=Spec('only show counts', FLAG, None),
         )
-def values(filenum, subset, code, fields):
+def values(filenum, subset, code, fields, counts):
     if not fields:
         abort('no FIELDS specified')
     # adjust for zero-based numbering
@@ -593,7 +594,12 @@ def values(filenum, subset, code, fields):
         for name, spec, values in table_fields:
             values.add(rec[spec])
     for name, spec, values in table_fields:
-        print('%s:  ' % name, ', '.join([repr(v) for v in sorted(values)]), verbose=0)
+        if counts:
+            print('%-23s:  %7d' % (name, len(values)), verbose=0)
+        else:
+            print('%s:  ' % name, ', '.join([repr(v) for v in sorted(values)]), verbose=0)
+    if counts:
+        print('%-23s:  %7d' % ('Total Records', len(fis_table)), verbose=0)
 
 # helpers
 
