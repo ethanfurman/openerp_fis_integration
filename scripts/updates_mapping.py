@@ -5,4 +5,5 @@
     'CNVZ': 'fis_integration',
     'EMP1': 'fis_integration',
     'NVTY': 'fis_integration',
+    'ARCI': 'fis_integration',
     }

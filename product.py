@@ -738,3 +738,17 @@ class product_trademark_class(osv.Model):
         'category': fields.char('Category', size=64, required=True),
         'description': fields.text('Class description', required=True, oldname='name'),
         }
+
+
+class product_fis2customer(osv.Model):
+    _name = 'fis_integration.customer_product_cross_reference'
+    _description = 'fis product code to customer product code (F262)'
+    _rec_name = 'key'
+
+    _columns = {
+            'key': fields.char('Key', size=13),
+            'partner_id': fields.many2one('res.partner', 'Customer'),
+            'fis_product_id': fields.many2one('product.product', 'Product'),
+            'customer_product_code': fields.char('Code', size=15),
+            }
+

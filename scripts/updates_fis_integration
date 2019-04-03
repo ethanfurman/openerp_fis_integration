@@ -7,18 +7,22 @@ from scription import *
 from aenum import Enum, NamedTuple
 from antipathy import Path
 from collections import defaultdict
-from fis_schema import F8, F11, F27, F33, F47, F65, F74, F97, F135, F163
+from fis_schema import F8, F11, F27, F33, F47, F65, F74, F97, F135, F163, F262
 from logging import INFO, getLogger, Formatter, handlers
-from openerplib import AttrDict, get_connection, get_records
+from openerplib import AttrDict, get_connection, get_records, IDEquality, PropertyNames, SetOnce
     # from traceback import format_exception
 from pandaemonium import PidLockFile
-from tools import allow_exception, combine_by_value, Model, compare_fis_records as get_changed_fis_records
+from tools import combine_by_value, Model, compare_fis_records as get_changed_fis_records
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, NameCaseReversed, PostalCode
 from VSS.BBxXlate.fisData import fisData
 from VSS.utils import fix_phone, fix_date
+from warnings import warn
+import errno
 import math
 import re
 import os
+import socket
+import traceback
 
 virtualenv = os.environ['VIRTUAL_ENV']
 logger = getLogger()
@@ -118,25 +122,33 @@ def fis_integration(method, delete, *files, **extra):
             skipped_suppliers = set()
             vendor_suppliers = {}
             vendor_codes = set()
-            with allow_exception(Exception):
-                if 'cnvz' in files:
-                    handle_carrier(method)
-                    handle_customer_terms()
-                    handle_product_category()
-                    handle_product_location()
-                    handle_sales_reps()
-            with allow_exception(Exception):
-                if 'emp1' in files:
-                    handle_emp1(method)
-            with allow_exception(Exception):
-                if 'posm' in files or 'vnms' in files:
-                    handle_supplier(method)
-            with allow_exception(Exception):
-                if 'csms' in files:
-                    handle_csms(method)
-            with allow_exception(Exception):
-                if 'nvty' in files:
-                    handle_nvty(method)
+            if 'cnvz' in files:
+                handle_carrier(method)
+                handle_customer_terms()
+                handle_product_category()
+                handle_product_location()
+                handle_sales_reps()
+            if 'emp1' in files:
+                handle_emp1(method)
+            if 'posm' in files or 'vnms' in files:
+                handle_supplier(method)
+            if 'csms' in files:
+                handle_csms(method)
+            if 'arci' in files:
+                handle_arci(method)
+            if 'nvty' in files:
+                handle_nvty(method)
+    except socket.error, s_error:
+        if s_error.errno in (
+                errno.ECONNREFUSED,
+                errno.EHOSTDOWN,
+            ):
+            raise SystemExit(Exit.Unavailable)
+        else:
+            raise SystemExit(Exit.IoError)
+    except Exception:
+        traceback.print_exc()
+        raise SystemExit(Exit.Software)
     finally:
         for m, problems in sorted(Model.errors.items()):
             error()
@@ -188,6 +200,333 @@ def aging():
 #   the conversion later when it is determined the records are actually needed
 #
 
+
+def handle_arci(method):
+    print('processing ARCI...')
+    context = {'fis-updates': True, 'active_test': False}
+    arci_mapping = Model(
+            oe.get_model('fis_integration.customer_product_cross_reference'),
+            'arci', 'F262',
+            context,
+            RAISE_ON_EXCEPTION,
+            )
+    all_oe_records = {}
+    # these are for tracking old/new versions of changed records
+    new_changed_records = {}
+    old_changed_records = {}
+    # these are for added/deleted records
+    added_records = {}
+    deleted_records = {}
+    # the counts
+    changed_count = 0
+    added_count = 0
+    deleted_count = 0
+    #
+    # get the "old" data from:
+    # - quick -> old fis file
+    # - full -> current OpenERP data
+    #
+    arci = fisData(262, subset='10')
+    print(arci.filename, verbose=2)
+    print('gathering data')
+    if method == 'quick':
+        #
+        # for a quick compare we can use the fis records as-is when looking for changes
+        #
+        arci_old = fisData(262, subset='10', data_path=config.network.fis_data_local_old_path)
+        print(arci_old.filename, verbose=2)
+        print('collecting changed records')
+        changes, added, deleted = get_changed_fis_records(
+                arci_old.values(),
+                arci.values(),
+                enum_schema=[
+                    F262.cust_no, F262.our_item_id, F262.cust_item_id,
+                    ],
+                address_fields=[],
+                )
+        #
+        # we now have the subset of records that have changed, just need to separate them
+        # into old and new
+        #
+        print('sorting changed records')
+        needed_partners = set()
+        needed_products = set()
+        for old, new, diffs in changes:
+            old_cross_ref = convert_arci_rec(old)
+            old_changed_records[old_cross_ref.key] = old_cross_ref
+            new_cross_ref = convert_arci_rec(new)
+            new_changed_records[new_cross_ref.key] = new_cross_ref
+            # changes at the FIS level don't always translate to changes at the OpenERP level
+            if old_cross_ref != new_cross_ref:
+                old_changed_records[old_cross_ref.key] = old_cross_ref
+                new_changed_records[new_cross_ref.key] = new_cross_ref
+                needed_partners.add(old_cross_ref.partner_id)
+                needed_partners.add(new_cross_ref.partner_id)
+                needed_products.add(old_cross_ref.fis_product_id)
+                needed_products.add(new_cross_ref.fis_product_id)
+            assert set(old_changed_records.keys()) == set(new_changed_records.keys()),\
+                    "old and new company records mismatch"
+        print('sorting new and deleted records')
+        for fis_rec in added:
+            new_cross_ref = convert_arci_rec(fis_rec)
+            added_records[new_cross_ref.key] = new_cross_ref
+            needed_partners.add(new_cross_ref.partner_id)
+            needed_products.add(new_cross_ref.fis_product_id)
+        for fis_rec in deleted:
+            old_cross_ref = convert_arci_rec(fis_rec)
+            deleted_records[old_cross_ref.key] = old_cross_ref
+        #
+        # now get the necessary OpenERP records
+        #
+        print('retrieving OpenERP records')
+        oe_products = dict([
+            (r.xml_id, r.id)
+            for r in get_records(
+                oe, 'product.product',
+                domain=[('xml_id','in',[p.xml_id for p in needed_products])],
+                fields=['id','xml_id'],
+                context=context,
+                )])
+        oe_partners = dict([
+            (r.xml_id, r.id)
+            for r in get_records(
+                oe, 'res.partner',
+                domain=[('xml_id','in',[p.xml_id for p in needed_partners])],
+                fields=['id','xml_id'],
+                context=context,
+                )])
+        record_keys = [
+                r.key
+                for r in
+                    old_changed_records + new_changed_records + deleted_records
+                    ]
+        all_oe_records = dict([
+                (r.key, r)
+                for r in get_records(
+                    oe, 'fis_integration.customer_product_cross_ref',
+                    domain=[('key','in',record_keys)],
+                    fields=[
+                        'id','key','partner_id','fis_product_id','customer_product_code',
+                        ],
+                    context=context,
+                    )
+                ])
+        #
+        # and update the product and partner attributes with the OpenERP ids,
+        # and the main record with its OpenERP id
+        #
+        for partner in needed_partners:
+            partner.id = oe_partners[partner.xml_id]
+        for product in needed_products:
+            product.id = oe_products[product.xml_id]
+        for key, cross_ref in old_changed_records.items():
+            cross_ref.id = all_oe_records[key].id
+        for key, cross_ref in new_changed_records.items():
+            cross_ref.id = all_oe_records[key].id
+        for key, cross_ref in deleted_records.items():
+            cross_ref.id = all_oe_records[key].id
+    elif method == 'full':
+        #
+        # when doing a full compare, we have to convert every single fis record
+        # before we can check for changes
+        #
+        all_fis_records = AttrDict()
+        needed_partners = set()
+        needed_products = set()
+        invalid_partners = set()
+        invalid_products = set()
+        for fis_rec in ProgressView(
+                iterable=arci.values(),
+                view_type='bar',
+                message = 'converting $total FIS records',
+            ):
+            new_cross_ref = convert_arci_rec(fis_rec)
+            if ' ' in new_cross_ref.partner_id.xml_id:
+                invalid_partners.add(new_cross_ref.partner_id.xml_id)
+                continue
+            needed_partners.add(new_cross_ref.partner_id)
+            needed_products.add(new_cross_ref.fis_product_id)
+            all_fis_records[new_cross_ref.key] = new_cross_ref
+        #
+        # now get the necessary OpenERP records for partner and product
+        #
+        print('retrieving OpenERP records')
+        oe_products = dict([
+            (r.xml_id, r.id)
+            for r in get_records(
+                oe, 'product.product',
+                domain=[('xml_id','in',[p.xml_id for p in needed_products])],
+                fields=['id','xml_id'],
+                context=context,
+                )])
+        oe_partners = dict([
+            (r.xml_id, r.id)
+            for r in get_records(
+                oe, 'res.partner',
+                domain=[('xml_id','in',[p.xml_id for p in needed_partners])],
+                fields=['id','xml_id'],
+                context=context,
+                )])
+        #
+        # retrieve the OpenERP records that match the ARCI module
+        #
+        all_oe_records = dict([
+                (r.key, r)
+                for r in get_records(
+                    oe, 'fis_integration.customer_product_cross_reference',
+                    domain=[(1,'=',1)],
+                    fields=[
+                        'id','key','partner_id','fis_product_id','customer_product_code',
+                        ],
+                    context=context,
+                    )
+                ])
+        #
+        # and update the product and partner attributes with the OpenERP ids
+        # and the main record with its OpenERP id
+        #
+        for partner in needed_partners:
+            id = oe_partners.get(partner.xml_id)
+            if id is None:
+                invalid_partners.add(partner.xml_id)
+                continue
+            partner.id = id
+        for product in needed_products:
+            id = oe_products.get(product.xml_id)
+            if id is None:
+                invalid_products.add(product.xml_id)
+                continue
+            product.id = id
+        for key, cross_ref in list(all_fis_records.items()):
+            if not (cross_ref.partner_id and cross_ref.fis_product_id):
+                print('removing', cross_ref.key, verbose=2)
+                all_fis_records.pop(key)
+                continue
+            oe_rec = all_oe_records.get(key)
+            if oe_rec is not None:
+                cross_ref.id = oe_rec.id
+        #
+        # now we can separate into new, changed, and deleted buckets
+        #
+        print('sorting changed, new, and deleted customer product cross-reference records')
+        all_keys = set(all_fis_records.keys() + all_oe_records.keys())
+        for key in all_keys:
+            old_rec = all_oe_records.get(key)
+            new_rec = all_fis_records.get(key)
+            print(old_rec, '---', new_rec, border='lined', sep='\n', verbose=3)
+            if old_rec is new_rec is None:
+                continue
+            if old_rec is None:
+                # only save if partner_id and fis_product_id are valid
+                if new_rec.partner_id and new_rec.fis_product_id:
+                    added_records[key] = new_rec
+                continue
+            if new_rec is None:
+                # only save if partner_id and fis_product_id are valid
+                if old_rec.partner_id and old_rec.fis_product_id:
+                    deleted_records[key] = old_rec
+                continue
+            # only save if partner_id and fis_product_id are valid
+            if new_rec == old_rec or not (
+                    new_rec.partner_id and new_rec.fis_product_id
+                    and old_rec.partner_id and old_rec.fis_product_id
+                    and old_rec.customer_product_code
+                ):
+                continue
+            #
+            # we have changes, save the records for later comparison
+            #
+            old_changed_records[key] = old_rec
+            new_changed_records[key] = new_rec
+    else:
+        abort('unknown METHOD: %r' % (method, ))
+    #
+    # at this point, all records are in AttrDict format, divided by deleted, added, and changed
+    #
+    # process changes
+    #
+    if old_changed_records:
+        print('processing customer/product cross-reference changes', border='lined')
+    assert set(old_changed_records.keys()) == set(new_changed_records.keys()),\
+            "old/new customer/product cross-reference records mismatch"
+    changed_key_ids = sorted(old_changed_records.keys())
+    if changed_key_ids:
+        for key_id in ProgressView(
+                iterable=changed_key_ids,
+                view_type='bar',
+                message='modifying $total records',
+            ):
+            #
+            # figure out the changes
+            #
+            old_record = old_changed_records[key_id]
+            new_record = new_changed_records[key_id]
+            echo(old_record, '---', new_record, sep='\n', border='box')
+            assert set(old_record.keys()) == set(new_record.keys()),\
+                    ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
+                        ('|'.join(sorted(old_record.keys())), box(str(old_record)),
+                         '|'.join(sorted(new_record.keys())), box(str(new_record))))
+            assert 'id' in old_record, box('id field missing for %r' % (key_id, ))
+            changes = AttrDict()
+            for key in old_record:
+                if old_record[key] != new_record[key]:
+                    changes[key] = new_record[key]
+            if changes:
+                changed_count += 1
+                if LIST_RECORDS:
+                    echo('  F262:%s  %s' % (key_id, new_record.key), end='  ')
+                    print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
+                    echo()
+                if not DRYRUN:
+                    arci_mapping.write(key_id, new_record.id, changes)
+    #
+    # now add new cross-reference mappings
+    #
+    if added_records:
+        for key, cross_ref in ProgressView(
+                iterable=added_records.items(),
+                view_type='bar',
+                message='adding $total records',
+            ):
+            if not DRYRUN:
+                # double-check that record doesn't already exist
+                cross_ref_id = arci_mapping.search(domain=[('key','=',key)])
+                if cross_ref_id:
+                    [cross_ref_id] = cross_ref_id
+                    arci_mapping.error('FIS ID F262:%s (%s) already exists in OpenERP' % (key, cross_ref.name))
+                    continue
+            added_count += 1
+            if LIST_RECORDS:
+                echo('  F262:%s  %s' % (key, cross_ref.key), end='  ')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in cross_ref.items()), '||', end='')
+                echo()
+            if not DRYRUN:
+                print('cross_ref: %r' % (cross_ref, ), verbose=3)
+                cross_ref_id = arci_mapping.create(key, cross_ref)
+                if not cross_ref_id:
+                    added_count -= 1
+                    warn('unable to create cross-reference for %r' % (cross_ref, ), UserWarning)
+                    continue
+                cross_ref.id = cross_ref_id
+    #
+    # delete mappings
+    #
+    if deleted_records:
+        # toss any records that don't already exist in OpenERP
+        for key, rec in sorted(deleted_records.items()):
+            if LIST_RECORDS:
+                echo('  F262:%s  %s' % (rec.id, rec.key))
+        delete_ids = [r.id for r in deleted_records.values()]
+        deleted_count = len(delete_ids)
+        if delete_ids:
+            print('deleting records', border='flag')
+            if not DRYRUN:
+                arci_mapping.delete(delete_ids, context=context)
+    #
+    print('%d mappings changed\n%d mappings added\n%d mappings %s'
+            % (changed_count, added_count, deleted_count, 'deleted'),
+            border='box',
+            )
 
 
 def handle_nvty(method):
@@ -520,6 +859,7 @@ def handle_nvty(method):
 
 
 def handle_csms(method):
+
     global sales_person_recs
     print('processing CSMS', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
@@ -2615,6 +2955,20 @@ def close_enough(old_rec, new_rec):
         return False
     return True
 
+def convert_arci_rec(fis_rec):
+    item = AttrDict()
+    cust_no = fis_rec[F262.cust_no]
+    our_item_id = fis_rec[F262.our_item_id]
+    #
+    # fis record
+    #
+    item.key = '%s-%s' % (cust_no, our_item_id)
+    item.partner_id = Partner(cust_no)
+    item.fis_product_id = Product(our_item_id)
+    item.customer_product_code = fis_rec[F262.cust_item_id] or False
+    #
+    return item
+
 def convert_nvty_rec(fis_rec):
     # some fields come from non-FIS locations or are only update once per day -- those fields will not
     # be evaluated here:
@@ -3186,6 +3540,48 @@ class Forecast(NamedTuple):
     item = 0, None, ''
     day_10 = 1, None, ForecastDetail()
     day_21 = 2, None, ForecastDetail()
+
+
+@PropertyNames
+class Partner(IDEquality):
+    """
+    create singleton object for a partner, allow fields to be set only once
+    """
+
+    xml_id = SetOnce()
+    id = SetOnce()
+    _cache = {}
+
+    def __new__(cls, xml_id):
+        if xml_id not in cls._cache:
+            obj = super(Partner, cls).__new__(cls)
+            obj.xml_id = xml_id
+            cls._cache[xml_id] = obj
+        return cls._cache[xml_id]
+
+    def __repr__(self):
+        return "%s(id=%r, xml_id=%r)" % (self.__class__.__name__, self.id, self.xml_id)
+
+
+@PropertyNames
+class Product(IDEquality):
+    """
+    create singleton object for a product, allow fields to be set only once
+    """
+
+    xml_id = SetOnce()
+    id = SetOnce()
+    _cache = {}
+
+    def __new__(cls, xml_id):
+        if xml_id not in cls._cache:
+            obj = super(Product, cls).__new__(cls)
+            obj.xml_id = xml_id
+            cls._cache[xml_id] = obj
+        return cls._cache[xml_id]
+
+    def __repr__(self):
+        return "%s(id=%r, xml_id=%r)" % (self.__class__.__name__, self.id, self.xml_id)
 
 
 # old code

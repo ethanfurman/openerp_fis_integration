@@ -617,6 +617,20 @@ class F220(FISenum):
     promo_eff_date       = 'Mn$(7,6)',    29     # Promo Eff Date
 
 
+class F262(FISenum):
+    """
+    ARCI - Customer Item Code File
+    """
+    #
+    _init_ = "value sequence"
+    _order_ = lambda m: m.sequence
+    #
+    company_id   = 'An$(1,2)',   0     # Company Code
+    cust_no      = 'An$(3,6)',   1     # Customer Number
+    our_item_id  = 'An$(9,6)',   2     # Our Item Code
+    cust_item_id = 'Bn$',        3     # Customer Item Code
+
+
 class F320(FISenum):
     """
     IFMS - FORMULA MASTER FILE
