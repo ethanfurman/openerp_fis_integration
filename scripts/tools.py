@@ -4,7 +4,7 @@ from sys import exc_info
 
 from aenum import Enum
 from dbf import Date
-from openerplib import DEFAULT_SERVER_DATE_FORMAT, Many2One, get_records
+from openerplib import DEFAULT_SERVER_DATE_FORMAT, get_records, IDEquality
 from scription import print, error
 from traceback import format_exception
 from VSS.address import PostalCode
@@ -18,7 +18,7 @@ def pfm(values):
             result[k] = False
         elif isinstance(v, Date):
             result[k] = v.strftime(DEFAULT_SERVER_DATE_FORMAT)
-        elif isinstance(v, Many2One):
+        elif isinstance(v, IDEquality):
             result[k] = v.id
         elif isinstance(v, PostalCode):
             result[k] = v.code
@@ -254,3 +254,5 @@ class allow_exception(object):
             error(format_exception(*exc_info()), border='box')
             return True
         return False
+
+
