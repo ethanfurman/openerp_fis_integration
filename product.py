@@ -746,9 +746,10 @@ class product_fis2customer(osv.Model):
     _rec_name = 'key'
 
     _columns = {
-            'key': fields.char('Key', size=13),
-            'partner_id': fields.many2one('res.partner', 'Customer'),
-            'fis_product_id': fields.many2one('product.product', 'Product'),
-            'customer_product_code': fields.char('Code', size=15),
-            }
-
+        'key': fields.char('Key', size=13, help='used to sync with FIS'),
+        'list_code': fields.char('List', size=6),
+        'fis_code': fields.char('FIS product code', size=6),
+        'partner_id': fields.many2one('res.partner', 'Customer'),
+        'fis_product_id': fields.many2one('product.product', 'Product'),
+        'customer_product_code': fields.char('Code', size=15),
+        }

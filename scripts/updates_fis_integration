@@ -306,7 +306,8 @@ def handle_arci(method):
                     oe, 'fis_integration.customer_product_cross_ref',
                     domain=[('key','in',record_keys)],
                     fields=[
-                        'id','key','partner_id','fis_product_id','customer_product_code',
+                        'id','key','list_code','fis_code',
+                        'partner_id','fis_product_id','customer_product_code',
                         ],
                     context=context,
                     )
@@ -376,7 +377,8 @@ def handle_arci(method):
                     oe, 'fis_integration.customer_product_cross_reference',
                     domain=[(1,'=',1)],
                     fields=[
-                        'id','key','partner_id','fis_product_id','customer_product_code',
+                        'id','key','list_code','fis_code',
+                        'partner_id','fis_product_id','customer_product_code',
                         ],
                     context=context,
                     )
@@ -461,7 +463,6 @@ def handle_arci(method):
             #
             old_record = old_changed_records[key_id]
             new_record = new_changed_records[key_id]
-            echo(old_record, '---', new_record, sep='\n', border='box')
             assert set(old_record.keys()) == set(new_record.keys()),\
                     ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
                         ('|'.join(sorted(old_record.keys())), box(str(old_record)),
@@ -2959,13 +2960,16 @@ def convert_arci_rec(fis_rec):
     item = AttrDict()
     cust_no = fis_rec[F262.cust_no]
     our_item_id = fis_rec[F262.our_item_id]
+    cust_item_id = fis_rec[F262.cust_item_id]
     #
     # fis record
     #
     item.key = '%s-%s' % (cust_no, our_item_id)
+    item.list_code = cust_no
+    item.fis_code = our_item_id
     item.partner_id = Partner(cust_no)
     item.fis_product_id = Product(our_item_id)
-    item.customer_product_code = fis_rec[F262.cust_item_id] or False
+    item.customer_product_code = cust_item_id or False
     #
     return item
 
