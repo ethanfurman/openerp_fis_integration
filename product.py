@@ -753,3 +753,68 @@ class product_fis2customer(osv.Model):
         'fis_product_id': fields.many2one('product.product', 'Product'),
         'customer_product_code': fields.char('Code', size=15),
         }
+
+class product_online_order(osv.Model):
+    _name = 'fis_integration.online_order'
+
+    _columns = {
+        'partner_id': fields.many2one('res.partner', 'Customer'),
+        'partner_crossref_list': fields.related(
+            'partner_id','fis_product_cross_ref_code',
+            string='Cross-reference list',
+            type='char',
+            size=6,
+            ),
+        'item_ids': fields.one2many('fis_integration.online_order_item', 'order_id', string='Items'),
+        }
+
+    def button_place_order(self, cr, uid, ids, context=None):
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        user = self.pool.get('res.users').browse(cr, uid, uid)
+        for order in self.browse(cr, uid, ids, context=context):
+            lines = [user.partner_id.xml_id or 'HE477']
+            for item in order.item_ids:
+                lines.append('%s - %s' % (item.product_fis_id, item.quantity))
+        with open('/home/openerp/fis_integration/orders/%s.txt' % order.id, 'w') as f:
+            f.write('\n'.join(lines))
+
+
+class product_online_order_item(osv.Model):
+    _name = 'fis_integration.online_order_item'
+
+    _columns = {
+        'order_id': fields.many2one('fis_integration.online_order', string='Order ID'),
+        'partner_product_code': fields.char('Customer product code', size=6),
+        'quantity': fields.integer('Quantity'),
+        'product_desc': fields.char('Item', size=128),
+        'product_fis_id': fields.char('FIS ID', size=6),
+        }
+
+    def onchange_partner_product_code(self, cr, uid, ids, partner_product_code, context=None):
+        result = {}
+        result['value'] = values = {}
+        cross_ref_table = self.pool.get('fis_integration.customer_product_cross_reference')
+        cross_refs = cross_ref_table.read(
+                cr, uid,
+                [('list_code','=','HE447'),('customer_product_code','=',partner_product_code)],
+                context=context,
+                )
+        if not cross_refs:
+            result['warning'] = warning = {}
+            warning['title'] = 'Invalid item code'
+            warning['message'] = 'The product code %r was not found in our system' % (partner_product_code, )
+            values['partner_product_code'] = False
+            return result
+        product_product = self.pool.get('product.product')
+        product_id = cross_refs[0]['fis_product_id'][0]
+        products = product_product.read(cr, uid, [product_id], fields=['id','xml_id','name'], context=context)
+        if not products:
+            result['warning'] = warning = {}
+            warning['title'] = 'Broken item code link'
+            warning['message'] = 'The product link %r was not found in our system' % (product_id, )
+            values['partner_product_code'] = False
+            return result
+        values['product_desc'] = products[0]['name']
+        values['product_fis_id'] = products[0]['xml_id']
+        return result

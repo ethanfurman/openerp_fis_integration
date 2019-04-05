@@ -388,6 +388,30 @@
 
         ~report model='fis_integration.product_traffic' name='fis_integration.product_traffic.selected_records' header='True' auto='True' multi='True' xml='fis_integration/report/product-traffic.xml' xsl='fis_integration/report/product-traffic.xsl' $Product_Traffic #report_fis_integration_product_traffic
 
+        ~record #fis_integration_online_order_form model='ir.ui.view'
+            @name: Online Orders
+            @model: fis_integration.online_order
+            @arch type='xml'
+                ~form $Online_Order version='7.0'
+                    @item_ids nolabel='1'
+                        ~tree editable='bottom' $New_Order
+                            @partner_product_code $Item on_change="onchange_partner_product_code(partner_product_code)"
+                            @quantity
+                            @product_desc readonly='1'
+                            @product_fis_id invisible='1'
+                    ~button @button_place_order $Place_Order type='object' .oe_highlight
+
+        ~record #fis_integration_online_order_action model='ir.actions.act_window'
+            @name: Online Order
+            @type: ir.actions.act_window
+            @res_model: fis_integration.online_order
+            @view_type: form
+            @view_mode: form
+            @target: new
+            @domain: [('id','=',False)]
+
+        ~menuitem name='Online Order' #fis_integration_online_order parent='base.menu_sales' action='fis_integration_online_order_action'
+
     ~data noupdate='1'
 
         // Scheduled jobs, OpenERP
