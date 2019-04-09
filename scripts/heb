@@ -1,0 +1,60 @@
+#!/usr/local/bin/suid-python  --virtualenv
+from __future__ import print_function
+
+from antipathy import Path
+from openerplib import get_connection, get_records
+from scription import *
+
+import os
+import re
+
+virtualenv = os.environ['VIRTUAL_ENV']
+HEB = re.compile("(HE\d\d\d|HEBCE|HECUL|HEBSA)")
+
+@Command()
+def heb():
+    """
+    creates matching logins for HEB partners
+    """
+    config = OrmFile('%s/config/fnx.ini' % virtualenv, types={'_path': Path})
+    oe = config.openerp
+    oe = get_connection(hostname=oe.host, database=oe.db, login=oe.user, password=oe.pw)
+    res_users = oe.get_model('res.users')
+    res_partner = oe.get_model('res.partner')
+    added = skipped = 0
+    try:
+        for partner in get_records(
+                res_partner,
+                domain=[('xml_id','like','HE'),('active','=',True)],
+                fields=['id','xml_id','name','customer','image','is_company'],
+                context={'active_test': False},
+            ):
+            if not HEB.match(partner.xml_id):
+                continue
+            # calculate login/password
+            code = partner.name.split()[1]
+            login = 'HE' + code
+            password = '150' + code
+            # check login doesn't exist
+            user = get_records(
+                    res_users,
+                    domain=[('login','=',login)],
+                    fields=['id'],
+                    context={'active_test': False},
+                    )
+            if user:
+                skipped += 1
+                continue
+            # create login (separate from the partner account)
+            res_users.create({
+                'name': partner.name,
+                'login': login,
+                'password': password,
+                'fis_product_cross_ref_code': 'HE477',
+                })
+            added += 1
+    finally:
+        echo('skipped:', skipped)
+        echo('added:  ', added)
+
+Main()
