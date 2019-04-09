@@ -392,13 +392,11 @@
             @name: Online Orders
             @model: fis_integration.online_order
             @arch type='xml'
-                ~form $Online_Order version='7.0'
+                ~form $Online_Order version='7.0' setup="onload()"
                     @item_ids nolabel='1'
                         ~tree editable='bottom' $New_Order
-                            @partner_product_code $Item on_change="onchange_partner_product_code(partner_product_code)"
+                            @partner_product_id $Item
                             @quantity
-                            @product_desc readonly='1'
-                            @product_fis_id invisible='1'
                     ~button @button_place_order $Place_Order type='object' .oe_highlight
 
         ~record #fis_integration_online_order_action model='ir.actions.act_window'
