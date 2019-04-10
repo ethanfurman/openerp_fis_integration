@@ -825,14 +825,13 @@ class product_online_order(osv.Model):
         if isinstance(ids, (int, long)):
             ids = [ids]
         user = self.pool.get('res.users').browse(cr, uid, uid, context=context)
-        for order in self.browse(cr, uid, ids, context=context):
+        for order in self.browse(cr, SUPERUSER_ID, ids, context=context):
             lines = [user.login]
             for item in order.item_ids:
                 lines.append('%s - %s' % (item.partner_product_id.fis_product_id.xml_id, item.quantity))
         with open('/home/openerp/var/fis_integration/orders/%s.txt' % order.id, 'w') as f:
             f.write('\n'.join(lines))
             f.write('\n')
-
 
 class product_online_order_item(osv.Model):
     _name = 'fis_integration.online_order_item'
