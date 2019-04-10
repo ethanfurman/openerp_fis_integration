@@ -832,6 +832,10 @@ class product_online_order(osv.Model):
         with open('/home/openerp/var/fis_integration/orders/%s.txt' % order.id, 'w') as f:
             f.write('\n'.join(lines))
             f.write('\n')
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'home',
+            }
 
 class product_online_order_item(osv.Model):
     _name = 'fis_integration.online_order_item'
