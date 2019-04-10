@@ -2,7 +2,6 @@
 from __future__ import print_function, unicode_literals
 
 from scription import *
-from aenum import Enum
 from collections import defaultdict
 from itertools import cycle
 from openerplib import get_connection, get_records
@@ -502,7 +501,8 @@ def schema(filenum, output, number):
         abort('unknown output type: %s' % output)
 
 
-@Command()
+@Command(
+        )
 def tables():
     "list FIS tables"
     keys = [k for k in fd.tables.keys() if isinstance(k, (int,long))]
@@ -1466,7 +1466,7 @@ if env.abbr == 'whc':
         committed               = 'I(7)',        0.8   #  56: Quantity Committed
         on_order                = 'I(8)',        0.9   #  57: Quantity on order
 
-    class F140(str, Enum):
+    class F140(FISenum):
         """
         CSMSB - CUSTOMER MASTER FILE - DEFAULT SHIP-TO
         """
