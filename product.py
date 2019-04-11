@@ -829,7 +829,7 @@ class product_online_order(osv.Model):
             lines = [user.login]
             for item in order.item_ids:
                 lines.append('%s - %s' % (item.partner_product_id.fis_product_id.xml_id, item.quantity))
-        with open('/home/openerp/var/fis_integration/orders/%s.txt' % order.id, 'w') as f:
+        with open('/home/openerp/sandbox/openerp/var/fis_integration/orders/%s.txt' % order.id, 'w') as f:
             f.write('\n'.join(lines))
             f.write('\n')
         return {
