@@ -1450,7 +1450,7 @@ if env.abbr == 'whc':
     class F97(FISenum):
         "Inventory Availablility Code"
         code = 'An$(5,1)',  0.1
-        desc = 'Bn$',       0,2
+        desc = 'Bn$',       0.2
 
     class F135(FISenum):
         """
