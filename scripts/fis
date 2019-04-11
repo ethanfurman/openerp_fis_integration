@@ -1496,6 +1496,44 @@ if env.abbr == 'whc':
         fax_no            = 'Gn$(16,15)',  8   #   8: FAX Number
         vendor_no         = 'In$(10,6)',  23   #  23: VENDOR NUMBER
 
+    class F250(FISenum):
+        """
+        NVBA - INVENTORY LOT CONTROL FILE MAINTENANCE &
+        """
+        #
+        _init_ = "value sequence"
+        _order_ = lambda m: m.sequence
+        #
+        company_id               = 'An$(1,2)',     0     # Company Code
+        item_id                  = 'An$(3,8)',     1     # Item Code
+                                                         # (open) An$(11,4)
+        wrhse_id                 = 'An$(15,4)',    3     # Warehouse Code
+        lot_no                   = 'An$(19,8)',    4     # Lot Number
+        prod_receipt_date        = 'Bn$(1,6)',     5     # Production/Receipt Date
+        hold_date                = 'Bn$(7,6)',     6     # Hold Date
+                                                         # (open) Bn$(13,6)
+        tag_type_id              = 'Cn$(1,2)',     8     # Tag Type Code
+        random_weights           = 'Cn$(3,1)',     9     # Random Weights (Y,sp=no)
+        pack_type                = 'Cn$(4,2)',    10     # Pack Type
+        status_code              = 'Cn$(6,1)',    11     # Status Code (sp/H/C)
+        hold_reason_id           = 'Cn$(7,2)',    12     # Hold Reason Code
+        location                 = 'Cn$(9,2)',    13     # Location
+        comments_part_1          = 'Cn$(11,20)',  14     # Comments Part 1
+        reference_no             = 'Cn$(31,8)',   15     # Reference Number
+        bin_no                   = 'Cn$(39,6)',   16     # Bin Number
+        publ_whse_lot_no         = 'Cn$(44,15)',  17     # Publ Whse Lot No
+        comments_part_2          = 'Cn$(59,30)',  18     # Comments Part 2
+        qty_on_hand              = 'Q(0)',        19     # Quantity on Hand
+        qty_committed            = 'Q(1)',        20     # Quantity Committed
+        qty_on_order             = 'Q(2)',        21     # Quantity on Order
+        standard_lot_cst         = 'Q(3)',        22     # Standard Lot Cost
+        qty_produced             = 'Q(4)',        23     # Quantity Produced
+        qty_on_hold              = 'Q(5)',        24     # Quantity on Hold
+        standard_pack_in_lbs     = 'Q(6)',        25     # Standard Pack in Lbs
+        piece_count              = 'Q(7)',        26     # Piece Count
+        total_net_weight_on_hand = 'Q(8)',        27     # Total Net Weight on Hand
+        beg_bal                  = 'Q(9)',        28     # Beg Bal (temp)
+        net_movement             = 'Q(10)',       29     # Net movement(temp)
 
     class F341(FISenum):
         "Production Line Master"
