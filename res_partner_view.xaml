@@ -39,6 +39,7 @@
                     ~attribute @on_change: onchange_type(is_company, specials_notification, sn_catalog_type, sn_specials_type)
                 @category_id position='after'
                     @keyword_ids widget='many2many_tags' placeholder='Keywords...'
+                @active position='remove'
                 @website position='after'
                     @active groups="base.group_sale_manager"
                     @xml_id readonly='1'
@@ -69,11 +70,11 @@
                                     ~th : 30 Days
                                     ~th : Total
                                 ~tr
-                                    ~td : @fis_credit_current nolabel='1'
-                                    ~td : @fis_credit_10_days nolabel='1'
-                                    ~td : @fis_credit_20_days nolabel='1'
-                                    ~td : @fis_credit_30_days nolabel='1'
-                                    ~td : @fis_credit_total nolabel='1'
+                                    ~td : ~field @fis_credit_current nolabel='1'
+                                    ~td : ~field @fis_credit_10_days nolabel='1'
+                                    ~td : ~field @fis_credit_20_days nolabel='1'
+                                    ~td : ~field @fis_credit_30_days nolabel='1'
+                                    ~td : ~field @fis_credit_total nolabel='1'
                 ~xpath expr="//page[@string='Internal Notes']" position='inside'
                     ~group
                         ~group
