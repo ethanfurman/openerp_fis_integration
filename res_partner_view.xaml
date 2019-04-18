@@ -75,6 +75,8 @@
                                     ~td : ~field @fis_credit_20_days nolabel='1'
                                     ~td : ~field @fis_credit_30_days nolabel='1'
                                     ~td : ~field @fis_credit_total nolabel='1'
+                ~xpath expr="//page[@string='Internal Notes']" position='attributes'
+                    ~attribute @groups: base.group_sale_salesman
                 ~xpath expr="//page[@string='Internal Notes']" position='inside'
                     ~group
                         ~group
