@@ -752,22 +752,23 @@ class product_fis2customer(osv.Model):
         product = self.pool.get('product.product')
         cross_refs = self.read(
                 cr, uid, ids,
-                fields=['id','customer_product_code','fis_product_id','fis_code'],
+                fields=['id','customer_product_code','fis_product_id','fis_code','fis_product_size'],
                 context=context,
                 )
         product_ids = [d['fis_product_id'][0] for d in cross_refs]
         products = dict([
-            (p['xml_id'], p['name'])
+            (p['xml_id'], p)
             for p in product.read(
                 cr, uid, product_ids,
-                fields=['id','xml_id','name'],
+                fields=['id','xml_id','name','fis_shipping_size'],
                 context=context,
                 )])
         for ref in cross_refs:
-            res[ref['id']] = '[%s] %s' % (
+            res[ref['id']] = ('[%s] %s - %s' % (
                     ref['customer_product_code'],
-                    products[ref['fis_code']],
-                    )
+                    products[ref['fis_code']]['name'],
+                    products[ref['fis_code']]['fis_shipping_size'],
+                    )).strip(' -')
         return res
 
     _columns = {
@@ -775,7 +776,7 @@ class product_fis2customer(osv.Model):
             _calc_name,
             string='Name',
             type='char',
-            size=128,
+            size=512,
             store={
                 'fis_integration.customer_product_cross_reference':
                     (self_ids, ['customer_product_code'], 10),
@@ -786,6 +787,12 @@ class product_fis2customer(osv.Model):
         'fis_code': fields.char('FIS product code', size=6),
         'partner_id': fields.many2one('res.partner', 'Customer'),
         'fis_product_id': fields.many2one('product.product', 'Product'),
+        'fis_product_size': fields.related(
+            'fis_product_id','fis_shipping_size',
+            string='Sold per',
+            type='char',
+            size=50,
+            ),
         'customer_product_code': fields.char('Code', size=15),
         }
 
@@ -828,7 +835,11 @@ class product_online_order(osv.Model):
         for order in self.browse(cr, SUPERUSER_ID, ids, context=context):
             lines = ['%s-150%s' % (user.login, user.login[2:])]
             for item in order.item_ids:
-                lines.append('%s - %s' % (item.partner_product_id.fis_product_id.xml_id, item.quantity))
+                lines.append('%s - %s - %s' % (
+                    item.partner_product_id.fis_product_id.xml_id,
+                    item.quantity,
+                    item.partner_product_id.fis_product_id.fis_shipping_size,
+                    ))
         with open('/home/openerp/sandbox/openerp/var/fis_integration/orders/%s.txt' % order.id, 'w') as f:
             f.write('\n'.join(lines))
             f.write('\n')
