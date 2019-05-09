@@ -395,8 +395,8 @@
                 ~form $Online_Order version='7.0' setup="onload()"
                     @item_ids nolabel='1'
                         ~tree editable='bottom' $New_Order
-                            @partner_product_id $Item
-                            @quantity
+                            @partner_product_id $Item required='1'
+                            @quantity required='1'
                     ~button @button_place_order $Place_Order type='object' .oe_highlight
 
     ~data noupdate='1'
