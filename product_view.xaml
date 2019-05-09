@@ -399,17 +399,6 @@
                             @quantity
                     ~button @button_place_order $Place_Order type='object' .oe_highlight
 
-        ~record #fis_integration_online_order_action model='ir.actions.act_window'
-            @name: Online Order
-            @type: ir.actions.act_window
-            @res_model: fis_integration.online_order
-            @view_type: form
-            @view_mode: form
-            @target: new
-            @domain: [('id','=',False)]
-
-        ~menuitem name='Online Order' #fis_integration_online_order parent='base.menu_sales' action='fis_integration_online_order_action'
-
     ~data noupdate='1'
 
         // Scheduled jobs, OpenERP
