@@ -39,9 +39,7 @@
                     ~attribute @on_change: onchange_type(is_company, specials_notification, sn_catalog_type, sn_specials_type)
                 @category_id position='after'
                     @keyword_ids widget='many2many_tags' placeholder='Keywords...'
-                @active position='remove'
                 @website position='after'
-                    @active groups="base.group_sale_manager"
                     @xml_id readonly='1'
                     @fis_valid readonly='1'
                     @specials_notification on_change="onchange_specials_notification(specials_notification, parent_id)" attrs="{'readonly':[('is_company','=',True),('xml_id','!=',False)]}"
