@@ -11,6 +11,7 @@ from openerp import SUPERUSER_ID, CONFIG_DIR
 from openerp.exceptions import ERPError
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids
 from osv import osv, fields
+from urllib import urlopen
 import logging
 import re
 
@@ -18,11 +19,6 @@ _logger = logging.getLogger(__name__)
 
 OWN_STOCK = 12  # Physical Locations / Your Company / Stock
 
-LabelLinks = (
-    "Plone/LabelDirectory/%s/%sB.bmp",
-    "Plone/LabelDirectory/%s/%sNI.bmp",
-    "Plone/LabelDirectory/%s/%sMK.bmp",
-    )
 
 class Prop65(fields.SelectionEnum):
     _order_ = 'none reproductive cancer both'
@@ -274,12 +270,36 @@ class product_product(xmlid, osv.Model):
         xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
         result = {}
         htmlContentList = []
-        for xml_id, id in xml_ids.items():
-            htmlContentList.append('''<img src="%s" width=55%% align="left"/>''' % (LabelLinks[0] % (xml_id, xml_id)))
-            htmlContentList.append('''<img src="%s" width=35%% align="right"/><br>''' % (LabelLinks[1] % (xml_id, xml_id)))
-            htmlContentList.append('''<br><img src="%s" width=100%% /><br>''' % (LabelLinks[2] % (xml_id, xml_id)))
-            result[id] = static_page_stub % "".join(htmlContentList)
+        try:
+            llc = urlopen("https://openerp.sunridgefarms.com/Plone/LabelDirectory/LabelLinkCtl")
+            try:
+                label_link_lines = llc.read().strip().split('\n')
+            finally:
+                llc.close()
+            LabelLinks = []
+            for link_line in label_link_lines:
+                LabelLinks.append([piece.strip() for piece in link_line.split(",")])
+            for xml_id, id in xml_ids.items():
+                for link, scale, align in LabelLinks:
+                    htmlContentList.append('''<img src="%s" width=%s%% align="%s"/>''' % (link % (xml_id, xml_id), scale, align))
+                result[id] = static_page_stub % "".join(htmlContentList)
+                htmlContentList[:] = []
+        except:
+            # the file doesn't yet exist or is malformed or some other error occurred
+            _logger.exception('problem reading/processing/interpolating LabelLinkCtl')
+            LabelLinks = (
+                ("Plone/LabelDirectory/%s/%sB.bmp","55","left"),
+                ("Plone/LabelDirectory/%s/%sNI.bmp","35","right"),
+                ("Plone/LabelDirectory/%s/%sMK.bmp","100","center"),
+                )
+            for xml_id, id in xml_ids.items():
+                for link, scale, align in LabelLinks:
+                    htmlContentList.append('''<img src="%s" width=%s%% align="%s"/>''' % (link % (xml_id, xml_id), scale, align))
+                result[id] = static_page_stub % "".join(htmlContentList)
+                htmlContentList[:] = []
         return result
+
+
 
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
