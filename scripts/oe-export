@@ -3,7 +3,7 @@ from __future__ import print_function
 
 import os
 from antipathy import Path
-from openerplib import get_connection, get_records, AttrDict, Query
+from openerplib import get_connection, get_records, AttrDict, Query, Many2One
 from scription import *
 import re
 
@@ -26,13 +26,16 @@ TEST_DOMAIN = [('name_related','in',['Abraham S. Cohen','Aurelia Garcia'])]
 
 ALL_ACTIVE = [(1,'=',1)]
 
-@Script()
-def main():
+@Script(
+        hostname=('host to connect to'),
+        database=('database to query'),
+        )
+def main(hostname, database):
     global oe
     cfg = OrmFile(config, types={'_path':Path})
     oe = get_connection(
-            hostname=cfg.openerp.host,
-            database=cfg.openerp.db,
+            hostname=hostname or cfg.openerp.host,
+            database=database or cfg.openerp.db,
             login=cfg.openerp.user,
             password=cfg.openerp.pw,
             )
@@ -75,14 +78,126 @@ def oe_export(name, to_file, domain, table):
 @Command(
     table=('name of table', REQUIRED),
     fields=('fields to extract', MULTIREQ),
-    to_file=Spec('file to store results in', REQUIRED, type=Path),
+    to_file=Spec('file to store results in', REQUIRED, type=Path, force_default='-'),
     domain=Spec('domain to restrict record selection', OPTION, force_default=ALL_ACTIVE, type=eval),
+    separator=Spec('print separator between lines', FLAG),
     )
-def adhoc(table, fields, to_file, domain):
+def adhoc(table, fields, to_file, domain, separator):
     fields = list(fields)
     q = Query(oe.get_model(table), domain=domain, fields=fields[:])
     #
-    write_xls(table, q, fields, to_file)
+    if to_file.endswith('.xls'):
+        write_xls(table, q, fields, to_file, separator)
+    elif to_file.endswith('.csv'):
+        write_csv(table, q, fields, to_file, separator)
+    elif to_file.endswith('.txt') or to_file == '-':
+        write_txt(table, q, fields, to_file, separator)
+    else:
+        abort('unknown file type: %r' % to_file)
+
+
+@Command(
+        command=('sql command', REQUIRED),
+        separator=('insert blank line between records', FLAG),
+        )
+def sql(command, separator):
+    "SELECT field_name [, field_name [...]] FROM table [WHERE ...] [TO file]"
+    imprimido = '-'
+    donde = []
+    command = command.strip(' ;')
+    check_command = command.lower()
+    if ';' in check_command:
+        abort('more than one command specified')
+    if not check_command.startswith('select '):
+        abort('SELECT not specified')
+    if ' from ' not in check_command:
+        abort('FROM not specified')
+    if check_command.split()[-2] == 'to':
+        imprimido = command.split()[-1]
+        check_command = ' '.join(check_command.split()[:-2])
+    command = check_command
+    #
+    # get SELECT fields
+    #
+    seleccion, resto = command.split(' from ')
+    seleccion = [s.strip(',') for s in seleccion.split()[1:]]
+    if not seleccion:
+        abort('missing fields')
+    print('SELECT:', seleccion)
+    #
+    # get FROM table
+    #
+    resto = resto.split()
+    desde, resto = resto[0], resto[1:]
+    if desde in ('', 'where'):
+        abort('missing table')
+    elif resto:
+        if resto[0] == 'where':
+            resto = resto[1:]
+            if not resto:
+                abort('missing WHERE clause')
+        else:
+            abort('too many tables')
+    print('FROM', desde)
+    # get field names if * specified
+    if seleccion == ['*']:
+        seleccion = oe.get_model(desde).fields_get().keys()[:275]
+        input('there are %d fields' % len(seleccion))
+    #
+    # and get WHERE clause
+    #
+    resto = ' '.join(resto).strip()
+    while resto:
+        # e.g. WHERE login = 'ethan'
+        #      WHERE id=201
+        #      WHERE blah is not null AND this = 'that'
+        try:
+            field, op, condition, resto = re.match(
+                    "^(\w+)\s*(is not|is|.*?)\s*('?\w+'?)\s*(.*?)\s*$",
+                    resto,
+                    ).groups()
+        except ValueError:
+            abort('malformed WHERE clause')
+        else:
+            if (
+                    condition[0] == condition[-1] == '"'
+                 or condition[0] == condition[-1] == "'"
+                 ):
+                condition = condition[1:-1]
+            elif condition == 'True':
+                condition = True
+            elif condition == 'False':
+                condition = False
+            elif condition == 'None':
+                condition = None
+            elif condition == 'null':
+                pass
+            else:
+                try:
+                    condition = int(condition)
+                except ValueError:
+                    try:
+                        condition = float(condition)
+                    except ValueError:
+                        abort('unknown data type: %r %r' % (type(condition), condition))
+            if (op, condition) == ('is', 'null'):
+                op, condition = '=', False
+            elif (op, condition) == ('is not', 'null'):
+                op, condition = '!=', False
+            donde.append((field,op,condition))
+            if resto.startswith('or '):
+                donde.insert(0, '|')
+                resto = resto[3:]
+            elif resto.startswith('and '):
+                donde.insert(0, '&')
+                resto = resto[4:]
+    print('WHERE', donde)
+    print('TO', imprimido)
+    #
+    # at this point we have the fields, the table, and possibly
+    # the output file -- hand off to adhoc()
+    #
+    adhoc(desde, seleccion, imprimido, donde or ALL_ACTIVE, separator)
 
 
 @Command(
@@ -97,18 +212,21 @@ def list_exports(table=None):
 
 # helpers
 
-def write_xls(sheet_name, query, fields, file):
+def write_xls(sheet_name, query, fields, file, separator):
     import xlwt
     workbook = xlwt.Workbook()
     worksheet = workbook.add_sheet(sheet_name)
     #
-    for i, fieldname in enumerate(fields):
-        worksheet.write(0, i, query.names[fieldname])
+    for i, field_name in enumerate(fields):
+        worksheet.write(0, i, query.names[field_name])
         worksheet.col(i).width = 8000 # around 220 pixels
         # TODO: calculate width base on column contents
     #
     i = 0
     for r in query.records:
+        print(r, verbose=2)
+        if separator:
+            i += 1
         er = ExpandedRow(fields, r)
         for row in er:
             i += 1
@@ -119,6 +237,70 @@ def write_xls(sheet_name, query, fields, file):
                     cell_value = None
                 worksheet.write(i, cell_index, cell_value)
     workbook.save(file)
+
+def write_csv(table, query, fields, file, separator):
+    lines = []
+    line = []
+    print('fields:', fields, verbose=2)
+    for field_name in fields:
+        line.append(query.names[field_name])
+    lines.append(','.join(line))
+    #
+    for r in query.records:
+        if separator:
+            lines.append('')
+        er = ExpandedRow(fields, r)
+        for row in er:
+            line = []
+            for cell_value in row:
+                if isinstance(cell_value, (list, tuple)):
+                    [cell_value] = cell_value
+                if isinstance(cell_value, basestring):
+                    cell_value = re.sub("\r", " ", cell_value)
+                    cell_value = re.sub('"', '\"', cell_value)
+                    cell_value = '"%s"' % cell_value
+                elif cell_value in (False, None):
+                    cell_value = ''
+                line.append(str(cell_value))
+            lines.append(','.join(line))
+    with open(file, 'w') as output:
+        output.write('\n'.join(lines))
+
+def write_txt(table, query, fields, file, separator):
+    lines = []
+    line = []
+    print(len(fields), fields, verbose=2)
+    for field_name in fields:
+        field_name = query.names[field_name]
+        line.append(field_name)
+    lines.append(line)
+    for r in query.records:
+        if separator:
+            lines.append(None)
+        er = ExpandedRow(fields, r)
+        for row in er:
+            line = []
+            for cell_index, cell_value in enumerate(row):
+                if isinstance(cell_value, Many2One):
+                    # cell_value = cell_value[1]
+                    pass
+                elif isinstance(cell_value, (list, tuple)):
+                    [cell_value] = cell_value
+                if isinstance(cell_value, basestring):
+                    cell_value = re.sub("\r", " ", cell_value)
+                    cell_value = re.sub('"', '\"', cell_value)
+                    cell_value = '"%s"' % cell_value
+                elif cell_value in (False, None):
+                    cell_value = ''
+                line.append(str(cell_value))
+            lines.append(line)
+    if not separator:
+        lines.insert(1, None)
+    if file == '-':
+        echo(lines, border='table')
+    else:
+        with open(file, 'w') as out:
+            echo(lines, border='table', file=out)
 
 class counter(object):
 
@@ -211,11 +393,11 @@ class ExpandedRow(object):
                         line.append(item)
                 else:
                     if len(item) > i:
-                        line.extend(item[i])
+                        line.extend([item[i]])
                         remaining = True
                     else:
                         if item:
-                            line.extend([None] * len(item[0]))
+                            line.extend([None] * len(item))
                         else:
                             line.extend([None])
             rows.append(line)
