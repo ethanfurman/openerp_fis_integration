@@ -80,11 +80,12 @@ def oe_export(name, to_file, domain, table):
     fields=('fields to extract', MULTIREQ),
     to_file=Spec('file to store results in', REQUIRED, type=Path, force_default='-'),
     domain=Spec('domain to restrict record selection', OPTION, force_default=ALL_ACTIVE, type=eval),
+    order=Spec('desired order of output', MULTI),
     separator=Spec('print separator between lines', FLAG),
     )
-def adhoc(table, fields, to_file, domain, separator):
+def adhoc(table, fields, to_file, domain, order, separator):
     fields = list(fields)
-    q = Query(oe.get_model(table), domain=domain, fields=fields[:])
+    q = Query(oe.get_model(table), domain=domain, fields=fields[:], order=order)
     #
     if to_file.endswith('.xls'):
         write_xls(table, q, fields, to_file, separator)
@@ -101,15 +102,63 @@ def adhoc(table, fields, to_file, domain, separator):
         separator=('insert blank line between records', FLAG),
         )
 def sql(command, separator):
-    "SELECT field_name [, field_name [...]] FROM table [WHERE ...] [TO file]"
-    imprimido = '-'
-    donde = []
+    """\
+    SELECT field_name [, field_name [, ...]]
+        FROM table
+        [WHERE ...]
+        [ORDER BY field1 [ASC|DESC] [, field2 [ASC|DESC] [, ...]]]
+        [TO file]
+
+    DESCRIBE table
+        [ORDER BY field1]
+    """
     command = command.strip(' ;')
     check_command = command.lower()
     if ';' in check_command:
         abort('more than one command specified')
-    if not check_command.startswith('select '):
-        abort('SELECT not specified')
+    if check_command.startswith('select '):
+        sql_select(command, separator)
+    elif check_command.startswith('describe '):
+        sql_describe(command, separator)
+    else:
+        abort('one of SELECT | DESCRIBE not specified')
+
+def sql_describe(command, separator):
+    """
+    DESCRIBE table
+        [ORDER BY field1]
+    """
+    command = command.lower()
+    desde = command.split()[1]
+    if ' order by ' in command:
+        orden = command.split(' order by ')[1].strip()
+        if orden not in ('field','display','type','help'):
+            abort('ORDER BY must be one of field, display, type, or help [ %r ]')
+        sort = {
+            'field': lambda t: t[0],
+            'display': lambda t: t[1]['string'],
+            'type': lambda t: t[1]['type'],
+            'help': lambda t: t[1]['help'],
+            }[orden]
+    else:
+        sort = lambda t: t[0]
+    seleccion = sorted(oe.get_model(desde).fields_get().items(), key=sort)
+    table = [('Field','Display','Type','Help'), None]
+    for field, desc in seleccion:
+        table.append((field, desc['string'], desc['type'], desc.get('help','').replace('\n','  ')))
+    echo(table, border='table')
+
+def sql_select(command, separator):
+    """\
+    SELECT field_name [, field_name [, ...]]
+        FROM table
+        [WHERE ...]
+        [ORDER BY field1 [ASC|DESC] [, field2 [ASC|DESC] [, ...]]]
+        [TO file]
+    """
+    imprimido = '-'
+    donde = []
+    check_command = command.lower()
     if ' from ' not in check_command:
         abort('FROM not specified')
     if check_command.split()[-2] == 'to':
@@ -129,32 +178,38 @@ def sql(command, separator):
     #
     resto = resto.split()
     desde, resto = resto[0], resto[1:]
-    if desde in ('', 'where'):
+    if desde in ('', 'where', 'order'):
         abort('missing table')
     elif resto:
         if resto[0] == 'where':
             resto = resto[1:]
-            if not resto:
+            if not resto or resto[:2] == ['order','by']:
                 abort('missing WHERE clause')
-        else:
-            abort('too many tables')
+            resto = ' '.join(resto)
+            donde, orden = resto.split(' order by ')
+            donde = donde.strip()
+            orden = orden.strip()
+            resto = []
+        if resto[:2] == ['order','by']:
+            orden = ' '.join(resto[2:])
+            resto = []
+        if resto:
+            abort('malformed query')
     print('FROM', desde)
     # get field names if * specified
     if seleccion == ['*']:
         seleccion = oe.get_model(desde).fields_get().keys()[:275]
-        input('there are %d fields' % len(seleccion))
     #
     # and get WHERE clause
     #
-    resto = ' '.join(resto).strip()
-    while resto:
+    while donde:
         # e.g. WHERE login = 'ethan'
         #      WHERE id=201
         #      WHERE blah is not null AND this = 'that'
         try:
-            field, op, condition, resto = re.match(
+            field, op, condition, donde = re.match(
                     "^(\w+)\s*(is not|is|.*?)\s*('?\w+'?)\s*(.*?)\s*$",
-                    resto,
+                    donde,
                     ).groups()
         except ValueError:
             abort('malformed WHERE clause')
@@ -185,19 +240,20 @@ def sql(command, separator):
             elif (op, condition) == ('is not', 'null'):
                 op, condition = '!=', False
             donde.append((field,op,condition))
-            if resto.startswith('or '):
+            if donde.startswith('or '):
                 donde.insert(0, '|')
-                resto = resto[3:]
-            elif resto.startswith('and '):
+                donde = donde[3:]
+            elif donde.startswith('and '):
                 donde.insert(0, '&')
-                resto = resto[4:]
+                donde = donde[4:]
     print('WHERE', donde)
+    print('ORDER BY', orden)
     print('TO', imprimido)
     #
     # at this point we have the fields, the table, and possibly
     # the output file -- hand off to adhoc()
     #
-    adhoc(desde, seleccion, imprimido, donde or ALL_ACTIVE, separator)
+    adhoc(desde, seleccion, imprimido, donde or ALL_ACTIVE, orden, separator)
 
 
 @Command(
@@ -271,7 +327,7 @@ def write_txt(table, query, fields, file, separator):
     line = []
     print(len(fields), fields, verbose=2)
     for field_name in fields:
-        field_name = query.names[field_name]
+        field_name = query.names[field_name] or field_name
         line.append(field_name)
     lines.append(line)
     for r in query.records:
