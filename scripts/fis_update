@@ -167,7 +167,7 @@ class ServiceUnavailable(Exception):
 def system(cmd, abort_on_error=False):
     with user_ids(0, 0):
         print(
-                '--==[%s] running "%s" [%s] . . .: ' % (time.strftime('%H:%M:%S', time.localtime()), cmd),
+                '--==[%s] running "%s" . . .: ' % (time.strftime('%H:%M:%S', time.localtime()), cmd),
                 end='',
                 verbose=1,
                 )
