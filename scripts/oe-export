@@ -359,6 +359,7 @@ def write_txt(table, query, fields, file, unique, separator):
                 continue
             else:
                 seen.add(unique_rec)
+            print('id in rec', 'id' in r)
         print('seen:', repr(seen), verbose=3)
         if separator:
             lines.append(None)
@@ -376,13 +377,16 @@ def write_txt(table, query, fields, file, unique, separator):
                             line.append(str(cv))
                         else:
                             line.append('')
-                if isinstance(cell_value, basestring):
+                elif isinstance(cell_value, basestring):
                     cell_value = re.sub("\r", " ", cell_value)
                     cell_value = re.sub('"', '\"', cell_value)
                     cell_value = '"%s"' % cell_value
                     line.append(cell_value)
                 elif cell_value in (False, None):
                     line.append('')
+                else:
+                    line.append(str(cell_value))
+            print('line ->', line)
             lines.append(line)
     if not separator:
         lines.insert(1, None)
@@ -484,12 +488,15 @@ class ExpandedRow(object):
         #           }],
         #   'name_related': 'Vishan Vishal Dimri',
         #   'home_country_id': {'id':235, 'name':'United States', 'code':'US'},
+        print('ExpandedRow.__init__: fields ->', fields)
         rows = []
         row = []
         cache = {}
         for k, v in record.items():
+            print('checking %s -> %r' % (k, v), verbose=3)
             cache[k] = set()
             if k in fields:
+                print('  adding element ->', k, verbose=3)
                 row.append(v)
             elif any([f.startswith(k+'/') for f in fields]):
                 sub_fields = [f.split('/',1)[1] for f in fields if f.startswith(k+'/')]
@@ -510,7 +517,10 @@ class ExpandedRow(object):
                         raise TypeError('invalid type: %r [%r]' % (type(v), v))
                 else:
                     sub_row = [[None] * len(sub_fields)]
+                print('adding subrow', sub_row, verbose=3)
                 row.append(sub_row)
+            print('intermediate row ->', row, verbose=3)
+        print('final row ->', row, verbose=3)
         for i in counter():
             line = []
             remaining = False
