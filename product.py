@@ -9,7 +9,7 @@ from fnx.oe import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
 from openerp import SUPERUSER_ID, CONFIG_DIR
 from openerp.exceptions import ERPError
-from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids
+from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids, tracker
 from osv import osv, fields
 from urllib import urlopen
 import logging
@@ -816,6 +816,11 @@ class product_fis2customer(osv.Model):
         'customer_product_code': fields.char('Code', size=15),
         }
 
+    @tracker()
+    def search(self, cr, uid, args, offset=0, limit=None, order=None, context=None, count=False):
+        return super(product_fis2customer, self).search(cr, uid, args, offset=offset, limit=limit, order=order, context=context, count=count)
+
+
 class product_online_order(osv.Model):
     _name = 'fis_integration.online_order'
 
@@ -830,22 +835,36 @@ class product_online_order(osv.Model):
         'item_ids': fields.one2many(
             'fis_integration.online_order_item', 'order_id',
             string='Items',
+            # domain="[('partner_list_code','=',partner_cross_ref_list)]",
             ),
         }
 
+    @tracker()
+    def default_get(self, cr, uid, fields_list, context=None):
+        return super(product_online_order, self).default_get(cr, uid, fields_list=fields_list, context=context)
+
     def onload(self, cr, uid, ids, context=None):
+        print
+        print 'onload'
+        print
+        res = {'value': {}, 'domain': {}, }
         user = self.pool.get('res.users').browse(cr, uid, uid, context=context)
-        partner = self.pool.get('res.partner').browse(
-                cr, uid,
-                [('xml_id','=',user.login)],
-                context=context,
-                )
-        res = {}
+        # partner = self.pool.get('res.partner').browse(
+        #         cr, uid,
+        #         [('xml_id','=',user.login)],
+        #         context=context,
+        #         )
+        partner = user.partner_id
+        print partner
+        res['value']['partner_id'] = partner.id
         if partner:
-            res['domain'] = {}
-            res['domain']['item_ids'] = [
-                    ('partner_product_id','=',partner[0]['fis_product_cross_ref_code'])
-                    ]
+            res['value']['partner_crossref_list'] = partner.fis_product_cross_ref_code
+        else:
+            res['value']['partner_crossref_list'] = False
+        print
+        print 'returning:'
+        print res
+        print
         return res
 
     def button_place_order(self, cr, uid, ids, context=None):
@@ -880,8 +899,19 @@ class product_online_order_item(osv.Model):
             'fis_integration.customer_product_cross_reference',
             string='Product',
             ),
+        'partner_list_code': fields.related(
+            'partner_product_id', 'list_code',
+            string='List',
+            type='char',
+            size=6,
+            ),
         'partner_product_code': fields.char('Customer product code', size=6),
         'quantity': fields.integer('Quantity'),
         'product_desc': fields.char('Item', size=128),
         'product_fis_id': fields.char('FIS ID', size=6),
         }
+
+    @tracker()
+    def default_get(self, cr, uid, fields_list, context=None):
+        return super(product_online_order_item, self).default_get(cr, uid, fields_list=fields_list, context=context)
+

@@ -203,7 +203,7 @@ class res_partner(xmlid, osv.Model):
         'fis_credit_30_days': fields.float('30 Day Balance'),
         'fis_credit_total': fields.float('Total Balance'),
         'fis_price_list': fields.char('Price list code', size=1),
-        'fis_product_cross_ref_code': fields.char('Product cross-reference list code', size=6),
+        'fis_product_cross_ref_code': fields.char('Online Order Code', size=6),
         'fis_org_cert': fields.boolean(
             'Organic Cert?',
             ),

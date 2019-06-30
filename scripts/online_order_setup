@@ -69,4 +69,45 @@ def heb():
         echo('skipped:', skipped)
         echo('added:  ', added)
 
+
+@Command()
+def add_products():
+    "add missing products to fis_integration.customer_product_cross_reference"
+    config = OrmFile('%s/config/fnx.ini' % virtualenv, types={'_path': Path})
+    oe = config.openerp
+    oe = get_connection(hostname=oe.host, database=oe.db, login=oe.user, password=oe.pw)
+    cprf = oe.get_model('fis_integration.customer_product_cross_reference')
+    cross_ref = dict([
+        (r.key, r)
+        for r in get_records(cprf)
+        ])
+    added = skipped = 0
+    try:
+        for product in get_records(
+                oe,
+                'product.product',
+                fields=['xml_id', 'name'],
+                domain=(['sale_ok','=',True],),
+                ):
+            key = 'dflt-%s' % product.xml_id
+            cr = cross_ref.get(key)
+            if cr is not None:
+                skipped += 1
+            else:
+                # only handle adding missing products
+                cr = dict(
+                        key=key,
+                        fis_code=product.xml_id,
+                        customer_product_code=product.xml_id,
+                        list_code='dflt',
+                        partner_id=False,
+                        fis_product_id=product.id
+                        )
+                cprf.create(cr)
+                added += 1
+    finally:
+        echo('skipped:', skipped)
+        echo('added:  ', added)
+
+
 Main()
