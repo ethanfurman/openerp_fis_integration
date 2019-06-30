@@ -157,6 +157,8 @@ def sql_select(command, separator):
         [TO file]
     """
     imprimido = '-'
+    orden = ''
+    clausa = ''
     donde = []
     check_command = command.lower()
     if ' from ' not in check_command:
@@ -186,8 +188,11 @@ def sql_select(command, separator):
             if not resto or resto[:2] == ['order','by']:
                 abort('missing WHERE clause')
             resto = ' '.join(resto)
-            donde, orden = resto.split(' order by ')
-            donde = donde.strip()
+            if ' order by ' in resto:
+                clausa, orden = resto.split(' order by ')
+            else:
+                clausa = resto
+            clausa = clausa.strip()
             orden = orden.strip()
             resto = []
         if resto[:2] == ['order','by']:
@@ -202,15 +207,19 @@ def sql_select(command, separator):
     #
     # and get WHERE clause
     #
-    while donde:
+    while clausa:
         # e.g. WHERE login = 'ethan'
         #      WHERE id=201
         #      WHERE blah is not null AND this = 'that'
+        print('clausa', clausa, verbose=2)
         try:
-            field, op, condition, donde = re.match(
+            field, op, condition, clausa = re.match(
                     "^(\w+)\s*(is not|is|like|not like|ilike|not ilike|=|<|>|<=|>=|!=)\s*('?.*(?<!\\')?|.*?)\s*(.*?)\s*$",
-                    donde,
+                    clausa,
                     ).groups()
+            print('\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (field, op, condition, clausa), verbose=2)
+            if not (field and op and condition):
+                raise ValueError
         except ValueError:
             abort('malformed WHERE clause')
         else:
@@ -240,12 +249,12 @@ def sql_select(command, separator):
             elif (op, condition) == ('is not', 'null'):
                 op, condition = '!=', False
             donde.append((field,op,condition))
-            if donde.startswith('or '):
+            if clausa.startswith('or '):
                 donde.insert(0, '|')
-                donde = donde[3:]
-            elif donde.startswith('and '):
+                clausa = clausa[3:]
+            elif clausa.startswith('and '):
                 donde.insert(0, '&')
-                donde = donde[4:]
+                clausa = clausa[4:]
     print('WHERE', donde)
     print('ORDER BY', orden)
     print('TO', imprimido)
