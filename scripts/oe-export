@@ -288,49 +288,103 @@ def list_exports(table=None):
 
 # helpers
 
-def write_xls(sheet_name, query, fields, file, distinct, separator):
+def write_xls(sheet_name, query, fields, file, unique, separator):
     import xlwt
     workbook = xlwt.Workbook()
     worksheet = workbook.add_sheet(sheet_name)
     #
     for i, field_name in enumerate(fields):
-        worksheet.write(0, i, query.names[field_name])
+        worksheet.write(0, i, query.names[field_name] or field_name)
         worksheet.col(i).width = 8000 # around 220 pixels
         # TODO: calculate width base on column contents
     #
+    seen = set()
     i = 0
     for r in query.records:
         print(r, verbose=2)
+        if unique:
+            unique_rec = distinct(r)
+            print('checking record:', repr(unique_rec._hash), verbose=3)
+            if unique_rec in seen:
+                continue
+            else:
+                seen.add(unique_rec)
+        print('seen:', repr(seen), verbose=3)
         if separator:
             i += 1
         er = ExpandedRow(fields, r)
         for row in er:
             i += 1
+            ci_bump = 0
             for cell_index, cell_value in enumerate(row):
-                if isinstance(cell_value, basestring):
+                if isinstance(cell_value, Many2One):
+                    # cell_value = cell_value[1]
+                    print('skipping m2o', cell_value, verbose=3)
+                elif isinstance(cell_value, (list, tuple)):
+                    print('cell_value ->', cell_value, verbose=3)
+                    for cv in cell_value:
+                        if cv:
+                            cv = re.sub("\r", " ", cv)
+                            cv = re.sub('"', '\"', cv)
+                            cv = '%s' % cv
+                            worksheet.write(i, cell_index+ci_bump, cv)
+                        else:
+                            worksheet.write(i, cell_index+ci_bump, '')
+                        ci_bump += 1
+                    continue
+                elif isinstance(cell_value, basestring):
                     cell_value = re.sub("\r", " ", cell_value)
-                if cell_value is False:
-                    cell_value = None
+                    cell_value = re.sub('"', '\"', cell_value)
+                    cell_value = '%s' % cell_value
+                elif cell_value in (False, None):
+                    cell_value = ''
+                elif cell_value is True:
+                    cell_value = 'True'
                 worksheet.write(i, cell_index, cell_value)
     workbook.save(file)
 
-def write_csv(table, query, fields, file, distinct, separator):
+def write_csv(table, query, fields, file, unique, separator):
     lines = []
     line = []
-    print('fields:', fields, verbose=2)
+    print('field count:', len(fields), fields, verbose=2)
     for field_name in fields:
-        line.append(query.names[field_name])
+        line.append(field_name)
+    print(repr(line), verbose=3)
     lines.append(','.join(line))
     #
+    seen = set()
     for r in query.records:
+        if unique:
+            unique_rec = distinct(r)
+            print('checking record:', repr(unique_rec._hash), verbose=3)
+            if unique_rec in seen:
+                continue
+            else:
+                seen.add(unique_rec)
+        print('seen:', repr(seen), verbose=3)
         if separator:
             lines.append('')
         er = ExpandedRow(fields, r)
         for row in er:
             line = []
             for cell_value in row:
-                if isinstance(cell_value, (list, tuple)):
-                    [cell_value] = cell_value
+                if isinstance(cell_value, Many2One):
+                    # cell_value = cell_value[1]
+                    print('skipping m2o', cell_value, verbose=3)
+                elif isinstance(cell_value, (list, tuple)):
+                    print('cell_value ->', cell_value, verbose=3)
+                    for cv in cell_value:
+                        if cv:
+                            if isinstance(cv, basestring):
+                                cv = re.sub("\r", " ", cv)
+                                cv = re.sub('"', '\"', cv)
+                                cv = '"%s"' % cv
+                                line.append(cv)
+                            else:
+                                line.append(str(cv))
+                        else:
+                            line.append('')
+                    continue
                 if isinstance(cell_value, basestring):
                     cell_value = re.sub("\r", " ", cell_value)
                     cell_value = re.sub('"', '\"', cell_value)
@@ -339,6 +393,7 @@ def write_csv(table, query, fields, file, distinct, separator):
                     cell_value = ''
                 line.append(str(cell_value))
             lines.append(','.join(line))
+    print('\n'.join([repr(l) for l in lines]), verbose=3)
     with open(file, 'w') as output:
         output.write('\n'.join(lines))
 
@@ -350,6 +405,7 @@ def write_txt(table, query, fields, file, unique, separator):
         field_name = query.names[field_name] or field_name
         line.append(field_name)
     lines.append(line)
+    #
     seen = set()
     for r in query.records:
         if unique:
@@ -359,7 +415,6 @@ def write_txt(table, query, fields, file, unique, separator):
                 continue
             else:
                 seen.add(unique_rec)
-            print('id in rec', 'id' in r)
         print('seen:', repr(seen), verbose=3)
         if separator:
             lines.append(None)
