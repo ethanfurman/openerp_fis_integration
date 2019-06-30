@@ -393,12 +393,10 @@
             @model: fis_integration.online_order
             @arch type='xml'
                 ~form $Online_Order version='7.0' setup="onload()"
-                    @partner_crossref_list invisible='1'
-                    @item_ids nolabel='1' context="{'default_partner_list_code': partner_crossref_list}"
+                    @item_ids nolabel='1'
                         ~tree editable='bottom' $New_Order
-                            @partner_product_id $Item required='1' domain="[('list_code','=',partner_list_code)]" options="{'create': False, 'create_edit': False}"
+                            @partner_product_id $Item required='1'
                             @quantity required='1'
-                            @partner_list_code invisible='1'
                     ~button @button_place_order $Place_Order type='object' .oe_highlight
 
     ~data noupdate='1'
