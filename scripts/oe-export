@@ -228,6 +228,10 @@ def sql_select(command, separator):
                  or condition[0] == condition[-1] == "'"
                  ):
                 condition = condition[1:-1]
+                if op == '=':
+                    op = 'ilike'
+                elif op == '!=':
+                    op = 'not ilike'
             elif condition == 'True':
                 condition = True
             elif condition == 'False':
