@@ -208,7 +208,7 @@ def sql_select(command, separator):
         #      WHERE blah is not null AND this = 'that'
         try:
             field, op, condition, donde = re.match(
-                    "^(\w+)\s*(is not|is|.*?)\s*('?\w+'?)\s*(.*?)\s*$",
+                    "^(\w+)\s*(is not|is|like|not like|ilike|not ilike|=|<|>|<=|>=|!=)\s*('?.*(?<!\\')?|.*?)\s*(.*?)\s*$",
                     donde,
                     ).groups()
         except ValueError:
