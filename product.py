@@ -816,6 +816,7 @@ class product_fis2customer(osv.Model):
         'customer_product_code': fields.char('Code', size=15),
         }
 
+
 class product_online_order(osv.Model):
     _name = 'fis_integration.online_order'
 
@@ -834,18 +835,14 @@ class product_online_order(osv.Model):
         }
 
     def onload(self, cr, uid, ids, context=None):
+        res = {'value': {}}
         user = self.pool.get('res.users').browse(cr, uid, uid, context=context)
-        partner = self.pool.get('res.partner').browse(
-                cr, uid,
-                [('xml_id','=',user.login)],
-                context=context,
-                )
-        res = {}
+        partner = user.partner_id
+        res['value']['partner_id'] = partner.id
         if partner:
-            res['domain'] = {}
-            res['domain']['item_ids'] = [
-                    ('partner_product_id','=',partner[0]['fis_product_cross_ref_code'])
-                    ]
+            res['value']['partner_crossref_list'] = partner.fis_product_cross_ref_code or partner.xml_id
+        else:
+            res['value']['partner_crossref_list'] = False
         return res
 
     def button_place_order(self, cr, uid, ids, context=None):
@@ -880,8 +877,15 @@ class product_online_order_item(osv.Model):
             'fis_integration.customer_product_cross_reference',
             string='Product',
             ),
+        'partner_list_code': fields.related(
+            'partner_product_id', 'list_code',
+            string='List',
+            type='char',
+            size=6,
+            ),
         'partner_product_code': fields.char('Customer product code', size=6),
         'quantity': fields.integer('Quantity'),
         'product_desc': fields.char('Item', size=128),
         'product_fis_id': fields.char('FIS ID', size=6),
         }
+
