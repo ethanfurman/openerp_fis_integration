@@ -303,7 +303,7 @@ def write_xls(sheet_name, query, fields, file, distinct, separator):
         print(r, verbose=2)
         if separator:
             i += 1
-        er = ExpandedRow(fields, r, distinct)
+        er = ExpandedRow(fields, r)
         for row in er:
             i += 1
             for cell_index, cell_value in enumerate(row):
@@ -325,7 +325,7 @@ def write_csv(table, query, fields, file, distinct, separator):
     for r in query.records:
         if separator:
             lines.append('')
-        er = ExpandedRow(fields, r, distinct)
+        er = ExpandedRow(fields, r)
         for row in er:
             line = []
             for cell_value in row:
@@ -342,7 +342,7 @@ def write_csv(table, query, fields, file, distinct, separator):
     with open(file, 'w') as output:
         output.write('\n'.join(lines))
 
-def write_txt(table, query, fields, file, distinct, separator):
+def write_txt(table, query, fields, file, unique, separator):
     lines = []
     line = []
     print('field count:', len(fields), fields, verbose=2)
@@ -352,33 +352,37 @@ def write_txt(table, query, fields, file, distinct, separator):
     lines.append(line)
     seen = set()
     for r in query.records:
-        if distinct:
-            no_id = strip_id(r)
-            print('checking record:', repr(no_id), verbose=3)
-            if no_id in seen:
+        if unique:
+            unique_rec = distinct(r)
+            print('checking record:', repr(unique_rec._hash), verbose=3)
+            if unique_rec in seen:
                 continue
             else:
-                seen.add(no_id)
+                seen.add(unique_rec)
         print('seen:', repr(seen), verbose=3)
         if separator:
             lines.append(None)
-        er = ExpandedRow(fields, r, distinct)
+        er = ExpandedRow(fields, r)
         for row in er:
             line = []
             for cell_index, cell_value in enumerate(row):
                 if isinstance(cell_value, Many2One):
                     # cell_value = cell_value[1]
-                    pass
+                    print('skipping m2o', cell_value, verbose=3)
                 elif isinstance(cell_value, (list, tuple)):
-                    print('cell_value ->', cell_value)
-                    [cell_value] = cell_value
+                    print('cell_value ->', cell_value, verbose=3)
+                    for cv in cell_value:
+                        if cv:
+                            line.append(str(cv))
+                        else:
+                            line.append('')
                 if isinstance(cell_value, basestring):
                     cell_value = re.sub("\r", " ", cell_value)
                     cell_value = re.sub('"', '\"', cell_value)
                     cell_value = '"%s"' % cell_value
+                    line.append(cell_value)
                 elif cell_value in (False, None):
-                    cell_value = ''
-                line.append(str(cell_value))
+                    line.append('')
             lines.append(line)
     if not separator:
         lines.insert(1, None)
@@ -388,13 +392,43 @@ def write_txt(table, query, fields, file, distinct, separator):
         with open(file, 'w') as out:
             echo(lines, border='table', file=out)
 
-def strip_id(attr_rec):
-    new_rec = attr_rec.copy()
-    new_rec.pop('id')
-    for k, v in new_rec.items():
+def distinct(attr_rec):
+    # new_rec = attr_rec.copy()
+    # new_rec.pop('id')
+    for k, v in attr_rec.items():
         if isinstance(v, AttrDict):
-            new_rec[k] = strip_id(v)
-    return new_rec
+            attr_rec[k] = distinct(v)
+        elif isinstance(v, list):
+            unique = set()
+            for item in v:
+                unique.add(IDless(item))
+            v = tuple([item.idfull for item in unique])
+            attr_rec[k] = v
+    return IDless(attr_rec)
+
+class IDless(object):
+
+    def __init__(self, obj):
+        self.idfull = obj
+        if isinstance(obj, (AttrDict, dict)):
+            self._hash = tuple([(k, v) for k, v in sorted(obj.items()) if k != 'id'])
+        else:
+            self._hash = tuple(sorted(obj))
+
+    def __hash__(self):
+        return hash(self._hash)
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self._hash == other._hash
+
+    def __ne__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self._hash != other._hash
+
+
 
 
 class counter(object):
@@ -415,7 +449,7 @@ class counter(object):
 class ExpandedRow(object):
     "converts an ordered dict into an ordered list of lists"
 
-    def __init__(self, fields, record, distinct=False):
+    def __init__(self, fields, record):
         # fields = [
         #   'xml_id',
         #   'hr_insurance_choice_ids/year_month',
@@ -450,51 +484,32 @@ class ExpandedRow(object):
         #           }],
         #   'name_related': 'Vishan Vishal Dimri',
         #   'home_country_id': {'id':235, 'name':'United States', 'code':'US'},
-        print('----')
         rows = []
         row = []
         cache = {}
         for k, v in record.items():
-            print(k, v)
             cache[k] = set()
             if k in fields:
-                print('appending', v)
                 row.append(v)
             elif any([f.startswith(k+'/') for f in fields]):
                 sub_fields = [f.split('/',1)[1] for f in fields if f.startswith(k+'/')]
-                print('checking subfields:', sub_fields)
                 if v:
                     # many2one = dict
                     # x2many = list
-                    if isinstance(v, list):
+                    if isinstance(v, (list, tuple)):
                         sub_row = []
-                        for er in [ExpandedRow(sub_fields, w, distinct) for w in v]:
+                        for er in [ExpandedRow(sub_fields, w) for w in v]:
                             for sr in er:
-                                if distinct:
-                                    if tuple(sr) in cache[k]:
-                                        print('skipping', sr)
-                                        continue
-                                    else:
-                                        cache[k].add(tuple(sr))
                                 sub_row.append(tuple(sr))
-                        print('  1 got', sub_row)
                     elif isinstance(v, AttrDict):
                         if v:
                             sub_row = [[v[f] for f in sub_fields]]
                         else:
                             sub_row = [[None] * len(sub_fields)]
-                        print('  2 got', sub_row)
                     else:
                         raise TypeError('invalid type: %r [%r]' % (type(v), v))
                 else:
-                    # TODO: handle this case as well
                     sub_row = [[None] * len(sub_fields)]
-                if distinct:
-                    print('  ', v, 'in cache', tuple(v) in cache[k])
-                    if tuple(sub_row) in cache[k]:
-                        continue
-                    else:
-                        cache[k].add(tuple(sub_row))
                 row.append(sub_row)
         for i in counter():
             line = []
