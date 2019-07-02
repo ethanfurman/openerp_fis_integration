@@ -836,19 +836,23 @@ class product_online_order(osv.Model):
 
     def onload(self, cr, uid, ids, context=None):
         res = {'value': {}}
-        user = self.pool.get('res.users').browse(cr, uid, uid, context=context)
-        partner = user.partner_id
-        res['value']['partner_id'] = partner.id
+        res_users = self.pool.get('res.users')
+        res_partner = self.pool.get('res.partner')
+        user = res_users.browse(cr, SUPERUSER_ID, uid, context=context)
+        partner = res_partner.browse(cr, SUPERUSER_ID, [('xml_id','=',user.login)], context=context)
+        partner = partner and partner[0] or False
         if partner:
-            res['value']['partner_crossref_list'] = partner.fis_product_cross_ref_code or partner.xml_id
+            res['value']['partner_id'] = partner.id
+            res['value']['partner_crossref_list'] = partner.fis_product_cross_ref_code
         else:
+            res['value']['partner_id'] = False
             res['value']['partner_crossref_list'] = False
         return res
 
     def button_place_order(self, cr, uid, ids, context=None):
         if isinstance(ids, (int, long)):
             ids = [ids]
-        user = self.pool.get('res.users').browse(cr, uid, uid, context=context)
+        user = self.pool.get('res.users').browse(cr, SUPERUSER_ID, uid, context=context)
         for order in self.browse(cr, SUPERUSER_ID, ids, context=context):
             lines = ['%s-150%s' % (user.login, user.login[2:])]
             for item in order.item_ids:
@@ -888,4 +892,22 @@ class product_online_order_item(osv.Model):
         'product_desc': fields.char('Item', size=128),
         'product_fis_id': fields.char('FIS ID', size=6),
         }
+
+    def onchange_product(self, cr, uid, ids, partner_product_id, context=None):
+        if not partner_product_id:
+            return {
+                'value': {
+                        'partner_product_code': False,
+                        'product_desc': False,
+                        'product_fis_id': False,
+                        }
+                    }
+        cross_ref = self.pool.get('fis_integration.customer_product_cross_reference')
+        product = cross_ref.browse(cr, uid, partner_product_id, context=context)
+        value = {
+                'partner_product_code': product.customer_product_code,
+                'product_desc': product.fis_product_id.name,
+                'product_fis_id': product.fis_code,
+                }
+        return {'value': value}
 
