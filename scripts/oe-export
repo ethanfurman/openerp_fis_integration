@@ -297,7 +297,7 @@ def write_xls(sheet_name, query, fields, file, unique, separator):
     worksheet = workbook.add_sheet(sheet_name)
     #
     for i, field_name in enumerate(fields):
-        worksheet.write(0, i, query.names[field_name] or field_name)
+        worksheet.write(0, i, query.names[field_name] or field_name.upper())
         worksheet.col(i).width = 8000 # around 220 pixels
         # TODO: calculate width base on column contents
     #
@@ -321,12 +321,14 @@ def write_xls(sheet_name, query, fields, file, unique, separator):
             ci_bump = 0
             for cell_index, cell_value in enumerate(row):
                 if isinstance(cell_value, Many2One):
-                    cell_value = cell_value[1]
+                    cell_value = str(cell_value)
                     # print('skipping m2o', cell_value, verbose=3)
                 elif isinstance(cell_value, (list, tuple)):
                     print('cell_value ->', cell_value, verbose=3)
                     for cv in cell_value:
-                        if cv:
+                        if isinstance(cv, Many2One):
+                            worksheet.write(i, cell_index+ci_bump, cv)
+                        elif cv:
                             cv = re.sub("\r", " ", cv)
                             cv = re.sub('"', '\"', cv)
                             cv = '%s' % cv
@@ -372,7 +374,7 @@ def write_csv(table, query, fields, file, unique, separator):
             line = []
             for cell_value in row:
                 if isinstance(cell_value, Many2One):
-                    cell_value = cell_value[1]
+                    cell_value = str(cell_value)
                     # print('skipping m2o', cell_value, verbose=3)
                 elif isinstance(cell_value, (list, tuple)):
                     print('cell_value ->', cell_value, verbose=3)
@@ -383,16 +385,22 @@ def write_csv(table, query, fields, file, unique, separator):
                                 cv = re.sub('"', '\"', cv)
                                 cv = '"%s"' % cv
                                 line.append(cv)
+                            elif isinstance(cv, bool):
+                                line.append(str(int(cv)))
+                            elif cv is None:
+                                line.append('')
                             else:
                                 line.append(str(cv))
                         else:
                             line.append('')
                     continue
-                if isinstance(cell_value, basestring):
+                elif isinstance(cell_value, basestring):
                     cell_value = re.sub("\r", " ", cell_value)
                     cell_value = re.sub('"', '\"', cell_value)
                     cell_value = '"%s"' % cell_value
-                elif cell_value in (False, None):
+                elif isinstance(cell_value, bool):
+                    cell_value = int(cell_value)
+                elif cell_value is None:
                     cell_value = ''
                 line.append(str(cell_value))
             lines.append(','.join(line))
@@ -405,7 +413,11 @@ def write_txt(table, query, fields, file, unique, separator):
     line = []
     print('field count:', len(fields), fields, verbose=2)
     for field_name in fields:
-        field_name = query.names[field_name] or field_name
+        field_name = query.names[field_name]
+        line.append(field_name)
+    lines.append(line)
+    line = []
+    for field_name in fields:
         line.append(field_name)
     lines.append(line)
     #
@@ -427,29 +439,40 @@ def write_txt(table, query, fields, file, unique, separator):
             line = []
             for cell_index, cell_value in enumerate(row):
                 if isinstance(cell_value, Many2One):
-                    cell_value = cell_value[1]
-                    line.append(cell_value)
+                    # cell_value = cell_value[1]
+                    line.append(cell_value.essence())
                     # print('skipping m2o', cell_value, verbose=3)
                 elif isinstance(cell_value, (list, tuple)):
                     print('cell_value ->', cell_value, verbose=3)
                     for cv in cell_value:
-                        if cv:
-                            line.append(str(cv))
-                        else:
+                        if isinstance(cv, Many2One):
+                            line.append(cv.essence())
+                        elif isinstance(cv, basestring):
+                            cv = re.sub("\r", " ", cv)
+                            cv = re.sub('"', '\"', cv)
+                            cv = '%s' % cv
+                            line.append(cv)
+                        elif isinstance(cv, bool):
+                            line.append(' t'[cv])
+                        elif cv is None:
                             line.append('')
+                        else:
+                            line.append(cv)
                 elif isinstance(cell_value, basestring):
                     cell_value = re.sub("\r", " ", cell_value)
                     cell_value = re.sub('"', '\"', cell_value)
-                    cell_value = '"%s"' % cell_value
+                    cell_value = '%s' % cell_value
                     line.append(cell_value)
-                elif cell_value in (False, None):
+                elif isinstance(cell_value, bool):
+                    line.append(' t'[cell_value])
+                elif cell_value is None:
                     line.append('')
                 else:
-                    line.append(str(cell_value))
+                    line.append(cell_value)
             print('post post-process line ->', line)
             lines.append(line)
     if not separator:
-        lines.insert(1, None)
+        lines.insert(2, None)
     if file == '-':
         echo(lines, border='table')
     else:
