@@ -146,7 +146,7 @@ def sql_describe(command, separator):
     seleccion = sorted(oe.get_model(desde).fields_get().items(), key=sort)
     table = [('Field','Display','Type','Help'), None]
     for field, desc in seleccion:
-        table.append((field, desc['string'], desc['type'], desc.get('help','').replace('\n','  ')))
+        table.append((field, desc['string'], desc['type'], (desc.get('help') or '').replace('\n','  ')))
     echo(table, border='table')
 
 def sql_select(command, separator):
@@ -207,6 +207,9 @@ def sql_select(command, separator):
             resto = []
         if resto:
             abort('malformed query')
+    if seleccion == ['*']:
+        seleccion = ['id'] + sorted(oe.get_model(desde).fields_get().keys())
+        print('SELECT:', seleccion)
     print('FROM', desde)
     # get field names if * specified
     if seleccion == ['*']:
@@ -318,8 +321,8 @@ def write_xls(sheet_name, query, fields, file, unique, separator):
             ci_bump = 0
             for cell_index, cell_value in enumerate(row):
                 if isinstance(cell_value, Many2One):
-                    # cell_value = cell_value[1]
-                    print('skipping m2o', cell_value, verbose=3)
+                    cell_value = cell_value[1]
+                    # print('skipping m2o', cell_value, verbose=3)
                 elif isinstance(cell_value, (list, tuple)):
                     print('cell_value ->', cell_value, verbose=3)
                     for cv in cell_value:
@@ -369,8 +372,8 @@ def write_csv(table, query, fields, file, unique, separator):
             line = []
             for cell_value in row:
                 if isinstance(cell_value, Many2One):
-                    # cell_value = cell_value[1]
-                    print('skipping m2o', cell_value, verbose=3)
+                    cell_value = cell_value[1]
+                    # print('skipping m2o', cell_value, verbose=3)
                 elif isinstance(cell_value, (list, tuple)):
                     print('cell_value ->', cell_value, verbose=3)
                     for cv in cell_value:
@@ -420,11 +423,13 @@ def write_txt(table, query, fields, file, unique, separator):
             lines.append(None)
         er = ExpandedRow(fields, r)
         for row in er:
+            print('post pre-process row ->', row)
             line = []
             for cell_index, cell_value in enumerate(row):
                 if isinstance(cell_value, Many2One):
-                    # cell_value = cell_value[1]
-                    print('skipping m2o', cell_value, verbose=3)
+                    cell_value = cell_value[1]
+                    line.append(cell_value)
+                    # print('skipping m2o', cell_value, verbose=3)
                 elif isinstance(cell_value, (list, tuple)):
                     print('cell_value ->', cell_value, verbose=3)
                     for cv in cell_value:
@@ -441,7 +446,7 @@ def write_txt(table, query, fields, file, unique, separator):
                     line.append('')
                 else:
                     line.append(str(cell_value))
-            print('line ->', line)
+            print('post post-process line ->', line)
             lines.append(line)
     if not separator:
         lines.insert(1, None)
@@ -543,7 +548,7 @@ class ExpandedRow(object):
         #           }],
         #   'name_related': 'Vishan Vishal Dimri',
         #   'home_country_id': {'id':235, 'name':'United States', 'code':'US'},
-        print('ExpandedRow.__init__: fields ->', fields)
+        print('ExpandedRow.__init__: fields ->', fields, verbose=3)
         rows = []
         row = []
         cache = {}
@@ -596,6 +601,7 @@ class ExpandedRow(object):
                             line.extend([None] * len(item))
                         else:
                             line.extend([None])
+            print('processed row ->', line)
             rows.append(line)
             if not remaining:
                 break
