@@ -413,11 +413,6 @@ def write_txt(table, query, fields, file, unique, separator):
     line = []
     print('field count:', len(fields), fields, verbose=2)
     for field_name in fields:
-        field_name = query.names[field_name]
-        line.append(field_name)
-    lines.append(line)
-    line = []
-    for field_name in fields:
         line.append(field_name)
     lines.append(line)
     #
@@ -472,7 +467,7 @@ def write_txt(table, query, fields, file, unique, separator):
             print('post post-process line ->', line)
             lines.append(line)
     if not separator:
-        lines.insert(2, None)
+        lines.insert(1, None)
     if file == '-':
         echo(lines, border='table')
     else:
