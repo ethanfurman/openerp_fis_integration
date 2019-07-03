@@ -206,7 +206,7 @@ class res_partner(xmlid, osv.Model):
         # note: there is no direct link between a login account and the partner record it matches
         # up to -- the linkage is managed separately and is based on partner.xml_id == user.login
         'fis_product_cross_ref_code': fields.char('Online Order Code', size=6),
-        'fis_portal_account': fields.boolean( 'Online Account'),
+        'fis_portal_account': fields.boolean('Online Account'),
         'fis_transmitter_no': fields.char('Transmitter #', size=6),
         'fis_org_cert': fields.boolean(
             'Organic Cert?',
