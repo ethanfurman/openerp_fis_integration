@@ -517,6 +517,33 @@ class F163(FISenum):
     kosher_exp       = 'Nn$(36,6)',   42     # Kosher Exp Date
 
 
+class F192(FISenum):
+    """
+    CNVZO1 - Transmitter Master File
+    """
+    #
+    _init_ = "value sequence"
+    _order_ = lambda m: m.sequence
+    #
+    key_type                   = 'An$(1,2)',    0     # Key Type = 'O1'
+    company_id                 = 'An$(3,2)',    1     # Company Code
+    transmitter_no             = 'An$(5,6)',    2     # Transmitter Number
+    transmitter_name           = 'Bn$',         3     # Transmitter  Name
+    status                     = 'Cn$',         4     # Status: A=Active, I=Inactive
+    date_last_transmission     = 'Cn$(2,6)',    5     # Date Last Transmission
+    time_last_transmission     = 'Cn$(8,4)',    6     # Time Last Transmission
+    sa_cat                     = 'Cn$(12,2)',   7     # S/A Category
+                                                      # (open) Cn$(14,2)
+    cust_no                    = 'Dn$(1,6)',    9     # Customer Number
+    ship_to_id                 = 'Dn$(7,4)',   10     # Ship To Code
+    transmission_format        = 'En$',        11     # Transmission Format
+    phone_no                   = 'Fn$',        12     # Phone Number
+    contact_person             = 'Gn$',        13     # Contact Person
+    sort_key                   = 'Hn',         14     # Sort Key
+    email_address1             = 'Jn$',        15     # EMAIL ADDRESS
+    email_address2             = 'Kn$',        16     # EMAIL ADDRESS
+    email_address3             = 'In$',        17     # EMAIL ADDRESS
+
 class F219(FISenum):
     """
     POHF - PURCHASE ORDER HEADER FILE
