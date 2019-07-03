@@ -4,6 +4,7 @@ import hr_employee
 import product
 import res_config
 import res_partner
+import res_users
 import crm_lead
 import sample
 import wizard
@@ -16,6 +17,7 @@ __all__ = [
     'product',
     'res_config',
     'res_partner',
+    'res_users',
     'crm_lead',
     'wizard',
     'sample',
