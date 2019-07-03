@@ -853,8 +853,12 @@ class product_online_order(osv.Model):
         if isinstance(ids, (int, long)):
             ids = [ids]
         user = self.pool.get('res.users').browse(cr, SUPERUSER_ID, uid, context=context)
+        if user.login[:2] == 'HE' and user.login[2:].isdigit():
+            transmitter = '150' + user.login[2:]
+        else:
+            transmitter = '??????'
         for order in self.browse(cr, SUPERUSER_ID, ids, context=context):
-            lines = ['%s-150%s' % (user.login, user.login[2:])]
+            lines = ['%s-%s' % (user.login, transmitter)]
             for item in order.item_ids:
                 lines.append('%s - %s - %s' % (
                     item.partner_product_id.fis_product_id.xml_id,
