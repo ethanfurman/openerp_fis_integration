@@ -45,6 +45,7 @@ def heb():
                     context={'active_test': False},
                     )
             if user:
+                # already exists, update group assignment
                 [user] = user
                 res_users.write(user.id, {'groups_id': [(6, 0, [portal_group_id])]})
                 user = get_records(
@@ -53,7 +54,6 @@ def heb():
                     fields=['id','groups_id'],
                     context={'active_test': False},
                     )[0]
-                # already exists, update group assignment
                 skipped += 1
                 continue
             # create login (separate from the partner account)
