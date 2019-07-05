@@ -371,13 +371,14 @@ def handle_arci(method):
                 context=context,
                 )])
         #
-        # retrieve the OpenERP records that match the ARCI module
+        # retrieve the OpenERP records that match the ARCI module and are
+        # maintained by FIS
         #
         all_oe_records = dict([
                 (r.key, r)
                 for r in get_records(
                     oe, 'fis_integration.customer_product_cross_reference',
-                    domain=[(1,'=',1)],
+                    domain=[('source','=','fis')],
                     fields=[
                         'id','key','list_code','fis_code',
                         'partner_id','fis_product_id','customer_product_code',
