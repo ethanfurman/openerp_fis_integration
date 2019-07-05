@@ -814,6 +814,12 @@ class product_fis2customer(osv.Model):
             size=50,
             ),
         'customer_product_code': fields.char('Code', size=15),
+        'source': fields.selection((
+            ('fis', 'FIS'), ('salesinq', 'SalesInq'),
+            ),
+            string='Data Source',
+            order='definition',
+            ),
         }
 
 
