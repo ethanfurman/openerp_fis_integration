@@ -394,7 +394,10 @@
             @arch type='xml'
                 ~form $Online_Order version='7.0' setup="onload()"
                     @partner_crossref_list invisible='1'
-                    @item_ids nolabel='1' context="{'default_partner_list_code': partner_crossref_list}"
+                    @item_ids
+                     | nolabel='1'
+                     | attrs="{'invisible': [('partner_crossref_list','=',False)]}"
+                     | context="{'default_partner_list_code': partner_crossref_list}"
                         ~tree editable='bottom' $New_Order
                             @partner_product_id $Item
                              | required='1'
@@ -406,7 +409,9 @@
                             @product_fis_id invisible='1'
                             @partner_product_code invisible='1'
                             @product_desc invisible='1'
-                    ~button @button_place_order $Place_Order type='object' .oe_highlight
+                    ~button @button_place_order $Place_Order
+                     | type='object' .oe_highlight
+                     | attrs="{'invisible': [('partner_crossref_list','=',False)]}"
 
     ~data noupdate='1'
 
