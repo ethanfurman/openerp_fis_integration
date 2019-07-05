@@ -345,7 +345,8 @@ def handle_arci(method):
             if ' ' in new_cross_ref.partner_id.xml_id:
                 invalid_partners.add(new_cross_ref.partner_id.xml_id)
                 continue
-            if new_cross_ref.list_code != 'HE447':
+            if ' ' in new_cross_ref.list_code:
+                # ignore invalid codes
                 continue
             needed_partners.add(new_cross_ref.partner_id)
             needed_products.add(new_cross_ref.fis_product_id)
