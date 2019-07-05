@@ -843,16 +843,18 @@ class product_online_order(osv.Model):
     def onload(self, cr, uid, ids, context=None):
         res = {'value': {}}
         res_users = self.pool.get('res.users')
-        res_partner = self.pool.get('res.partner')
         user = res_users.browse(cr, SUPERUSER_ID, uid, context=context)
-        partner = res_partner.browse(cr, SUPERUSER_ID, [('xml_id','=',user.login)], context=context)
-        partner = partner and partner[0] or False
-        if partner:
-            res['value']['partner_id'] = partner.id
-            res['value']['partner_crossref_list'] = partner.fis_product_cross_ref_code
+        fis_partner = user.fis_partner_id
+        if fis_partner:
+            res['value']['partner_id'] = fis_partner.id
+            res['value']['partner_crossref_list'] = fis_partner.fis_product_cross_ref_code
         else:
             res['value']['partner_id'] = False
             res['value']['partner_crossref_list'] = False
+            res['warning'] = {
+                    'title': 'Invalid setup',
+                    'message': 'This account has not been set up for orders',
+                    }
         return res
 
     def button_place_order(self, cr, uid, ids, context=None):
