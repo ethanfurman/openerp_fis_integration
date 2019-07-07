@@ -298,16 +298,17 @@ def handle_arci(method):
         record_keys = [
                 r.key
                 for r in
-                    old_changed_records + new_changed_records + deleted_records
+                    old_changed_records.keys() + new_changed_records.keys() + deleted_records.keys()
                     ]
         all_oe_records = dict([
                 (r.key, r)
                 for r in get_records(
-                    oe, 'fis_integration.customer_product_cross_ref',
+                    oe, 'fis_integration.customer_product_cross_reference',
                     domain=[('key','in',record_keys)],
                     fields=[
                         'id','key','list_code','fis_code',
                         'partner_id','fis_product_id','customer_product_code',
+                        'source',
                         ],
                     context=context,
                     )
@@ -345,9 +346,6 @@ def handle_arci(method):
             if ' ' in new_cross_ref.partner_id.xml_id:
                 invalid_partners.add(new_cross_ref.partner_id.xml_id)
                 continue
-            if ' ' in new_cross_ref.list_code:
-                # ignore invalid codes
-                continue
             needed_partners.add(new_cross_ref.partner_id)
             needed_products.add(new_cross_ref.fis_product_id)
             all_fis_records[new_cross_ref.key] = new_cross_ref
@@ -383,6 +381,7 @@ def handle_arci(method):
                     fields=[
                         'id','key','list_code','fis_code',
                         'partner_id','fis_product_id','customer_product_code',
+                        'source',
                         ],
                     context=context,
                     )
@@ -498,7 +497,7 @@ def handle_arci(method):
                 cross_ref_id = arci_mapping.search(domain=[('key','=',key)])
                 if cross_ref_id:
                     [cross_ref_id] = cross_ref_id
-                    arci_mapping.error('FIS ID F262:%s (%s) already exists in OpenERP' % (key, cross_ref.name))
+                    arci_mapping.error('FIS ID F262:%s (%s) already exists in OpenERP' % (key, cross_ref.key))
                     continue
             added_count += 1
             if LIST_RECORDS:
@@ -2974,6 +2973,7 @@ def convert_arci_rec(fis_rec):
     item.partner_id = Partner(cust_no)
     item.fis_product_id = Product(our_item_id)
     item.customer_product_code = cust_item_id or False
+    item.source = 'fis'
     #
     return item
 
