@@ -203,11 +203,7 @@ class res_partner(xmlid, osv.Model):
         'fis_credit_30_days': fields.float('30 Day Balance'),
         'fis_credit_total': fields.float('Total Balance'),
         'fis_price_list': fields.char('Price list code', size=1),
-        # note: there is no direct link between a login account and the partner record it matches
-        # up to -- the linkage is managed separately and is based on partner.xml_id == user.login
-        'fis_product_cross_ref_code': fields.char('Online Order Code', size=6),
-        'fis_portal_account': fields.boolean('Online Account'),
-        'fis_transmitter_no': fields.char('Transmitter #', size=6),
+        'fis_portal_logins' : fields.one2many( 'res.users', 'fis_partner_id', string='FIS logins'),
         'fis_org_cert': fields.boolean(
             'Organic Cert?',
             ),
@@ -462,3 +458,4 @@ class res_partner(xmlid, osv.Model):
                 removed += 1
         print "%d duplicates removed" % removed
         return True
+
