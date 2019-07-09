@@ -14,7 +14,7 @@ HEB = re.compile("(HE\d\d\d|HEBCE|HECUL|HEBSA)")
 @Command()
 def heb():
     """
-    creates matching logins for HEB partners
+    creates/updates matching logins for HEB partners
     """
     config = OrmFile('%s/config/fnx.ini' % virtualenv, types={'_path': Path})
     oe = config.openerp
@@ -23,12 +23,21 @@ def heb():
     res_partner = oe.get_model('res.partner')
     ir_model_data = oe.get_model('ir.model.data')
     portal_group_id = ir_model_data.get_object_reference('portal','group_portal')[1]
-    added = skipped = 0
+    transmitters = dict([
+        (r.transmitter_no, r.id)
+        for r in get_records(oe, 'fis.transmitter_code')
+        ])
+    added = updated = 0
     try:
         for partner in get_records(
                 res_partner,
-                domain=[('xml_id','like','HE'),('active','=',True)],
-                fields=['id','xml_id','name','customer','image','is_company'],
+                domain=[
+                    ('xml_id','like','HE'),
+                    ('active','=',True),
+                    ('customer','=',True),
+                    ('is_company','=',True),
+                    ],
+                fields=['id','xml_id','name','customer'],
                 context={'active_test': False},
             ):
             if not HEB.match(partner.xml_id):
@@ -45,28 +54,29 @@ def heb():
                     context={'active_test': False},
                     )
             if user:
-                # already exists, update group assignment
+                # already exists, update group assignment, etc.
                 [user] = user
-                res_users.write(user.id, {'groups_id': [(6, 0, [portal_group_id])]})
-                user = get_records(
-                    res_users,
-                    domain=[('login','=',login)],
-                    fields=['id','groups_id'],
-                    context={'active_test': False},
-                    )[0]
-                skipped += 1
+                res_users.write(user.id, {
+                        'groups_id': [(6, 0, [portal_group_id])],
+                        'fis_partner_id': partner.id,
+                        'fis_transmitter_id': transmitters.get(password, False),
+                        'fis_product_cross_ref_code': 'HE447',
+                        })
+                updated += 1
                 continue
             # create login (separate from the partner account)
             res_users.create({
                 'name': partner.name,
                 'login': login,
                 'password': password,
+                'fis_partner_id': partner.id,
+                'fis_transmitter_id': transmitters.get(password, False),
                 'fis_product_cross_ref_code': 'HE477',
                 'groups_id': [(6, 0, [portal_group_id])],
                 })
             added += 1
     finally:
-        echo('skipped:', skipped)
+        echo('updated:', updated)
         echo('added:  ', added)
 
 
