@@ -15,31 +15,31 @@ class res_users(osv.Model):
             domain=[('customer','=',True)],
             ),
         'fis_product_cross_ref_code': fields.char('Online Order Code', size=6, help='usually the customer #'),
-        'fis_transmitter_no': fields.many2one('fis.transmitter_code', 'Transmitter #'),
+        'fis_transmitter_id': fields.many2one('fis.transmitter_code', 'Transmitter #'),
         }
 
 
     def onchange_fis_partner(self, cr, uid, ids, fis_partner_id, context=None):
         res = {'domain': {}, 'value': {}}
         if not fis_partner_id:
-            res['domain']['fis_transmitter_no'] = [('id','=',0)]
-            res['value']['fis_transmitter_no'] = False
+            res['domain']['fis_transmitter_id'] = [('id','=',0)]
+            res['value']['fis_transmitter_id'] = False
         else:
             res_partner = self.pool.get('res.partner')
             partner = res_partner.browse(cr, SUPERUSER_ID, fis_partner_id, context=context)
-            res['domain']['fis_transmitter_no'] = [('partner_xml_id','=',partner.xml_id)]
-            res['value']['fis_transmitter_no'] = False
+            res['domain']['fis_transmitter_id'] = [('partner_xml_id','=',partner.xml_id)]
+            res['value']['fis_transmitter_id'] = False
         return res
 
 
     def onload_set_transmitter_domain(self, cr, uid, ids, fis_partner_id, context=None):
         res = {'domain': {}}
         if not fis_partner_id:
-            res['domain']['fis_transmitter_no'] = [('id','=',0)]
+            res['domain']['fis_transmitter_id'] = [('id','=',0)]
         else:
             res_partner = self.pool.get('res.partner')
             partner = res_partner.browse(cr, SUPERUSER_ID, fis_partner_id, context=context)
-            res['domain']['fis_transmitter_no'] = [('partner_xml_id','=',partner.xml_id)]
+            res['domain']['fis_transmitter_id'] = [('partner_xml_id','=',partner.xml_id)]
         return res
 
 
