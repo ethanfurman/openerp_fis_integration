@@ -845,9 +845,9 @@ class product_online_order(osv.Model):
         res_users = self.pool.get('res.users')
         user = res_users.browse(cr, SUPERUSER_ID, uid, context=context)
         fis_partner = user.fis_partner_id
-        if fis_partner:
+        if fis_partner and user.fis_product_cross_ref_code:
             res['value']['partner_id'] = fis_partner.id
-            res['value']['partner_crossref_list'] = fis_partner.fis_product_cross_ref_code
+            res['value']['partner_crossref_list'] = user.fis_product_cross_ref_code
         else:
             res['value']['partner_id'] = False
             res['value']['partner_crossref_list'] = False
