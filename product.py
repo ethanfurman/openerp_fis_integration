@@ -802,7 +802,7 @@ class product_fis2customer(osv.Model):
                     (self_ids, ['customer_product_code'], 10),
                     },
             ),
-        'key': fields.char('Key', size=13, help='used to sync with FIS'),
+        'key': fields.char('Key', size=13, help='used to sync with external source'),
         'list_code': fields.char('List', size=6),
         'fis_code': fields.char('FIS product code', size=6),
         'partner_id': fields.many2one('res.partner', 'Customer'),
