@@ -155,7 +155,7 @@ class res_partner(xmlid, osv.Model):
             ),
         'specials_notification': fields.selection(
             Specials,
-            string='Pricing Notifications',
+            string='Catelog Category',
             help='FIS Specials Notifications',
             oldname='special_notifications',
             ),
@@ -163,7 +163,7 @@ class res_partner(xmlid, osv.Model):
             'parent_id', 'specials_notification',
             type='selection',
             selection=Specials,
-            string='Company Pricing Notifications',
+            string='Company Catelog Category',
             help='FIS Specials Notifications',
             ),
         'sn_catalog_type': fields.function(
