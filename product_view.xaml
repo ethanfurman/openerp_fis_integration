@@ -40,7 +40,7 @@
                 ~page $Sales position='after'
                     ~page $Labels
                         @label_text nolabel='0'
-                        @label_server_stub nolabel='1'
+                        @label_server_stub nolabel='1' options="{'no_embed': True}"
                     // ~page $Costs groups='fis_integration.purchase_cost'
                     //   @cost_server_stub
                 ~group @status position='before'
@@ -387,6 +387,7 @@
             @key2: client_action_multi
 
         ~report model='fis_integration.product_traffic' name='fis_integration.product_traffic.selected_records' header='True' auto='True' multi='True' xml='fis_integration/report/product-traffic.xml' xsl='fis_integration/report/product-traffic.xsl' $Product_Traffic #report_fis_integration_product_traffic
+        ~report model='product.product' name='product.product.nutrition_labels' auto='False' $Nutrition_Labels #report_product_nutrition_labels
 
         ~record #fis_integration_online_order_form model='ir.ui.view'
             @name: Online Orders

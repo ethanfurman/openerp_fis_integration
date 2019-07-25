@@ -1,5 +1,6 @@
 from antipathy import Path as _Path
 from xaml import Xaml as _Xaml
+import nutrition_labels
 
 src_dir = _Path(__file__).dirname or _Path('.')
 
