@@ -270,8 +270,13 @@ class product_product(xmlid, osv.Model):
         xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
         result = {}
         htmlContentList = []
+        #
+        # FIXME: /Plone is a redirect -- should make it a contact point so labels work
+        #        from outside and inside the network
+        #
+        base_url = "https://openerp.sunridgefarms.com/"
         try:
-            llc = urlopen("https://openerp.sunridgefarms.com/Plone/LabelDirectory/LabelLinkCtl")
+            llc = urlopen(base_url + "Plone/LabelDirectory/LabelLinkCtl")
             try:
                 label_link_lines = llc.read().strip().split('\n')
             finally:
@@ -281,20 +286,28 @@ class product_product(xmlid, osv.Model):
                 LabelLinks.append([piece.strip() for piece in link_line.split(",")])
             for xml_id, id in xml_ids.items():
                 for link, scale, align in LabelLinks:
-                    htmlContentList.append('''<img src="%s" width=%s%% align="%s"/>''' % (link % (xml_id, xml_id), scale, align))
+                    remote_file = "%s%s" % (base_url, link % (xml_id, xml_id))
+                    htmlContentList.append(
+                            '''<img src="%s" width=%s%% align="%s"/>'''
+                            % (remote_file, scale, align)
+                            )
                 result[id] = static_page_stub % "".join(htmlContentList)
                 htmlContentList[:] = []
         except:
             # the file doesn't yet exist or is malformed or some other error occurred
             _logger.exception('problem reading/processing/interpolating LabelLinkCtl')
             LabelLinks = (
-                ("Plone/LabelDirectory/%s/%sB.bmp","55","left"),
-                ("Plone/LabelDirectory/%s/%sNI.bmp","35","right"),
-                ("Plone/LabelDirectory/%s/%sMK.bmp","100","center"),
+                (base_url+"Plone/LabelDirectory/%s/%sB.bmp","55","left"),
+                (base_url+"Plone/LabelDirectory/%s/%sNI.bmp","35","right"),
+                (base_url+"Plone/LabelDirectory/%s/%sMK.bmp","100","center"),
                 )
             for xml_id, id in xml_ids.items():
                 for link, scale, align in LabelLinks:
-                    htmlContentList.append('''<img src="%s" width=%s%% align="%s"/>''' % (link % (xml_id, xml_id), scale, align))
+                    remote_file = "%s%s" % (base_url, link % (xml_id, xml_id))
+                    htmlContentList.append(
+                            '''<img src="%s" width=%s%% align="%s"/>'''
+                            % (remote_file, scale, align)
+                            )
                 result[id] = static_page_stub % "".join(htmlContentList)
                 htmlContentList[:] = []
         return result
