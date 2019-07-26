@@ -66,7 +66,6 @@ class report_spec_sheet(report_int):
                     try:
                         connection = urllib.urlopen(url)
                     except IOError:
-                        print 'unable to acquire', url
                         images.append(ImageBox(None, width, align))
                     else:
                         try:
@@ -76,7 +75,6 @@ class report_spec_sheet(report_int):
                                 image = image.convert('RGB')
                             images.append(ImageBox(image, width, align))
                         except IOError:
-                            print 'could not load %r' % (url, )
                             images.append(ImageBox(None, width, align))
                         finally:
                             connection.close()
@@ -86,11 +84,8 @@ class report_spec_sheet(report_int):
             rows = []
             row = []
             total_width = 0
-            print 'sorting into rows'
             for ibox in images:
-                print '  processing', ibox
                 if total_width + ibox.width > 1:
-                    print '    starting new row'
                     rows.append(row)
                     row = []
                     total_width = 0
@@ -112,35 +107,24 @@ class report_spec_sheet(report_int):
             top_margin = page.height - 0.75*inch
 
             top_left = Point(left_margin, top_margin)
-            bottom_right = Point(right_margin, bottom_margin)
-            print 'top left:', top_left
-            print 'bottom right:', bottom_right
 
             anchor = top_left
             max_height = 0
             # for ibox in images:
             for row in rows:
                 for ibox in row:
-                    print('*' * 15)
-                    print 'anchor:', anchor
 
                     bbox = get_bounding_box(viewable_area, ibox.image, ibox.width)
-                    print 'bounds', bbox
 
                     if anchor.x + bbox.width > right_margin:
                         anchor = Point(left_margin, anchor.y - max_height)
                         max_height = 0
-                        print '  anchor:', anchor
                     if anchor.y - bbox.height < bottom_margin:
-                        print 'anchor.y [%r] - bbox.height [%r] < bottom_margin [%r] --> True' % (anchor.y, bbox.height, bottom_margin)
                         display.showPage()
                         anchor = top_left
                         max_height = 0
                     max_height = max(max_height, bbox.height)
-                    print 'max height', max_height
                     if ibox.image is not None:
-                        print(anchor.x, anchor.y-bbox.height, bbox.width, bbox.height)
-                        print('*' * 15)
                         display.drawImage(ImageReader(ibox.image), anchor.x, anchor.y-bbox.height, bbox.width, bbox.height, preserveAspectRatio=True)
                     anchor = Point(anchor.x + bbox.width, anchor.y)
             display.showPage()
@@ -166,15 +150,11 @@ class ImageBox(NamedTuple):
     align = 2
 
 def get_bounding_box(available_area, image, portion):
-    print '   ', available_area, image, portion
     box_width = round(portion * available_area.width)
-    print '    box width:', box_width
     if image is None:
         box_height = 72
     else:
         image_percent = box_width / image.width
-        print '    image percent', image_percent
         box_height = round(image_percent * image.height)
-        print '    box height', box_height
     return Area(box_width, box_height)
 
