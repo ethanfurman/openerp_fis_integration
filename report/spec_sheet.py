@@ -30,7 +30,7 @@ class external_pdf(render):
         return self.pdf
 
 
-class report_nutrition_labels(report_int):
+class report_spec_sheet(report_int):
     def create(self, cr, uid, ids, datas, context=None):
         if context is None:
             context = {}
@@ -149,7 +149,7 @@ class report_nutrition_labels(report_int):
         self.obj = external_pdf(pdf_io.getvalue())
         self.obj.render()
         return (self.obj.pdf, 'pdf')
-report_nutrition_labels('report.product.product.nutrition_labels')
+report_spec_sheet('report.product.product.spec_sheet')
 
 
 class Area(NamedTuple):
