@@ -4,7 +4,7 @@ from __future__ import division
 from aenum import NamedTuple
 import re
 import urllib
-from PIL import Image
+from PIL import Image, ImageChops
 from io import BytesIO
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.pagesizes import letter
@@ -41,12 +41,14 @@ class report_spec_sheet(report_int):
         product_product = pooler.get_pool(cr.dbname).get('product.product')
         datas = product_product.read(
                 cr, uid, product_ids,
-                fields=['label_server_stub'],
+                fields=['label_server_stub', 'xml_id', 'name', 'ean13'],
                 context=context,
                 )
 
+        # create canvas
         pdf_io = BytesIO()
         display = Canvas(pdf_io, pagesize=letter, bottomup=1)
+        display.setFontSize(20)
         for data in datas:
             # download images and convert width and align
             image_specs = re.findall(
@@ -73,6 +75,7 @@ class report_spec_sheet(report_int):
                             image = Image.open(BytesIO(image_data))
                             if not image.mode == 'RGB':
                                 image = image.convert('RGB')
+                            image = trim(image)
                             images.append(ImageBox(image, width, align))
                         except IOError:
                             images.append(ImageBox(None, width, align))
@@ -100,15 +103,19 @@ class report_spec_sheet(report_int):
 
             page = Area(*letter)
             viewable_area = Area(page.width - 1.5*inch, page.height - 1.5*inch)
-
             left_margin = 0.75*inch
             bottom_margin = 0.75*inch
             right_margin = page.width - 0.75*inch
             top_margin = page.height - 0.75*inch
-
             top_left = Point(left_margin, top_margin)
-
             anchor = top_left
+            # draw header
+            display.drawString(left_margin, top_margin-0.25*inch, data['name'])
+            display.drawRightString(right_margin, top_margin-0.25*inch, data['xml_id'])
+            upc = data['ean13']
+            upc = upc[:1], upc[1:6], upc[6:11], upc[11:12]  # discard 13th digit
+            display.drawString(left_margin, top_margin-0.75*inch, 'UPC Code: %s-%s-%s-%s' % upc)
+            anchor = Point(left_margin, top_margin - 1.25*inch)
             max_height = 0
             # for ibox in images:
             for row in rows:
@@ -117,7 +124,7 @@ class report_spec_sheet(report_int):
                     bbox = get_bounding_box(viewable_area, ibox.image, ibox.width)
 
                     if anchor.x + bbox.width > right_margin:
-                        anchor = Point(left_margin, anchor.y - max_height)
+                        anchor = Point(left_margin, anchor.y - max_height - 0.25*inch)
                         max_height = 0
                     if anchor.y - bbox.height < bottom_margin:
                         display.showPage()
@@ -125,7 +132,11 @@ class report_spec_sheet(report_int):
                         max_height = 0
                     max_height = max(max_height, bbox.height)
                     if ibox.image is not None:
-                        display.drawImage(ImageReader(ibox.image), anchor.x, anchor.y-bbox.height, bbox.width, bbox.height, preserveAspectRatio=True)
+                        x0, y0 = anchor
+                        x1, y1 = anchor.x+bbox.width, anchor.y-bbox.height
+                        display.drawImage(ImageReader(ibox.image), x0, y1, bbox.width, bbox.height, preserveAspectRatio=True)
+                        if False:
+                            display.lines(((x0, y0, x1, y0), (x1, y0, x1, y1), (x1, y1, x0, y1), (x0, y1, x0, y0)))
                     anchor = Point(anchor.x + bbox.width, anchor.y)
             display.showPage()
         display.save()
@@ -158,3 +169,14 @@ def get_bounding_box(available_area, image, portion):
         box_height = round(image_percent * image.height)
     return Area(box_width, box_height)
 
+# from https://stackoverflow.com/questions/10615901/trim-whitespace-using-pil
+def trim(image):
+    bg = Image.new(image.mode, image.size, image.getpixel((0,0)))
+    diff = ImageChops.difference(image, bg)
+    # diff = ImageChops.add(diff, diff) # should be whitespace trim only
+    diff = ImageChops.add(diff, diff, 2.0, -100)
+    bbox = diff.getbbox()
+    if bbox:
+        return image.crop(bbox)
+    else:
+        return image
