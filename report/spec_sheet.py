@@ -50,13 +50,13 @@ class report_spec_sheet(report_int):
         for data in datas:
             # download images and convert width and align
             image_specs = re.findall(
-                    r'''<img src="([^"]*)" width="([^"]*)" align="([^"]*)"''',
+                    r'''<img src="([^"]*)" width=(\d*)% align="([^"]*)"''',
                     data['label_server_stub'],
                     )
             images = []
             for url, width, align in image_specs:
                 try:
-                    align = {'right':1, 'middle':0, 'left':-1}[align.lower()]
+                    align = {'right':1, 'middle':0, 'center':0, 'left':-1}[align.lower()]
                     width = int(width.rstrip('%')) / 100
                 except KeyError:
                     raise ValueError('unknown alignment: %r' % (align, ))
