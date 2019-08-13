@@ -18,6 +18,9 @@ from openerp.report.render import render
 from openerp import pooler
 # import time
 # import unicodedata
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class external_pdf(render):
@@ -48,7 +51,6 @@ class report_spec_sheet(report_int):
         # create canvas
         pdf_io = BytesIO()
         display = Canvas(pdf_io, pagesize=letter, bottomup=1)
-        display.setFontSize(20)
         for data in datas:
             # download images and convert width and align
             image_specs = re.findall(
@@ -110,11 +112,15 @@ class report_spec_sheet(report_int):
             top_left = Point(left_margin, top_margin)
             anchor = top_left
             # draw header
-            display.drawString(left_margin, top_margin-0.25*inch, data['name'])
-            display.drawRightString(right_margin, top_margin-0.25*inch, data['xml_id'])
+            display.setFontSize(19)
+            lines = format_lines(data['name'], 50, split=('nongmo','organic','eco-farmed','sunridge'))
+            display.drawString(left_margin, top_margin-0.25*inch, lines[0])
+            if len(lines) > 1:
+                display.drawString(left_margin, top_margin-0.5*inch, lines[1])
+            display.drawRightString(right_margin, top_margin+0.125*inch, data['xml_id'])
             upc = data['ean13']
             upc = upc[:1], upc[1:6], upc[6:11], upc[11:12]  # discard 13th digit
-            display.drawString(left_margin, top_margin-0.75*inch, 'UPC Code: %s-%s-%s-%s' % upc)
+            display.drawString(left_margin, top_margin-0.875*inch, 'UPC Code: %s-%s-%s-%s' % upc)
             anchor = Point(left_margin, top_margin - 1.25*inch)
             max_height = 0
             # for ibox in images:
@@ -168,6 +174,63 @@ def get_bounding_box(available_area, image, portion):
         image_percent = box_width / image.width
         box_height = round(image_percent * image.height)
     return Area(box_width, box_height)
+
+def format_lines(line, cpl, split=()):
+    # build line
+    # split line if necessary
+    split = [s.lower() for s in split]
+    line = ' '.join(line.split())
+    words = line.split()
+    width = 0
+    lines = []
+    line = []
+    good_sep = None
+    has_split = False
+    for word in words:
+        if len(line) > 2 and word.lower() in split and not has_split:
+            good_sep = len(line)
+            word_width = cpl
+        else:
+            word_width = _width(word)
+        if width == 0:
+            line.append(word[:cpl])
+            width += word_width
+            if word == '-' and not good_sep:
+                good_sep = len(line)
+            elif word.endswith(','):
+                good_sep = len(line)
+        elif width + 1 + word_width <= cpl:
+            line.append(word)
+            width += 1 + word_width
+            if word == '-' and not good_sep:
+                good_sep = len(line)
+            elif word.endswith(','):
+                good_sep = len(line)
+        else:
+            new_line = []
+            if good_sep and good_sep > 3 and (len(line) - good_sep <= 4):
+                new_line = line[good_sep:]
+                line = line[:good_sep]
+            lines.append(' '.join(line))
+            line = new_line
+            width = 0
+            good_sep = None
+            line.append(word)
+            width = sum([_width(word) for word in line])
+            has_split = True
+    if line:
+        lines.append(' '.join(line))
+    return tuple(lines)
+
+def _width(word):
+    narrow = "1iltfj!,.;:-'"
+    wide = "WM"
+    width = len(word)
+    for ch in narrow:
+        width -= word.count(ch) * 0.5
+    for ch in wide:
+        width += word.count(ch) * 1.5
+    return width
 
 # from https://stackoverflow.com/questions/10615901/trim-whitespace-using-pil
 def trim(image):
