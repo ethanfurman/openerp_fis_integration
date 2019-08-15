@@ -242,11 +242,11 @@ def sql_select(command, separator):
                     op = 'ilike'
                 elif op == '!=':
                     op = 'not ilike'
-            elif condition == 'True':
+            elif condition in ('t', 'true'):
                 condition = True
-            elif condition == 'False':
+            elif condition in ('f', 'false'):
                 condition = False
-            elif condition == 'None':
+            elif condition == 'none':
                 condition = None
             elif condition == 'null':
                 pass
