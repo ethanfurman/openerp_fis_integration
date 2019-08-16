@@ -279,6 +279,8 @@ class product_product(xmlid, osv.Model):
             llc = urlopen(base_url + "Plone/LabelDirectory/LabelLinkCtl")
             try:
                 label_link_lines = llc.read().strip().split('\n')
+                if llc.code == '404':
+                    raise Exception('file not found:\n%s', label_link_lines)
             finally:
                 llc.close()
             LabelLinks = []

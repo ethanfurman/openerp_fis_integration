@@ -2,6 +2,7 @@
 
 from __future__ import division
 from aenum import NamedTuple
+from antipathy import Path
 import re
 import urllib
 from PIL import Image, ImageChops
@@ -66,23 +67,17 @@ class report_spec_sheet(report_int):
                     raise ValueError('unknown alignment: %r' % (align, ))
                 except ValueError:
                     raise ValueError('unknown width format: %r' % (width, ))
-                else:
+                try:
                     try:
-                        connection = urllib.urlopen(url)
-                    except IOError:
-                        images.append(ImageBox(None, width, align))
-                    else:
-                        try:
-                            image_data = connection.read()
-                            image = Image.open(BytesIO(image_data))
-                            if not image.mode == 'RGB':
-                                image = image.convert('RGB')
-                            image = trim(image)
-                            images.append(ImageBox(image, width, align))
-                        except IOError:
-                            images.append(ImageBox(None, width, align))
-                        finally:
-                            connection.close()
+                        images.append(get_label(url, width, align))
+                    except MissingImageFile:
+                        url = Path(url)
+                        if url.base.upper()[-2:] != 'MK':
+                            raise
+                        url = url.scheme / url.dirs / url.base[:-2] + 'CC' + url.ext
+                        images.append(get_label(url, width, align))
+                except LabelAcquisitionError:
+                    images.append(ImageBox(None, width, align))
             #
             # sort images into rows
             #
@@ -243,3 +238,48 @@ def trim(image):
         return image.crop(bbox)
     else:
         return image
+
+def get_label(url, width, align):
+    # get connection to url
+    _logger.debug('getting %s with width %s and align %s', url, width, align)
+    try:
+        _logger.debug('getting %s', url)
+        connection = urllib.urlopen(url)
+    except IOError:
+        _logger.exception('error connecting to label server for %s', url)
+        raise LabelServerConnectionError
+    else:
+        # check code and (possibly) download image
+        try:
+            if connection.code == 404:
+                _logger.debug('missing file')
+                raise MissingImageFile(url)
+            image_data = connection.read()
+        except IOError:
+            _logger.exception('unable to retrieve image data')
+            raise LabelAcquisitionError('unable to retrieve image data')
+        finally:
+            connection.close()
+    # process image
+    try:
+        image = Image.open(BytesIO(image_data))
+    except IOError:
+        _logger.exception('unable to process image data')
+        raise UnknownImageFormat
+    else:
+        if not image.mode == 'RGB':
+            image = image.convert('RGB')
+        image = trim(image)
+        return ImageBox(image, width, align)
+
+class LabelAcquisitionError(Exception):
+    pass
+
+class LabelServerConnectionError(LabelAcquisitionError):
+    pass
+
+class MissingImageFile(LabelAcquisitionError):
+    pass
+
+class UnknownImageFormat(LabelAcquisitionError):
+    pass
