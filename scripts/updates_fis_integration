@@ -3351,7 +3351,7 @@ def convert_csms_rec(model, fis_rec, aging=None, _missing_reps=set()):
     # valid customer code? active account?
     company.fis_valid = len(key) == 5
     company.active = False
-    added = fis_rec[F74.birth_date] or Date()
+    added = fis_rec[F33.date_added] or Date()
     if added:
         year, month, day = added[:2], int(added[2:4]), int(added[4:])
         if year.isdigit():
