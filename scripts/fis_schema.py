@@ -59,7 +59,8 @@ class F33(FISenum):
     salesrep                   = 'Gn$(4,3)',    42     # Salesrep Code
     payment_terms_id           = 'Gn$(19,1)',   45     # Payment terms code
     tele                       = 'Gn$(20,10)',  46     # Telephone Number
-    bulk_cust_type             = 'Gn$(38,2)',   50     # Bulk Customer Type
+    bulk_cust_type             = 'Gn$(38,2)',   47     # Bulk Customer Type
+    date_added                 = 'Gn$(31,6)',   48     # Date Customer Added
     update_s_a                 = 'Gn$(40,1)',   51     # Update S/A?
     cust_type_id               = 'Hn$(1,2)',    53     # Customer Type Code
     sales_class_id             = 'Hn$(3,4)',    54     # Sales Class Code

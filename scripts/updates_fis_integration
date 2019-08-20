@@ -7,6 +7,7 @@ from scription import *
 from aenum import Enum, NamedTuple
 from antipathy import Path
 from collections import defaultdict
+from dbf import Date
 from fis_schema import F8, F11, F27, F33, F47, F65, F74, F97, F135, F163, F192, F262
 from logging import INFO, getLogger, Formatter, handlers
 from openerplib import AttrDict, get_connection, get_records, IDEquality, PropertyNames, SetOnce
@@ -43,6 +44,8 @@ white = C.Normal | C.FG_White
 same = C.Normal | C.FG_White
 oldv = C.Normal | C.FG_Red
 newv = C.Normal | C.FG_Green
+
+ONE_YEAR_AGO = Date.today().replace(delta_year=-1)
 
 SALEABLE_CATEGORY_XMLID = 'product_category_1'
 SALEABLE_CATEGORY_ID = None
@@ -3348,9 +3351,18 @@ def convert_csms_rec(model, fis_rec, aging=None, _missing_reps=set()):
     # valid customer code? active account?
     company.fis_valid = len(key) == 5
     company.active = False
+    added = fis_rec[F74.birth_date] or Date()
+    if added:
+        year, month, day = added[:2], int(added[2:4]), int(added[4:])
+        if year.isdigit():
+            year = 1900 + int(year)
+        else:
+            year = 1840 + int(year, 16)
+        added = Date(year, month, day)
     if (
             fis_rec[F33.this_year_sales]
          or fis_rec[F33.last_year_sales]
+         or added >= ONE_YEAR_AGO
         ):
         company.active = True
     else:
