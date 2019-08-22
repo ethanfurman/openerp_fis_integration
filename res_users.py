@@ -14,6 +14,12 @@ class res_users(osv.Model):
             string='FIS Account',
             domain=[('customer','=',True),('is_company','=',True),('fis_valid','=',True)],
             ),
+        'fis_partner_code': fields.related(
+            'fis_partner_id','xml_id',
+            type='char',
+            size=6,
+            string='Partner FIS ID',
+            ),
         'fis_product_cross_ref_code': fields.char('Online Order Code', size=6, help='usually the customer #'),
         'fis_transmitter_id': fields.many2one('fis.transmitter_code', 'Transmitter #'),
         }
