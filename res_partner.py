@@ -284,7 +284,11 @@ class res_partner(xmlid, osv.Model):
                 if cvals['specials_notification'] == Specials.company:
                     cvals['sn_catalog_type'] = values.get('sn_catalog_type', False)
                     cvals['sn_specials_type'] = values.get('sn_specials_type', False)
-        return super(res_partner, self).create(cr, uid, values, context=context)
+        new_id = super(res_partner, self).create(cr, uid, values, context=context)
+        if 'user_id' in values:
+            # salesperson has been given, assign them as a follower
+            self.message_subscribe_users(cr, uid, [new_id], values['user_id'])
+        return new_id
 
     def write(self, cr, uid, ids, values, context=None):
         if context is None:
@@ -296,11 +300,28 @@ class res_partner(xmlid, osv.Model):
         datas = self.read(
                 cr, uid, ids,
                 fields=['id', 'name', 'fis_updated_by_user', 'fis_data_address', 'is_company',
-                        'specials_notification', 'sn_catalog_type', 'sn_specials_type',
+                        'specials_notification', 'sn_catalog_type', 'sn_specials_type', 'user_id',
                         ],
                 context=context,
                 )
         # datas is a list of dicts
+        #
+        # first check for changing sales person
+        #
+        if 'user_id' in values:
+            new_rep = values['user_id']
+            for data in datas:
+                old_rep = data['user_id']
+                if old_rep != new_rep:
+                    # unfollow from old sales rep
+                    if old_rep:
+                        self.message_unsubscribe_users(cr, uid, data['id'], data['user_id'][0], context=context)
+                    # and follow from new sales rep
+                    if new_rep:
+                        self.message_subscribe_users(cr, uid, data['id'], values['user_id'], context=context)
+        #
+        # then branch depending on source
+        #
         if updating_from_fis:
             if any(f in values for f in ADDRESS_FIELDS+('specials_notifications','name')):
                 # if any address fields set, data must be a dict
