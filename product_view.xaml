@@ -233,11 +233,11 @@
         // Add product available at entries
 
         ~record model='ir.ui.view' #product_available_at_form
-            @name: Product Locations
+            @name: Availability Codes
             @model: product.available_at
             @type: form
             @arch type='xml'
-                ~form $Locations version='7.0'
+                ~form $Availability_Codes version='7.0'
                     ~sheet
                         ~div .oe_title
                             ~div .oe_edit_only 
@@ -258,22 +258,22 @@
                             ~page $Notes
 
         ~record model='ir.ui.view' #product_available_at_tree
-            @name: Product Locations
+            @name: Availability Codes
             @model: product.available_at
             @type: tree
             @arch type='xml'
-                ~tree $Locations
+                ~tree $Availability_Codes
                     @name
                     @xml_id attrs="{'readonly':True}"
 
         ~record model='ir.actions.act_window' #product_available_at_action
-            @name: Product Locations
+            @name: Availability Codes
             @res_model: product.available_at
             @view_type: form
             @view_id ref='product_available_at_tree'
             @view_mode: tree,form
 
-        ~menuitem @Locations #product.available_at parent='product.prod_config_main' action='product_available_at_action' groups='base.group_user'
+        ~menuitem @Availability_Codes #product.available_at parent='product.prod_config_main' action='product_available_at_action' groups='base.group_user'
 
         ~record model='ir.ui.view' #production_line_tree
             @name: Production Lines
