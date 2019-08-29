@@ -613,7 +613,7 @@ def handle_nvty(method):
                 domain=[('module','=','F135'),('xml_id','in',all_xml_ids)],
                 fields=[
                     'id', 'module', 'xml_id', 'active', 'name', 'fis_name', 'fis_qty_on_hand',
-                    'fis_availability_id', 'sale_ok', 'list_price', 'trademarks', 'ean13',
+                    'fis_availability_code', 'sale_ok', 'list_price', 'trademarks', 'ean13',
                     'fis_location', 'fis_shipping_size', 'categ_id', 'warranty',
                     'default_code',
                     ],
@@ -719,7 +719,7 @@ def handle_nvty(method):
                     domain=[('module','=','F135')],
                     fields=[
                         'id', 'module', 'xml_id', 'active', 'name', 'fis_name', 'fis_qty_on_hand',
-                        'fis_availability_id', 'sale_ok', 'list_price', 'trademarks', 'ean13',
+                        'fis_availability_code', 'sale_ok', 'list_price', 'trademarks', 'ean13',
                         'fis_location', 'fis_shipping_size', 'categ_id', 'warranty',
                         'fis_qty_produced', 'fis_10_day_produced', 'fis_21_day_produced',
                         'fis_qty_consumed', 'fis_10_day_consumed', 'fis_21_day_consumed',
@@ -3160,8 +3160,7 @@ def convert_nvty_rec(fis_rec):
     name = re.sub('sunridge', 'SunRidge', name, flags=re.I)
     item.fis_name = name
     item.active = True
-    availability = product_available_at.get(fis_rec[F135.available_key], False)
-    item.fis_availability_id = availability.id
+    item.fis_availability_code = fis_rec[F135.available_key]
     # sale_ok actually tracks whether item is in the catalog
     item.sale_ok = len(fis_rec[F135.catalog_location]) == 10
     item.list_price = fis_rec[F135.new_whlsl]

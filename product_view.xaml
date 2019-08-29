@@ -99,7 +99,7 @@
 
                 @product_manager position='after'
                     @fis_location
-                    @fis_availability_id
+                    @fis_availability_code
                 @list_price position='after'
                     @fis_shipping_size
                     ~hr colspan='2'
@@ -140,7 +140,7 @@
                 @name position='replace'
                     @name $Product filter_domain="['|',('name','ilike',self),('default_code','ilike',self),('xml_id','!=',False)]"
                 ~filter @filter_to_sell position='before'
-                    ~filter @fis_avail $Available domain="[('fis_availability_id', '=', 'Available'),('xml_id','!=',False)]"
+                    ~filter @fis_avail $Available domain="[('fis_availability_code', '=', 'Available'),('xml_id','!=',False)]"
 
         ~record #product_normal_action model='ir.actions.act_window'
             @name: Products
@@ -241,7 +241,7 @@
                     ~sheet
                         ~div .oe_title
                             ~div .oe_edit_only 
-                                ~label for='name' $Location_Description
+                                ~label for='name' $Availability_Description
                             ~h1
                                 @name readonly='1'
                             ~div

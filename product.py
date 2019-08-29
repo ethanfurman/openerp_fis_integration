@@ -116,15 +116,27 @@ class product_available_at(xmlid, osv.Model):
     _name = 'product.available_at'
     _description = 'Product Location'
 
+    def _get_products(self, cr, uid, ids, field_name, arg, context=None):
+        result = {}
+        product = self.pool.get('product.product')
+        for available in self.read(cr, uid, ids, fields=['xml_id'], context=context):
+            result[available['id']] = product.search(
+                    cr, uid,
+                    [('fis_availability_code','=',available['xml_id'])],
+                    context=context,
+                    )
+        return result
+
     _columns = {
         'name' : fields.char('Availability', size=50),
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
         'available': fields.selection(ProductAvailability, 'Available for resale?'),
-        'product_ids' : fields.one2many(
-            'product.product',
-            'fis_availability_id',
-            'Products',
+        'product_ids' : fields.function(
+            _get_products,
+            relation='product.product',
+            type='one2many',
+            string='Products',
             ),
         }
 
@@ -314,23 +326,20 @@ class product_product(xmlid, osv.Model):
                 htmlContentList[:] = []
         return result
 
-
-
     def _get_availability_codes(self, cr, uid, context=None):
         available_at = self.pool.get('product.available_at')
         records = available_at.read(cr, uid, [('id','!=',0)], fields=['xml_id','name'], context=context)
-        # result = [(r['id'], r['xml_id']) for r in records]
-        result = [(r['id'], '%s - %s' % (r['xml_id'], r['name'])) for r in records]
+        result = [(r['xml_id'], '%s - %s' % (r['xml_id'], r['name'])) for r in records]
         return result
         
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
         'fis_shipping_size': fields.char('Shipped as', size=50, oldname='shipped_as'),
-        'fis_availability_id': fields.selection(
+        'fis_availability_code': fields.selection(
             _get_availability_codes,
             'Availability',
-            oldname='avail',
+            oldname='fis_availability_id',
             ),
         'spcl_ship_instr': fields.text('Special Shipping Instructions'),
         'fis_location': fields.char('Location', size=6),
