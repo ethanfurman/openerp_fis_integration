@@ -316,12 +316,19 @@ class product_product(xmlid, osv.Model):
 
 
 
+    def _get_availability_codes(self, cr, uid, context=None):
+        available_at = self.pool.get('product.available_at')
+        records = available_at.read(cr, uid, [('id','!=',0)], fields=['xml_id','name'], context=context)
+        # result = [(r['id'], r['xml_id']) for r in records]
+        result = [(r['id'], '%s - %s' % (r['xml_id'], r['name'])) for r in records]
+        return result
+        
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
         'fis_shipping_size': fields.char('Shipped as', size=50, oldname='shipped_as'),
-        'fis_availability_id': fields.many2one(
-            'product.available_at',
+        'fis_availability_id': fields.selection(
+            _get_availability_codes,
             'Availability',
             oldname='avail',
             ),

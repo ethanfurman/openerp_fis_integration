@@ -99,6 +99,7 @@
 
                 @product_manager position='after'
                     @fis_location
+                    @fis_availability_id
                 @list_price position='after'
                     @fis_shipping_size
                     ~hr colspan='2'
