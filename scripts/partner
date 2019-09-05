@@ -9,6 +9,8 @@ from VSS.utils import all_equal, fix_phone
 import dbf
 import os
 
+# API
+
 @Command(
         filename=Spec('path/name of file to import', ),
         type=Spec('type of file to import', choices=['now', ], default='now')
@@ -165,6 +167,7 @@ def import_customers(filename, type):
         type=Spec('type of file to import', choices=['now', ], default='now')
         )
 def check_duplicates(filename, type):
+    "process NOW customer export"
     oe_data = get_oe_data()
     if type == 'now':
         new_customers_by_address, new_customers_by_name = get_now_customers(filename)
@@ -211,6 +214,30 @@ def check_duplicates(filename, type):
     # print('customers in file:', len(new_customers_by_address)-1, verbose=0)
     # print('possibly new records in file', missed, verbose=0)
 
+
+@Command()
+def initial_salesrep_assignment():
+    oe = AttrDict()
+    conn = oe.conn = get_connection(hostname=config.host, database=config.db, login=config.user, password=config.pw)
+    res_partner = conn.get_model('res.partner')
+    partners = res_partner.read(
+             domain=[('user_id','!=',False)],
+             fields=['id','user_id','message_follower_user_ids'],
+             context={'active_test': False},
+             )
+    needs_subscribed = defaultdict(list)
+    for partner in ProgressView(
+            iterable=partners,
+            message='checking $total records',
+            view_type='bar',
+            ):
+        if partner.user_id and partner.user_id not in partner.message_follower_user_ids:
+            needs_subscribed[partner.user_id].append(partner.id)
+    for user_id, partners in needs_subscribed.items():
+        print('subscribing %s to %d records' % (user_id.name, len(partners)))
+        res_partner.message_subscribe_users(partners, user_ids=user_id)
+
+# helpers
 
 def remove_empty(data):
     "remove empty keys in data (in-place operation)"
@@ -390,7 +417,7 @@ def separate(addr_key, data, rec):
     main  = fix_phone(rec.work_ph)
     home  = fix_phone(rec.home_ph)
     fax   = fix_phone(rec.fax_ph)
-    cell  = fix_phone(rec.mobile_ph)
+    # cell  = fix_phone(rec.mobile_ph)
     other = fix_phone(rec.other_ph)
     #
     if 'x' in main:
