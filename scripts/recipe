@@ -27,13 +27,18 @@ def recipe(item, order, null):
         # info dump
         echo(data)
     else:
-        echo('----------\n[%s] %s --> %s %s' % (data.item, data.desc, data.yield_qty, data.um))
+        result = []
+        # echo('----------\n[%s] %s --> %s %s' % (data.item, data.desc, data.yield_qty, data.um))
+        result.append((data.item, data.desc, data.yield_qty, data.um))
+        result.append(None)
         for k, v in sorted(data.items()):
             if k != 'ingredients':
                 print('%-10s: %s' % (k, v), verbose=2)
         echo('----------')
         for _, i in sorted(data.ingredients.items()):
-            echo('[%s] %s (%s %s)' % (i.item, i.desc, i.qty, i.um))
+            # echo('[%s] %s (%s %s)' % (i.item, i.desc, i.qty, i.um))
+            result.append((i.item, i.desc, i.yield_qty, i.um))
+        echo(result, border='table')
 
 
 @Command(
