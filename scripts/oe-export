@@ -26,12 +26,16 @@ TEST_DOMAIN = [('name_related','in',['Abraham S. Cohen','Aurelia Garcia'])]
 
 ALL_ACTIVE = [(1,'=',1)]
 
+SHOW_ID = False
+
 @Script(
         hostname=('host to connect to'),
         database=('database to query'),
+        show_ids=('show record ids', FLAG, None),
         )
-def main(hostname, database):
-    global oe
+def main(hostname, database, show_ids=False):
+    global oe, SHOW_ID
+    SHOW_ID = show_ids
     cfg = OrmFile(config, types={'_path':Path})
     oe = get_connection(
             hostname=hostname or cfg.openerp.host,
@@ -181,6 +185,8 @@ def sql_select(command, separator):
         seleccion.pop(0)
     if not seleccion:
         abort('missing fields')
+    if SHOW_ID and 'id' not in seleccion:
+        seleccion.insert(0, 'id')
     print('SELECT:', seleccion)
     #
     # get FROM table
@@ -230,7 +236,7 @@ def sql_select(command, separator):
             print('\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (field, op, condition, clausa), verbose=2)
             if not (field and op and condition):
                 raise ValueError
-        except ValueError:
+        except (ValueError, AttributeError):
             abort('malformed WHERE clause')
         else:
             if (
@@ -435,13 +441,18 @@ def write_txt(table, query, fields, file, unique, separator):
             for cell_index, cell_value in enumerate(row):
                 if isinstance(cell_value, Many2One):
                     # cell_value = cell_value[1]
-                    line.append(cell_value.essence())
+                    if SHOW_ID:
+                        line.append('[%6s] %s' % cell_value)
+                    else:
+                        line.append(cell_value.essence())
                     # print('skipping m2o', cell_value, verbose=3)
                 elif isinstance(cell_value, (list, tuple)):
-                    print('cell_value ->', cell_value, verbose=3)
                     for cv in cell_value:
                         if isinstance(cv, Many2One):
-                            line.append(cv.essence())
+                            if SHOW_ID:
+                                line.append('[%6s] %s' % cv)
+                            else:
+                                line.append(cv.essence())
                         elif isinstance(cv, basestring):
                             cv = re.sub("\r", " ", cv)
                             cv = re.sub('"', '\"', cv)
