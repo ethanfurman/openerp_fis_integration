@@ -285,7 +285,7 @@ class res_partner(xmlid, osv.Model):
                     cvals['sn_catalog_type'] = values.get('sn_catalog_type', False)
                     cvals['sn_specials_type'] = values.get('sn_specials_type', False)
         new_id = super(res_partner, self).create(cr, uid, values, context=context)
-        if 'user_id' in values:
+        if values.get('user_id'):
             # salesperson has been given, assign them as a follower
             self.message_subscribe_users(cr, uid, [new_id], values['user_id'])
         return new_id
