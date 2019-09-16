@@ -77,6 +77,29 @@ def recipe(number, order, item, null):
 
 
 @Command(
+        where=Spec('filter criteria', OPTION, choices=['a','b','a&b','>1']),
+        )
+def all_orders(where):
+    "show all orders based on batch size"
+    global IFPP0
+    IFPP0 = fisData('IFPP0', keymatch="10%s000010000")      # 328
+    for order in IFPP0:
+        a = order[F328.no_of_batches_a]
+        b = order[F328.no_of_batches_b]
+        print('a=%r  b=%r' % (a, b))
+        if (
+                where == 'a' and a
+             or where == 'b' and b
+             or where == 'a&b' and a and b
+             or where == '>1' and (a > 1 or b > 1)
+             ):
+            recipe(order[F328.order_no], order=True, item=True, null=False)
+            response = input('<Enter> for next record, <q> to quit')
+            if response[:1].lower() == 'q':
+                exit()
+
+
+@Command(
         item=('item to look up', ),
         rev=('formula revision', ),
         )
