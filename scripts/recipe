@@ -3,42 +3,77 @@ from __future__ import print_function
 
 from scription import *
 from openerplib import AttrDict
-from recipe import get_item_ingredients, get_ingredient_data, get_items_with_recipes, F322
+from recipe import ignored_ingredients, F322, F328, F329, get_ingredient_data, get_items_with_recipes
+from VSS.BBxXlate.fisData import fisData
 
-
+# API
 @Command(
-        item=('item to look up', OPTION),
-        order=('order to look up', OPTION),
+        number=('order or item #', ),
+        order=('number is an order', FLAG),
+        item=('number is an item (or display both order and item recipes)', FLAG),
         null=('show zeroed ingredients', FLAG),
         )
-def recipe(item, order, null):
+def recipe(number, order, item, null):
     'display recipe for one item (using: 322 IFDT ) or for one order (using: 329 IFPP1)'
-    print('\nitem -> %r\norder -> %r\n' % (item, order))
+    print('\nnumber -> %r\nitem -> %r\norder -> %r\n' % (number, item, order))
     if not (item or order):
-        help('one of ITEM or ORDER must be specified')
+        help('at least one of ITEM and ORDER must be specified')
+    order_ingredients = {}
+    item_ingredients = {}
+    if order:
+        print('lookup up order # %r' % (number, ))
+        order_no = number
+        order = get_order(order_no)
+        order_ingredients = get_order_ingredients(order_no)
+        if item:
+            number = order[F328.prod_no]
     if item:
-        print('looking up', item)
-        data = get_ingredient_data("", item, qty=1, level=1, include_null=null)
-    elif order:
-        data = get_ingredient_data('', order, qty=1, level=1, use_production=True, include_null=null)
-    else:
-        abort('neither ITEM nor ORDER specified')
-    if script_verbosity:
-        # info dump
-        echo(data)
-    else:
-        result = []
-        # echo('----------\n[%s] %s --> %s %s' % (data.item, data.desc, data.yield_qty, data.um))
-        result.append((data.item, data.desc, data.yield_qty, data.um))
-        result.append(None)
-        for k, v in sorted(data.items()):
-            if k != 'ingredients':
-                print('%-10s: %s' % (k, v), verbose=2)
-        echo('----------')
-        for _, i in sorted(data.ingredients.items()):
-            # echo('[%s] %s (%s %s)' % (i.item, i.desc, i.qty, i.um))
-            result.append((i.item, i.desc, i.yield_qty, i.um))
-        echo(result, border='table')
+        print('looking up item # %r' % (number, ))
+        item_no = number
+        item = get_item(item_no)
+        item_ingredients = get_item_ingredients(item_no)
+    all_items = list(set(order_ingredients.keys() + item_ingredients.keys()))
+    print(all_items[0])
+    #
+    def sort_by_line(item_no):
+        item = order_ingredients.get(item_no)
+        if item is None:
+            return '999'
+        else:
+            return item[F329.formula_line_no]
+    #
+    all_items.sort(key=sort_by_line)
+    header = ['Item']
+    if order_no:
+        header.extend(['Desc', 'Order %s' % order_no])
+    if item_no:
+        header.extend(['Item %s' % item_no, 'Desc'])
+    table = [header, None]
+    for item_key in all_items:
+        line = [item_key]
+        if order_ingredients:
+            ingredient = order_ingredients.get(item_key)
+            if ingredient is None:
+                line.extend(['', ''])
+            else:
+                text = "%s %s" % (ingredient[F329.qty_batch_1], ingredient[F329.units_batch_1])
+                line.extend(['%s - %s' % (ingredient[F329.formula_line_no], ingredient[F329.desc]), text])
+        if item_ingredients:
+            ingredient = item_ingredients.get(item_key)
+            if ingredient is None:
+                line.extend(['', ''])
+            else:
+                text = "%s %s" % (ingredient[F322.qty_batch_1], ingredient[F322.units_batch_1])
+                line.extend([text, ingredient[F322.desc_batch_1]])
+        table.append(line)
+    for line in table:
+        print(line)
+    meta = []
+    meta.append('Production Quantity: %r' % (order[F328.prod_qty], ))
+    meta.append('Number of Batches: A - %r   B - %r' % (order[F328.no_of_batches_a], order[F328.no_of_batches_b]))
+    meta.append('Batch Size: %r' % (order[F328.batch_size_a], ))
+    echo('\n'.join(meta), border='box')
+    echo(table, border='table')
 
 
 @Command(
@@ -46,6 +81,7 @@ def recipe(item, order, null):
         rev=('formula revision', ),
         )
 def ingredients(item, rev='000'):
+    "show ingrediens for an item (based on item's formula)"
     ingreds = get_item_ingredients(item, rev, food_only=True)
     if not ingreds:
         abort('no ingredients found for %s-%s', (item, rev))
@@ -104,6 +140,53 @@ def makeable():
 def absent():
     'check for non-existent recipes'
     get_items_with_recipes(print_missing=True)
+
+# helpers
+
+def get_item(number):
+    global NVTY
+    NVTY = fisData('NVTY1', keymatch="%s101000    101**")   # 135
+    return NVTY[number]
+
+def get_item_ingredients(number):
+    print('getting ingredients for item', number)
+    global IFDT
+    IFDT = fisData('IFDT', subset="10%s      000")               # 322
+    ingredients = dict([
+            (rec[F322.ingr_id_batch_1], rec)
+            for key, rec in
+                IFDT.get_subset(number)
+                if
+                    rec[F322.ingr_id_batch_1]
+                and rec[F322.ingr_id_batch_1] not in ignored_ingredients
+                ])
+    print(ingredients.keys())
+    return ingredients
+
+
+def get_order(number):
+    global IFPP0
+    IFPP0 = fisData('IFPP0', keymatch="10%s000010000")      # 328
+    try:
+        return IFPP0[number]
+    except KeyError:
+        abort('Order %r not found' % (number, ))
+
+def get_order_ingredients(number):
+    print('getting ingredients for order', number)
+    global IFPP1
+    IFPP1 = fisData('IFPP1', subset="10%s")      # 329
+    ingredients = dict([
+            (rec[F329.ingr_id_batch_1], rec)
+            for key, rec in
+                IFPP1.get_subset(number)
+                if
+                    rec[F329.ingr_id_batch_1]
+                and rec[F329.ingr_id_batch_1] not in ignored_ingredients
+                ])
+    print(ingredients.keys())
+    return ingredients
+
 
 
 Main()
