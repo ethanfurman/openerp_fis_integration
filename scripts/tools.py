@@ -251,7 +251,7 @@ class allow_exception(object):
     def __exit__(self, cls, exc, tb):
         if isinstance(exc, self.allowed):
             # print error for future reference
-            error(format_exception(*exc_info()), border='box')
+            error(''.join(format_exception(*exc_info())).strip(), border='box')
             return True
         return False
 
