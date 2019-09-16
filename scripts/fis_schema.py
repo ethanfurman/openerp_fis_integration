@@ -718,6 +718,78 @@ class F320(FISenum):
     weight_10             = 'Hn',          48     # Weight/10
                                                   # (Open) In
                                                   # (Open) Jn
+class F322(FISenum):
+    """
+    IFDT - FORMULA DETAIL - INGREDIENT DETAIL
+    """
+    #
+    _init_ = "value sequence"
+    _order_ = lambda m: m.sequence
+    #
+    company_id                = 'An$(1,2)',      0     # Company Code
+    formula_id                = 'An$(3,10)',     1     # Formula Code
+                                                       # (Open) An$(13,2)
+    rev_no                    = 'An$(15,3)',     3     # Revision Number
+    key_type                  = 'An$(18,1)',     4     # Key Group = "0"
+    line_no                   = 'An$(19,3)',     5     # Line Number
+    ingr_code_batch_1         = 'Bn$(1,8)',      6     # Ingredient Code - Batch 1
+    ingr_code_batch_2         = 'Bn$(9,8)',      7     # Ingredient Code - Batch 2
+    ingr_code_batch_3         = 'Bn$(17,8)',     8     # Ingredient Code - Batch 3
+    ingr_code_batch_temp      = 'Bn$(25,8)',     9     # Ingredient Code - Batch Temp
+    item_type_batch_1         = 'Cn$(1,1)',     10     # Item Type - Batch 1
+    item_type_batch_2         = 'Cn$(2,1)',     11     # Item Type - Batch 2
+    item_type_batch_3         = 'Cn$(3,1)',     12     # Item Type - Batch 3
+    item_type_batch_temp      = 'Cn$(4,1)',     13     # Item Type - Batch Temp
+    units_batch_1             = 'Dn$(1,2)',     14     # Units - Batch 1
+    units_batch_2             = 'Dn$(3,2)',     15     # Units - Batch 2
+    units_batch_3             = 'Dn$(5,2)',     16     # Units - Batch 3
+    units_batch_temp          = 'Dn$(7,2)',     17     # Units - Batch Temp
+                                                       # (open) En$
+    desc_batch_1              = 'Fn$(1,48)',    19     # Desc - Batch 1
+    desc_batch_2              = 'Fn$(49,48)',   20     # Desc - Batch 2
+    desc_batch_3              = 'Fn$(97,40)',   21     # Desc - Batch 3
+    desc_batch_temp           = 'Fn$(121,40)',  22     # Desc - Batch Temp
+    lbl_claim_batch_1         = 'Gn$(1,8)',     23     # Lbl Claim - Batch 1
+    lbl_claim_batch_2         = 'Gn$(9,8)',     24     # Lbl Claim - Batch 2
+    lbl_claim_batch_3         = 'Gn$(17,8)',    25     # Lbl Claim - Batch 3
+    lbl_claim_batch_temp      = 'Gn$(25,8)',    26     # Lbl Claim - Batch Temp
+    pct_over_batch_1          = 'Hn$(1,2)',     27     # Pct Over - Batch 1
+    pct_over_batch_2          = 'Hn$(3,2)',     28     # Pct Over - Batch 2
+    pct_over_batch_3          = 'Hn$(5,2)',     29     # Pct Over - Batch 3
+    pct_over_batch_temp       = 'Hn$(7,2)',     30     # Pct Over - Batch Temp
+    pct_in_formula_batch_1    = 'A(1)',         31     # Pct In Formula - Batch 1
+    pct_in_formula_batch_2    = 'A(2)',         32     # Pct In Formula - Batch 2
+    pct_in_formula_batch_3    = 'A(3)',         33     # Pct In Formula - Batch 3
+    pct_in_formula_batch_temp = 'A(4)',         34     # Pct In Formula - Batch Temp
+    qty_batch_1               = 'B(1)',         35     # Qty - Batch 1
+    qty_batch_2               = 'B(2)',         36     # Qty - Batch 2
+    qty_batch_3               = 'B(3)',         37     # Qty - Batch 3
+    qty_batch_temp            = 'B(4)',         38     # Qty - Batch Temp
+                                                       # (open) C(1)
+                                                       # (open) C(2)
+                                                       # (open) C(3)
+                                                       # (open) C(4)
+
+
+class F323(FISenum):
+    """
+    IFDT1 - FORMULA DETAIL - PRODUCTION INFO
+    """
+    _init_ = "value sequence"
+    _order_ = lambda m: m.sequence
+    #
+    company_id     = 'An$(1,2)',   0    # Company Code
+    formula_id     = 'An$(3,10)',  1    # Formula Code
+    rev_no         = 'An$(15,3)',  3    # Revision Number
+    key_type       = 'An$(18,1)',  4    # Key Group = "1"
+    batch_id       = 'An$(19,2)',  5    # Batch Id
+    desc           = 'Bn$',        6    # Description
+    comments       = 'Cn$',        7    # Comments
+    gross_weight   = 'An',        13    # Gross Weight (Lbs)
+    yield_in_units = 'Bn',        14    # Yield In Units
+    yield_pct      = 'Cn',        15    # Yield %
+    labor_hours    = 'Dn',        16    # Labor Hours
+
 class F328(FISenum):
     """
     IFPP0 - SALES ORDER PRODUCTION PENDING - HEADER
@@ -770,7 +842,7 @@ class F328(FISenum):
     date_lot_no_assgnd   = 'Fn$(7,6)',     41     # Date Lot No Assgnd
     prod_date            = 'Fn$(13,6)',    42     # Production Date
     scheduled_date       = 'Fn$(19,6)',    43     # Scheduled Date
-    warning_ids          = 'Gn$',          44     # Warning Codes
+    warning_codes        = 'Gn$',          44     # Warning Codes
     item_key             = 'Hn$',          45     # Item Key (Inventory)
     lot_no_range_1       = 'In$',          46     # Lot No Range 1
     lot_no_range_2       = 'Jn$',          47     # Lot No Range 2
@@ -782,8 +854,8 @@ class F328(FISenum):
     no_of_batches_b      = 'Dn',           53     # Number Of Batches - B
     batch_weight_a       = 'En',           54     # Batch Weight - A
     batch_weight_b       = 'Fn',           55     # Batch Weight - B
-    batch_size           = 'Gn',           56     # Batch Size (Units) - A
-    batch_size           = 'Hn',           57     # Batch Size (Units) - B
+    batch_size_a         = 'Gn',           56     # Batch Size (Units) - A
+    batch_size_b         = 'Hn',           57     # Batch Size (Units) - B
     weight_10            = 'In',           58     # Weight/10
                                                   # (open) Jn
     fg_qty_to_use        = 'Kn',           60     # F.G. Qty To Use
