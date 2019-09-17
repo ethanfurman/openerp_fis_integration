@@ -44,7 +44,9 @@ class fis_account_salesperson(xmlid, osv.Model):
         # - update them to the new res.users id of the now current sales rep
         if not ids or 'user_id' not in values:
             return super(fis_account_salesperson, self).write(cr, uid, ids, values, context=context)
-        # get current values
+        #
+        # get current mapping of FIS sales rep to user login
+        #
         old_salesreps = dict([
             (r['id'], r['user_id'])
             for r in self.read(cr, uid, ids, fields=['id', 'user_id'], context=context)
@@ -52,6 +54,9 @@ class fis_account_salesperson(xmlid, osv.Model):
         result = super(fis_account_salesperson, self).write(cr, uid, ids, values, context=context)
         if not result:
             return result
+        #
+        # get new mapping of FIS sales rep to user login
+        #
         new_salesreps = dict([
             (r['id'], r['user_id'])
             for r in self.read(cr, uid, ids, fields=['id', 'user_id'], context=context)
