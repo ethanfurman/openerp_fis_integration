@@ -8,7 +8,7 @@ from aenum import Enum, NamedTuple
 from antipathy import Path
 from collections import defaultdict
 from dbf import Date
-from fis_schema import F8, F11, F27, F33, F47, F65, F74, F97, F135, F163, F192, F262
+from fis_schema import F8, F11, F27, F33, F47, F65, F74, F97, F135, F163, F192, F262, F341
 from logging import INFO, getLogger, Formatter, handlers
 from openerplib import AttrDict, get_connection, get_records, IDEquality, PropertyNames, SetOnce
     # from traceback import format_exception
@@ -132,6 +132,7 @@ def fis_integration(method, delete, *files, **extra):
                 handle_product_location()
                 handle_sales_reps()
                 handle_transmitter()
+                handle_production_lines()
             if 'emp1' in files:
                 handle_emp1(method)
             if 'posm' in files or 'vnms' in files:
@@ -1630,6 +1631,150 @@ def handle_transmitter():
             border='box',
             )
 
+def handle_production_lines():
+    print('processing CNVZf (production lines)', border=('flag', '#'))
+    context = {'fis-updates': True, 'active_test': False}
+    production_line_model = Model(oe.get_model('fis_integration.production_line'), 'cnvzf', 'F341', context, RAISE_ON_EXCEPTION)
+    # these  are for tracking old/new versions of changed records
+    old_changed_line_records = {}
+    new_changed_line_records = {}
+    # these are for added/deleted records
+    added_line_records = {}
+    deleted_records = {}
+    # and the counts
+    changed_count = 0
+    added_count = 0
+    deleted_count = 0
+    ids = {}
+    #
+    # get the "old" data from:
+    # - current OpenERP data
+    #
+    cnvzf = fisData(341, keymatch='f10%s')
+    print(cnvzf.filename, verbose=2)
+    print('gathering data', border='flag')
+    #
+    # when doing a full compare, we have to convert every single fis record before we can
+    # check for changes
+    #
+    all_fis_records = AttrDict()
+    for fis_rec in cnvzf.values():
+        production_line = convert_production_line_rec(fis_rec)
+        all_fis_records[production_line.xml_id] = production_line
+    #
+    # retrieve the OpenERP records that match the CNVZf module
+    #
+    print('retrieving OpenERP records')
+    all_oe_records = dict([
+            (r.xml_id, r)
+            for r in get_records(
+                oe, 'fis_integration.production_line',
+                fields=[
+                    'id', 'xml_id', 'module', 'desc',
+                    ],
+                context=context,
+                )
+            ])
+    #
+    # now we can separate into new, changed, and deleted buckets
+    #
+    print('sorting changed, new, and deleted production line records')
+    all_keys = set(all_fis_records.keys() + all_oe_records.keys())
+    for key in all_keys:
+        old_rec = all_oe_records.get(key)
+        new_rec = all_fis_records.get(key)
+        if old_rec is new_rec is None:
+            continue
+        if old_rec is None:
+            added_line_records[key] = new_rec
+            continue
+        if new_rec is None:
+            deleted_records[key] = old_rec
+            continue
+        # copy missing fields for proper equality testing
+        new_rec.id = old_rec.id
+        if new_rec == old_rec:
+            continue
+        #
+        # we have changes, save the records for later comparison
+        #
+        old_changed_line_records[key] = old_rec
+        new_changed_line_records[key] = new_rec
+    assert set(old_changed_line_records.keys()) == set(new_changed_line_records.keys()),\
+            "old and new production line records mismatch"
+    #
+    # at this point, all records are in AttrDict format, divided by deleted, added, and changed
+    #
+    # process changes
+    #
+    if old_changed_line_records:
+        print('processing production line changes', border='flag')
+    assert set(old_changed_line_records.keys()) == set(new_changed_line_records.keys()),\
+            "old/new production line records mismatch"
+    changed_line_id = sorted(old_changed_line_records.keys())
+    for changed_line_id in changed_line_id:
+        #
+        # figure out the changes
+        #
+        old_record = old_changed_line_records[changed_line_id]
+        new_record = new_changed_line_records[changed_line_id]
+        assert set(old_record.keys()) == set(new_record.keys()),\
+                ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
+                    ('|'.join(sorted(old_record.keys())), box(str(old_record)),
+                     '|'.join(sorted(new_record.keys())), box(str(new_record))))
+        changes = AttrDict()
+        for key in old_record:
+            if old_record[key] != new_record[key]:
+                changes[key] = new_record[key]
+        if changes:
+            changed_count += 1
+            if LIST_RECORDS:
+                echo('  F341:%s  %s' % (changed_line_id, new_record.desc), end='  ')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
+                echo()
+            if not DRYRUN:
+                production_line_model.write(changed_line_id, new_record.id, changes)
+    #
+    # now add new production line records
+    #
+    if added_line_records:
+        print('adding production line records', border='flag')
+    for key, line in added_line_records.items():
+        echo(line, border='box', verbose=2)
+        # double-check that record doesn't already exist
+        line_id = production_line_model.search(domain=[('xml_id','=',key)])
+        if line_id:
+            [line_id] = line_id
+            ids[key] = line_id
+            production_line_model.error('FIS ID F341:%s (%s) already exists in OpenERP' % (key, line.desc))
+        else:
+            added_count += 1
+            if LIST_RECORDS:
+                echo('  F341:%s  %s' % (key, line.desc), end='  ')
+                print('||', '||'.join('%s -> %r' % (k, v) for k, v in line.items()), '||', end='')
+                echo()
+            if not DRYRUN:
+                line_id = production_line_model.create(key, line)
+                if line_id:
+                    line.id = line_id
+                    ids[key] = line_id
+    #
+    # delete production line records
+    #
+    if deleted_records:
+        print('deleting production line records', border='flag')
+        if LIST_RECORDS:
+            for key, rec in sorted(deleted_records.items()):
+                echo('  F341:%s  %s' % (key, rec.desc))
+        deleted_count = len(deleted_records)
+        if not DRYRUN:
+            oe_ids = production_line_model.search(domain=[('xml_id','in',deleted_records.keys())])
+            production_line_model.delete(oe_ids, context=context)
+    #
+    print('%d production line records changed\n%d production line records added\n%d production line records deleted'
+            % (changed_count, added_count, deleted_count),
+            border='box',
+            )
 def handle_sales_reps():
     print('processing CNVZz (customer sales reps)', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
@@ -3314,6 +3459,21 @@ def convert_transmitter_code_rec(fis_rec):
     tran_code.ship_to_code = fis_rec[F192.ship_to_id] or False
     tran_code.partner_xml_id = fis_rec[F192.cust_no] or False
     return tran_code
+
+def convert_production_line_rec(fis_rec):
+    line = AttrDict()
+    line.xml_id = fis_rec[F341.prod_line_code]
+    line.module = 'F341'
+    line.desc = desc = fis_rec[F341.desc] or False
+    if desc:
+        new_desc = []
+        for word in desc.split():
+            if word.upper() in ('KFK','USA','LLC'):
+                new_desc.append(word.upper())
+            else:
+                new_desc.append(word.title())
+        line.desc = ' '.join(new_desc)
+    return line
 
 def convert_csms_rec(model, fis_rec, aging=None, _missing_reps=set()):
     #
