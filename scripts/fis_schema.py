@@ -904,13 +904,22 @@ class F329(FISenum):
     wip_qty_batch_1        = 'C(3)',       29     # WIP Qty - Batch 1
                                                   # (open) C(4)
 
-
 class F341(FISenum):
     """
     CNVZf - PRODUCTION LINE MASTER FILE
     """
-    company_id            = 'An$(2,2)',   1     # Company Code
-    code                  = 'An$(4,2)',   2     # Production Line Code
-    desc                  = 'Bn$',        3     # Description
-    short_desc            = 'Cn$',        4     # Short Description
+    #
+    _init_ = "value sequence"
+    _order_ = lambda m: m.sequence
+    #
+    key_type                      = 'An$(1,1)',   0     # KEY GROUP = "f"
+    company_id                    = 'An$(2,2)',   1     # Company Code
+    prod_line_code                = 'An$(4,2)',   2     # Production Line Code
+    desc                          = 'Bn$',        3     # Description
+    short_desc                    = 'Cn$',        4     # Short Description
+    cst_per_hour                  = 'An',         5     # Cost per Hour
+    standard_performance_per_hour = 'Bn',         6     # Standard Performance per Hour
+    normal_hours_per_day          = 'Gn',         7     # Normal Hours per Day
+    vendor_no                     = 'Hn$',        8     # Vendor Number
+                                                        # (open) In$
 
