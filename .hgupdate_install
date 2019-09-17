@@ -2,7 +2,7 @@ scripts/fis --suid
 scripts/oe-users --suid
 scripts/oe-export
 scripts/recipe
-scripts/recipe.py
+scripts/recipe.py updates/recipe.py
 scripts/fis_update --suid
 scripts/fis_schema.py updates/fis_schema.py
 scripts/tools.py updates/tools.py
