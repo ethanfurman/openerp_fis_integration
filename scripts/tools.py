@@ -28,6 +28,21 @@ def pfm(values):
             result[k] = v
     return result
 
+def close_enough(old_rec, new_rec):
+    # if float values are close enough, copy the old one to the new one
+    for field_name in old_rec.keys():
+        old_value = old_rec[field_name]
+        new_value = new_rec[field_name]
+        ov_is_float = isinstance(old_value, float)
+        nv_is_float = isinstance(new_value, float)
+        if ov_is_float and nv_is_float:
+            if old_value - 0.000001 <= new_value <= old_value + 0.000001:
+                new_rec[field_name] = old_value
+    # now compare to see if equal
+    if old_rec != new_rec:
+        return False
+    return True
+
 def combine_by_value(old_records, new_records):
     all_keys = set(old_records.keys() + new_records.keys())
     changed_map = defaultdict(list)

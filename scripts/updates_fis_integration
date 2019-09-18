@@ -13,7 +13,7 @@ from logging import INFO, getLogger, Formatter, handlers
 from openerplib import AttrDict, get_connection, get_records, IDEquality, PropertyNames, SetOnce
     # from traceback import format_exception
 from pandaemonium import PidLockFile
-from tools import combine_by_value, Model, compare_fis_records as get_changed_fis_records
+from tools import close_enough, combine_by_value, Model, compare_fis_records as get_changed_fis_records
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, NameCaseReversed, PostalCode
 from VSS.BBxXlate.fisData import fisData
 from VSS.utils import fix_phone, fix_date
@@ -3256,21 +3256,6 @@ def handle_supplier(method):
             border='box',
             )
 
-
-def close_enough(old_rec, new_rec):
-    # if float values are close enough, copy the old one to the new one
-    for field_name in old_rec.keys():
-        old_value = old_rec[field_name]
-        new_value = new_rec[field_name]
-        ov_is_float = isinstance(old_value, float)
-        nv_is_float = isinstance(new_value, float)
-        if ov_is_float and nv_is_float:
-            if old_value - 0.000001 <= new_value <= old_value + 0.000001:
-                new_rec[field_name] = old_value
-    # now compare to see if equal
-    if old_rec != new_rec:
-        return False
-    return True
 
 def convert_arci_rec(fis_rec):
     item = AttrDict()
