@@ -172,7 +172,7 @@ class Model(object):
             return self.table.create(pfm(values), context=context)
         except Exception:
             cls, exc, tb = exc_info()
-            self.errors[self.abbr].append('FIS ID %s:%s create caused exception %r' % (self.module, key, exc))
+            self.errors[self.abbr].append('FIS ID %s:%s create with\n%r\n caused exception\n%s' % (self.module, key, values, exc))
             if self.raise_on_exception:
                 raise
             return False
@@ -210,7 +210,7 @@ class Model(object):
             return True
         except Exception:
             cls, exc, tb = exc_info()
-            self.errors[self.abbr].append('FIS ID %s:%s write caused exception %r' % (self.module, key, exc))
+            self.errors[self.abbr].append('FIS ID %s:%s write with\n%r\ncaused exception\n%s' % (self.module, key, values, exc))
             if self.raise_on_exception:
                 raise
             return False
