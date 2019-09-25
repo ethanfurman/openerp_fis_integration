@@ -23,6 +23,7 @@ import logging
 
 _logger = logging.getLogger(__name__)
 
+GUTTER = 5
 
 class external_pdf(render):
     def __init__(self, pdf):
@@ -35,24 +36,32 @@ class external_pdf(render):
 
 
 class report_spec_sheet(report_int):
+
     def create(self, cr, uid, ids, datas, context=None):
         if context is None:
             context = {}
         product_ids = ids
-
-        # now = time.strftime('%Y-%m-%d')
-
+        xml_ids = set()
         product_product = pooler.get_pool(cr.dbname).get('product.product')
         datas = product_product.read(
                 cr, uid, product_ids,
                 fields=['label_server_stub', 'xml_id', 'name', 'ean13'],
                 context=context,
                 )
-
         # create canvas
         pdf_io = BytesIO()
         display = Canvas(pdf_io, pagesize=letter, bottomup=1)
+        display.setAuthor('Sunridge Farms')
+        display.setSubject('Product Specification Labels')
+        if len(datas) == 1:
+            display.setTitle('%s' % (datas[0]['name'], ))
+        else:
+            display.setTitle('Various Products')
         for data in datas:
+            xml_id = data['xml_id']
+            display.bookmarkPage(xml_id)
+            display.addOutlineEntry('Product %s' % xml_id, xml_id)
+            xml_ids.add(xml_id)
             # download images and convert width and align
             image_specs = re.findall(
                     r'''<img src="([^"]*)" width=(\d*)% align="([^"]*)"''',
@@ -81,12 +90,12 @@ class report_spec_sheet(report_int):
             #
             # sort images into rows
             #
-            rows = []
+            requested_rows = []
             row = []
             total_width = 0
             for ibox in images:
                 if total_width + ibox.width > 1:
-                    rows.append(row)
+                    requested_rows.append(row)
                     row = []
                     total_width = 0
                 total_width += ibox.width
@@ -96,8 +105,7 @@ class report_spec_sheet(report_int):
                         break
                 else:
                     row.append(ibox)
-            rows.append(row)
-
+            requested_rows.append(row)
             page = Area(*letter)
             viewable_area = Area(page.width - 1.5*inch, page.height - 1.5*inch)
             left_margin = 0.75*inch
@@ -112,41 +120,108 @@ class report_spec_sheet(report_int):
             display.drawString(left_margin, top_margin-0.25*inch, lines[0])
             if len(lines) > 1:
                 display.drawString(left_margin, top_margin-0.5*inch, lines[1])
-            display.drawRightString(right_margin, top_margin+0.125*inch, data['xml_id'])
+            display.drawRightString(right_margin, top_margin+0.125*inch, xml_id)
             upc = data['ean13']
             upc = upc[:1], upc[1:6], upc[6:11], upc[11:12]  # discard 13th digit
             display.drawString(left_margin, top_margin-0.875*inch, 'UPC Code: %s-%s-%s-%s' % upc)
             anchor = Point(left_margin, top_margin - 1.25*inch)
             max_height = 0
-            # for ibox in images:
-            for row in rows:
+            # now sort into final rows and pages
+            pages = []
+            page = []
+            for row in requested_rows:
+                # separate into left, center, and right segments
+                left = []
+                center = []
+                right = []
                 for ibox in row:
-
                     bbox = get_bounding_box(viewable_area, ibox.image, ibox.width)
-
                     if anchor.x + bbox.width > right_margin:
                         anchor = Point(left_margin, anchor.y - max_height - 0.25*inch)
                         max_height = 0
+                        if left or right or center:
+                            page.append((left, right, center))
+                        left, right, center = [], [], []
                     if anchor.y - bbox.height < bottom_margin:
-                        display.showPage()
+                        pages.append(page)
+                        page = []
+                        # display.showPage()
                         anchor = top_left
                         max_height = 0
                     max_height = max(max_height, bbox.height)
-                    if ibox.image is not None:
-                        x0, y0 = anchor
-                        x1, y1 = anchor.x+bbox.width, anchor.y-bbox.height
-                        display.drawImage(ImageReader(ibox.image), x0, y1, bbox.width, bbox.height, preserveAspectRatio=True)
-                        if False:
-                            display.lines(((x0, y0, x1, y0), (x1, y0, x1, y1), (x1, y1, x0, y1), (x0, y1, x0, y0)))
+                    if ibox.align == -1:
+                        # maintain original order
+                        left.append((anchor, bbox, ibox))
+                    elif ibox.align == 0:
+                        # maintain original order
+                        center.append((anchor, bbox, ibox))
+                    elif ibox.align == 1:
+                        # reverse order (first image is the far right one
+                        right.insert(0, (anchor, bbox, ibox))
                     anchor = Point(anchor.x + bbox.width, anchor.y)
-            display.showPage()
+                if left or right or center:
+                    page.append((left, right, center))
+            # make sure and grab any stragglers
+            if left or right or center:
+                page.append((left, right, center))
+            if page:
+                pages.append(page)
+            # calculate actual positions and print
+            for page in pages:
+                for left, right, center in page:
+                    center_left = left_margin
+                    center_right = right_margin
+                    for anchor, bbox, ibox in left:
+                        display_image(display, anchor, bbox, ibox)
+                        center_left = anchor.x + bbox.width
+                    if right:
+                        anchor, bbox, ibox = right[0]
+                        delta = right_margin - (anchor.x + bbox.width)
+                    for anchor, bbox, ibox in right:
+                        delta_anchor = Point(anchor.x + delta, anchor.y)
+                        display_image(display, delta_anchor, bbox, ibox)
+                        center_right = anchor.x
+                    if center:
+                        # get left-most point
+                        anchor, bbox, ibox = center[0]
+                        left_anchor = anchor
+                        # center requires two passes:
+                        # - calculate total space used and delta
+                        # - adjust and print
+                        total_width = 0
+                        for anchor, bbox, ibox in center:
+                            total_width += bbox.width
+                        # width calculated, now for delta
+                        center_point = (center_left + center_right) // 2
+                        half_width = total_width // 2
+                        delta = center_point - half_width - left_anchor.x
+                        for anchor, bbox, ibox in center:
+                            delta_anchor = Point(anchor.x + delta, anchor.y)
+                            display_image(display, delta_anchor, bbox, ibox)
+                display.showPage()
         display.save()
         #
+        xml_ids = sorted(xml_ids)
+        if len(xml_ids) == 1:
+            self._filename = '%s-Spec_Sheet' % (xml_ids[0], )
+        elif xml_ids:
+            self._filename = 'Spec_Sheets-%s-%s' % (xml_ids[0], xml_ids[-1])
         self.obj = external_pdf(pdf_io.getvalue())
         self.obj.render()
         return (self.obj.pdf, 'pdf')
 report_spec_sheet('report.product.product.spec_sheet')
 
+def display_image(canvas, anchor, bbox, ibox):
+    x0, y0 = anchor
+    x1, y1 = anchor.x+bbox.width, anchor.y-bbox.height
+    if ibox.image is not None:
+        canvas.drawImage(
+                ImageReader(ibox.image),
+                x0+GUTTER, y1+GUTTER,
+                bbox.width-2*GUTTER, bbox.height-2*GUTTER,
+                preserveAspectRatio=True,
+                )
+        canvas.lines(((x0, y0, x1, y0), (x1, y0, x1, y1), (x1, y1, x0, y1), (x0, y1, x0, y0)))
 
 class Area(NamedTuple):
     width = 0
