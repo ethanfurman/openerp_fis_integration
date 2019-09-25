@@ -302,7 +302,9 @@ class product_product(xmlid, osv.Model):
                 for link, scale, align in LabelLinks:
                     if link.count('%s') == 2:
                         remote_file = "%s%s" % (base_url, link % (xml_id, xml_id))
-                    elif link.count('%s') != 0:
+                    elif link.count('%s') == 0:
+                        remote_file = "%s%s" % (base_url, link)
+                    else:
                         _logger.error('unknown link template: %r', link)
                         continue
                     htmlContentList.append(
