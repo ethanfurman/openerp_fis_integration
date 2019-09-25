@@ -300,7 +300,11 @@ class product_product(xmlid, osv.Model):
                 LabelLinks.append([piece.strip() for piece in link_line.split(",")])
             for xml_id, id in xml_ids.items():
                 for link, scale, align in LabelLinks:
-                    remote_file = "%s%s" % (base_url, link % (xml_id, xml_id))
+                    if link.count('%s') == 2:
+                        remote_file = "%s%s" % (base_url, link % (xml_id, xml_id))
+                    elif link.count('%s') != 0:
+                        _logger.error('unknown link template: %r', link)
+                        continue
                     htmlContentList.append(
                             '''<img src="%s" width=%s%% align="%s"/>'''
                             % (remote_file, scale, align)
@@ -331,7 +335,7 @@ class product_product(xmlid, osv.Model):
         records = available_at.read(cr, uid, [('id','!=',0)], fields=['xml_id','name'], context=context)
         result = [(r['xml_id'], '%s - %s' % (r['xml_id'], r['name'])) for r in records]
         return result
-        
+
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
