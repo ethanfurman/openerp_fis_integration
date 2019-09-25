@@ -55,6 +55,8 @@ def combine_by_value(old_records, new_records):
                 continue
             old_value = old_rec[oe_field]
             if old_value != new_value:
+                if isinstance(new_value, list):
+                    new_value = tuple(new_value)
                 rec_key.append((oe_field, new_value))
         if rec_key:
             changed_map[tuple(rec_key)].append(new_rec)
