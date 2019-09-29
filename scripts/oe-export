@@ -121,6 +121,9 @@ def sql(command, separator):
     UPDATE table
         SET field_name=... [, field_name=... [...]]
         [WHERE ...]
+
+    DELETE FROM table
+        [WHERE ...]
     """
     command = command.strip(' ;')
     check_command = command.lower()
@@ -132,6 +135,8 @@ def sql(command, separator):
         sql_describe(command, separator)
     elif check_command.startswith('update '):
         sql_update(command)
+    elif check_command.startswith('delete from '):
+        sql_delete(command)
     else:
         abort('one of SELECT | DESCRIBE not specified')
 
@@ -280,6 +285,37 @@ def sql_update(command):
     ids = table.search(domain)
     print('writing\n  %r\nto %s for ids\n%r' % (values, table._name, ids))
     table.write(ids, values)
+    echo('UPDATE %d' % len(ids))
+
+def sql_delete(command):
+    """\
+    DELETE FROM table
+        [WHERE ...]
+    """
+    pieces = command.split()
+    if len(pieces) < 3:
+        abort('table not specified')
+    table = pieces[2]
+    try:
+        table = oe.get_model(table)
+    except Fault, exc:
+        if "doesn't exist" in exc.faultCode:
+            abort('unknown table %r' % (table, ))
+        raise
+    if len(pieces) > 3 and pieces[3].lower() != 'where':
+        abort('malformed command -- missing WHERE keyword')
+    where_clause = ' '.join(pieces[4:])
+    domain = convert_where(where_clause)
+    #
+    # have all the info, make the changes
+    #
+    print('domain: %r' % (domain, ))
+    ids = table.search(domain)
+    if not ids:
+        echo('no records found matching %r' % (where_clause, ))
+    print('deleting %d records from %s' % (len(ids), table._name))
+    table.unlink(ids)
+    echo('DELETE %d' % len(ids))
 
 @Command(
         table=("show exports for TABLE", )
