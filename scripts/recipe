@@ -177,12 +177,12 @@ def get_item_ingredients(number):
     global IFDT
     IFDT = fisData('IFDT', subset="10%s      000")               # 322
     ingredients = dict([
-            (rec[F322.ingr_id_batch_1], rec)
+            (rec[F322.ingr_code_batch_1], rec)
             for key, rec in
                 IFDT.get_subset(number)
                 if
-                    rec[F322.ingr_id_batch_1]
-                and rec[F322.ingr_id_batch_1] not in ignored_ingredients
+                    rec[F322.ingr_code_batch_1]
+                and rec[F322.ingr_code_batch_1] not in ignored_ingredients
                 ])
     print(ingredients.keys())
     return ingredients
@@ -201,12 +201,12 @@ def get_order_ingredients(number):
     global IFPP1
     IFPP1 = fisData('IFPP1', subset="10%s")      # 329
     ingredients = dict([
-            (rec[F329.ingr_id_batch_1], rec)
+            (rec[F329.ingr_code_batch_1], rec)
             for key, rec in
                 IFPP1.get_subset(number)
                 if
-                    rec[F329.ingr_id_batch_1]
-                and rec[F329.ingr_id_batch_1] not in ignored_ingredients
+                    rec[F329.ingr_code_batch_1]
+                and rec[F329.ingr_code_batch_1] not in ignored_ingredients
                 ])
     print(ingredients.keys())
     return ingredients
