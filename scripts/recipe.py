@@ -3,6 +3,8 @@ from VSS.BBxXlate.fisData import fisData
 from openerplib import AttrDict
 
 def get_item_ingredients(item, rev='000', food_only=False):
+    if not item:
+        return []
     get_fis_data()
     #ensure item is 10 chars long
     item_ingredient, rev = '%-10s' % item, '%-3s' % rev
@@ -67,6 +69,8 @@ def title(txt):
     return txt.replace("Sunridge","SunRidge")
 
 def item_detail(oid, item, qty, as_ingredient, inventory, item_refs):
+    if not item:
+        return AttrDict()
     if item.startswith('x'):
         item_code = item[1:]
     else:
