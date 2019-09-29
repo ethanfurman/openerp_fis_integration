@@ -5,6 +5,7 @@ import os
 from antipathy import Path
 from openerplib import get_connection, get_records, AttrDict, Query, Many2One
 from scription import *
+from xmlrpclib import Fault
 import re
 
 virtual_env = os.environ['VIRTUAL_ENV']
@@ -107,7 +108,7 @@ def adhoc(table, fields, to_file, domain, order, distinct, separator):
         separator=('insert blank line between records', FLAG),
         )
 def sql(command, separator):
-    """\
+    """
     SELECT field_name [, field_name [, ...]]
         FROM table
         [WHERE ...]
@@ -116,6 +117,10 @@ def sql(command, separator):
 
     DESCRIBE table
         [ORDER BY field1]
+
+    UPDATE table
+        SET field_name=... [, field_name=... [...]]
+        [WHERE ...]
     """
     command = command.strip(' ;')
     check_command = command.lower()
@@ -125,6 +130,8 @@ def sql(command, separator):
         sql_select(command, separator)
     elif check_command.startswith('describe '):
         sql_describe(command, separator)
+    elif check_command.startswith('update '):
+        sql_update(command)
     else:
         abort('one of SELECT | DESCRIBE not specified')
 
@@ -223,6 +230,115 @@ def sql_select(command, separator):
     #
     # and get WHERE clause
     #
+    donde = convert_where(clausa)
+    print('WHERE', donde)
+    print('ORDER BY', orden)
+    print('TO', imprimido)
+    #
+    # at this point we have the fields, the table, and possibly
+    # the output file -- hand off to adhoc()
+    #
+    adhoc(desde, seleccion, imprimido, donde or ALL_ACTIVE, orden, distinta, separator)
+
+def sql_update(command):
+    """\
+    UPDATE table
+        SET field_name=... [, field_name=... [...]]
+        [WHERE ...]
+    """
+    pieces = command.split()
+    if len(pieces) < 2:
+        abort('table not specified')
+    table = pieces[1]
+    try:
+        table = oe.get_model(table)
+    except Fault, exc:
+        if "doesn't exist" in exc.faultCode:
+            abort('unknown table %r' % (table, ))
+        raise
+    if len(pieces) < 3 or pieces[2].lower() != 'set':
+        abort('malformed command -- missing SET keyword')
+    command = ' '.join(pieces[3:])
+    try:
+        where_index = command.lower().index(' where ')
+        where_clause = command[where_index+7:]
+        set_clause = command[:where_index]
+    except ValueError:
+        if command.lower().endswith(' where'):
+            abort('malformed command -- missing WHERE parameters')
+        where_clause = []
+        set_clause = command
+    print('where clause: %r' % (where_clause, ))
+    values = convert_set(set_clause)
+    if not values:
+        abort('malformed command -- no changes specified')
+    domain = convert_where(where_clause)
+    #
+    # have all the info, make the changes
+    #
+    print('domain: %r' % (domain, ))
+    ids = table.search(domain)
+    print('writing\n  %r\nto %s for ids\n%r' % (values, table._name, ids))
+    table.write(ids, values)
+
+@Command(
+        table=("show exports for TABLE", )
+        )
+@Alias('list')
+def list_exports(table=None):
+    for export in get_records(oe, 'ir.exports'):
+        if table and export.resource != table:
+            continue
+        echo('%-60s [%s]' % (export.name, export.resource))
+
+# helpers
+
+def convert_set(clausa):
+    values = {}
+    while clausa:
+        # e.g. login = 'ethan'
+        #      id=201
+        #      blah = null, this = 'that'
+        print('set', clausa, verbose=2)
+        try:
+            field, op, value, clausa = re.match(
+                    "^(\w+)\s*(=)\s*('?.*(?<!\\')?|.*?)\s*(.*?)\s*$",
+                    clausa,
+                    ).groups()
+            print('\nfield: %r\nop: %r\nvalue: %r\nwhere: %r\n' % (field, op, value, clausa), verbose=2)
+            if not (field and op and value):
+                raise ValueError
+        except (ValueError, AttributeError):
+            abort('malformed SET clause')
+        else:
+            if (
+                    value[0] == value[-1] == '"'
+                 or value[0] == value[-1] == "'"
+                 ):
+                value = value[1:-1]
+            elif value in ('t', 'true'):
+                value = True
+            elif value in ('f', 'false'):
+                value = False
+            elif value == 'none':
+                value = False
+            elif value == 'null':
+                value = False
+            else:
+                try:
+                    value = int(value)
+                except ValueError:
+                    try:
+                        value = float(value)
+                    except ValueError:
+                        abort('unknown data type: %r %r' % (type(value), value))
+            values[field] = value
+            if clausa.startswith(','):
+                clausa = clausa[1:].lstrip()
+    return values
+
+def convert_where(clausa):
+    donde = []
     while clausa:
         # e.g. WHERE login = 'ethan'
         #      WHERE id=201
@@ -275,27 +391,7 @@ def sql_select(command, separator):
             elif clausa.startswith('and '):
                 donde.insert(0, '&')
                 clausa = clausa[4:]
-    print('WHERE', donde)
-    print('ORDER BY', orden)
-    print('TO', imprimido)
-    #
-    # at this point we have the fields, the table, and possibly
-    # the output file -- hand off to adhoc()
-    #
-    adhoc(desde, seleccion, imprimido, donde or ALL_ACTIVE, orden, distinta, separator)
-
-
-@Command(
-        table=("show exports for TABLE", )
-        )
-@Alias('list')
-def list_exports(table=None):
-    for export in get_records(oe, 'ir.exports'):
-        if table and export.resource != table:
-            continue
-        echo('%-60s [%s]' % (export.name, export.resource))
-
-# helpers
+    return donde
 
 def write_xls(sheet_name, query, fields, file, unique, separator):
     import xlwt
