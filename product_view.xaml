@@ -43,7 +43,7 @@
                         @label_server_stub nolabel='1' options="{'no_embed': True}"
                     // ~page $Costs groups='fis_integration.purchase_cost'
                     //   @cost_server_stub
-                ~group @status position='before'
+                ~group @inventory position='inside'
                     ~group $Availability
                         ~div .fis
                             ~label for='fis_qty_on_hand' string='Quantity On-hand: '
@@ -96,7 +96,10 @@
                                         @fis_21_day_available readonly='1' widget='fis_positive_okay'
                             ~label for='fis_qty_makeable' string='Immediately Producible: ' attrs="{'invisible': [('xml_id','=',False)]}"
                             @fis_qty_makeable .oe_inline attrs="{'invisible': [('xml_id','=',False)]}"
-
+                ~group @Weights position='attributes'
+                    ~attribute @groups: base.group_user
+                @volume position='attributes'
+                    ~attribute @invisible: 1
                 @product_manager position='after'
                     @fis_location
                     @fis_availability_code

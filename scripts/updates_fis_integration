@@ -598,6 +598,7 @@ def handle_nvty(method):
                     F135.available_key, F135.sales_cat, F135.trademarkd,
                     F135.catalog_location, F135.desc, F135.size, F135.upc_no, F135.primary_location,
                     F135.supplier_id, F135.new_retail, F135.new_whlsl,
+                    F135.net_un_wt, F135.grs_un_wt,
                     ],
                 address_fields=[],
                 )
@@ -616,7 +617,7 @@ def handle_nvty(method):
                     'id', 'module', 'xml_id', 'active', 'name', 'fis_name', 'fis_qty_on_hand',
                     'fis_availability_code', 'sale_ok', 'list_price', 'trademarks', 'ean13',
                     'fis_location', 'fis_shipping_size', 'categ_id', 'warranty',
-                    'default_code',
+                    'default_code', 'weight', 'weight_net',
                     ],
                 )
             ])
@@ -727,7 +728,7 @@ def handle_nvty(method):
                         'fis_qty_purchased', 'fis_10_day_purchased', 'fis_21_day_purchased',
                         'fis_qty_sold', 'fis_10_day_sold', 'fis_21_day_sold',
                         'fis_qty_available', 'fis_10_day_available', 'fis_21_day_available',
-                        'default_code',
+                        'default_code', 'weight', 'weight_net',
                         ],
                     context=context,
                     )
@@ -3298,6 +3299,8 @@ def convert_nvty_rec(fis_rec):
     item.ean13 = sanitize_ean13(fis_rec[F135.upc_no])
     item.fis_location = fis_rec[F135.primary_location]
     item.fis_qty_on_hand = fis_rec[F135.qty_on_hand]
+    item.weight = numeric(fis_rec[F135.grs_un_wt])
+    item.weight_net = numeric(fis_rec[F135.net_un_wt])
     #
     shipping_size = fis_rec[F135.size].strip()
     if shipping_size.lower() in ('each','1 each','1/each'):
@@ -3845,6 +3848,16 @@ def ean_checksum(eancode):
     total=(oddsum * 3) + evensum
     check = int(10 - math.ceil(total % 10.0)) % 10
     return check
+
+def numeric(number):
+    try:
+        return int(number)
+    except ValueError:
+        try:
+            return float(number)
+        except ValueError:
+            pass
+    return False
 
 class CustomerAging(NamedTuple):
     _order_ = "xml_id limit current d10 d20 d30 total"
