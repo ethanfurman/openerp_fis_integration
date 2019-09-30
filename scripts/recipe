@@ -14,7 +14,7 @@ from VSS.BBxXlate.fisData import fisData
         item=('number is an item (or display both order and item recipes)', FLAG),
         null=('show zeroed ingredients', FLAG),
         )
-def recipe(number, order, item, null):
+def recipe(number, order, item, null, _summary=False):
     'display recipe for one item (using: 322 IFDT ) or for one order (using: 329 IFPP1)'
     print('\nnumber -> %r\nitem -> %r\norder -> %r\n' % (number, item, order))
     if not (item or order):
@@ -70,34 +70,41 @@ def recipe(number, order, item, null):
     for line in table:
         print(line)
     meta = []
+    meta.append('Order: %s' % (order_no, ))
+    meta.append('Item:  %s' % (item_no, ))
     meta.append('Production Quantity: %r' % (order[F328.prod_qty], ))
     meta.append('Number of Batches: A - %r   B - %r' % (order[F328.no_of_batches_a], order[F328.no_of_batches_b]))
     meta.append('Batch Size: %r' % (order[F328.batch_size_a], ))
     echo('\n'.join(meta), border='box')
+    if _summary:
+        return
     echo(table, border='table')
 
 
 @Command(
+        open=Spec('show active orders only', FLAG),
         where=Spec('filter criteria', OPTION, choices=['a','b','a&b','>1']),
         )
-def all_orders(where):
+def all_orders(open, where):
     "show all orders based on batch size"
     global IFPP0
     IFPP0 = fisData('IFPP0', keymatch="10%s000010000")      # 328
     for order in IFPP0:
+        if open and order[F328.produced] in 'YX':
+            continue
         a = order[F328.no_of_batches_a]
         b = order[F328.no_of_batches_b]
-        print('a=%r  b=%r' % (a, b))
         if (
                 where == 'a' and a
              or where == 'b' and b
              or where == 'a&b' and a and b
              or where == '>1' and (a > 1 or b > 1)
              ):
-            recipe(order[F328.order_no], order=True, item=True, null=False)
-            response = input('<Enter> for next record, <q> to quit')
-            if response[:1].lower() == 'q':
-                exit()
+            recipe(order[F328.order_no], order=True, item=True, null=False, _summary=not module.script_verbosity)
+            if module.script_verbosity:
+                response = input('<Enter> for next record, <q> to quit')
+                if response[:1].lower() == 'q':
+                    exit()
 
 
 @Command(
