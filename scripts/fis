@@ -95,12 +95,10 @@ def diff(filenum, keymatch, key, full, color, summary):
                 echo(new_rec)
                 echo('record has been ADDED')
         else:
-            changed += 1
-            if summary:
-                continue
             # only show key fields and changed fields, unless user specified --full
             key_field_pre = fis_table.datamap[0]
             changed_fields = []
+            field_changed = False
             for field_meta in fis_table.fieldlist:
                 index, desc, _, spec, _ = field_meta
                 old_data = old_rec[spec]
@@ -109,8 +107,13 @@ def diff(filenum, keymatch, key, full, color, summary):
                     changed_fields.append((index.split('_')[1], spec, old_data, new_data, desc))
                     data_width = max(data_width, len(old_data), len(new_data))
                 elif old_data != new_data or full:
+                    field_changed = True
                     changed_fields.append((index.split('_')[1], spec, old_data, new_data, desc))
                     data_width = max(data_width, len(str(old_data)), len(str(new_data)))
+            if field_changed:
+                changed += 1
+            if summary:
+                continue
             data_width = 30
             lines = []
             def select_color(row):
