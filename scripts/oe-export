@@ -568,7 +568,7 @@ def write_txt(table, query, fields, file, unique, separator):
             lines.append(None)
         er = ExpandedRow(fields, r)
         for row in er:
-            print('post pre-process row ->', row)
+            print('post pre-process row ->', row, verbose=2)
             line = []
             for cell_index, cell_value in enumerate(row):
                 if isinstance(cell_value, Many2One):
@@ -607,7 +607,7 @@ def write_txt(table, query, fields, file, unique, separator):
                     line.append('')
                 else:
                     line.append(cell_value)
-            print('post post-process line ->', line)
+            print('post post-process line ->', line, verbose=2)
             lines.append(line)
     if not separator:
         lines.insert(1, None)
