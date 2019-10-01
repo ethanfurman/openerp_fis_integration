@@ -368,10 +368,11 @@ def record(filenum, which, id):
         filenum=Spec('file abbreviation or number to operate on', ),
         subset=Spec('subset template to match many records to', ),
         code=Spec('code to match with template', force_default='', type=lambda s: s and tuple(s.split(',') or s)),
-        fields=Spec('specific fields to display [default: all, counting starts with 0]', MULTI, type=int),
+        fields=Spec('specific fields to display [default: all]', MULTI, type=int),
         dbf_name=Spec('dbf to create with data', OPTION),
         )
 def records(filenum, subset, code, fields, dbf_name):
+    print('fields requested: %s' % (fields, ))
     if filenum.isdigit():
         filenum = int(filenum)
     fis_table = fd.fisData(filenum, subset=subset)
@@ -390,7 +391,10 @@ def records(filenum, subset, code, fields, dbf_name):
         dbf_names = []
         fis_fields = record.fieldlist
         for i, row in enumerate(fis_fields):
-            if not fields or i in fields:
+            j = i + 1
+            print('checking for %d' % (j, ), end='... ', verbose=2)
+            if not fields or j in fields:
+                print('keeping', end='', verbose=2)
                 name, spec = row[1:4:2]
                 if not name.strip() or name.strip().lower() == '(open)':
                     continue
@@ -406,6 +410,7 @@ def records(filenum, subset, code, fields, dbf_name):
                 else:
                     dbf_types.append('%s N(17,5)' % field_name)
                     used_fields.append((i, float))
+            print(verbose=2)
         if dbf_name:
             print('dbf fields:\n  ', '\n   '.join(dbf_types))
             table = dbf.Table(dbf_name, dbf_types).open(dbf.READ_WRITE)
