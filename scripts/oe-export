@@ -90,6 +90,7 @@ def oe_export(name, to_file, domain, table):
     separator=Spec('print separator between lines', FLAG),
     )
 def adhoc(table, fields, to_file, domain, order, distinct, separator):
+    print('searching %s\n  for %s\n  retreiving %s\n  ordered by %s' % (table, domain, fields, order))
     fields = list(fields)
     q = Query(oe.get_model(table), domain=domain, fields=fields[:], order=order)
     #
@@ -147,6 +148,12 @@ def sql_describe(command, separator):
     """
     command = command.lower()
     desde = command.split()[1]
+    try:
+        model = oe.get_model(desde)
+    except Fault, exc:
+        if "doesn't exist" in exc.faultCode:
+            abort('unknown table %r' % (desde, ))
+        raise
     if ' order by ' in command:
         orden = command.split(' order by ')[1].strip()
         if orden not in ('field','display','type','help'):
@@ -159,7 +166,7 @@ def sql_describe(command, separator):
             }[orden]
     else:
         sort = lambda t: t[0]
-    seleccion = sorted(oe.get_model(desde).fields_get().items(), key=sort)
+    seleccion = sorted(model.fields_get().items(), key=sort)
     table = [('Field','Display','Type','Help'), None]
     for field, desc in seleccion:
         table.append((field, desc['string'], desc['type'], (desc.get('help') or '').replace('\n','  ')))
