@@ -387,7 +387,7 @@ def convert_where(clausa):
         print('clausa', clausa, verbose=2)
         try:
             field, op, condition, clausa = re.match(
-                    "^(\w+)\s*(is not|is|like|not like|ilike|not ilike|=|<|>|<=|>=|!=)\s*('?.*(?<!\\')?|.*?)\s*(.*?)\s*$",
+                    "^(\w+)\s*(is not|is|like|=like|not like|ilike|=ilike|not ilike|=|<|>|<=|>=|!=)\s*('?.*(?<!\\')?|.*?)\s*(.*?)\s*$",
                     clausa,
                     flags=re.I
                     ).groups()
@@ -404,10 +404,6 @@ def convert_where(clausa):
                  or condition[0] == condition[-1] == "'"
                  ):
                 condition = condition[1:-1]
-                if op == '=':
-                    op = 'ilike'
-                elif op == '!=':
-                    op = 'not ilike'
             elif lcond in ('t', 'true'):
                 condition = True
             elif lcond in ('f', 'false'):
