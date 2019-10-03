@@ -139,7 +139,7 @@ def sql(command, separator):
     elif check_command.startswith('delete from '):
         sql_delete(command)
     else:
-        abort('one of SELECT | DESCRIBE not specified')
+        abort('one of SELECT | UPDATE | DELETE | DESCRIBE not specified')
 
 def sql_describe(command, separator):
     """
