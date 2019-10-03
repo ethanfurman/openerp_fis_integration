@@ -387,7 +387,7 @@ def convert_where(clausa):
         print('clausa', clausa, verbose=2)
         try:
             field, op, condition, clausa = re.match(
-                    "^(\w+)\s*(is not|is|like|=like|not like|ilike|=ilike|not ilike|=|<|>|<=|>=|!=)\s*('?.*(?<!\\')?|.*?)\s*(.*?)\s*$",
+                    r"^(\w+)\s*(is not|is|like|=like|not like|ilike|=ilike|not ilike|=|<|>|<=|>=|!=)\s*('(?:[^'\\]|\\.)*?'|.*?)\s*(.*?)\s*$",
                     clausa,
                     flags=re.I
                     ).groups()
