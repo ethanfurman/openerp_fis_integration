@@ -136,6 +136,8 @@ def sql(command, separator):
         abort('more than one command specified')
     if check_command.startswith('select '):
         sql_select(command, separator)
+    elif check_command.startswith('count '):
+        sql_count(command, separator)
     elif check_command.startswith('describe '):
         sql_describe(command, separator)
     elif check_command.startswith('update '):
@@ -143,7 +145,7 @@ def sql(command, separator):
     elif check_command.startswith('delete from '):
         sql_delete(command)
     else:
-        abort('one of SELECT | UPDATE | DELETE | DESCRIBE not specified')
+        abort('one of SELECT | UPDATE | DELETE | DESCRIBE | COUNT not specified')
 
 def sql_describe(command, separator):
     """
@@ -176,7 +178,7 @@ def sql_describe(command, separator):
         table.append((field, desc['string'], desc['type'], (desc.get('help') or '').replace('\n','  ')))
     echo(table, border='table')
 
-def sql_select(command, separator):
+def sql_select(command, separator, _internal=False):
     """\
     SELECT field_name [, field_name [, ...]]
         FROM table
@@ -244,6 +246,8 @@ def sql_select(command, separator):
     # and get WHERE clause
     #
     donde = convert_where(clausa)
+    if _internal:
+        imprimido = ''
     print('WHERE', donde)
     print('ORDER BY', orden)
     print('TO', imprimido)
@@ -261,7 +265,9 @@ def sql_select(command, separator):
             separator,
             _internal=True,
             )
-    print('SELECT %d' % len(query.records))
+    if _internal:
+        return query
+    echo('SELECT %d' % len(query.records))
 
 def sql_update(command):
     """\
@@ -334,6 +340,17 @@ def sql_delete(command):
     print('deleting %d records from %s' % (len(ids), table._name))
     table.unlink(ids)
     echo('DELETE %d' % len(ids))
+
+def sql_count(command, separator):
+    """
+    COUNT field_name [, field_name [, ...]]
+        FROM table
+        [WHERE ...]
+        [ORDER BY field1 [ASC|DESC] [, field2 [ASC|DESC] [, ...]]]
+        [TO file] # ignored
+    """
+    query = sql_select(command, separator, _internal=True)
+    echo('COUNT %d' % len(query.records))
 
 @Command(
         table=("show exports for TABLE", )
