@@ -89,19 +89,23 @@ def oe_export(name, to_file, domain, table):
     distinct=Spec('unique rows only', FLAG, abbrev=None),
     separator=Spec('print separator between lines', FLAG),
     )
-def adhoc(table, fields, to_file, domain, order, distinct, separator):
+def adhoc(table, fields, to_file, domain, order, distinct, separator, _internal=False):
     print('searching %s\n  for %s\n  retreiving %s\n  ordered by %s' % (table, domain, fields, order))
     fields = list(fields)
-    q = Query(oe.get_model(table), domain=domain, fields=fields[:], order=order)
+    q = Query(oe.get_model(table), domain=domain, fields=fields[:], order=order, unique=distinct)
+    if _internal and not to_file:
+        return q
     #
     if to_file.endswith('.xls'):
-        write_xls(table, q, fields, to_file, distinct, separator)
+        write_xls(table, q, fields, to_file, separator)
     elif to_file.endswith('.csv'):
-        write_csv(table, q, fields, to_file, distinct, separator)
+        write_csv(table, q, fields, to_file, separator)
     elif to_file.endswith('.txt') or to_file == '-':
-        write_txt(table, q, fields, to_file, distinct, separator)
+        write_txt(table, q, fields, to_file, separator)
     else:
         abort('unknown file type: %r' % to_file)
+    if _internal:
+        return q
 
 
 @Command(
@@ -247,7 +251,17 @@ def sql_select(command, separator):
     # at this point we have the fields, the table, and possibly
     # the output file -- hand off to adhoc()
     #
-    adhoc(desde, seleccion, imprimido, donde or ALL_ACTIVE, orden, distinta, separator)
+    query = adhoc(
+            desde,
+            seleccion,
+            imprimido,
+            donde or ALL_ACTIVE,
+            orden,
+            distinta,
+            separator,
+            _internal=True,
+            )
+    print('SELECT %d' % len(query.records))
 
 def sql_update(command):
     """\
@@ -433,7 +447,7 @@ def convert_where(clausa):
                 clausa = clausa[4:]
     return donde
 
-def write_xls(sheet_name, query, fields, file, unique, separator):
+def write_xls(sheet_name, query, fields, file, separator):
     import xlwt
     workbook = xlwt.Workbook()
     worksheet = workbook.add_sheet(sheet_name)
@@ -443,18 +457,9 @@ def write_xls(sheet_name, query, fields, file, unique, separator):
         worksheet.col(i).width = 8000 # around 220 pixels
         # TODO: calculate width base on column contents
     #
-    seen = set()
     i = 0
     for r in query.records:
         print(r, verbose=2)
-        if unique:
-            unique_rec = distinct(r)
-            print('checking record:', repr(unique_rec._hash), verbose=3)
-            if unique_rec in seen:
-                continue
-            else:
-                seen.add(unique_rec)
-        print('seen:', repr(seen), verbose=3)
         if separator:
             i += 1
         er = ExpandedRow(fields, r)
@@ -490,7 +495,7 @@ def write_xls(sheet_name, query, fields, file, unique, separator):
                 worksheet.write(i, cell_index, cell_value)
     workbook.save(file)
 
-def write_csv(table, query, fields, file, unique, separator):
+def write_csv(table, query, fields, file, separator):
     lines = []
     line = []
     print('field count:', len(fields), fields, verbose=2)
@@ -499,16 +504,7 @@ def write_csv(table, query, fields, file, unique, separator):
     print(repr(line), verbose=3)
     lines.append(','.join(line))
     #
-    seen = set()
     for r in query.records:
-        if unique:
-            unique_rec = distinct(r)
-            print('checking record:', repr(unique_rec._hash), verbose=3)
-            if unique_rec in seen:
-                continue
-            else:
-                seen.add(unique_rec)
-        print('seen:', repr(seen), verbose=3)
         if separator:
             lines.append('')
         er = ExpandedRow(fields, r)
@@ -550,7 +546,7 @@ def write_csv(table, query, fields, file, unique, separator):
     with open(file, 'w') as output:
         output.write('\n'.join(lines))
 
-def write_txt(table, query, fields, file, unique, separator):
+def write_txt(table, query, fields, file, separator):
     lines = []
     line = []
     print('field count:', len(fields), fields, verbose=2)
@@ -558,16 +554,7 @@ def write_txt(table, query, fields, file, unique, separator):
         line.append(field_name)
     lines.append(line)
     #
-    seen = set()
     for r in query.records:
-        if unique:
-            unique_rec = distinct(r)
-            print('checking record:', repr(unique_rec._hash), verbose=3)
-            if unique_rec in seen:
-                continue
-            else:
-                seen.add(unique_rec)
-        print('seen:', repr(seen), verbose=3)
         if separator:
             lines.append(None)
         er = ExpandedRow(fields, r)
@@ -620,44 +607,6 @@ def write_txt(table, query, fields, file, unique, separator):
     else:
         with open(file, 'w') as out:
             echo(lines, border='table', file=out)
-
-def distinct(attr_rec):
-    # new_rec = attr_rec.copy()
-    # new_rec.pop('id')
-    for k, v in attr_rec.items():
-        if isinstance(v, AttrDict):
-            attr_rec[k] = distinct(v)
-        elif isinstance(v, list):
-            unique = set()
-            for item in v:
-                unique.add(IDless(item))
-            v = tuple([item.idfull for item in unique])
-            attr_rec[k] = v
-    return IDless(attr_rec)
-
-class IDless(object):
-
-    def __init__(self, obj):
-        self.idfull = obj
-        if isinstance(obj, (AttrDict, dict)):
-            self._hash = tuple([(k, v) for k, v in sorted(obj.items()) if k != 'id'])
-        else:
-            self._hash = tuple(sorted(obj))
-
-    def __hash__(self):
-        return hash(self._hash)
-
-    def __eq__(self, other):
-        if not isinstance(other, self.__class__):
-            return NotImplemented
-        return self._hash == other._hash
-
-    def __ne__(self, other):
-        if not isinstance(other, self.__class__):
-            return NotImplemented
-        return self._hash != other._hash
-
-
 
 
 class counter(object):
