@@ -92,21 +92,10 @@ class product_category(xmlid, osv.Model):
     "makes external_id visible and searchable"
     _name = 'product.category'
     _inherit = 'product.category'
-    _order = 'complete_name'
-
-    def _name_get_fnc(self, cr, uid, ids, prop, unknow_none, context=None):
-        res = self.name_get(cr, uid, ids, context=context)
-        return dict(res)
 
     _columns = {
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
-        'complete_name': fields.function(
-            _name_get_fnc,
-            type="char",
-            string='Name',
-            store={ 'product.category': (_get_category_records, ['name', 'parent_id'], 10) },
-            ),
         'fis_shelf_life': fields.float('Shelf life (mos)'),
         }
 
