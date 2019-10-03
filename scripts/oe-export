@@ -185,21 +185,20 @@ def sql_select(command, separator):
     clausa = ''
     donde = []
     distinta = False
-    check_command = command.lower()
-    if ' from ' not in check_command:
+    command = ' '.join(command.split())
+    if not re.search(' from ', command, flags=re.I):
         abort('FROM not specified')
-    if check_command.split()[-2] == 'to':
+    if command.split()[-2].lower() == 'to':
         imprimido = command.split()[-1]
-        check_command = ' '.join(check_command.split()[:-2])
-    command = check_command
+        command = ' '.join(command.split()[:-2])
     #
     # get SELECT fields
     #
-    seleccion, resto = command.split(' from ')
-    seleccion = [s.strip(',') for s in seleccion.split()[1:]]
+    seleccion, resto = re.split(' from ', command, maxsplit=1, flags=re.I)
+    seleccion = [s.strip(',') for s in seleccion.split()[1:] if s != ',']
     if not seleccion:
         abort('missing fields')
-    if seleccion[0] == 'distinct':
+    if seleccion[0].upper() == 'DISTINCT':
         distinta = True
         seleccion.pop(0)
     if not seleccion:
@@ -212,33 +211,31 @@ def sql_select(command, separator):
     #
     resto = resto.split()
     desde, resto = resto[0], resto[1:]
-    if desde in ('', 'where', 'order'):
+    if desde.upper() in ('', 'WHERE', 'ORDER'):
         abort('missing table')
     elif resto:
-        if resto[0] == 'where':
+        if resto[0].upper() == 'WHERE':
             resto = resto[1:]
-            if not resto or resto[:2] == ['order','by']:
+            if not resto or ' '.join(resto[:2]).upper() == 'ORDER BY':
                 abort('missing WHERE clause')
             resto = ' '.join(resto)
-            if ' order by ' in resto:
-                clausa, orden = resto.split(' order by ')
+            if re.search(' ORDER BY ', resto, flags=re.I):
+                clausa, orden = re.split(' ORDER BY ', resto, maxsplit=1, flags=re.I)
             else:
                 clausa = resto
             clausa = clausa.strip()
             orden = orden.strip()
             resto = []
-        if resto[:2] == ['order','by']:
+        if ' '.join(resto[:2]).upper() == 'ORDER BY':
             orden = ' '.join(resto[2:])
             resto = []
         if resto:
             abort('malformed query')
+    # get field names if * specified
     if seleccion == ['*']:
         seleccion = ['id'] + sorted(oe.get_model(desde).fields_get().keys())
         print('SELECT:', seleccion)
     print('FROM', desde)
-    # get field names if * specified
-    if seleccion == ['*']:
-        seleccion = oe.get_model(desde).fields_get().keys()[:275]
     #
     # and get WHERE clause
     #
@@ -354,18 +351,19 @@ def convert_set(clausa):
         except (ValueError, AttributeError):
             abort('malformed SET clause')
         else:
+            lval = value.lower()
             if (
                     value[0] == value[-1] == '"'
                  or value[0] == value[-1] == "'"
                  ):
                 value = value[1:-1]
-            elif value in ('t', 'true'):
+            elif lval in ('t', 'true'):
                 value = True
-            elif value in ('f', 'false'):
+            elif lval in ('f', 'false'):
                 value = False
-            elif value == 'none':
+            elif lval == 'none':
                 value = False
-            elif value == 'null':
+            elif lval == 'null':
                 value = False
             else:
                 try:
@@ -391,6 +389,7 @@ def convert_where(clausa):
             field, op, condition, clausa = re.match(
                     "^(\w+)\s*(is not|is|like|not like|ilike|not ilike|=|<|>|<=|>=|!=)\s*('?.*(?<!\\')?|.*?)\s*(.*?)\s*$",
                     clausa,
+                    flags=re.I
                     ).groups()
             print('\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (field, op, condition, clausa), verbose=2)
             if not (field and op and condition):
@@ -398,6 +397,8 @@ def convert_where(clausa):
         except (ValueError, AttributeError):
             abort('malformed WHERE clause')
         else:
+            lop = op.lower()
+            lcond = condition.lower()
             if (
                     condition[0] == condition[-1] == '"'
                  or condition[0] == condition[-1] == "'"
@@ -407,13 +408,13 @@ def convert_where(clausa):
                     op = 'ilike'
                 elif op == '!=':
                     op = 'not ilike'
-            elif condition in ('t', 'true'):
+            elif lcond in ('t', 'true'):
                 condition = True
-            elif condition in ('f', 'false'):
+            elif lcond in ('f', 'false'):
                 condition = False
-            elif condition == 'none':
+            elif lcond == 'none':
                 condition = None
-            elif condition == 'null':
+            elif lcond == 'null':
                 pass
             else:
                 try:
@@ -423,15 +424,15 @@ def convert_where(clausa):
                         condition = float(condition)
                     except ValueError:
                         abort('unknown data type: %r %r' % (type(condition), condition))
-            if (op, condition) == ('is', 'null'):
+            if (lop, lcond) == ('is', 'null'):
                 op, condition = '=', False
-            elif (op, condition) == ('is not', 'null'):
+            elif (lop, lcond) == ('is not', 'null'):
                 op, condition = '!=', False
             donde.append((field,op,condition))
-            if clausa.startswith('or '):
+            if clausa.lower().startswith('or '):
                 donde.insert(0, '|')
                 clausa = clausa[3:]
-            elif clausa.startswith('and '):
+            elif clausa.lower().startswith('and '):
                 donde.insert(0, '&')
                 clausa = clausa[4:]
     return donde
@@ -769,7 +770,7 @@ class ExpandedRow(object):
                             line.extend([None] * len(item))
                         else:
                             line.extend([None])
-            print('processed row ->', line)
+            print('processed row ->', line, verbose=2)
             rows.append(line)
             if not remaining:
                 break
