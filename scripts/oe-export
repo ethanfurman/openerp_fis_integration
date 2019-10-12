@@ -387,7 +387,7 @@ def convert_set(clausa):
                     value[0] == value[-1] == '"'
                  or value[0] == value[-1] == "'"
                  ):
-                value = value[1:-1]
+                value = eval(value)
             elif lval in ('t', 'true'):
                 value = True
             elif lval in ('f', 'false'):
@@ -398,12 +398,12 @@ def convert_set(clausa):
                 value = False
             else:
                 try:
-                    value = int(value)
-                except ValueError:
-                    try:
-                        value = float(value)
-                    except ValueError:
-                        abort('unknown data type: %r %r' % (type(value), value))
+                    oval = value
+                    value = eval(value)
+                except Exception:
+                    pass
+                if not isinstance(value, (int, long, float)):
+                    abort('cannot use/convert data: %r' % (oval, ))
             values[field] = value
             if clausa.startswith(','):
                 clausa = clausa[1:].lstrip()
