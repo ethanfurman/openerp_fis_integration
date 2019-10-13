@@ -451,7 +451,9 @@ def convert_where(clausa):
                         condition = float(condition)
                     except ValueError:
                         abort('unknown data type: %r %r' % (type(condition), condition))
-            if (lop, lcond) == ('is', 'null'):
+            if condition is not False and condition == 0:
+                condition = 0.0
+            elif (lop, lcond) == ('is', 'null'):
                 op, condition = '=', False
             elif (lop, lcond) == ('is not', 'null'):
                 op, condition = '!=', False
