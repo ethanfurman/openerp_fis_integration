@@ -277,6 +277,8 @@ class product_product(xmlid, osv.Model):
         #
         base_url = "https://openerp.sunridgefarms.com/"
         try:
+            label_link_lines = None
+            LabelLinks = []
             llc = urlopen(base_url + "Plone/LabelDirectory/LabelLinkCtl")
             try:
                 label_link_lines = llc.read().strip().split('\n')
@@ -284,7 +286,6 @@ class product_product(xmlid, osv.Model):
                     raise Exception('file not found:\n%s', label_link_lines)
             finally:
                 llc.close()
-            LabelLinks = []
             for link_line in label_link_lines:
                 LabelLinks.append([piece.strip() for piece in link_line.split(",")])
             for xml_id, id in xml_ids.items():
@@ -305,10 +306,12 @@ class product_product(xmlid, osv.Model):
         except:
             # the file doesn't yet exist or is malformed or some other error occurred
             _logger.exception('problem reading/processing/interpolating LabelLinkCtl')
+            _logger.error('LabelLinkCtl:\n%s', label_link_lines)
+            _logger.error('LabelLinks:\n%s', LabelLinks)
             LabelLinks = (
-                (base_url+"Plone/LabelDirectory/%s/%sB.bmp","55","left"),
-                (base_url+"Plone/LabelDirectory/%s/%sNI.bmp","35","right"),
-                (base_url+"Plone/LabelDirectory/%s/%sMK.bmp","100","center"),
+                ("Plone/LabelDirectory/%s/%sB.bmp","55","left"),
+                ("Plone/LabelDirectory/%s/%sNI.bmp","35","right"),
+                ("Plone/LabelDirectory/%s/%sMK.bmp","100","center"),
                 )
             for xml_id, id in xml_ids.items():
                 for link, scale, align in LabelLinks:
