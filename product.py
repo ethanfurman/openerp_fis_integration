@@ -508,6 +508,10 @@ class product_product(xmlid, osv.Model):
         'prop65_info': fields.text('Addl. Prop 65 info'),
         }
 
+    _defaults = {
+            'sale_ok': False,
+            }
+
     def update_trademark_state(self, cr, uid, ids=None, arg=None, context=None):
         if ids is None:
             ids = self.search(cr, uid, [('trademarks','!=',False)], context=context)
