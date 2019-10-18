@@ -7,17 +7,28 @@ from scription import Execute, OrmFile
 from fnx import date
 from fnx.oe import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
-from openerp import SUPERUSER_ID, CONFIG_DIR
+from openerp import SUPERUSER_ID, CONFIG_DIR, ROOT_DIR
 from openerp.exceptions import ERPError
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids
 from osv import osv, fields
 from urllib import urlopen
 import logging
 import re
+import threading
 
 _logger = logging.getLogger(__name__)
 
 OWN_STOCK = 12  # Physical Locations / Your Company / Stock
+
+LLC_lock = threading.Lock()
+LLC_file = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.txt'
+with LLC_lock:
+    if not LLC_file.dirs.exists():
+        LLC_file.dirs.mkdir()
+    if not LLC_file.exists():
+        open(LLC_file, 'w').close()
+    with open(LLC_file) as llc:
+        LLC_text = llc.read().strip().split('\n')
 
 
 class Prop65(fields.SelectionEnum):
@@ -271,57 +282,37 @@ class product_product(xmlid, osv.Model):
         xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
         result = {}
         htmlContentList = []
-        #
-        # FIXME: /Plone is a redirect -- should make it a contact point so labels work
-        #        from outside and inside the network
-        #
         base_url = "https://openerp.sunridgefarms.com/"
+        url = base_url + "Plone/LabelDirectory/LabelLinkCtl"
+        LabelLinks = []
         try:
-            label_link_lines = None
-            LabelLinks = []
-            llc = urlopen(base_url + "Plone/LabelDirectory/LabelLinkCtl")
-            try:
-                label_link_lines = llc.read().strip().split('\n')
-                if llc.code == '404':
-                    raise Exception('file not found:\n%s', label_link_lines)
-            finally:
-                llc.close()
-            for link_line in label_link_lines:
-                LabelLinks.append([piece.strip() for piece in link_line.split(",")])
-            for xml_id, id in xml_ids.items():
-                for link, scale, align in LabelLinks:
-                    if link.count('%s') == 2:
-                        remote_file = "%s%s" % (base_url, link % (xml_id, xml_id))
-                    elif link.count('%s') == 0:
-                        remote_file = "%s%s" % (base_url, link)
-                    else:
-                        _logger.error('unknown link template: %r', link)
-                        continue
-                    htmlContentList.append(
-                            '''<img src="%s" width=%s%% align="%s"/>'''
-                            % (remote_file, scale, align)
-                            )
-                result[id] = static_page_stub % "".join(htmlContentList)
-                htmlContentList[:] = []
-        except:
-            # the file doesn't yet exist or is malformed or some other error occurred
-            _logger.exception('problem reading/processing/interpolating LabelLinkCtl')
-            _logger.error('LabelLinkCtl:\n%s', label_link_lines)
-            _logger.error('LabelLinks:\n%s', LabelLinks)
+            label_link_lines = get_LLC(url)
+        except Exception:
+            _logger.exception('error fetching/processing %r', url)
+            # use the hard-coded display links
             LabelLinks = (
                 ("Plone/LabelDirectory/%s/%sB.bmp","55","left"),
                 ("Plone/LabelDirectory/%s/%sNI.bmp","35","right"),
                 ("Plone/LabelDirectory/%s/%sMK.bmp","100","center"),
                 )
-            for xml_id, id in xml_ids.items():
-                for link, scale, align in LabelLinks:
+        else:
+            for link_line in label_link_lines:
+                LabelLinks.append([piece.strip() for piece in link_line.split(",")])
+        for xml_id, id in xml_ids.items():
+            for link, scale, align in LabelLinks:
+                if link.count('%s') == 2:
                     remote_file = "%s%s" % (base_url, link % (xml_id, xml_id))
-                    htmlContentList.append(
-                            '''<img src="%s" width=%s%% align="%s"/>'''
-                            % (remote_file, scale, align)
-                            )
-                result[id] = static_page_stub % "".join(htmlContentList)
-                htmlContentList[:] = []
+                elif link.count('%s') == 0:
+                    remote_file = "%s%s" % (base_url, link)
+                else:
+                    _logger.error('unknown link template: %r', link)
+                    continue
+                htmlContentList.append(
+                        '''<img src="%s" width=%s%% align="%s"/>'''
+                        % (remote_file, scale, align)
+                        )
+            result[id] = static_page_stub % "".join(htmlContentList)
+            htmlContentList[:] = []
         return result
 
     def _get_availability_codes(self, cr, uid, context=None):
@@ -953,3 +944,35 @@ class product_online_order_item(osv.Model):
                 }
         return {'value': value}
 
+def get_LLC(url):
+    "retrieve LLC file and update local cache"
+    global LLC_text
+    # attempt to get LabelLinkCtl from labeltime
+    llc = urlopen(url)
+    try:
+        if llc.code != 200:
+            raise Exception('bad result code fetching %r: %r' % (llc.url, llc.code))
+        else:
+            label_link_lines = llc.read().strip().split('\n')
+    finally:
+        llc.close()
+    # validate LabelLinkCtl file
+    LabelLinks = []
+    for link_line in label_link_lines:
+        LabelLinks.append([piece.strip() for piece in link_line.split(",")])
+        last_link = LabelLinks[-1][0]
+        if last_link.count('%s') == 2:
+            # abort with exception if this fails
+            last_link % ('a', 'test')
+    if label_link_lines != LLC_text:
+        # store current lines at module level
+        LLC_text = label_link_lines
+        # then attempt to update cached file
+        if LLC_lock.acquire(False):
+            try:
+                with open(LLC_file, 'w') as llc:
+                    llc.write('\n'.join(label_link_lines))
+            except:
+                _logger.exception('failed to update LabelLinkCtl cached file')
+            LLC_lock.release()
+    return label_link_lines
