@@ -1,0 +1,49 @@
+#!/usr/bin/env python
+from __future__ import print_function
+
+from scription import *
+from antipathy import Path
+from openerplib import get_connection
+import os
+
+virtual_env = os.environ['VIRTUAL_ENV']
+config = '%s/config/fnx.ini' % virtual_env
+
+
+@Script()
+def main():
+    global config, oe
+    config = OrmFile(config, types={'_path':Path})
+    oe = get_connection(
+            hostname=config.openerp.host,
+            database=config.openerp.db,
+            login=config.openerp.user,
+            password=config.openerp.pw,
+            )
+
+
+@Command()
+def update():
+    "ensure all partners with assigned reps have that rep as a follower"
+    oe_partner = oe.get_model('res.partner')
+    partners = dict([
+        (p.id, p)
+        for p in oe_partner.search_read(
+                domain=[('id','!=',0)],
+                fields=['id','user_id', 'parent_id', 'message_follower_user_ids'],
+                )])
+    update_followers = {}
+    for pid, partner in partners.items():
+        # print('Sales rep: %r\nParent: %r\n' % (partner.user_id, partner.parent_id))
+        # if partner.user_id:
+        #     print('id:', pid)
+        #     print(partners[partner.user_id])
+        sales_rep = partner.user_id or partners.get(partner.parent_id, partner).user_id or False
+        if sales_rep and sales_rep not in partner.message_follower_user_ids:
+            update_followers.setdefault(sales_rep, []).append(pid)
+    for sales_rep, ids in update_followers.items():
+        print('Sales rep %s: %d' % (sales_rep, len(ids)))
+        oe_partner.write(ids, {'user_id': sales_rep})
+
+
+Main()
