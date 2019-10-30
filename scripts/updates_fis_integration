@@ -231,19 +231,19 @@ def handle_arci(method):
     # - quick -> old fis file
     # - full -> current OpenERP data
     #
-    arci = fisData(262, subset='10HE447')
+    arci = fisData(262, subset='10 HE447')
     print(arci.filename, verbose=2)
     print('gathering data')
     if method == 'quick':
         #
         # for a quick compare we can use the fis records as-is when looking for changes
         #
-        arci_old = fisData(262, subset='10HE447', data_path=config.network.fis_data_local_old_path)
+        arci_old = fisData(262, subset='10 HE447', data_path=config.network.fis_data_local_old_path)
         print(arci_old.filename, verbose=2)
         print('collecting changed records')
         changes, added, deleted = get_changed_fis_records(
-                arci_old.values(),
-                arci.values(),
+                arci_old.get_subset(),
+                arci.get_subset(),
                 enum_schema=[
                     F262.cust_no, F262.our_item_id, F262.cust_item_id,
                     ],
@@ -254,8 +254,8 @@ def handle_arci(method):
         # into old and new
         #
         print('sorting changed records')
-        needed_partners = set()
-        needed_products = set()
+        needed_partners = list()
+        needed_products = list()
         for old, new, diffs in changes:
             old_cross_ref = convert_arci_rec(old)
             old_changed_records[old_cross_ref.key] = old_cross_ref
@@ -265,18 +265,24 @@ def handle_arci(method):
             if old_cross_ref != new_cross_ref:
                 old_changed_records[old_cross_ref.key] = old_cross_ref
                 new_changed_records[new_cross_ref.key] = new_cross_ref
-                needed_partners.add(old_cross_ref.partner_id)
-                needed_partners.add(new_cross_ref.partner_id)
-                needed_products.add(old_cross_ref.fis_product_id)
-                needed_products.add(new_cross_ref.fis_product_id)
+                if old_cross_ref.partner_id not in needed_partners:
+                    needed_partners.append(old_cross_ref.partner_id)
+                if new_cross_ref.partner_id not in needed_partners:
+                    needed_partners.append(new_cross_ref.partner_id)
+                if old_cross_ref.fis_product_id not in needed_products:
+                    needed_products.append(old_cross_ref.fis_product_id)
+                if new_cross_ref.fis_product_id not in needed_products:
+                    needed_products.append(new_cross_ref.fis_product_id)
             assert set(old_changed_records.keys()) == set(new_changed_records.keys()),\
                     "old and new company records mismatch"
         print('sorting new and deleted records')
         for fis_rec in added:
             new_cross_ref = convert_arci_rec(fis_rec)
             added_records[new_cross_ref.key] = new_cross_ref
-            needed_partners.add(new_cross_ref.partner_id)
-            needed_products.add(new_cross_ref.fis_product_id)
+            if new_cross_ref.partner_id not in needed_partners:
+                needed_partners.add(new_cross_ref.partner_id)
+            if new_cross_ref.fis_product_id not in needed_products:
+                needed_products.append(new_cross_ref.fis_product_id)
         for fis_rec in deleted:
             old_cross_ref = convert_arci_rec(fis_rec)
             deleted_records[old_cross_ref.key] = old_cross_ref
@@ -338,12 +344,12 @@ def handle_arci(method):
         # before we can check for changes
         #
         all_fis_records = AttrDict()
-        needed_partners = set()
-        needed_products = set()
+        needed_partners = list()
+        needed_products = list()
         invalid_partners = set()
         invalid_products = set()
-        for fis_rec in ProgressView(
-                iterable=arci.values(),
+        for fis_key, fis_rec in ProgressView(
+                iterable=arci.get_subset(),
                 view_type='bar',
                 message = 'converting $total FIS records',
             ):
@@ -351,8 +357,10 @@ def handle_arci(method):
             if ' ' in new_cross_ref.partner_id.xml_id:
                 invalid_partners.add(new_cross_ref.partner_id.xml_id)
                 continue
-            needed_partners.add(new_cross_ref.partner_id)
-            needed_products.add(new_cross_ref.fis_product_id)
+            if new_cross_ref.partner_id not in needed_partners:
+                needed_partners.append(new_cross_ref.partner_id)
+            if new_cross_ref.fis_product_id not in needed_products:
+                needed_products.append(new_cross_ref.fis_product_id)
             all_fis_records[new_cross_ref.key] = new_cross_ref
         #
         # now get the necessary OpenERP records for partner and product
