@@ -37,6 +37,7 @@
                                 @federal_trademark_expiry on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
                                 @federal_trademark_renewal on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
                 ~div @buttons position='replace'
+                ~page $Procurements position='replace'
                 ~page $Sales position='after'
                     ~page $Labels
                         @label_text nolabel='0'
