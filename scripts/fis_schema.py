@@ -105,7 +105,7 @@ class F36(FISenum):
     release_no                   = 'An$(9,2)',    2     # Release No
     type_0000                    = 'An$(11,4)',   3     # TYPE = '0000'
     fwd_ptr                      = 'An',          4     # FWD PTR
-    index                        = 'Bn',          5     # INDEX
+    an_index                     = 'Bn',          5     # INDEX
     cust_no                      = 'Bn$',         6     # Customer No
     cust_name                    = 'Cn$',         7     # Customer Name
     address_1                    = 'Dn$',         8     # Address 1
