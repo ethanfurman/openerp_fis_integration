@@ -52,6 +52,8 @@ def main(hostname, database, show_ids=False):
     table=('name of OpenERP table (only needed if multiple saved exports with same name', OPTION),
     )
 def oe_export(name, to_file, domain, table):
+    if to_file[-4:].lower() not in ('.txt', '.csv', '.xls') and to_file != '-':
+        abort('unknown file type for %s' % to_file)
     found = []
     for export in get_records(oe, 'ir.exports', domain=[('name','=',name)]):
         found.append(export.resource)
@@ -83,8 +85,6 @@ def oe_export(name, to_file, domain, table):
         write_csv(export.name, q, fields, to_file)
     elif to_file.endswith('.txt') or to_file == '-':
         write_txt(export.name, q, fields, to_file)
-    else:
-        abort('unknown file type: %r' % to_file)
 
 
 @Command(
@@ -198,7 +198,9 @@ def sql_select(command, separator, _internal=False):
     clausa = ''
     donde = []
     distinta = False
+    print('command: %r' % (command, ), verbose=2)
     command = ' '.join(command.split())
+    print('command: %r' % (command, ), verbose=1)
     if not re.search(' from ', command, flags=re.I):
         abort('FROM not specified')
     if command.split()[-2].lower() == 'to':
