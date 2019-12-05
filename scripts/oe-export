@@ -77,7 +77,14 @@ def oe_export(name, to_file, domain, table):
                 )]
     q = Query(oe.get_model(table), domain=domain, fields=fields[:])
     #
-    write_xls(export.name, q, fields, to_file)
+    if to_file.endswith('.xls'):
+        write_xls(export.name, q, fields, to_file)
+    elif to_file.endswith('.csv'):
+        write_csv(export.name, q, fields, to_file)
+    elif to_file.endswith('.txt') or to_file == '-':
+        write_txt(export.name, q, fields, to_file)
+    else:
+        abort('unknown file type: %r' % to_file)
 
 
 @Command(
@@ -514,7 +521,7 @@ def write_xls(sheet_name, query, fields, file, separator=False):
                 worksheet.write(i, cell_index, cell_value)
     workbook.save(file)
 
-def write_csv(table, query, fields, file, separator):
+def write_csv(table, query, fields, file, separator=False):
     lines = []
     line = []
     print('field count:', len(fields), fields, verbose=2)
@@ -565,7 +572,7 @@ def write_csv(table, query, fields, file, separator):
     with open(file, 'w') as output:
         output.write('\n'.join(lines).encode('utf8'))
 
-def write_txt(table, query, fields, file, separator):
+def write_txt(table, query, fields, file, separator=False):
     lines = []
     line = []
     print('field count:', len(fields), fields, verbose=2)
