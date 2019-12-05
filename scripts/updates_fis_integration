@@ -3363,7 +3363,7 @@ def convert_product_location_rec(fis_rec):
     location.xml_id = fis_rec[F97.availability_id].strip()
     location.module = 'F97'
     location.name = re.sub('sunridge', 'SunRidge', fis_rec[F97.desc].title(), flags=re.I)
-    avail= fis_rec[F97.availability].upper()
+    avail = fis_rec[F97.availability].upper()
     if avail not in 'YN':
         avail = False
     location.available = avail
@@ -3537,7 +3537,7 @@ def convert_csms_rec(model, fis_rec, aging=None, _missing_reps=set()):
     company.update(process_address(F33, fis_rec, key=fis_rec[F33.code], module='csms'))
     company.phone = fix_phone(fis_rec[F33.tele])
     company.fis_csms_terms = customer_terms_recs.get(fis_rec[F33.payment_terms_id], False)
-    company.fis_price_list = fis_rec[F33.price_list_id].upper() or False
+    company.fis_price_list = fis_rec[F33.price_list_id] or False
     if not company.fis_csms_terms:
         model.error('Terms code %r does not exist' % (fis_rec[F33.payment_terms_id], ))
     if aging is not None and key in aging:
