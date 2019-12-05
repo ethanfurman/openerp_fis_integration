@@ -466,7 +466,7 @@ def convert_where(clausa):
                 clausa = clausa[4:]
     return donde
 
-def write_xls(sheet_name, query, fields, file, separator):
+def write_xls(sheet_name, query, fields, file, separator=False):
     import xlwt
     workbook = xlwt.Workbook()
     worksheet = workbook.add_sheet(sheet_name)
