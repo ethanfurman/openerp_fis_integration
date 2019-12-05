@@ -563,7 +563,7 @@ def write_csv(table, query, fields, file, separator):
             lines.append(','.join(line))
     print('\n'.join([repr(l) for l in lines]), verbose=3)
     with open(file, 'w') as output:
-        output.write('\n'.join(lines))
+        output.write('\n'.join(lines).encode('utf8'))
 
 def write_txt(table, query, fields, file, separator):
     lines = []
