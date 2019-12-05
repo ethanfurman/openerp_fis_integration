@@ -1,3 +1,6 @@
 *.pyc
 *.xml
 *.xsl
+*.sw?
+.*.sw?
+.hg/
