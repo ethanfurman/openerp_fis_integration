@@ -370,6 +370,8 @@ def sql_select(command, separator, wrap, _internal=''):
         [ORDER BY field1 [ASC|DESC] [, field2 [ASC|DESC] [, ...]]]
         [TO file]
     """
+    global tables
+    tables = {}
     imprimido = '-'
     orden = ''
     clausa = ''
@@ -387,7 +389,7 @@ def sql_select(command, separator, wrap, _internal=''):
     # get SELECT fields
     #
     seleccion, resto = re.split(' from ', command, maxsplit=1, flags=re.I)
-    seleccion = [s.strip(',') for s in seleccion.split()[1:] if s != ',']
+    seleccion = ' '.join(seleccion.split())
     if not seleccion:
         abort('missing fields')
     if seleccion[0].upper() == 'DISTINCT':
@@ -395,9 +397,10 @@ def sql_select(command, separator, wrap, _internal=''):
         seleccion.pop(0)
     if not seleccion:
         abort('missing fields')
-    if SHOW_ID and 'id' not in seleccion:
+    if SHOW_ID and 'id' not in seleccion and seleccion != ['*']:
         seleccion.insert(0, 'id')
     print('SELECT:', seleccion)
+    #
     #
     # get FROM table
     #
@@ -405,7 +408,8 @@ def sql_select(command, separator, wrap, _internal=''):
     desde, resto = resto[0], resto[1:]
     if desde.upper() in ('', 'WHERE', 'ORDER'):
         abort('missing table')
-    elif resto:
+    tables[desde] = oe.get_model(desde)
+    if resto:
         if resto[0].upper() == 'WHERE':
             resto = resto[1:]
             if not resto or ' '.join(resto[:2]).upper() == 'ORDER BY':
@@ -422,7 +426,7 @@ def sql_select(command, separator, wrap, _internal=''):
             orden = ' '.join(resto[2:])
             resto = []
         if resto:
-            abort('malformed query')
+            abort('malformed query [%r]' % (resto, ))
     # get field names if * specified
     model = oe.get_model(desde)
     if seleccion == ['*']:
@@ -439,6 +443,13 @@ def sql_select(command, separator, wrap, _internal=''):
         fields.remove('id')
         seleccion = ['id'] + sorted(fields)
         print('SELECT:', seleccion)
+    #
+    # now make sure all field names are db and not user
+    #
+    print('WHERE', clausa)
+    print('ORDER BY', orden)
+    print('TO', imprimido)
+    # normalize_field_names(desde, seleccion, clausa, orden)
     print('FROM', desde)
     #
     # and get WHERE clause
@@ -551,13 +562,15 @@ def sql_update(command):
         SET field_name=... [, field_name=... [...]]
         [WHERE ...]
     """
+    global tables
+    tables = {}
     pieces = command.split()
     if len(pieces) < 2:
         abort('table not specified')
     table = pieces[1]
     try:
-        table = oe.get_model(table)
-    except Fault as exc:
+        tables[table] = table = oe.get_model(table)
+    except Fault, exc:
         if "doesn't exist" in exc.faultCode:
             abort('unknown table %r' % (table, ))
         raise
@@ -595,13 +608,15 @@ def sql_delete(command):
     DELETE FROM table
         [WHERE ...]
     """
+    global tables
+    tables = {}
     pieces = command.split()
     if len(pieces) < 3:
         abort('table not specified')
     table = pieces[2]
     try:
-        table = oe.get_model(table)
-    except Fault as exc:
+        tables[table] = table = oe.get_model(table)
+    except Fault, exc:
         if "doesn't exist" in exc.faultCode:
             abort('unknown table %r' % (table, ))
         raise
@@ -646,6 +661,48 @@ def list_exports(table=None):
         echo('%-60s [%s]' % (export.name, export.resource))
 
 # helpers
+
+def normalize_fields(model, fields):
+        # make sure top-level fields are db names, not user names
+        ambiguous_fields = {}
+        model_strings = {}
+        model_fields = set()
+        for field_name, field_def in model.fields_get().items():
+            print('adding: %r' % (field_name, ))
+            model_fields.add(field_name)
+            string = field_def['string'].lower()
+            if string in model_strings:
+                model_strings[string] = None
+                ambiguous_fields.setdefault(string, []).append(field_name)
+            else:
+                model_strings[string] = field_name
+        actual_fields = []
+        for fld in fields:
+            fld = fld.lower()
+            extra = None
+            db_f = None
+            if '/' in fld:
+                fld, extra = fld.split('/', 1)
+            if fld[0] != "'" or fld[-1] != "'":
+                # unquoted fields should be db names, but fall back to user names if not found
+                if fld in model_fields:
+                    db_f = fld
+            if db_f is None:
+                if fld[0] == fld[-1] == "'":
+                    # remove enclosing quotes
+                    fld = fld[1:-1]
+                if fld in ambiguous_fields:
+                    raise ValueError('%r could be any of: %s' % ','.join(ambiguous_fields[string]))
+                elif fld not in model_strings:
+                    raise ValueError('unknown field: %r' % (fld, ))
+                else:
+                    db_f = model_strings[fld]
+            if extra is not None:
+                db_f += '/' + extra
+            actual_fields.append(db_f)
+            assert len(actual_fields) == len(fields), "fields/actual_fields length mismatch:\n%r\n%r" % (fields, actual_fields)
+            fields[:] = actual_fields
+
 
 def convert_set(clausa):
     values = {}
@@ -720,13 +777,15 @@ def convert_where(clausa):
         #      WHERE id=201
         #      WHERE blah is not null AND this = 'that'
         #      WHERE count(fis_portal_logins) > 1
+        #      WHERE 'Warehouse notes' is not null
         print('clausa', clausa, verbose=2)
-
         if std_match(clausa):
             field, op, condition, clausa = std_match().groups()
             print('\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (field, op, condition, clausa), verbose=2)
             if not (field and op and condition):
                 abort('malformed WHERE clause')
+
+
             lop = op.lower()
             lcond = condition.lower()
             if (
@@ -894,7 +953,7 @@ def write_txt(table, query, fields, file, separator=False, wrap=None,):
     line = []
     print('field count:', len(fields), fields, verbose=2)
     for field_name in fields:
-        line.append(field_name)
+        line.append('%s\n%s' % (query.names[field_name] or field_name.upper(), field_name))
     lines.append(line)
     #
     for r in query.records:
@@ -1116,6 +1175,115 @@ class ExpandedRow(object):
 
     def __repr__(self):
         return repr(self.rows)
+
+# tokenizer
+
+class NoValue(Enum):
+
+    def __repr__(self):
+        return '<%s.%s>' % (self.__class__.__name__, self.name)
+
+
+class Node(object):
+    "base object"
+
+    parent = None
+    children = []
+
+
+class Select(Node):
+
+    fields = []
+
+
+class From(Node):
+
+    table = None
+
+
+class Where(Node):
+
+    criteria = None
+
+
+class OrderBy(Node):
+
+    fields = None
+
+
+class ParseState(NoValue):
+
+    SELECT = auto()
+    FROM = auto()
+    WHERE = auto()
+    ORDER_BY = auto()
+
+    # def __init__(self, value):
+    #     if len(self.__class__):
+    #         # make links
+    #         all = list(self.__class__)
+    #         first, previous = all[0], all[-1]
+    #         first.beats = self
+    #         self.beats = previous
+
+
+
+def parse_sql(command):
+    # get rid of leading/trailing whitespace
+    command = command.strip()
+    # state = ParseState.SELECT
+    words = []
+    while command:
+        word, command = next_word(command)
+        words.append(word)
+    print(words)
+
+whitespace = ' \t\n'
+
+def next_word(command):
+    "a word either has no spaces, or is surrounded by single quotes"
+    print(command)
+    word = []
+    quoted = False
+    escape = False
+    end = False
+    for i, ch in enumerate(command):
+        if end and ch not in whitespace:
+            raise ValueError('run-on word after quote')
+        if escape:
+            if ch not in "'\\":
+                raise ValueError("only ' and \\ can be escaped")
+            word.append(ch)
+            escape = False
+            continue
+        if ch in whitespace:
+            break
+        if ch == '\\':
+            escape = True
+            continue
+        if ch == "'":
+            if quoted:
+                # end of word
+                end = True
+                word.append(ch)
+                continue
+            if word:
+                # embedded not allowed without escaping
+                print(repr(word))
+                raise ValueError('embedded quotes must be escaped')
+            word.append(ch)
+            quoted = True
+            continue
+        word.append(ch)
+    command = command[i+1:].lstrip()
+    return ''.join(word), command
+
+# parse_sql('select * from res.partner')
+# parse_sql('select this, that from res.users')
+# parse_sql('describe product.product')
+# parse_sql('delete from project.task where id=99')
+parse_sql("select id, name, login from res.users where name=ilike 'ethan' order by login")
+
 
 
 # run it
