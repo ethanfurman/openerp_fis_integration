@@ -93,7 +93,9 @@ def compare_records(old_records, new_records, ignore=lambda r: False):
             continue
         assert set(new_rec.keys()) == set(old_rec.keys()), 'key mismatch'
         for field in new_rec.keys():
-            if new_rec[field] != old_rec[field]:
+            new_value = new_rec[field]
+            old_value = old_rec[field]
+            if (new_value or old_value) and new_value != old_value:
                 changed_values.append((field, old_rec[field], new_rec[field]))
         if changed_values:
             changes.append((old_rec, new_rec, changed_values))
