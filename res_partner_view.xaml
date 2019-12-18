@@ -56,6 +56,71 @@
                 @supplier position='after'
                     @is_carrier
                     @fuel_surcharge attrs="{'invisible':[('is_carrier','=',False)]}"
+                ~xpath expr="//page[@string='Contacts']" position='after'
+                    ~page $Ship_To attrs="{'invisible': [('is_company','=',False)]}"
+                        @fis_ship_to_ids context="{'default_ship_to_parent_id': active_id, 'default_customer': False}" mode='kanban' readonly='1'
+                            ~kanban
+                                @name
+                                @email
+                                @is_company
+                                @phone
+                                @street
+                                @street2
+                                @zip
+                                @city
+                                @country_id
+                                @state_id
+                                ~templates
+                                    ~t t-name='kanban-box'
+                                        ~div style='position: relative' .oe_kanban_box_content
+                                            ~table .oe_kanban_table
+                                                ~tr
+                                                    ~td .oe_kanban_title1 align='left' valign='middle'
+                                                        ~div t-if='record.fis_transmitter_code.raw_value'
+                                                            @fis_transmitter_code
+                                                        ~a type='open'
+                                                            ~div
+                                                                @name
+                                                        ~div t-if='record.email.raw_value'
+                                                            ~a title='Mail' t-att-href="'mailto:'+record.email.value"
+                                                                @email
+                                                        ~div name='street' t-if='record.street.raw_value'
+                                                            @street
+                                                        ~div name='street2' t-if='record.street2.raw_value'
+                                                            @street2
+                                                        ~div name='csz' t-if='record.city.raw_value or record.state_id.raw_value or record.zip.raw_value'
+                                                            ~span t-if='record.city.raw_value'
+                                                                @city: ,
+                                                            ~span t-if='record.state_id.raw_value'
+                                                                @state_abbr options="{'no_open': True}"
+                                                            ~span t-if='record.zip.raw_value'
+                                                                @zip
+                                                        ~div name='country_id' t-if='record.country_id.raw_value'
+                                                        ~div name='phone' t-if='record.phone.raw_value': Phone:
+                                                            @phone
+                            ~form version='7.0'
+                                ~sheet
+                                    ~div .oe_title
+                                        ~h1
+                                            @name default_focus='1' placeholder='Name'
+                                        ~h3
+                                            @fis_transmitter_code_id
+                                    ~group
+                                        ~group
+                                            ~label for='street' $Address
+                                            ~div
+                                                @street placeholder='street'
+                                                @street2
+                                                ~div .address_format
+                                                    @city placeholder='City' style='width: 40%%'
+                                                    @state_id placeholder='State' .oe_no_button style='width: 37%%' options="{'no_open': True}" on_change='onchange_state(state_id)'
+                                                    @zip placeholder='ZIP' style='width: 20%%'
+                                                @country_id placeholder='Country' .oe_no_button options="{'no_open': True}"
+                                        ~group
+                                            @phone
+                                            @email
+                ~xpath expr="//page[@string='Sales & Purchases']/group/group[position()=1]" position='inside'
+                    @fis_transmitter_code_id
                 ~xpath expr="//page[@string='Sales & Purchases']/group/group[position()=2]" position='after'
                     ~group colspan='2' cols='2'
                         ~label $Aging_Info for='fis_credit_current'

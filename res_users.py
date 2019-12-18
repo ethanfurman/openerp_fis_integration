@@ -73,7 +73,7 @@ class transmitter(osv.Model):
     _columns = {
         'name': fields.function(
             _calc_name,
-            string='Transmitter Name',
+            string='Transmitter No & Name',
             type='char',
             size=256,
             store={
@@ -83,7 +83,7 @@ class transmitter(osv.Model):
         'partner_xml_id': fields.char("Customer #", size=6, help="customer number in FIS"),
         'transmitter_name': fields.char("Transmitter Name", size=128),
         'transmitter_no': fields.char('Transmitter #', size=6),
-        'ship_to_code': fields.char('Ship-to Code', size=4),
+        'ship_to_code': fields.char('Ship-to Code', size=7),
         }
 
     _sql_constraints = [

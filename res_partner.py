@@ -1,7 +1,8 @@
 import logging
 from collections import defaultdict
 from itertools import groupby
-from osv import osv, fields
+from openerp import SUPERUSER_ID
+from openerp.osv import osv, fields
 # from tools.misc import EnumNoAlias
 from fnx_fs.fields import files
 from VSS.address import normalize_address, Rise
@@ -98,6 +99,42 @@ class res_partner(xmlid, osv.Model):
                     )
                 if l.strip()
                 ])
+        return result
+
+    def _get_transmitter_code_id(self, cr, uid, ids, field_name, args, context=None):
+        # link records with FIS transmitter codes, if possible
+        print 'looking to match ids', ids
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        result = dict([(id, False) for id in ids])
+        if not ids:
+            return result
+        print 'so far...'
+        print result
+        xml_ids = dict([
+            (r['id'], r['xml_id'])
+            for r in self.read(
+                    cr, uid,
+                    [('id','in',ids),('xml_id','!=',False)],
+                    fields=['id', 'xml_id'],
+                    context=context,
+                    )])
+        print 'now with feeling!'
+        print xml_ids
+        ftc = self.pool.get('fis.transmitter_code')
+        ftc_records = dict([
+            (r['partner_xml_id'], r['id'])
+            for r in ftc.read(
+                    cr, SUPERUSER_ID,
+                    [('partner_xml_id','in',xml_ids.values())],
+                    context=context,
+                    )])
+        print 'and from fis.transmitter_code'
+        print ftc_records
+        for id, xml_id in xml_ids.items():
+            result[id] = ftc_records.get(xml_id, False)
+        print 'returning'
+        print result
         return result
 
     _columns = {
@@ -265,6 +302,16 @@ class res_partner(xmlid, osv.Model):
             ),
         'fis_data_address_changed': fields.boolean('FIS data has changed', oldname='fis_data_changed'),
         'fis_updated_by_user': fields.char('Updated by user', size=12, oldname='updated_by_user'),
+        'fis_transmitter_code_id': fields.many2one('fis.transmitter_code', string='FIS Transmitter ID'),
+        'fis_transmitter_code': fields.related(
+                'fis_transmitter_code_id', 'transmitter_no',
+                string='Transmitter No',
+                type='char',
+                size=6,
+                ),
+        'fis_ship_to_parent_id': fields.many2one('res.partner', 'Related Ship-To'),
+        'fis_ship_to_ids': fields.one2many('res.partner', 'fis_ship_to_parent_id', 'Ship-To Addresses'),
+        'fis_ship_to_code': fields.char('Ship-To Code', size=7),
         'fnxfs_files': files('general', string='Available Files'),
         'create_date': fields.datetime('Created', readonly=True),
         'create_uid': fields.many2one('res.users', string='Created by', readonly=True),
