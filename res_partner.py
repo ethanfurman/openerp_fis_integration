@@ -103,14 +103,11 @@ class res_partner(xmlid, osv.Model):
 
     def _get_transmitter_code_id(self, cr, uid, ids, field_name, args, context=None):
         # link records with FIS transmitter codes, if possible
-        print 'looking to match ids', ids
         if isinstance(ids, (int, long)):
             ids = [ids]
         result = dict([(id, False) for id in ids])
         if not ids:
             return result
-        print 'so far...'
-        print result
         xml_ids = dict([
             (r['id'], r['xml_id'])
             for r in self.read(
@@ -119,8 +116,6 @@ class res_partner(xmlid, osv.Model):
                     fields=['id', 'xml_id'],
                     context=context,
                     )])
-        print 'now with feeling!'
-        print xml_ids
         ftc = self.pool.get('fis.transmitter_code')
         ftc_records = dict([
             (r['partner_xml_id'], r['id'])
@@ -129,12 +124,8 @@ class res_partner(xmlid, osv.Model):
                     [('partner_xml_id','in',xml_ids.values())],
                     context=context,
                     )])
-        print 'and from fis.transmitter_code'
-        print ftc_records
         for id, xml_id in xml_ids.items():
             result[id] = ftc_records.get(xml_id, False)
-        print 'returning'
-        print result
         return result
 
     _columns = {

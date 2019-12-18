@@ -8,7 +8,7 @@ from aenum import Enum, NamedTuple
 from antipathy import Path
 from collections import defaultdict
 from dbf import Date
-from fis_schema import F8, F11, F27, F33, F34, F47, F65, F74, F97, F135, F140, F163, F192, F262, F341
+from fis_schema import F8, F11, F27, F33, F34, F47, F65, F74, F97, F135, F163, F192, F262, F341
 from logging import INFO, getLogger, Formatter, handlers
 from openerplib import AttrDict, get_connection, get_records, IDEquality, PropertyNames, SetOnce, Many2One
     # from traceback import format_exception
@@ -878,7 +878,7 @@ def handle_nvty(method):
 
 def handle_csms(method):
     global sales_person_recs, transmitter_codes
-    print('processing CSMS [%s]' % (method, ), border=('flag', '#'))
+    print('processing CSMS', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
     res_partner = Model(oe.get_model('res.partner'), 'csms', 'F33', context, RAISE_ON_EXCEPTION)
     transmitter_codes = dict([
@@ -909,7 +909,6 @@ def handle_csms(method):
     # - quick -> old fis file
     # - full -> current OpenERP data
     #
-    # csms = fisData(33, keymatch='10%s ')
     csms = fisData(33, )
     print(csms.filename, verbose=2)
     print('gathering data', border='flag')
@@ -1163,11 +1162,7 @@ def handle_csms(method):
             relevant_changes = True
             changed_count += 1
             if LIST_RECORDS:
-                try:
-                    echo('  F33:%s  %s' % (xml_id, list_record_name), end='  ')
-                except AttributeError:
-                    echo('\n\n\t%r\n\n' % (new_record, ))
-                    raise
+                echo('  F33:%s  %s' % (xml_id, list_record_name), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
                 echo()
             if not DRYRUN:
@@ -3725,7 +3720,7 @@ def convert_csms_rec(model, fis_rec, aging=None, _missing_reps=set()):
     # - 'module', 'xml_id',
     # - 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
     # - 'fis_valid', 'specials_notification', 'phone', 'is_company', 'customer',
-    # - 'use_parent_address', 'active'
+    # - 'use_parent_address', 'active', 'fis_transmitter_code_id',
     #
     # fields coming from OpenERP that are missing/invalid on the FIS side
     # - 'id', 'fis_updated_by_user'
@@ -3786,6 +3781,8 @@ def convert_csms_rec(model, fis_rec, aging=None, _missing_reps=set()):
     company.phone = fix_phone(fis_rec[F33.tele])
     company.fis_csms_terms = customer_terms_recs.get(fis_rec[F33.payment_terms_id], False)
     company.fis_price_list = fis_rec[F33.price_list_id] or False
+    if not company.fis_csms_terms:
+        model.error('Terms code %r does not exist' % (fis_rec[F33.payment_terms_id], ))
     if aging is not None and key in aging:
         account = aging[key]
         company.fis_credit_limit = account.limit
@@ -3824,7 +3821,8 @@ def convert_csmss_rec(fis_rec, ignore=None):
     # creates an AttrDict with the following fields
     # - 'module', 'xml_id',
     # - 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
-    # - 'fis_valid', 'phone', 'is_company', 'customer',
+    # - 'fis_valid', 'phone', 'is_company', 'customer','use_parent_address',
+    # - 'fis_ship_to_code', 'fis_ship_to_parent_id', 'fis_transmitter_code',
     #
     # fields coming from OpenERP that are missing/invalid on the FIS side
     # - 'id',
