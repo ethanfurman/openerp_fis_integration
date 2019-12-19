@@ -20,6 +20,19 @@
                         ~label for='fnxfs_files' $Related_Documents
                         @fnxfs_files colspan='4' nolabel='1' options="{'no_embed': True}"
                 ~page $Information position='after'
+                    ~page $Web attrs="{'invisible': [('xml_id','=',False)]}"
+                        ~group
+                            ~group
+                                @fis_web_active
+                                @fis_web_tagline
+                                @fis_web_keywords widget='many2many_tags'
+                        ~group
+                            ~group
+                                ~label for='fis_web_ingredients' colspan='2'
+                                @fis_web_ingredients nolabel='1' colspan='2'
+                            ~group
+                                ~label for='fis_web_prep_instructions' colspan='2'
+                                @fis_web_prep_instructions nolabel='1' colspan='2'
                     ~page $Shipping_Instructions attrs="{'invisible': [('xml_id','=',False)]}"
                         @spcl_ship_instr nolabel='1' placeholder='Special shipping instructions here...'
                     ~page string='Trademarks & Registrations' attrs="{'invisible':['|',('trademarks','=',False),('xml_id','=',False)]}"
@@ -107,9 +120,12 @@
                     @fis_availability_code attrs="{'invisible': [('xml_id','=',False)]}"
                 @list_price position='after'
                     @fis_shipping_size attrs="{'invisible': [('xml_id','=',False)]}"
-                    ~hr colspan='2'
-                    @prop65 attrs="{'invisible': [('xml_id','=',False)]}"
-                    @prop65_info attrs="{'invisible': [('xml_id','=',False)]}"
+                @description position='before'
+                    ~group
+                        ~hr colspan='4'
+                        @prop65 attrs="{'invisible': [('xml_id','=',False)]}"
+                        @prop65_info attrs="{'invisible': [('xml_id','=',False)]}"
+                        ~hr colspan='4'
                 @default_code position='attributes'
                     ~attribute @attrs: {'invisible': [('xml_id','!=',False)]}
                 @default_code position='after'

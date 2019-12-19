@@ -625,7 +625,7 @@ def handle_nvty(method):
                     'id', 'module', 'xml_id', 'active', 'name', 'fis_name', 'fis_qty_on_hand',
                     'fis_availability_code', 'sale_ok', 'list_price', 'trademarks', 'ean13',
                     'fis_location', 'fis_shipping_size', 'categ_id', 'warranty',
-                    'default_code', 'weight', 'weight_net',
+                    'default_code', 'weight', 'weight_net', 'list_price',
                     ],
                 )
             ])
@@ -736,7 +736,7 @@ def handle_nvty(method):
                         'fis_qty_purchased', 'fis_10_day_purchased', 'fis_21_day_purchased',
                         'fis_qty_sold', 'fis_10_day_sold', 'fis_21_day_sold',
                         'fis_qty_available', 'fis_10_day_available', 'fis_21_day_available',
-                        'default_code', 'weight', 'weight_net',
+                        'default_code', 'weight', 'weight_net', 'list_price',
                         ],
                     context=context,
                     )
@@ -3552,6 +3552,7 @@ def convert_nvty_rec(fis_rec):
     item.fis_qty_on_hand = fis_rec[F135.qty_on_hand]
     item.weight = numeric(fis_rec[F135.grs_un_wt])
     item.weight_net = numeric(fis_rec[F135.net_un_wt])
+    item.list_price = numeric(fis_rec[F135.new_retail])
     #
     shipping_size = fis_rec[F135.size].strip()
     if shipping_size.lower() in ('each','1 each','1/each'):

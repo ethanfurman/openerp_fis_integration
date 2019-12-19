@@ -497,6 +497,15 @@ class product_product(xmlid, osv.Model):
             string='21-day Available',
             help='Qty available in the next 21 days',
             ),
+        'fis_web_active': fields.boolean('Active on Web'),
+        'fis_web_ingredients': fields.text('Ingredients (Web)'),
+        'fis_web_tagline': fields.text('Tagline (Web)'),
+        'fis_web_prep_instructions': fields.text('Preparation (Web)'),
+        'fis_web_keywords': fields.many2many(
+                'fis.product.keywords',
+                'fis_product_web_keyword_rel', 'keyword_id', 'product_id',
+                string='Keywords',
+                ),
         'fnxfs_files': files('general', string='Available Files'),
         'prop65': fields.selection(Prop65, string='Req. Prop 65 warning'),
         'prop65_info': fields.text('Addl. Prop 65 info'),
@@ -943,6 +952,19 @@ class product_online_order_item(osv.Model):
                 'product_fis_id': product.fis_code,
                 }
         return {'value': value}
+
+
+class product_keywords(osv.Model):
+    _name = 'fis.product.keywords'
+
+    _columns = {
+        'name': fields.char('Keyword', size=64),
+        'product_ids': fields.many2many(
+            'product.product',
+            'fis_product_web_keyword_rel', 'product_id', 'keyword_id',
+            string='Products',
+            ),
+        }
 
 def get_LLC(url):
     "retrieve LLC file and update local cache"
