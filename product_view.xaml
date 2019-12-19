@@ -99,7 +99,7 @@
                             @fis_qty_makeable .oe_inline attrs="{'invisible': [('xml_id','=',False)]}"
                 ~group @Weights position='attributes'
                     ~attribute @groups: base.group_user
-                    ~attribute @attrs: {'invisible': [('xml_id','!=',False)]}
+                    ~attribute @attrs: {'invisible': [('xml_id','=',False)]}
                 @volume position='attributes'
                     ~attribute @invisible: 1
                 @product_manager position='after'
