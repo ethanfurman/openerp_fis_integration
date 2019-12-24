@@ -109,9 +109,9 @@ class report_spec_sheet(report_int):
                     row.append(layout)
             requested_rows.append(row)
             page = Area(*letter)
-            viewable_area = Area(page.width - 1.5*inch, page.height - 1.5*inch)
+            viewable_area = Area(page.width - 1.5*inch, page.height - 1.25*inch)
             left_margin = 0.75*inch
-            bottom_margin = 0.75*inch
+            bottom_margin = 0.50*inch
             right_margin = page.width - 0.75*inch
             top_margin = page.height - 0.75*inch
             top_left = Point(left_margin, top_margin)
