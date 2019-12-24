@@ -135,6 +135,7 @@ class product_available_at(xmlid, osv.Model):
         'product_ids' : fields.function(
             _get_products,
             relation='product.product',
+            fields_id='fis_availability_code',
             type='one2many',
             string='Products',
             ),
