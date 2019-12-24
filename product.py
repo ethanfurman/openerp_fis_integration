@@ -29,6 +29,7 @@ with LLC_lock:
         open(LLC_file, 'w').close()
     with open(LLC_file) as llc:
         LLC_text = llc.read().strip().split('\n')
+LLC_OVERRIDE = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.override'
 
 
 class Prop65(fields.SelectionEnum):
@@ -301,16 +302,18 @@ class product_product(xmlid, osv.Model):
                 LabelLinks.append([piece.strip() for piece in link_line.split(",")])
         for xml_id, id in xml_ids.items():
             for link, scale, align in LabelLinks:
+                header = False
                 if link.count('%s') == 2:
                     remote_file = "%s%s" % (base_url, link % (xml_id, xml_id))
                 elif link.count('%s') == 0:
+                    header = 'oe_header'
                     remote_file = "%s%s" % (base_url, link)
                 else:
                     _logger.error('unknown link template: %r', link)
                     continue
                 htmlContentList.append(
-                        '''<img src="%s" width=%s%% align="%s"/>'''
-                        % (remote_file, scale, align)
+                        '''<img src="%s" width=%s%% align="%s" %s/>'''
+                        % (remote_file, scale, align, header or '')
                         )
             result[id] = static_page_stub % "".join(htmlContentList)
             htmlContentList[:] = []
@@ -969,16 +972,23 @@ class product_keywords(osv.Model):
 
 def get_LLC(url):
     "retrieve LLC file and update local cache"
+    # if TEST_LLC is set, use testing copy below
     global LLC_text
-    # attempt to get LabelLinkCtl from labeltime
-    llc = urlopen(url)
-    try:
-        if llc.code != 200:
-            raise Exception('bad result code fetching %r: %r' % (llc.url, llc.code))
-        else:
+    llc_override = False
+    if LLC_OVERRIDE.exists():
+        llc_override = True
+        with open(LLC_OVERRIDE) as llc:
             label_link_lines = llc.read().strip().split('\n')
-    finally:
-        llc.close()
+    else:
+        # attempt to get LabelLinkCtl from labeltime
+        llc = urlopen(url)
+        try:
+            if llc.code != 200:
+                raise Exception('bad result code fetching %r: %r' % (llc.url, llc.code))
+            else:
+                label_link_lines = llc.read().strip().split('\n')
+        finally:
+            llc.close()
     # validate LabelLinkCtl file
     LabelLinks = []
     for link_line in label_link_lines:
@@ -987,7 +997,7 @@ def get_LLC(url):
         if last_link.count('%s') == 2:
             # abort with exception if this fails
             last_link % ('a', 'test')
-    if label_link_lines != LLC_text:
+    if label_link_lines != LLC_text and not llc_override:
         # store current lines at module level
         LLC_text = label_link_lines
         # then attempt to update cached file
@@ -999,3 +1009,4 @@ def get_LLC(url):
                 _logger.exception('failed to update LabelLinkCtl cached file')
             LLC_lock.release()
     return label_link_lines
+

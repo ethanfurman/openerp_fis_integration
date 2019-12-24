@@ -64,47 +64,49 @@ class report_spec_sheet(report_int):
             xml_ids.add(xml_id)
             # download images and convert width and align
             image_specs = re.findall(
-                    r'''<img src="([^"]*)" width=(\d*)% align="([^"]*)"''',
+                    r'''<img src="([^"]*)" width=(\d*)% align="([^"]*)" *(oe_header)?''',
                     data['label_server_stub'],
                     )
             images = []
-            for url, width, align in image_specs:
+            for url, width, align, header in image_specs:
                 try:
                     align = {'right':1, 'middle':0, 'center':0, 'left':-1}[align.lower()]
                     width = int(width.rstrip('%')) / 100
+                    print '\n\n%r\n%r\n' % (header, bool(header))
+                    header = not header
                 except KeyError:
                     raise ValueError('unknown alignment: %r' % (align, ))
                 except ValueError:
                     raise ValueError('unknown width format: %r' % (width, ))
                 try:
                     try:
-                        images.append(get_label(url, width, align))
+                        images.append(get_label(url, width, align, header))
                     except MissingImageFile:
                         url = Path(url)
                         if url.base.upper()[-2:] != 'MK':
                             raise
                         url = url.scheme / url.dirs / url.base[:-2] + 'CC' + url.ext
-                        images.append(get_label(url, width, align))
+                        images.append(get_label(url, width, align, False))
                 except LabelAcquisitionError:
-                    images.append(ImageBox(None, width, align))
+                    images.append(ImageLayout(None, width, align, False))
             #
             # sort images into rows
             #
             requested_rows = []
             row = []
             total_width = 0
-            for ibox in images:
-                if total_width + ibox.width > 1:
+            for layout in images:
+                if total_width + layout.width > 1:
                     requested_rows.append(row)
                     row = []
                     total_width = 0
-                total_width += ibox.width
+                total_width += layout.width
                 for i, el in enumerate(row):
-                    if ibox.align <= el.align:
-                        row.insert(i, ibox)
+                    if layout.align <= el.align:
+                        row.insert(i, layout)
                         break
                 else:
-                    row.append(ibox)
+                    row.append(layout)
             requested_rows.append(row)
             page = Area(*letter)
             viewable_area = Area(page.width - 1.5*inch, page.height - 1.5*inch)
@@ -134,8 +136,8 @@ class report_spec_sheet(report_int):
                 left = []
                 center = []
                 right = []
-                for ibox in row:
-                    bbox = get_bounding_box(viewable_area, ibox.image, ibox.width)
+                for layout in row:
+                    bbox = get_bounding_box(viewable_area, layout.image, layout.width)
                     if anchor.x + bbox.width > right_margin:
                         anchor = Point(left_margin, anchor.y - max_height - 0.25*inch)
                         max_height = 0
@@ -149,15 +151,15 @@ class report_spec_sheet(report_int):
                         anchor = top_left
                         max_height = 0
                     max_height = max(max_height, bbox.height)
-                    if ibox.align == -1:
+                    if layout.align == -1:
                         # maintain original order
-                        left.append((anchor, bbox, ibox))
-                    elif ibox.align == 0:
+                        left.append((anchor, bbox, layout))
+                    elif layout.align == 0:
                         # maintain original order
-                        center.append((anchor, bbox, ibox))
-                    elif ibox.align == 1:
+                        center.append((anchor, bbox, layout))
+                    elif layout.align == 1:
                         # reverse order (first image is the far right one
-                        right.insert(0, (anchor, bbox, ibox))
+                        right.insert(0, (anchor, bbox, layout))
                     anchor = Point(anchor.x + bbox.width, anchor.y)
                 if left or right or center:
                     page.append((left, right, center))
@@ -171,33 +173,33 @@ class report_spec_sheet(report_int):
                 for left, right, center in page:
                     center_left = left_margin
                     center_right = right_margin
-                    for anchor, bbox, ibox in left:
-                        display_image(display, anchor, bbox, ibox)
+                    for anchor, bbox, layout in left:
+                        display_image(display, anchor, bbox, layout)
                         center_left = anchor.x + bbox.width
                     if right:
-                        anchor, bbox, ibox = right[0]
+                        anchor, bbox, layout = right[0]
                         delta = right_margin - (anchor.x + bbox.width)
-                    for anchor, bbox, ibox in right:
+                    for anchor, bbox, layout in right:
                         delta_anchor = Point(anchor.x + delta, anchor.y)
-                        display_image(display, delta_anchor, bbox, ibox)
+                        display_image(display, delta_anchor, bbox, layout)
                         center_right = anchor.x
                     if center:
                         # get left-most point
-                        anchor, bbox, ibox = center[0]
+                        anchor, bbox, layout = center[0]
                         left_anchor = anchor
                         # center requires two passes:
                         # - calculate total space used and delta
                         # - adjust and print
                         total_width = 0
-                        for anchor, bbox, ibox in center:
+                        for anchor, bbox, layout in center:
                             total_width += bbox.width
                         # width calculated, now for delta
                         center_point = (center_left + center_right) // 2
                         half_width = total_width // 2
                         delta = center_point - half_width - left_anchor.x
-                        for anchor, bbox, ibox in center:
+                        for anchor, bbox, layout in center:
                             delta_anchor = Point(anchor.x + delta, anchor.y)
-                            display_image(display, delta_anchor, bbox, ibox)
+                            display_image(display, delta_anchor, bbox, layout)
                 display.showPage()
         display.save()
         #
@@ -211,17 +213,26 @@ class report_spec_sheet(report_int):
         return (self.obj.pdf, 'pdf')
 report_spec_sheet('report.product.product.spec_sheet')
 
-def display_image(canvas, anchor, bbox, ibox):
+def display_image(canvas, anchor, bbox, layout):
+    """put the image on the page
+
+    - canvas: draws the image
+    - anchor: upper-left corner of area to draw in
+    - bbox: area to draw
+    - layout: image info
+    """
     x0, y0 = anchor
     x1, y1 = anchor.x+bbox.width, anchor.y-bbox.height
-    if ibox.image is not None:
+    if layout.image is not None:
+        _logger.info('bbox: %r  layout.image: %r x %r', bbox, layout.image.width, layout.image.height)
         canvas.drawImage(
-                ImageReader(ibox.image),
+                ImageReader(layout.image),
                 x0+GUTTER, y1+GUTTER,
                 bbox.width-2*GUTTER, bbox.height-2*GUTTER,
                 preserveAspectRatio=True,
                 )
-        canvas.lines(((x0, y0, x1, y0), (x1, y0, x1, y1), (x1, y1, x0, y1), (x0, y1, x0, y0)))
+        if layout.header:
+            canvas.lines(((x0, y0, x1, y0), (x1, y0, x1, y1), (x1, y1, x0, y1), (x0, y1, x0, y0)))
 
 class Area(NamedTuple):
     width = 0
@@ -231,18 +242,27 @@ class Point(NamedTuple):
     x = 0
     y = 1
 
-class ImageBox(NamedTuple):
-    image = 0
-    width = 1
-    align = 2
+class ImageLayout(NamedTuple):
+    image = 0   # image itself
+    width = 1   # percantage of total horizontal space
+    align = 2   # left, right, center
+    header = 3  # header image?  (True implies no border)
 
 def get_bounding_box(available_area, image, portion):
+    """return actual area needed for image
+    
+    - available_area: what is available
+    - image: image to place
+    - portion: %-width allotted for image
+    """
     box_width = round(portion * available_area.width)
     if image is None:
         box_height = 72
-    else:
+    elif box_width < image.width:
         image_percent = box_width / image.width
         box_height = round(image_percent * image.height)
+    else:
+        box_height = image.height
     return Area(box_width, box_height)
 
 def format_lines(line, cpl, split=()):
@@ -314,7 +334,13 @@ def trim(image):
     else:
         return image
 
-def get_label(url, width, align):
+def get_label(url, width, align, header):
+    """acquire product label image
+
+    - url: location of image
+    - width: %-width of available space (passed to ImageLayout)
+    - align: left, right, center (passed to ImageLayout)
+    """
     # get connection to url
     _logger.debug('getting %s with width %s and align %s', url, width, align)
     try:
@@ -339,13 +365,13 @@ def get_label(url, width, align):
     try:
         image = Image.open(BytesIO(image_data))
     except IOError:
-        _logger.exception('unable to process image data')
+        _logger.exception('unable to process image data from %r' % url)
         raise UnknownImageFormat
     else:
         if not image.mode == 'RGB':
             image = image.convert('RGB')
         image = trim(image)
-        return ImageBox(image, width, align)
+        return ImageLayout(image, width, align, header)
 
 class LabelAcquisitionError(Exception):
     pass
