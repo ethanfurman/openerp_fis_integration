@@ -136,10 +136,15 @@ class report_spec_sheet(report_int):
                 left = []
                 center = []
                 right = []
+                header = True
                 for layout in row:
+                    header = min(header, layout.header)
                     bbox = get_bounding_box(viewable_area, layout.image, layout.width)
                     if anchor.x + bbox.width > right_margin:
-                        anchor = Point(left_margin, anchor.y - max_height - 0.25*inch)
+                        if header:
+                            anchor = Point(left_margin, anchor.y - max_height - 0.10*inch)
+                        else:
+                            anchor = Point(left_margin, anchor.y - max_height - 0.25*inch)
                         max_height = 0
                         if left or right or center:
                             page.append((left, right, center))
