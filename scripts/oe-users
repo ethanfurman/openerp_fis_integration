@@ -82,7 +82,11 @@ def create(force, users):
             if employee.login not in user_map:
                 print('%s is missing from OpenERP' % employee.login)
                 force = True
-    if not force and fce(config.users.raw_dept, last_arch_dept) and fce(config.users.raw_user, last_arch_user):
+    if (
+            not force
+            and fce(config.users.raw_dept, last_arch_dept)
+            and fce(config.users.raw_user, last_arch_user)
+            ):
         print('nothing new, exiting')
         raise SystemExit
     with employees:
@@ -91,7 +95,10 @@ def create(force, users):
         with open(config.users.raw_user) as user:
             for line in user:
                 line = line.strip().split()
-                record.login, record.password, record.active, record.emp_num  = line[0], line[1], line[2] == 'true', int(line[3])
+                record.login = line[0]
+                record.password = line[1]
+                record.active = line[2] == 'true'
+                record.emp_num = int(line[3])
                 record.name = NameCase(' '.join(line[4:]).strip('"'))
                 record.email = record.login + '@sunridgefarms.com'
                 if record.emp_num:
@@ -108,7 +115,10 @@ def create(force, users):
                     temp = login_index[record]
                     for old_record in temp:
                         if old_record.active:
-                            print('deactivating %s  (%s)' % (old_record.name, old_record.emp_num), file=stderr)
+                            print(
+                                    'deactivating %s  (%s)' % (old_record.name, old_record.emp_num),
+                                    file=stderr,
+                                    )
                         record.emp_num = old_record.emp_num
                         record.name = old_record.name
                         record.old_login = old_record.login
@@ -264,11 +274,16 @@ def update():
         try:
             # groups is which groups this user is allowed to be in (strings)
             # permissions is which groups the user is actually in (list of ints)
-            # monitored_groups links group names with group categories (dict of name:[int, int, ...] and name_default:[int])
+            # monitored_groups links group names with group categories
+            #   - (dict of name:[int, int, ...] and name_default:[int])
             # 
-            # for each name in monitored_groups if that name is not in groups, remove all ints that belong to that name from permissions
-            # if that name is in groups, make sure that at least one of the ints is present in permissions, if not then add name_default to permissions
-
+            # for each name in monitored_groups
+            #    if that name is not in groups
+            #       remove all ints that belong to that name from permissions
+            #    if that name is in groups
+            #       make sure that at least one of the ints is present in permissions
+            #       if not then add name_default to permissions
+            #
             emp_num, old_login, login, password, active, groups, email, name = row
             user = [user for user in users if user.login == old_login][0]
         except IndexError:
