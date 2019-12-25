@@ -4,6 +4,7 @@ from __future__ import print_function
 import dbf
 import os
 from base64 import b64encode
+from dbf import DateTime
 from filecmp import cmp as fce
 from xmlrpclib import Fault
 from antipathy import Path
@@ -145,7 +146,8 @@ def create(force, users):
                 updates.write('%s %s %s %s %s %s %s %s\n' %
                         (record.emp_num, record.old_login, record.login, record.password,
                          record.active, record.groups, record.email, record.name))
-    new_ext = ".%03d" % (int(last_arch_dept.ext[1:]) + 1)
+    # new_ext = ".%03d" % (int(last_arch_dept.ext[1:]) + 1)
+    new_ext = DateTime.fromtimestamp(last_arch_user.stat().st_mtime).strftime('%Y-%m-%d+%H:%M')
     next_arch_dept = last_arch_dept.strip_ext() + new_ext
     next_arch_user = last_arch_user.strip_ext() + new_ext
     config.users.raw_dept.copy(next_arch_dept)
