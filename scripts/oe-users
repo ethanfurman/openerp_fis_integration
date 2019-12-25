@@ -83,10 +83,12 @@ def create(force, users):
             if employee.login not in user_map:
                 print('%s is missing from OpenERP' % employee.login)
                 force = True
+    dept_changed = not fce(config.users.raw_dept, last_arch_dept)
+    user_changed = not fce(config.users.raw_user, last_arch_user)
     if (
             not force
-            and fce(config.users.raw_dept, last_arch_dept)
-            and fce(config.users.raw_user, last_arch_user)
+            and not dept_changed
+            and not user_changed
             ):
         print('nothing new, exiting')
         raise SystemExit
@@ -148,11 +150,14 @@ def create(force, users):
                          record.active, record.groups, record.email, record.name))
     # new_ext = ".%03d" % (int(last_arch_dept.ext[1:]) + 1)
     new_ext = DateTime.fromtimestamp(last_arch_user.stat().st_mtime).strftime('%Y-%m-%d+%H:%M')
-    next_arch_dept = last_arch_dept.strip_ext() + new_ext
-    next_arch_user = last_arch_user.strip_ext() + new_ext
-    config.users.raw_dept.copy(next_arch_dept)
-    config.users.raw_user.copy(next_arch_user)
-    Execute(['chown', 'openerp:', next_arch_dept, next_arch_user])
+    if dept_changed:
+        next_arch_dept = last_arch_dept.strip_ext() + new_ext
+        config.users.raw_dept.copy(next_arch_dept)
+        Execute(['chown', 'openerp:', next_arch_dept])
+    if user_changed:
+        next_arch_user = last_arch_user.strip_ext() + new_ext
+        config.users.raw_user.copy(next_arch_user)
+        Execute(['chown', 'openerp:', next_arch_user])
 
 
 @Command(
