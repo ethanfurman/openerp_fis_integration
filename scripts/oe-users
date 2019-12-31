@@ -3,6 +3,7 @@ from __future__ import print_function
 
 import dbf
 import os
+import re
 from base64 import b64encode
 from dbf import DateTime
 from filecmp import cmp as fce
@@ -14,8 +15,10 @@ from urllib2 import urlopen, URLError
 from VSS.address import NameCase
 from VSS.utils import crc32
 
-virtual_env = os.environ['VIRTUAL_ENV']
-config = '%s/config/fnx.ini' % virtual_env
+virtual_env = Path(os.environ['VIRTUAL_ENV'])
+config = virtual_env / 'config/fnx.ini'
+arch_dept = virtual_env / 'var/openerp/archive/'
+arch_user = virtual_env / 'var/openerp/archive/'
 
 @Script()
 def main():
@@ -72,10 +75,8 @@ def create(force, users):
     "create files needed by openerp_user_update"
     force = force or force_update
     # get last archived files
-    arch_dept = Path('%s/var/openerp/archive/empsWithDepts.*' % virtual_env).glob()
-    arch_user = Path('%s/var/openerp/archive/falconUsersImport.*' % virtual_env).glob()
-    last_arch_dept = sorted(arch_dept, key=lambda a: a.ext)[-1]
-    last_arch_user = sorted(arch_user, key=lambda a: a.ext)[-1]
+    last_arch_dept = sorted(arch_dept.glob('empsWithDepts.*'), key=lambda a: a.ext)[-1]
+    last_arch_user = sorted(arch_user.glob('falconUsersImport.*'), key=lambda a: a.ext)[-1]
     with dbf.Table(config.users.emp_table, default_data_types={'C':dbf.Char}) as employees:
         login_index = employees.create_index(lambda rec: rec.login)
         # check that all users in the dbf file are present in OpenERP
@@ -223,6 +224,96 @@ def photos(reset, users, ids):
             print('  updating record with %s' % (pic_crc, ))
             hr.write(e.id, dict(image=image, image_crc=pic_crc))
         print()
+
+
+@Command(
+        name=Spec("email address", MULTI, type=str.upper),
+        emp_no=Spec("employee number", MULTI, type=int),
+        login=Spec('login', MULTI, type=str.lower),
+        )
+def trace(name, emp_no, login):
+    print('looking for:\n  name -> %s\n  emp_no -> %s\n  login -> %s' % (name, emp_no, login), verbose=1)
+    if not (name or emp_no or login):
+        help('one of EMAIL, EMP_NO or LOGIN must be specified')
+    #
+    depts = sorted(arch_dept.glob('empsWithDepts.*'), key=lambda a: a.ext)
+    users = sorted(arch_user.glob('falconUsersImport.*'), key=lambda a: a.ext)
+    target_names = name
+    target_emp_nos = emp_no
+    target_logins = login
+    last_user = set()
+    last_dept = set()
+    found = {}
+    for user, dept in date_synced_streams(users, depts):
+        print('\n'.join([user, dept]), border='box', verbose=2)
+        if user:
+            date = user.ext[1:]
+            current_user = set()
+            print('user file: ', user, verbose=3)
+            user_date = user.ext
+            with user.open() as u:
+                text = u.read().strip().split('\n')
+            for line in text:
+                # jgonzalezjr 566jgj7622 true 1404 "JUAN GONZALEZ, JR."
+                if not line.strip():
+                    continue
+                try:
+                    login, password, active, emp_no, name = line.split(None, 4)
+                    login = login.lower()
+                    name = name.upper()
+                    emp_no = int(emp_no)
+                except ValueError as exc:
+                    error('unable to parse line: %r  [%s -- %r]' % (line, exc, line.split(None, 4)))
+                    raise
+                else:
+                    if (
+                            find(target_names, name, exact=False)
+                            or find(target_emp_nos, emp_no)
+                            or find(target_logins, login)
+                            ):
+                        current_user.add(line)
+                        if line not in last_user:
+                            found.setdefault(date, {}).setdefault('user', []).append(line)
+                            print('%s:  %s' % (user_date[1:], line), verbose=1)
+            last_user = current_user or last_user
+        if dept:
+            date = dept.ext[1:]
+            current_dept = set()
+            print('dept file: ', dept, verbose=3)
+            dept_date = dept.ext
+            with dept.open() as d:
+                text = d.read().strip().split('\n')
+            for line in text:
+                if not line.strip():
+                    continue
+                # 1404,Bldg Maint,"JUAN GONZALEZ, JR.","b858d37cc9c3d0066a7deac7dd5a3013"
+                try:
+                    emp_no, group, name, _ = re.findall(r"""(\d*),([^,]*),"([^"]*)","([^"]*)"$""", line)[0]
+                    name = name.upper()
+                    emp_no = int(emp_no)
+                except ValueError as exc:
+                    error('unable to parse line: %r  [%s -- %r]' % (line, exc, re.findall(r"""(\d*),([^,]*),"([^"]*)","([^"]*)"$""", line)))
+                    raise
+                else:
+                    if (
+                            find(target_names, name, exact=False)
+                            or find(target_emp_nos, emp_no)
+                            ):
+                        current_dept.add(line)
+                        if line not in last_dept:
+                            found.setdefault(date, {}).setdefault('dept', []).append(line)
+                            print('%s:  %s' % (dept_date[1:], line), verbose=1)
+            last_dept = current_dept or last_dept
+    # print it all out
+    table = [('timestamp', 'user', 'dept'), None]
+    for date, groups in sorted(found.items()):
+        table.append([
+                date,
+                '\n'.join(groups.get('user', [])),
+                '\n'.join(groups.get('dept', [])),
+                ])
+    echo(table, border='table')
+
 
 
 @Command()
@@ -454,6 +545,53 @@ def adjust_permissions(oe_groups, allowed_groups, user):
             # remove all priveleges for this group
             permissions -= ints
     return list(permissions)
+
+
+def find(possibles, target, exact=True):
+    for p in possibles:
+        if p == target or not exact and p in target:
+            return True
+    return False
+
+
+def date_synced_streams(users, depts):
+    users = iter(users)
+    depts = iter(depts)
+    u = next(users, None)
+    u_date = u and u.ext or None
+    d = next(depts, None)
+    d_date = d and d.ext or None
+    while True:
+        if u is None:
+            yield '', d
+        elif d is None:
+            yield u, ''
+        elif u_date == d_date:
+            yield u , d
+        elif u_date < d_date:
+            yield u, ''
+        elif d_date < u_date:
+            yield '', d
+        else:
+            raise Exception('what did I forget?\n  u: %r -- %r\n  d: %r -- %r' % (u, u_date, d, d_date))
+        if u is None:
+            d = next(depts, None)
+        elif d is None:
+            u = next(users, None)
+        elif u_date == d_date:
+            u = next(users, None)
+            d = next(depts, None)
+        elif u_date < d_date:
+            u = next(users, None)
+        elif d_date < u_date:
+            d = next(depts, None)
+        else:
+            raise Exception('what did I forget?\n  u: %r -- %r\n  d: %r -- %r' % (u, u_date, d, d_date))
+        u_date = u and u.ext or None
+        d_date = d and d.ext or None
+        if u is d is None:
+            break
+
 
 
 Run()
