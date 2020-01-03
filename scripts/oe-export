@@ -95,8 +95,9 @@ def oe_export(name, to_file, domain, table):
     order=Spec('desired order of output', MULTI),
     distinct=Spec('unique rows only', FLAG, abbrev=None),
     separator=Spec('print separator between lines', FLAG),
+    wrap=Spec('wrap column for text & html fields [ignored in .xls and .csv output]', OPTION, force_default=0),
     )
-def adhoc(table, fields, to_file, domain, order, distinct, separator, _internal=False):
+def adhoc(table, fields, to_file, domain, order, distinct, separator, wrap, _internal=False):
     print('searching %s\n  for %s\n  retreiving %s\n  ordered by %s' % (table, domain, fields, order))
     fields = list(fields)
     q = Query(oe.get_model(table), domain=domain, fields=fields[:], order=order, unique=distinct)
@@ -108,7 +109,7 @@ def adhoc(table, fields, to_file, domain, order, distinct, separator, _internal=
     elif to_file.endswith('.csv'):
         write_csv(table, q, fields, to_file, separator)
     elif to_file.endswith('.txt') or to_file == '-':
-        write_txt(table, q, fields, to_file, separator)
+        write_txt(table, q, fields, to_file, separator, wrap)
     else:
         abort('unknown file type: %r' % to_file)
     if _internal:
@@ -118,8 +119,9 @@ def adhoc(table, fields, to_file, domain, order, distinct, separator, _internal=
 @Command(
         command=('sql command', REQUIRED),
         separator=('insert blank line between records', FLAG),
+        wrap=Spec('wrap column for text & html fields [ignored in .xls and .csv output]', OPTION, force_default=0),
         )
-def sql(command, separator):
+def sql(command, separator, wrap):
     """
     SELECT field_name [, field_name [, ...]]
         FROM table
@@ -142,7 +144,7 @@ def sql(command, separator):
     if ';' in check_command:
         abort('more than one command specified')
     if check_command.startswith('select '):
-        sql_select(command, separator)
+        sql_select(command, separator, wrap)
     elif check_command.startswith('count '):
         sql_count(command, separator)
     elif check_command.startswith('describe '):
@@ -185,7 +187,7 @@ def sql_describe(command, separator):
         table.append((field, desc['string'], desc['type'], (desc.get('help') or '').replace('\n','  ')))
     echo(table, border='table')
 
-def sql_select(command, separator, _internal=False):
+def sql_select(command, separator, wrap, _internal=False):
     """\
     SELECT field_name [, field_name [, ...]]
         FROM table
@@ -272,6 +274,7 @@ def sql_select(command, separator, _internal=False):
             orden,
             distinta,
             separator,
+            wrap,
             _internal=True,
             )
     if _internal:
@@ -574,7 +577,7 @@ def write_csv(table, query, fields, file, separator=False):
     with open(file, 'w') as output:
         output.write('\n'.join(lines).encode('utf8'))
 
-def write_txt(table, query, fields, file, separator=False):
+def write_txt(table, query, fields, file, separator=False, wrap=0):
     lines = []
     line = []
     print('field count:', len(fields), fields, verbose=2)
@@ -591,12 +594,10 @@ def write_txt(table, query, fields, file, separator=False):
             line = []
             for cell_index, cell_value in enumerate(row):
                 if isinstance(cell_value, Many2One):
-                    # cell_value = cell_value[1]
                     if SHOW_ID:
                         line.append('[%6s] %s' % cell_value)
                     else:
                         line.append(cell_value.essence())
-                    # print('skipping m2o', cell_value, verbose=3)
                 elif isinstance(cell_value, (list, tuple)):
                     for cv in cell_value:
                         if isinstance(cv, Many2One):
@@ -605,9 +606,9 @@ def write_txt(table, query, fields, file, separator=False):
                             else:
                                 line.append(cv.essence())
                         elif isinstance(cv, basestring):
-                            cv = re.sub("\r", " ", cv)
-                            cv = re.sub('"', '\"', cv)
                             cv = '%s' % cv
+                            if '<div>' in cv or '<p>' in cv:
+                                cv = html2text(cv, wrap)
                             line.append(cv)
                         elif isinstance(cv, bool):
                             line.append(' t'[cv])
@@ -616,9 +617,9 @@ def write_txt(table, query, fields, file, separator=False):
                         else:
                             line.append(cv)
                 elif isinstance(cell_value, basestring):
-                    cell_value = re.sub("\r", " ", cell_value)
-                    cell_value = re.sub('"', '\"', cell_value)
                     cell_value = '%s' % cell_value
+                    if '<div>' in cell_value or '<p>' in cell_value:
+                        cell_value = html2text(cell_value, wrap)
                     line.append(cell_value)
                 elif isinstance(cell_value, bool):
                     line.append(' t'[cell_value])
@@ -635,6 +636,31 @@ def write_txt(table, query, fields, file, separator=False):
     else:
         with open(file, 'w') as out:
             echo(lines, border='table', file=out)
+
+def html2text(html, wrap):
+    html = html.replace('<br>', '\n').replace('<p>', '\n').replace('<div>', '\n')
+    for tag in (
+            '</br>',
+            '</p>', '</div>',
+            '<b>', '</b>',
+            '<span>', '</span>',
+            '<i>', '</i>',
+            ):
+        tmp = []
+        html = html.replace(tag, '')
+    if wrap:
+        while html:
+            target = wrap
+            while len(html) > target and html[target] != ' ':
+                target -= 1
+                if target <= 10:
+                    break
+            tmp.append(html[:target].strip())
+            html = html[target:]
+        html = '\n'.join(tmp)
+    html = html.replace('\n\n', '\n').replace('\n\n', '\n').strip()
+    html = html.replace('&lt;', '<').replace('&gt;', '>').replace('&amp;', '&')
+    return html
 
 
 class counter(object):
