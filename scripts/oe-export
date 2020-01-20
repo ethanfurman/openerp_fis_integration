@@ -95,11 +95,17 @@ def oe_export(name, to_file, domain, table):
     order=Spec('desired order of output', MULTI),
     distinct=Spec('unique rows only', FLAG, abbrev=None),
     separator=Spec('print separator between lines', FLAG),
-    wrap=Spec('wrap column for text & html fields [ignored in .xls and .csv output]', OPTION, force_default=0),
+    wrap=Spec('field name and width of fields to wrap [ignored in .xls and .csv output]', MULTI),
     )
 def adhoc(table, fields, to_file, domain, order, distinct, separator, wrap, _internal=False):
     print('searching %s\n  for %s\n  retreiving %s\n  ordered by %s' % (table, domain, fields, order))
     fields = list(fields)
+    if wrap and isinstance(wrap, tuple):
+        wrap = dict(
+            (k, int(v))
+            for item in wrap
+            for k, v in (item.split(':'), )
+            )
     q = Query(oe.get_model(table), domain=domain, fields=fields[:], order=order, unique=distinct)
     if _internal and not to_file:
         return q
@@ -119,7 +125,7 @@ def adhoc(table, fields, to_file, domain, order, distinct, separator, wrap, _int
 @Command(
         command=('sql command', REQUIRED),
         separator=('insert blank line between records', FLAG),
-        wrap=Spec('wrap column for text & html fields [ignored in .xls and .csv output]', OPTION, force_default=0),
+        wrap=Spec('field name and width of fields to wrap [ignored in .xls and .csv output]', MULTI),
         )
 def sql(command, separator, wrap):
     """
@@ -139,6 +145,12 @@ def sql(command, separator, wrap):
     DELETE FROM table
         [WHERE ...]
     """
+    if wrap and isinstance(wrap, tuple):
+        wrap = dict(
+            (k, int(v))
+            for item in wrap
+            for k, v in (item.split(':'), )
+            )
     command = command.strip(' ;')
     check_command = command.lower()
     if ';' in check_command:
@@ -148,7 +160,7 @@ def sql(command, separator, wrap):
     elif check_command.startswith('count '):
         sql_count(command, separator)
     elif check_command.startswith('describe '):
-        sql_describe(command, separator)
+        sql_describe(command, separator, wrap)
     elif check_command.startswith('update '):
         sql_update(command)
     elif check_command.startswith('delete from '):
@@ -156,7 +168,7 @@ def sql(command, separator, wrap):
     else:
         abort('one of SELECT | UPDATE | DELETE | DESCRIBE | COUNT not specified')
 
-def sql_describe(command, separator):
+def sql_describe(command, separator, wrap):
     """
     DESCRIBE table
         [ORDER BY field1]
@@ -184,7 +196,18 @@ def sql_describe(command, separator):
     seleccion = sorted(model.fields_get().items(), key=sort)
     table = [('Field','Display','Type','Help'), None]
     for field, desc in seleccion:
-        table.append((field, desc['string'], desc['type'], (desc.get('help') or '').replace('\n','  ')))
+        if 'field' in wrap:
+            field = html2text(field, wrap['field'])
+        display = desc['string']
+        if 'display' in wrap:
+            display = html2text(display, wrap['display'])
+        type = desc['type']
+        if 'type' in wrap:
+            type = html2text(type, wrap['type'])
+        help = desc.get('help') or ''
+        if 'help' in wrap:
+            help = html2text(help, wrap['help'])
+        table.append((field, display, type, help))
     echo(table, border='table')
 
 def sql_select(command, separator, wrap, _internal=False):
@@ -577,7 +600,7 @@ def write_csv(table, query, fields, file, separator=False):
     with open(file, 'w') as output:
         output.write('\n'.join(lines).encode('utf8'))
 
-def write_txt(table, query, fields, file, separator=False, wrap=0):
+def write_txt(table, query, fields, file, separator=False, wrap=None):
     lines = []
     line = []
     print('field count:', len(fields), fields, verbose=2)
@@ -592,7 +615,8 @@ def write_txt(table, query, fields, file, separator=False, wrap=0):
         for row in er:
             print('post pre-process row ->', row, verbose=2)
             line = []
-            for cell_index, cell_value in enumerate(row):
+            assert len(row) == len(fields), "row (%d) != fields (%d)\n%r\n%r" % (len(row), len(fields), row, fields)
+            for field_name, (cell_index, cell_value) in zip(fields, enumerate(row)):
                 if isinstance(cell_value, Many2One):
                     if SHOW_ID:
                         line.append('[%6s] %s' % cell_value)
@@ -607,8 +631,6 @@ def write_txt(table, query, fields, file, separator=False, wrap=0):
                                 line.append(cv.essence())
                         elif isinstance(cv, basestring):
                             cv = '%s' % cv
-                            if '<div>' in cv or '<p>' in cv:
-                                cv = html2text(cv, wrap)
                             line.append(cv)
                         elif isinstance(cv, bool):
                             line.append(' t'[cv])
@@ -618,8 +640,6 @@ def write_txt(table, query, fields, file, separator=False, wrap=0):
                             line.append(cv)
                 elif isinstance(cell_value, basestring):
                     cell_value = '%s' % cell_value
-                    if '<div>' in cell_value or '<p>' in cell_value:
-                        cell_value = html2text(cell_value, wrap)
                     line.append(cell_value)
                 elif isinstance(cell_value, bool):
                     line.append(' t'[cell_value])
@@ -627,6 +647,9 @@ def write_txt(table, query, fields, file, separator=False, wrap=0):
                     line.append('')
                 else:
                     line.append(cell_value)
+                if field_name in wrap:
+                    wrap_value = wrap[field_name]
+                    line[-1] = html2text(line[-1], wrap_value)
             print('post post-process line ->', line, verbose=2)
             lines.append(line)
     if not separator:
@@ -697,7 +720,7 @@ class ExpandedRow(object):
         # record = {
         #   'id': 8274
         #   'xml_id': 1374,
-        # 	'hr_insurance_choice_ids': [
+        #   'hr_insurance_choice_ids': [
         #           {
         #            'id': 810,
         #            'year_month': '2018-07',
