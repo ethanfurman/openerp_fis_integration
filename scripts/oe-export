@@ -651,7 +651,7 @@ def html2text(html, wrap):
     if wrap:
         while html:
             target = wrap
-            while len(html) > target and html[target] != ' ':
+            while len(html) > target and html[target] not in ' \n\t':
                 target -= 1
                 if target <= 10:
                     break
