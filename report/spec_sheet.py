@@ -19,11 +19,14 @@ from openerp.report.render import render
 from openerp import pooler
 # import time
 # import unicodedata
+from aenum import NamedConstant, export
 import logging
+import requests
 
 _logger = logging.getLogger(__name__)
 
 GUTTER = 5
+IMAGE_ALTERNATES = {'MK': 'CC', 'B': 'PKG'}
 
 class external_pdf(render):
     def __init__(self, pdf):
@@ -79,15 +82,8 @@ class report_spec_sheet(report_int):
                 except ValueError:
                     raise ValueError('unknown width format: %r' % (width, ))
                 try:
-                    try:
-                        images.append(get_label(url, width, align, header))
-                    except MissingImageFile:
-                        url = Path(url)
-                        if url.base.upper()[-2:] != 'MK':
-                            raise
-                        url = url.scheme / url.dirs / url.base[:-2] + 'CC' + url.ext
-                        images.append(get_label(url, width, align, False))
-                except LabelAcquisitionError:
+                    images.append(get_label(url, width, align, header))
+                except (LabelAcquisitionError, MissingImageFile):
                     images.append(ImageLayout(None, width, align, False))
             #
             # sort images into rows
@@ -348,18 +344,9 @@ def get_label(url, width, align, header):
     """
     # get connection to url
     _logger.debug('getting %s with width %s and align %s', url, width, align)
-    try:
-        _logger.debug('getting %s', url)
-        connection = urllib.urlopen(url)
-    except IOError:
-        _logger.exception('error connecting to label server for %s', url)
-        raise LabelServerConnectionError
-    else:
-        # check code and (possibly) download image
+    while True:
+        connection = urllib.urlopen(get_actual_url(url))
         try:
-            if connection.code == 404:
-                _logger.debug('missing file')
-                raise MissingImageFile(url)
             image_data = connection.read()
         except IOError:
             _logger.exception('unable to retrieve image data')
@@ -377,6 +364,53 @@ def get_label(url, width, align, header):
             image = image.convert('RGB')
         image = trim(image)
         return ImageLayout(image, width, align, header)
+
+@export(globals())
+class Konstants(NamedConstant):
+    RAISE_EXCEPTION = 'raise'
+    RETURN_ORIGINAL = 'original url'
+    RETURN_LAST = 'last url'
+
+def get_actual_url(url, on_error=RAISE_EXCEPTION):
+    "return actual url used"
+    url = original_url = Path(url)
+    backups = []
+    last_type = None
+    for key, value in IMAGE_ALTERNATES.items():
+        if url.base.upper().endswith(key):
+            last_type = key
+            backups = value
+            if isinstance(backups, basestring):
+                backups = (backups, )
+            backups = list(backups)
+            break
+    while True:
+        try:
+            try:
+                _logger.info('checking %s', url)
+                connection = requests.head(url)
+                connection.close()
+            except IOError:
+                _logger.exception('error connecting to label server for %s', url)
+                raise LabelServerConnectionError
+            else:
+                # check code
+                if connection.status_code == 200:
+                    return url
+                _logger.info('missing file:  %s', url)
+                if not backups:
+                    raise MissingImageFile(url)
+                new_type = backups.pop(0)
+                url = url.scheme / url.dirs / url.base[:len(last_type)] + new_type + url.ext
+                last_type = new_type
+                continue
+        except Exception:
+            if on_error == RAISE_EXCEPTION:
+                raise
+            elif on_error == RETURN_ORIGINAL:
+                return original_url
+            elif on_error == RETURN_LAST:
+                return url
 
 class LabelAcquisitionError(Exception):
     pass
