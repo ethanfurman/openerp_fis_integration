@@ -315,7 +315,7 @@ class product_product(xmlid, osv.Model):
                         '''<img src="%s" width=%s%% align="%s" %s/>'''
                         % (remote_file, scale, align, header or '')
                         )
-            result[id] = static_page_stub % "".join(htmlContentList)
+            result[id] = dynamic_page_stub % "".join(htmlContentList)
             htmlContentList[:] = []
         return result
 
