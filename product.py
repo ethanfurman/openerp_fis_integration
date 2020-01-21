@@ -11,6 +11,7 @@ from openerp import SUPERUSER_ID, CONFIG_DIR, ROOT_DIR
 from openerp.exceptions import ERPError
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids
 from osv import osv, fields
+from report.spec_sheet import get_actual_url, RETURN_ORIGINAL
 from urllib import urlopen
 import logging
 import re
@@ -304,7 +305,7 @@ class product_product(xmlid, osv.Model):
             for link, scale, align in LabelLinks:
                 header = False
                 if link.count('%s') == 2:
-                    remote_file = "%s%s" % (base_url, link % (xml_id, xml_id))
+                    remote_file = get_actual_url("%s%s" % (base_url, link % (xml_id, xml_id)), on_error=RETURN_ORIGINAL)
                 elif link.count('%s') == 0:
                     header = 'oe_header'
                     remote_file = "%s%s" % (base_url, link)
