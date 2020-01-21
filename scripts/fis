@@ -1166,7 +1166,7 @@ def format_record(record, fields=None):
     for i, row in enumerate(record.fieldlist):
         if i in fields:
             name_width = max(len(row[3]), name_width)
-            value_width = max(len(str(record[row[3]]).replace('\0','').strip()), value_width)
+            value_width = max(len(str(record[row[3]]).rstrip()), value_width)
             mask_width = max(len(str(fieldlist[i][4])), mask_width)
             print(
                     'field %d -> name width: %d   value width: %d   mask wdith: %d'
@@ -1178,7 +1178,15 @@ def format_record(record, fields=None):
         if i in fields:
             value = record[row[3]]
             if isinstance(value, basestring):
-                value = value.replace('\0', '').strip()
+                value = value.replace('\0', u'\u2400')
+                leading_spaces = 0
+                for ch in value:
+                    if ch != ' ':
+                        break
+                    leading_spaces += 1
+                value = leading_spaces * u'\u2422' + value.lstrip()
+                if u'\u2422' in value or u'\u2400' in value:
+                    echo('value is:', value)
             print('field %d -> %r' % (i, value), verbose=3)
             if '$' in row[3] and not fieldlist[i][4]:
                 lines.append('%5d | %*s | %*s | %*s | %s' % (i+1, -name_width, row[3], mask_width, fieldlist[i][4], -value_width, value, row[1]))
