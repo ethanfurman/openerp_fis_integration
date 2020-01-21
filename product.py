@@ -5,7 +5,7 @@ from dbf import Date
 from fnx_fs.fields import files
 from scription import Execute, OrmFile
 from fnx import date
-from fnx.oe import dynamic_page_stub, static_page_stub
+from fnx.oe import dynamic_page_stub
 from fnx.xid import xmlid
 from openerp import SUPERUSER_ID, CONFIG_DIR, ROOT_DIR
 from openerp.exceptions import ERPError

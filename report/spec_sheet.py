@@ -397,11 +397,11 @@ def get_actual_url(url, on_error=RAISE_EXCEPTION):
                 # check code
                 if connection.status_code == 200:
                     return url
-                _logger.info('missing file:  %s', url)
+                _logger.info('missing :  %s', url)
                 if not backups:
                     raise MissingImageFile(url)
                 new_type = backups.pop(0)
-                url = url.scheme / url.dirs / url.base[:len(last_type)] + new_type + url.ext
+                url = url.scheme / url.dirs / url.base[:-len(last_type)] + new_type + url.ext
                 last_type = new_type
                 continue
         except Exception:
