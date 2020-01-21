@@ -588,14 +588,14 @@ def handle_nvty(method):
     # - quick -> old fis file
     # - full -> current OpenERP data
     #
-    nvty = fisData(135, )
+    nvty = fisData(135, rematch=r"......101000    101\*\*")
     print(nvty.filename, verbose=2)
     print('gathering data')
     if method == 'quick':
         #
         # for a quick compare we can use the fis records as-is when looking for changes
         #
-        nvty_old = fisData(135, data_path=config.network.fis_data_local_old_path)
+        nvty_old = fisData(135, rematch=r"......101000    101\*\*", data_path=config.network.fis_data_local_old_path)
         print(nvty_old.filename, verbose=2)
         print('collecting changed records')
         changes, added, deleted = get_changed_fis_records(
@@ -909,7 +909,7 @@ def handle_csms(method):
     # - quick -> old fis file
     # - full -> current OpenERP data
     #
-    csms = fisData(33, )
+    csms = fisData(33, rematch=r"10...... ")
     print(csms.filename, verbose=2)
     print('gathering data', border='flag')
     sales_person_recs = dict([
@@ -920,7 +920,7 @@ def handle_csms(method):
         #
         # for a quick compare we can use the fis records as-is
         #
-        csms_old = fisData(33, data_path=config.network.fis_data_local_old_path)
+        csms_old = fisData(33, rematch=r"10...... "), data_path=config.network.fis_data_local_old_path)
         print(csms_old.filename, verbose=2)
         print('collecting changed records')
         changes, added, deleted = get_changed_fis_records(
@@ -1360,7 +1360,7 @@ def handle_csmss(method):
     # - quick -> old fis file
     # - full -> current OpenERP data
     #
-    csmss = fisData(34, )
+    csmss = fisData(34, rematch=r"10......1")
     print(csmss.filename, '%s total records' % len(csmss), verbose=2)
     print('gathering data', border='flag')
     # ignore function
@@ -1376,7 +1376,7 @@ def handle_csmss(method):
         #
         # for a quick compare we can use the fis records as-is
         #
-        csmss_old = fisData(34, data_path=config.network.fis_data_local_old_path)
+        csmss_old = fisData(34, rematch=r"10......1", data_path=config.network.fis_data_local_old_path)
         print(csmss_old.filename, verbose=2)
         print('collecting changed records')
         changes, added, deleted = get_changed_fis_records(
@@ -1615,7 +1615,7 @@ def handle_customer_terms():
     # get the "old" data from:
     # - current OpenERP data
     #
-    cnvzd0 = fisData(8, )
+    cnvzd0 = fisData(8, rematch=r"D010.")
     print(cnvzd0.filename, verbose=2)
     print('gathering data', border='flag')
     #
@@ -1765,7 +1765,7 @@ def handle_transmitter():
     # get the "old" data from:
     # - current OpenERP data
     #
-    cnvzo1 = fisData(192, )
+    cnvzo1 = fisData(192, rematch=r"O110......")
     print(cnvzo1.filename, verbose=2)
     print('gathering data', border='flag')
     #
@@ -1926,7 +1926,7 @@ def handle_production_lines():
     # get the "old" data from:
     # - current OpenERP data
     #
-    cnvzf = fisData(341, )
+    cnvzf = fisData(341, rematch=r"f10..")
     print(cnvzf.filename, verbose=2)
     print('gathering data', border='flag')
     #
@@ -2067,7 +2067,7 @@ def handle_sales_reps():
     # get the "old" data from:
     # - current OpenERP data
     #
-    cnvzz = fisData(47, )
+    cnvzz = fisData(47, rematch=r"Z...")
     print(cnvzz.filename, verbose=2)
     print('gathering data', border='flag')
     #
@@ -2221,14 +2221,14 @@ def handle_carrier(method):
     # - quick -> old fis file
     # - full -> current OpenERP data
     #
-    cnvzsv = fisData(27, )
+    cnvzsv = fisData(27, rematch=r"SV10..")
     print(cnvzsv.filename, verbose=2)
     print('gathering data', border='flag')
     if method == 'quick':
         #
         # for a quick compare we can use the fis records as-is
         #
-        cnvzsv_old = fisData(27, data_path=config.network.fis_data_local_old_path)
+        cnvzsv_old = fisData(27, rematch=r"SV10..", data_path=config.network.fis_data_local_old_path)
         print(cnvzsv_old.filename, verbose=2)
         print('collecting changed records')
         changes, added, deleted = get_changed_fis_records(
@@ -2485,14 +2485,14 @@ def handle_emp1(method):
     # - quick -> old fis file
     # - full -> current OpenERP data
     #
-    emp1 = fisData(74, )
+    emp1 = fisData(74, rematch=r"10.....")
     print(emp1.filename, verbose=2)
     print('gathering data', border='lined')
     if method == 'quick':
         #
         # for a quick compare we can use the fis records as-is
         #
-        emp1_old = fisData(74, data_path=config.network.fis_data_local_old_path)
+        emp1_old = fisData(74, rematch=r"10.....", data_path=config.network.fis_data_local_old_path)
         print(emp1_old.filename, verbose=2)
         print('collecting changed records')
         changes, added, deleted = get_changed_fis_records(
@@ -2792,7 +2792,7 @@ def handle_product_category():
     #
     print('processing CNVZas (product sales category)', border=('box','#'))
     global SALEABLE_CATEGORY_ID, ETC_CATEGORY_ID, category_ids
-    cnvzas = fisData(11, )
+    cnvzas = fisData(11, rematch=r"as10..")
     print(cnvzas.filename, verbose=2)
     context = {'fis-updates': True, 'active_test': False}
     # these  are for tracking old/new versions of changed records
@@ -2980,7 +2980,7 @@ def handle_product_location():
     # always use "full" method
     #
     print('processing CNVZaa (product location)', border=('box','#'))
-    cnvzaa = fisData(97, )
+    cnvzaa = fisData(97, rematch=r"aa10.")
     print(cnvzaa.filename, verbose=2)
     context = {'fis-updates': True, 'active_test': False}
     # these  are for tracking old/new versions of changed records
@@ -3150,8 +3150,8 @@ def handle_supplier(method):
     #
     global posm, vnms
     print('processing POSM/VNMS', border=('box','#'))
-    vnms = fisData(65, )
-    posm = fisData(163, )
+    vnms = fisData(65, rematch=r"10......")
+    posm = fisData(163, rematch=r"10......")
     print(posm.filename, verbose=2)
     print(vnms.filename, verbose=2)
     context = {'fis-updates': True, 'active_test': False}
