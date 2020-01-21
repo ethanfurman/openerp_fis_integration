@@ -1159,13 +1159,20 @@ def format_record(record, fields=None):
     lines = []
     name_width = 11
     value_width = 40
+    mask_width = 0
+    fieldlist = record.fieldlist
     if not fields:
         fields = range(len(record.fieldlist))
     for i, row in enumerate(record.fieldlist):
         if i in fields:
             name_width = max(len(row[3]), name_width)
             value_width = max(len(str(record[row[3]]).replace('\0','').strip()), value_width)
-            print('field %d -> name width: %d   value width: %d' % (i, name_width, value_width), verbose=3)
+            mask_width = max(len(str(fieldlist[i][4])), mask_width)
+            print(
+                    'field %d -> name width: %d   value width: %d   mask wdith: %d'
+                        % (i, name_width, value_width, mask_width),
+                    verbose=3,
+                    )
     print(verbose=3)
     for i, row in enumerate(record.fieldlist):
         if i in fields:
@@ -1173,10 +1180,10 @@ def format_record(record, fields=None):
             if isinstance(value, basestring):
                 value = value.replace('\0', '').strip()
             print('field %d -> %r' % (i, value), verbose=3)
-            if '$' in row[3]:
-                lines.append('%5d | %*s | %*s | %s' % (i+1, -name_width, row[3], -value_width, value, row[1]))
+            if '$' in row[3] and not fieldlist[i][4]:
+                lines.append('%5d | %*s | %*s | %*s | %s' % (i+1, -name_width, row[3], mask_width, fieldlist[i][4], -value_width, value, row[1]))
             else:
-                lines.append('%5d | %*s | %*s | %s' % (i+1, -name_width, row[3], value_width, value, row[1]))
+                lines.append('%5d | %*s | %*s | %*s | %s' % (i+1, -name_width, row[3], mask_width, fieldlist[i][4], value_width, value, row[1]))
     return lines
 
 def convert_name(name, max_len, existing_names=()):
