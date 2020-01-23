@@ -5,13 +5,13 @@ from dbf import Date
 from fnx_fs.fields import files
 from scription import Execute, OrmFile
 from fnx import date
-from fnx.oe import dynamic_page_stub
+from fnx.oe import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
 from openerp import SUPERUSER_ID, CONFIG_DIR, ROOT_DIR
 from openerp.exceptions import ERPError
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids
 from osv import osv, fields
-from report.spec_sheet import get_actual_url, RETURN_ORIGINAL
+# from report.spec_sheet import get_actual_url, RETURN_ORIGINAL
 from urllib import urlopen
 import logging
 import re
@@ -285,30 +285,25 @@ class product_product(xmlid, osv.Model):
         xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
         result = {}
         htmlContentList = []
-        base_url = "https://openerp.sunridgefarms.com/"
-        url = base_url + "Plone/LabelDirectory/LabelLinkCtl"
-        LabelLinks = []
+        base_url = "https://openerp.sunridgefarms.com/fis/product/label/"
         try:
-            label_link_lines = get_LLC(url)
+            LabelLinks = get_LLC()
         except Exception:
-            _logger.exception('error fetching/processing %r', url)
+            _logger.exception('error fetching/processing LabelLinkCtl')
             # use the hard-coded display links
             LabelLinks = (
-                ("Plone/LabelDirectory/%s/%sB.bmp","55","left"),
-                ("Plone/LabelDirectory/%s/%sNI.bmp","35","right"),
-                ("Plone/LabelDirectory/%s/%sMK.bmp","100","center"),
+                ("%sB.bmp","55","left"),
+                ("%sNI.bmp","35","right"),
+                ("%sMK.bmp","100","center"),
                 )
-        else:
-            for link_line in label_link_lines:
-                LabelLinks.append([piece.strip() for piece in link_line.split(",")])
         for xml_id, id in xml_ids.items():
             for link, scale, align in LabelLinks:
                 header = False
-                if link.count('%s') == 2:
-                    remote_file = get_actual_url("%s%s" % (base_url, link % (xml_id, xml_id)), on_error=RETURN_ORIGINAL)
+                if link.count('%s') == 1:
+                    remote_file = base_url + link % xml_id
                 elif link.count('%s') == 0:
                     header = 'oe_header'
-                    remote_file = "%s%s" % (base_url, link)
+                    remote_file = base_url + link
                 else:
                     _logger.error('unknown link template: %r', link)
                     continue
@@ -316,7 +311,7 @@ class product_product(xmlid, osv.Model):
                         '''<img src="%s" width=%s%% align="%s" %s/>'''
                         % (remote_file, scale, align, header or '')
                         )
-            result[id] = dynamic_page_stub % "".join(htmlContentList)
+            result[id] = static_page_stub % "".join(htmlContentList)
             htmlContentList[:] = []
         return result
 
@@ -971,7 +966,7 @@ class product_keywords(osv.Model):
             ),
         }
 
-def get_LLC(url):
+def get_LLC():
     "retrieve LLC file and update local cache"
     # if TEST_LLC is set, use testing copy below
     global LLC_text
@@ -982,6 +977,7 @@ def get_LLC(url):
             label_link_lines = llc.read().strip().split('\n')
     else:
         # attempt to get LabelLinkCtl from labeltime
+        url = None
         llc = urlopen(url)
         try:
             if llc.code != 200:
@@ -994,10 +990,13 @@ def get_LLC(url):
     LabelLinks = []
     for link_line in label_link_lines:
         LabelLinks.append([piece.strip() for piece in link_line.split(",")])
-        last_link = LabelLinks[-1][0]
+        last_link = LabelLinks[-1][0].replace('Plone/LabelDirectory/', '')
         if last_link.count('%s') == 2:
             # abort with exception if this fails
             last_link % ('a', 'test')
+            if last_link.startswith('%s/'):
+                last_link = last_link[3:]
+        LabelLinks[-1][0] = last_link
     if label_link_lines != LLC_text and not llc_override:
         # store current lines at module level
         LLC_text = label_link_lines
@@ -1009,5 +1008,5 @@ def get_LLC(url):
             except:
                 _logger.exception('failed to update LabelLinkCtl cached file')
             LLC_lock.release()
-    return label_link_lines
+    return LabelLinks
 

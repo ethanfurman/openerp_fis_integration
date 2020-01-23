@@ -9,6 +9,7 @@ import crm_lead
 import sample
 import wizard
 import report
+import controllers
 
 __all__ = [
     'account',
@@ -22,4 +23,5 @@ __all__ = [
     'wizard',
     'sample',
     'report',
+    'controllers',
     ]
