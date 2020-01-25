@@ -1,7 +1,7 @@
 from collections import defaultdict
 from aenum import NamedTuple
 from antipathy import Path
-from dbf import Date
+from dbf import Date, DateTime
 from fnx_fs.fields import files
 from scription import Execute, OrmFile
 from fnx import date
@@ -32,6 +32,10 @@ with LLC_lock:
         LLC_text = llc.read().strip().split('\n')
 LLC_OVERRIDE = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.override'
 
+
+PRODUCT_LABEL_URL = Path("https://openerp.sunridgefarms.com/fis/product/label/")
+PRODUCT_LABEL_LOCATION = Path("/mnt/labeltime/Labels/")
+IMAGE_ALTERNATES = {'MK': 'CC', 'B': 'PKG'}
 
 class Prop65(fields.SelectionEnum):
     _order_ = 'none reproductive cancer both'
@@ -285,7 +289,6 @@ class product_product(xmlid, osv.Model):
         xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
         result = {}
         htmlContentList = []
-        base_url = "https://openerp.sunridgefarms.com/fis/product/label/"
         try:
             LabelLinks = get_LLC()
         except Exception:
@@ -300,16 +303,19 @@ class product_product(xmlid, osv.Model):
             for link, scale, align in LabelLinks:
                 header = False
                 if link.count('%s') == 1:
-                    remote_file = base_url + link % xml_id
+                    link %= '%s/%s' % (xml_id, xml_id)
+                    ts_link = add_timestamp(link)
+                    remote_link = PRODUCT_LABEL_URL + ts_link
                 elif link.count('%s') == 0:
                     header = 'oe_header'
-                    remote_file = base_url + link
+                    ts_link = add_timestamp(link)
+                    remote_link = PRODUCT_LABEL_URL + ts_link
                 else:
                     _logger.error('unknown link template: %r', link)
                     continue
                 htmlContentList.append(
                         '''<img src="%s" width=%s%% align="%s" %s/>'''
-                        % (remote_file, scale, align, header or '')
+                        % (remote_link, scale, align, header or '')
                         )
             result[id] = static_page_stub % "".join(htmlContentList)
             htmlContentList[:] = []
@@ -1010,3 +1016,29 @@ def get_LLC():
             LLC_lock.release()
     return LabelLinks
 
+def add_timestamp(file):
+    "adds timestamp to filename portion of file"
+    file = Path(file)
+    original_file = file
+    possibles = [file]
+    last_suffix = file.stem[6:]
+    for key, value in IMAGE_ALTERNATES.items():
+        if file.base.upper().endswith(key):
+            if isinstance(value, basestring):
+                value = (value, )
+            for new_suffix in value:
+                file = re.sub(last_suffix+'$', new_suffix, file.base) + file.ext
+                possibles.append(file)
+                last_suffix = new_suffix
+            break
+    for file in possibles:
+        target_file = PRODUCT_LABEL_LOCATION / file
+        if target_file.exists() and not target_file.isdir():
+            timestamp = target_file.stat().st_mtime
+            timestamp = '-' + DateTime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%S')
+            break
+    else:
+        file = original_file
+        timestamp = '-' + DateTime.now().strftime('%Y-%m-%dT%H:%M:%S')
+    ts_file = file.dirname / file.stem + timestamp + file.ext
+    return ts_file
