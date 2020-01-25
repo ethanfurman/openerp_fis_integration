@@ -3,7 +3,7 @@
 from __future__ import division
 from aenum import NamedTuple
 import re
-import urllib
+import requests
 from PIL import Image, ImageChops
 from io import BytesIO
 from reportlab.pdfgen.canvas import Canvas
@@ -339,17 +339,17 @@ def get_label(url, width, align, header):
     - width: %-width of available space (passed to ImageLayout)
     - align: left, right, center (passed to ImageLayout)
     """
-    # get connection to url
+    # get url
     _logger.debug('getting %s with width %s and align %s', url, width, align)
-    while True:
-        connection = urllib.urlopen(url)
-        try:
-            image_data = connection.read()
-        except IOError:
-            _logger.exception('unable to retrieve image data')
+    with requests.get(url) as image_request:
+        if image_request.status_code != 200:
+            _logger.exception(
+                    'unable to retrieve image data: status code %s\n%s',
+                    image_request.status_code,
+                    image_request.content,
+                    )
             raise LabelAcquisitionError('unable to retrieve image data')
-        finally:
-            connection.close()
+        image_data = image_request.content
     # process image
     try:
         image = Image.open(BytesIO(image_data))
