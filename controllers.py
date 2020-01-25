@@ -36,14 +36,16 @@ class ProductLabel(http.Controller):
         item_no = target_file[:6]
         path_file = base / item_no / target_file
         #
-        tried = []
+        tried_files = []
+        tried_paths = []
         while True:
             if path_file.exists() and not path_file.isdir():
                 break
-            tried.append(path_file.filename)
+            tried_files.append(path_file.filename)
+            tried_paths.append(path_file)
             if not backups:
-                _logger.warning(request.not_found('missing: %s', ', '.join(tried)))
-                return request.not_found('missing: %s' % (', '.join(tried), ))
+                _logger.warning('missing: %s', ', '.join(tried_paths))
+                return request.not_found('missing: %s' % (', '.join(tried_files), ))
             new_type = backups.pop(0)
             new_base = re.sub(last_type+'$', new_type, path_file.base)
             path_file = path_file.scheme / path_file.dirs / new_base + path_file.ext
