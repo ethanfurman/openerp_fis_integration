@@ -35,7 +35,7 @@ LLC_OVERRIDE = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.override
 
 PRODUCT_LABEL_URL = Path("https://openerp.sunridgefarms.com/fis/product/label/")
 PRODUCT_LABEL_LOCATION = Path("/mnt/labeltime/Labels/")
-IMAGE_ALTERNATES = {'MK': 'CC', 'B': 'PKG'}
+IMAGE_ALTERNATES = {'MK': 'CC', 'B': ('PKG', '')}
 
 class Prop65(fields.SelectionEnum):
     _order_ = 'none reproductive cancer both'
@@ -1027,7 +1027,7 @@ def add_timestamp(file):
             if isinstance(value, basestring):
                 value = (value, )
             for new_suffix in value:
-                file = re.sub(last_suffix+'$', new_suffix, file.base) + file.ext
+                file = file.dirname + re.sub(last_suffix+'$', new_suffix, file.base) + file.ext
                 possibles.append(file)
                 last_suffix = new_suffix
             break
