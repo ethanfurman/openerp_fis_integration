@@ -11,6 +11,7 @@ from openerp import SUPERUSER_ID, CONFIG_DIR, ROOT_DIR
 from openerp.exceptions import ERPError
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids
 from osv import osv, fields
+from PIL import Image
 # from report.spec_sheet import get_actual_url, RETURN_ORIGINAL
 from urllib import urlopen
 import logging
@@ -34,7 +35,8 @@ LLC_OVERRIDE = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.override
 
 
 PRODUCT_LABEL_URL = Path("https://openerp.sunridgefarms.com/fis/product/label/")
-PRODUCT_LABEL_LOCATION = Path("/mnt/labeltime/Labels/")
+PRODUCT_LABEL_BMP_LOCATION = Path("/mnt/labeltime/Labels/")
+PRODUCT_LABEL_PNG_LOCATION = Path("/PNG_labels/")
 IMAGE_ALTERNATES = {'MK': 'CC', 'B': ('PKG', '')}
 
 class Prop65(fields.SelectionEnum):
@@ -1019,7 +1021,6 @@ def get_LLC():
 def add_timestamp(file):
     "adds timestamp to filename portion of file"
     file = Path(file)
-    original_file = file
     possibles = [file]
     last_suffix = file.stem[6:]
     for key, value in IMAGE_ALTERNATES.items():
@@ -1032,13 +1033,15 @@ def add_timestamp(file):
                 last_suffix = new_suffix
             break
     for file in possibles:
-        target_file = PRODUCT_LABEL_LOCATION / file
-        if target_file.exists() and not target_file.isdir():
-            timestamp = target_file.stat().st_mtime
+        target_bmp_file = PRODUCT_LABEL_BMP_LOCATION / file
+        if target_bmp_file.exists() and not target_bmp_file.isdir():
+            target_png_file = PRODUCT_LABEL_PNG_LOCATION / file.filename
+            timestamp = target_bmp_file.stat().st_mtime
+            if not target_png_file.exists() or target_png_file.stat().st_mtime < timestamp:
+                Image.open(target_bmp_file).save(target_png_file)
             timestamp = '-' + DateTime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%S')
             break
     else:
-        file = original_file
-        timestamp = '-' + DateTime.now().strftime('%Y-%m-%dT%H:%M:%S')
-    ts_file = file.dirname / file.stem + timestamp + file.ext
+        timestamp = '-XXXX-XX-XXTYY:YY:YY'
+    ts_file = target_png_file.dirname / target_png_file.stem + timestamp + '.png'
     return ts_file
