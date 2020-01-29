@@ -1035,7 +1035,7 @@ def add_timestamp(file):
     for file in possibles:
         target_bmp_file = PRODUCT_LABEL_BMP_LOCATION / file
         if target_bmp_file.exists() and not target_bmp_file.isdir():
-            target_png_file = PRODUCT_LABEL_PNG_LOCATION / file.filename
+            target_png_file = PRODUCT_LABEL_PNG_LOCATION / file.stem + '.png'
             timestamp = target_bmp_file.stat().st_mtime
             if not target_png_file.exists() or target_png_file.stat().st_mtime < timestamp:
                 Image.open(target_bmp_file).save(target_png_file)
@@ -1043,5 +1043,5 @@ def add_timestamp(file):
             break
     else:
         timestamp = '-XXXX-XX-XXTYY:YY:YY'
-    ts_file = target_png_file.dirname / target_png_file.stem + timestamp + '.png'
+    ts_file = target_png_file.stem + timestamp + '.png'
     return ts_file

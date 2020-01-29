@@ -9,7 +9,8 @@ import mimetypes
 import werkzeug
 
 _logger = logging.getLogger(__name__)
-base = Path('/mnt/labeltime/Labels/')
+bmp_base = Path('/mnt/labeltime/Labels/')
+png_base = Path('/PNG_labels/')
 
 # work horses
 
@@ -18,13 +19,13 @@ class ProductLabel(http.Controller):
 
     @http.httprequest
     def label(self, request, **kw):
-        # i.e. /fis/product/label/000065MK-20200117T08:33:41.BMP
+        # i.e. /fis/product/label/000065MK-20200117T08:33:41.png
         #
         # isolate filename
         target_file = Path(request.httprequest.path[19:])
         # remove timestamp
-        target_file = base + target_file.dirname + target_file.stem[:-20] + target_file.ext
-        _logger.debug('looking for %r', target_file)
+        target_file = png_base + target_file.dirname + target_file.stem[:-20] + target_file.ext
+        _logger.error('looking for %r', target_file)
         # continue normally
         #
         try:
