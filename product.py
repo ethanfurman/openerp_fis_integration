@@ -12,8 +12,6 @@ from openerp.exceptions import ERPError
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids
 from osv import osv, fields
 from PIL import Image
-# from report.spec_sheet import get_actual_url, RETURN_ORIGINAL
-from urllib import urlopen
 import logging
 import re
 import threading
@@ -23,16 +21,16 @@ _logger = logging.getLogger(__name__)
 OWN_STOCK = 12  # Physical Locations / Your Company / Stock
 
 LLC_lock = threading.Lock()
-LLC_file = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.txt'
+LLC_backup_file = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.txt'
 with LLC_lock:
-    if not LLC_file.dirs.exists():
-        LLC_file.dirs.mkdir()
-    if not LLC_file.exists():
-        open(LLC_file, 'w').close()
-    with open(LLC_file) as llc:
+    if not LLC_backup_file.dirs.exists():
+        LLC_backup_file.dirs.mkdir()
+    if not LLC_backup_file.exists():
+        open(LLC_backup_file, 'w').close()
+    with open(LLC_backup_file) as llc:
         LLC_text = llc.read().strip().split('\n')
 LLC_OVERRIDE = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.override'
-
+LLC_SOURCE = Path('/mnt/labeltime/Labels/LabelLinkCtl')
 
 PRODUCT_LABEL_URL = Path("https://openerp.sunridgefarms.com/fis/product/label/")
 PRODUCT_LABEL_BMP_LOCATION = Path("/mnt/labeltime/Labels/")
@@ -985,15 +983,8 @@ def get_LLC():
             label_link_lines = llc.read().strip().split('\n')
     else:
         # attempt to get LabelLinkCtl from labeltime
-        url = None
-        llc = urlopen(url)
-        try:
-            if llc.code != 200:
-                raise Exception('bad result code fetching %r: %r' % (llc.url, llc.code))
-            else:
-                label_link_lines = llc.read().strip().split('\n')
-        finally:
-            llc.close()
+        with open(LLC_SOURCE) as llc:
+            label_link_lines = llc.read().strip().split('\n')
     # validate LabelLinkCtl file
     LabelLinks = []
     for link_line in label_link_lines:
@@ -1011,7 +1002,7 @@ def get_LLC():
         # then attempt to update cached file
         if LLC_lock.acquire(False):
             try:
-                with open(LLC_file, 'w') as llc:
+                with open(LLC_backup_file, 'w') as llc:
                     llc.write('\n'.join(label_link_lines))
             except:
                 _logger.exception('failed to update LabelLinkCtl cached file')
@@ -1034,8 +1025,8 @@ def add_timestamp(file):
             break
     for file in possibles:
         target_bmp_file = PRODUCT_LABEL_BMP_LOCATION / file
+        target_png_file = PRODUCT_LABEL_PNG_LOCATION / file.stem + '.png'
         if target_bmp_file.exists() and not target_bmp_file.isdir():
-            target_png_file = PRODUCT_LABEL_PNG_LOCATION / file.stem + '.png'
             timestamp = target_bmp_file.stat().st_mtime
             if not target_png_file.exists() or target_png_file.stat().st_mtime < timestamp:
                 Image.open(target_bmp_file).save(target_png_file)
