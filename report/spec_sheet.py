@@ -11,7 +11,7 @@ from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
 from reportlab.lib.utils import ImageReader
 
-# from openerp import osv
+from openerp.osv import fields
 from openerp.report.interface import report_int
 from openerp.report.render import render
 
@@ -43,6 +43,7 @@ class report_spec_sheet(report_int):
         product_ids = ids
         xml_ids = set()
         product_product = pooler.get_pool(cr.dbname).get('product.product')
+        today = fields.date.today(product_product, cr, localtime=True)
         datas = product_product.read(
                 cr, uid, product_ids,
                 fields=['label_server_stub', 'xml_id', 'name', 'ean13'],
@@ -110,6 +111,8 @@ class report_spec_sheet(report_int):
             top_left = Point(left_margin, top_margin)
             anchor = top_left
             # draw header
+            display.setFontSize(10)
+            display.drawString(left_margin-0.25*inch, top_margin+0.25*inch, today)
             display.setFontSize(19)
             lines = format_lines(data['name'], 50, split=('nongmo','organic','eco-farmed','sunridge'))
             display.drawString(left_margin, top_margin-0.25*inch, lines[0])
