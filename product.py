@@ -9,7 +9,7 @@ from fnx.oe import dynamic_page_stub, static_page_stub
 from fnx.xid import xmlid
 from openerp import SUPERUSER_ID, CONFIG_DIR, ROOT_DIR
 from openerp.exceptions import ERPError
-from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids
+from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids, NamedLock
 from osv import osv, fields
 from PIL import Image
 import logging
@@ -36,6 +36,8 @@ PRODUCT_LABEL_URL = Path("https://openerp.sunridgefarms.com/fis/product/label/")
 PRODUCT_LABEL_BMP_LOCATION = Path("/mnt/labeltime/Labels/")
 PRODUCT_LABEL_PNG_LOCATION = Path("/PNG_labels/")
 IMAGE_ALTERNATES = {'MK': 'CC', 'B': ('PKG', '')}
+
+NamedLock = NamedLock()
 
 class Prop65(fields.SelectionEnum):
     _order_ = 'none reproductive cancer both'
@@ -1023,16 +1025,17 @@ def add_timestamp(file):
                 possibles.append(file)
                 last_suffix = new_suffix
             break
-    for file in possibles:
-        target_bmp_file = PRODUCT_LABEL_BMP_LOCATION / file
-        target_png_file = PRODUCT_LABEL_PNG_LOCATION / file.stem + '.png'
-        if target_bmp_file.exists() and not target_bmp_file.isdir():
-            timestamp = target_bmp_file.stat().st_mtime
-            if not target_png_file.exists() or target_png_file.stat().st_mtime < timestamp:
-                Image.open(target_bmp_file).save(target_png_file)
-            timestamp = '-' + DateTime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%S')
-            break
-    else:
-        timestamp = '-XXXX-XX-XXTYY:YY:YY'
-    ts_file = target_png_file.stem + timestamp + '.png'
-    return ts_file
+    with NamedLock(file):
+        for file in possibles:
+            target_bmp_file = PRODUCT_LABEL_BMP_LOCATION / file
+            target_png_file = PRODUCT_LABEL_PNG_LOCATION / file.stem + '.png'
+            if target_bmp_file.exists() and not target_bmp_file.isdir():
+                timestamp = target_bmp_file.stat().st_mtime
+                if not target_png_file.exists() or target_png_file.stat().st_mtime < timestamp:
+                    Image.open(target_bmp_file).save(target_png_file)
+                timestamp = '-' + DateTime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%S')
+                break
+        else:
+            timestamp = '-XXXX-XX-XXTYY:YY:YY'
+        ts_file = target_png_file.stem + timestamp + '.png'
+        return ts_file
