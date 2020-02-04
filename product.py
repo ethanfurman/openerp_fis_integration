@@ -5,13 +5,14 @@ from dbf import Date, DateTime
 from fnx_fs.fields import files
 from scription import Execute, OrmFile
 from fnx import date
-from fnx.oe import dynamic_page_stub, static_page_stub
+from fnx.oe import dynamic_page_stub
 from fnx.xid import xmlid
 from openerp import SUPERUSER_ID, CONFIG_DIR, ROOT_DIR
 from openerp.exceptions import ERPError
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids, NamedLock
 from osv import osv, fields
 from PIL import Image
+from xaml import Xaml
 import logging
 import re
 import threading
@@ -290,37 +291,37 @@ class product_product(xmlid, osv.Model):
     def _label_links(self, cr, uid, ids, field_name, arg, context=None):
         xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
         result = {}
-        htmlContentList = []
         try:
             LabelLinks = get_LLC()
         except Exception:
             _logger.exception('error fetching/processing LabelLinkCtl')
             # use the hard-coded display links
             LabelLinks = (
-                ("%sB.bmp","55","left"),
-                ("%sNI.bmp","35","right"),
-                ("%sMK.bmp","100","center"),
+                ("1","%sB.bmp","left"),
+                ("1","%sNI.bmp","right"),
+                ("2","%sMK.bmp","center"),
                 )
+        # group images by rows
         for xml_id, id in xml_ids.items():
-            for link, scale, align in LabelLinks:
+            raw_rows = defaultdict(list)
+            for row, link, align in LabelLinks:
                 header = False
                 if link.count('%s') == 1:
                     link %= '%s/%s' % (xml_id, xml_id)
-                    ts_link = add_timestamp(link)
+                    link, ts_link = add_timestamp(link)
                     remote_link = PRODUCT_LABEL_URL + ts_link
                 elif link.count('%s') == 0:
                     header = 'oe_header'
-                    ts_link = add_timestamp(link)
+                    link, ts_link = add_timestamp(link)
                     remote_link = PRODUCT_LABEL_URL + ts_link
                 else:
                     _logger.error('unknown link template: %r', link)
                     continue
-                htmlContentList.append(
-                        '''<img src="%s" width=%s%% align="%s" %s/>'''
-                        % (remote_link, scale, align, header or '')
-                        )
-            result[id] = static_page_stub % "".join(htmlContentList)
-            htmlContentList[:] = []
+                raw_rows[int(row)].append((link, remote_link, align, header))
+            width_rows = calc_width(raw_rows)
+            doc = Xaml(LabelLinkTab).document.pages[0]
+            tab = doc.string(rows = width_rows)
+            result[id] = tab
         return result
 
     def _get_availability_codes(self, cr, uid, context=None):
@@ -1038,4 +1039,50 @@ def add_timestamp(file):
         else:
             timestamp = '-XXXX-XX-XXTYY:YY:YY'
         ts_file = target_png_file.stem + timestamp + '.png'
-        return ts_file
+        return file, ts_file
+
+def calc_width(src_rows):
+    "return tuple of rows (target, width, align, header)"
+    # incoming -> {row #: [(link, remote_link, align, header), (l, r, a), ...]}
+    res = []
+    for seq, images in sorted(src_rows.items()):
+        # images are either 2x4 or 4x4...
+        # open each image to see which it is
+        images2 = set()
+        images4 = set()
+        for link, _, _, _ in images:
+            with Image.open(PRODUCT_LABEL_BMP_LOCATION / link) as image:
+                ratio = float(image.width) / float(image.height)
+                if 0.9 < ratio < 1.1:
+                    # feels like a square
+                    images4.add(link)
+                else:
+                    images2.add(link)
+        if len(images2) + len(images4) == 1:
+            blank_space = 0
+            total_width = width_unit = 100
+        else:
+            total_width = len(images2) + len(images4) * 2
+            blank_space = total_width * 5
+            width_unit = (100-blank_space) / total_width
+        row = []
+        for link, remote_link, align, header in images:
+            if link in images2:
+                width = width_unit
+            else:
+                width = 2 * width_unit
+            row.append((remote_link, '%s%%' % width, align, header))
+        res.append(row)
+    return res
+
+LabelLinkTab = """\
+!!! html
+-for row in args.rows:
+    ~div 
+        -for target, width, align, oe_header in row:
+            -if oe_header:
+                ~img src=target width=width align=align oe_header
+            -else:
+                ~img src=target width=width align=align
+    ~br
+"""
