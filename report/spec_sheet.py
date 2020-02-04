@@ -64,16 +64,16 @@ class report_spec_sheet(report_int):
             display.addOutlineEntry('Product %s' % xml_id, xml_id)
             xml_ids.add(xml_id)
             # download images and convert width and align
+            _logger.warning('working with:\n%s', data['label_server_stub'])
             image_specs = re.findall(
-                    r'''<img src="([^"]*)" width=(\d*)% align="([^"]*)" *(oe_header)?''',
+                    r'''<img src="([^"]*)" align="([^"]*)" *(oe_header="oe_header")? *width="(\d*)%"''',
                     data['label_server_stub'],
                     )
             images = []
-            for url, width, align, header in image_specs:
+            for url, align, header, width in image_specs:
                 try:
                     align = {'right':1, 'middle':0, 'center':0, 'left':-1}[align.lower()]
                     width = int(width.rstrip('%')) / 100
-                    print '\n\n%r\n%r\n' % (header, bool(header))
                     header = not header
                 except KeyError:
                     raise ValueError('unknown alignment: %r' % (align, ))

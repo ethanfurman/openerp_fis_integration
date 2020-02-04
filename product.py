@@ -1051,26 +1051,32 @@ def calc_width(src_rows):
         images2 = set()
         images4 = set()
         for link, _, _, _ in images:
-            with Image.open(PRODUCT_LABEL_BMP_LOCATION / link) as image:
-                ratio = float(image.width) / float(image.height)
-                if 0.9 < ratio < 1.1:
-                    # feels like a square
-                    images4.add(link)
-                else:
-                    images2.add(link)
+            try:
+                with Image.open(PRODUCT_LABEL_BMP_LOCATION / link) as image:
+                    ratio = float(image.width) / float(image.height)
+                    if 0.9 < ratio < 1.1:
+                        # feels like a square
+                        images4.add(link)
+                    else:
+                        images2.add(link)
+            except IOError:
+                images2.add(link)
         if len(images2) + len(images4) == 1:
             blank_space = 0
             total_width = width_unit = 100
         else:
             total_width = len(images2) + len(images4) * 2
-            blank_space = total_width * 5
+            blank_space = total_width * 1
             width_unit = (100-blank_space) / total_width
+            width_unit = min(width_unit, 40)
         row = []
         for link, remote_link, align, header in images:
             if link in images2:
                 width = width_unit
-            else:
+            elif link in images4:
                 width = 2 * width_unit
+            else:
+                width = 25
             row.append((remote_link, '%s%%' % width, align, header))
         res.append(row)
     return res
