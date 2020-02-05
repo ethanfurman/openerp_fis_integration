@@ -1066,7 +1066,7 @@ def calc_width(src_rows):
             total_width = width_unit = 100
         else:
             total_width = len(images2) + len(images4) * 2
-            blank_space = total_width * 1
+            blank_space = total_width * 20
             width_unit = (100-blank_space) / total_width
             width_unit = min(width_unit, 40)
         row = []
