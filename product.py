@@ -1046,38 +1046,21 @@ def calc_width(src_rows):
     # incoming -> {row #: [(link, remote_link, align, header), (l, r, a), ...]}
     res = []
     for seq, images in sorted(src_rows.items()):
+        row = []
         # images are either 2x4 or 4x4...
         # open each image to see which it is
-        images2 = set()
-        images4 = set()
-        for link, _, _, _ in images:
+        for link, remote_link, align, header in images:
             try:
                 with Image.open(PRODUCT_LABEL_BMP_LOCATION / link) as image:
-                    ratio = float(image.width) / float(image.height)
-                    if 0.9 < ratio < 1.1:
-                        # feels like a square
-                        images4.add(link)
-                    else:
-                        images2.add(link)
+                    dpi = image.height / 4.0
+                    scale = 1200.0 / image.height
+                    new_width = scale * image.width
+                    percent = min(int(new_width / 1800 * 100), 100)
+                print ('image: %s  %s' % (image.size, image.info))
+                print ('dpi: %s\nscale: %s\nnew width: %s\npercent: %s' % (dpi, scale, new_width, percent))
             except IOError:
-                images2.add(link)
-        if len(images2) + len(images4) == 1:
-            blank_space = 0
-            total_width = width_unit = 100
-        else:
-            total_width = len(images2) + len(images4) * 2
-            blank_space = total_width * 20
-            width_unit = (100-blank_space) / total_width
-            width_unit = min(width_unit, 40)
-        row = []
-        for link, remote_link, align, header in images:
-            if link in images2:
-                width = width_unit
-            elif link in images4:
-                width = 2 * width_unit
-            else:
-                width = 25
-            row.append((remote_link, '%s%%' % width, align, header))
+                percent = 0
+            row.append((remote_link, '%s%%' % percent, align, header))
         res.append(row)
     return res
 
