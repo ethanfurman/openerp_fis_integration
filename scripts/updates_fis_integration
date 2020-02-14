@@ -920,7 +920,7 @@ def handle_csms(method):
         #
         # for a quick compare we can use the fis records as-is
         #
-        csms_old = fisData(33, rematch=r"10...... "), data_path=config.network.fis_data_local_old_path)
+        csms_old = fisData(33, rematch=r"10...... ", data_path=config.network.fis_data_local_old_path)
         print(csms_old.filename, verbose=2)
         print('collecting changed records')
         changes, added, deleted = get_changed_fis_records(
