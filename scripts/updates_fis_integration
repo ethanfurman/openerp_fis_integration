@@ -3561,6 +3561,8 @@ def convert_nvty_rec(fis_rec):
         first, last = [], []
         letters = False
         for char in shipping_size:
+            if char < ' ':
+                char = ' '
             if letters or char.isalpha():
                 last.append(char)
                 letters = True
