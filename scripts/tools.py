@@ -1,6 +1,8 @@
 from __future__ import print_function
 from collections import defaultdict
 from sys import exc_info
+import os
+import re
 
 from aenum import Enum
 from dbf import Date
@@ -273,5 +275,96 @@ class allow_exception(object):
             error(''.join(format_exception(*exc_info())).strip(), border='box')
             return True
         return False
+
+
+class ProductLabelDescription(object):
+
+    ingredients_text = ''
+    recipe_text = ''
+
+    def __init__(self, item_code, label_dir='/mnt/labeltime/Labels'):
+        self.item_code = item_code
+        self.label_dir = label_dir
+        self.process()
+
+    def label_text(self, label_type, leadin):
+        lines = [
+                line.strip()
+                for line in open(self.label_file(label_type), 'rb').read().split("\r")
+                if re.match(leadin, line) and line[15:].strip()
+                ]
+        return lines
+
+    def label_file(self, label_type):
+        filename = r'%s/%s/%s%s.spl' % (self.label_dir, self.item_code, self.item_code, label_type)
+        if label_type.upper() == 'CC' and os.path.isfile("%so-r-i-g" % filename):
+            return "%so-r-i-g" % filename
+        if os.path.isfile(filename):
+            return filename
+        return filename        
+
+    def process(self):
+        try:
+            lines = self.label_text('B',".91100")
+        except:
+            try:
+                lines = self.label_text('TT',".91100")
+            except:
+                lines = []
+        lines.sort()
+        found = None
+        self.ingredients = []
+        self.ingredientLines = []
+        for line in lines:
+            if line[15:].startswith("INGREDIENTS:"):
+                found = line[:7]
+            if line[:7] == found:
+                txt = line[15:]
+                self.ingredients.append(txt)
+                self.ingredientLines.append(line)
+        ingr_text = []
+        instr_text = []
+        target = ingr_text
+        for fragment in self.ingredients:
+            for sentinel in recipe_sentinels:
+                if re.match(sentinel, fragment, re.I):
+                    target = instr_text
+                    break
+            else:
+                for sentinal in new_line_sentinels:
+                    if re.match(sentinal, fragment, re.I):
+                        target.append('\n')
+                        break
+                else:
+                    target.append(' ')
+            target.append(fragment)
+        ingr_text = ''.join(ingr_text)
+        instr_text = ''.join(instr_text)
+        self.ingredients_text = ingr_text.strip().replace('\xac', ' ')
+        self.recipe_text = instr_text.strip().replace('\xac', ' ')
+        return self.ingredients_text
+
+
+recipe_sentinels = (
+        'Cooking',
+        'COOKING',
+        'DIRECTIONS',
+        'INSTRUCTIONS',
+        'RECIPE',
+        'SUGGESTED',
+        )
+
+new_line_sentinels = (
+        'ANTIOXIDANTS',
+        'CONTAINS',
+        'Manufactured',
+        '\(May contain',
+        'CAUTION',
+        'COUNTRY',
+        '[A-Z]+ MAY CONTAIN',
+        'Product processed',
+        '\d\d?%',
+        
+        )
 
 

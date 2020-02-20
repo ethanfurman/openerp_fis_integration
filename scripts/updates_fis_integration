@@ -14,6 +14,7 @@ from openerplib import AttrDict, get_connection, get_records, IDEquality, Proper
     # from traceback import format_exception
 from pandaemonium import PidLockFile
 from tools import close_enough, combine_by_value, Model, compare_fis_records as get_changed_fis_records
+from tools import ProductLabelDescription
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, NameCaseReversed, PostalCode
 from VSS.BBxXlate.fisData import fisData
 from VSS.utils import fix_phone, fix_date
@@ -681,6 +682,10 @@ def handle_nvty(method):
         # and update with forecasts and descriptions
         for xml_id, rec in all_fis_records.items():
             #
+            label_data = ProductLabelDescription(xml_id)
+            rec.fis_web_ingredients = label_data.ingredients_text
+            rec.fis_web_prep_instructions = label_data.recipe_text
+            #
             desc = description_data.get(xml_id)
             rec.name = desc or rec.fis_name or False
             if rec.name is False:
@@ -737,6 +742,7 @@ def handle_nvty(method):
                         'fis_qty_sold', 'fis_10_day_sold', 'fis_21_day_sold',
                         'fis_qty_available', 'fis_10_day_available', 'fis_21_day_available',
                         'default_code', 'weight', 'weight_net', 'list_price',
+                        'fis_web_ingredients', 'fis_web_prep_instructions',
                         ],
                     context=context,
                     )

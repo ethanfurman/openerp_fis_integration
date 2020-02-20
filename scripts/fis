@@ -5,7 +5,7 @@ from scription import *
 from collections import defaultdict
 from itertools import cycle
 from openerplib import get_connection, get_records
-from updates.tools import FISenum
+from updates.tools import FISenum, ProductLabelDescription
 from VSS.BBxXlate import fisData as fd
 from VSS.BBxXlate.bbxfile import TableError
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, name_chars
@@ -18,6 +18,7 @@ import os
 import random
 import re
 import sys
+import textwrap
 import time
 
 virtual_env = os.environ['VIRTUAL_ENV']
@@ -187,8 +188,6 @@ def integrity_check(start=1):
             table = fd.fisData(i)
         except TableError:
             cls, exc, tb = sys.exc_info()
-            # import traceback
-            # traceback.print_tb(tb)
             error('%10s  [%3d]:  %s' % (exc.filename, i, exc.__class__.__name__))
         except KeyError:
             pass
@@ -289,10 +288,6 @@ def product_description(quick, *items):
     )
 def product_forecast(*items):
     "retrieve and save the latest forecast data for ITEMS (default is all)"
-    if script_verbosity:
-        writer = error
-    else:
-        writer = echo
     if not items:
         items = []
         nvty = fd.fisData('NVTY1', keymatch="%s101000    101**")   # 135
@@ -324,7 +319,7 @@ def product_forecast(*items):
     output = [l for l in result.stdout.strip().split('\n') if len(l.split(':')) == 3]
     with open(PRODUCT_FORECAST, 'w') as f:
         f.write('\n'.join(output))
-    writer('\n'.join(output))
+    print('\n'.join(output), verbose=2)
     print('elapsed time: %d:%d:%d' % (hours, minutes, seconds))
 
 
@@ -613,6 +608,32 @@ def values(filenum, subset, code, fields, counts):
             print('%s:  ' % name, ', '.join([repr(v) for v in sorted(values)]), verbose=0)
     if counts:
         print('%-23s:  %7d' % ('Total Records', len(fis_table)), verbose=0)
+
+@Command(
+    items=Spec('item number to look up', usage='ITEM'),
+    )
+def web_data(*items):
+    "retrieve and save the latest forecast data for ITEMS (default is all)"
+    if not items:
+        abort('ITEM not specified')
+    nvty = fd.fisData('NVTY1', keymatch="%s101000    101**")   # 135
+    for item in items:
+        try:
+            product_name = nvty[item][F135.desc]
+        except KeyError:
+            product_name = ''
+        product = ProductLabelDescription(item)
+        echo(
+            '%s - %s' % (product.item_code, product_name),
+            '---',
+            '\n'.join([textwrap.fill(line,80) for line in product.ingredients_text.split('\n')]),
+            '---',
+            '\n'.join([textwrap.fill(line,80) for line in product.recipe_text.split('\n')]),
+            sep='\n',
+            border='box',
+            )
+        echo('\n')
+
 
 # helpers
 
