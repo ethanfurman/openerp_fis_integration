@@ -534,6 +534,92 @@ def update():
                 print(row)
                 csv.write('%s, %s, %s, %s, %s, %r, %s, %s, %s\n' % tuple(row))
 
+@Command(
+        reset=('delete existing records and recreate', FLAG),
+        force=('assume yes to any queries', FLAG),
+        )
+def update_transmitter_numbers(reset, force):
+    """
+    select id, xml_id, name, fis_transmitter_code
+    from res.partner
+    where fis_transmitter_code_id is not null and xml_id not like 'HE%'
+    """
+    ctx = {}
+    if reset:
+        ctx['active_test'] = False
+    res_partner = oe.get_model('res.partner')
+    res_users = oe.get_model('res.users')
+    fis_transmitter_code = oe.get_model('fis.transmitter_code')
+    partners = dict(
+            (r.id, r)
+            for r in get_records(
+                    res_partner,
+                    domain=[('fis_transmitter_code','!=',False)],
+                    fields=['id', 'fis_transmitter_code', 'xml_id', 'name'],
+                    context=ctx,
+                    )
+            if not r.xml_id.startswith('HE')
+            )
+    partner_id_by_xml_id = dict(
+            (r.xml_id, r.id)
+            for r in partners.values()
+            )
+    print('%d candidate partners found' % len(partners), verbose=2)
+    login_id_by_xml_id = dict(
+            (r.login, r.id)
+            for r in get_records(
+                    res_users,
+                    domain=[('login','in',partner_id_by_xml_id.keys())],
+                    fields=['id','login'],
+                    context=ctx,
+                    ))
+    print('%d matching logins found' % len(login_id_by_xml_id), verbose=2)
+    transmitters = dict(
+            (r.id, r)
+            for r in get_records(fis_transmitter_code)
+            )
+    transmitter_id_by_xml_id = dict(
+            (r.partner_xml_id, r.id)
+            for r in transmitters.values()
+            )
+    print('%d transmitter records found' % len(transmitters), verbose=2)
+    if reset:
+        if not force:
+            try:
+                force = input("%d existing logins found -- delete?" % len(partners))
+            except EOFError:
+                abort('--reset requires --force in batch mode')
+        if force:
+            res_users.unlink(login_id_by_xml_id.values())
+    #
+    # now create any new logins
+    #
+    skipped = []
+    for partner in partners.values():
+        transmitter_id = transmitter_id_by_xml_id[partner.xml_id]
+        login = {
+                'login': partner.xml_id,
+                'password': partner.fis_transmitter_code,
+                'name': partner.name,
+                'fis_partner_id': partner.id,
+                'fis_transmitter_id': transmitter_id,
+                'fis_product_cross_ref_code': partner.xml_id,
+                }
+        if login_id_by_xml_id.get(partner.xml_id):
+            skipped.append(partner.xml_id)
+        else:
+            if len(partner.name) > 60:
+                name = partner.name[:57] + '...'
+            else:
+                name = partner.name
+            print(
+                    '| %-10s | %-60s | %7s | %7s | %10s |'
+                    % (partner.xml_id, name, partner.id, transmitter_id, partner.xml_id)
+                    )
+            login_id_by_xml_id[partner.xml_id] = res_users.create(login)
+    if skipped:
+        echo('%d accounts already existed: %s' % (len(skipped), ', '.join(skipped)))
+
 
 # helpers
 
