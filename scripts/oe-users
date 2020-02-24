@@ -20,23 +20,26 @@ config = virtual_env / 'config/fnx.ini'
 arch_dept = virtual_env / 'var/openerp/archive/'
 arch_user = virtual_env / 'var/openerp/archive/'
 
-@Script()
+# API
+
+@Script(
+        )
 def main():
-    global config, localhost, res_users, res_groups, users, groups, res_partner, partners
+    global config, oe, res_users, res_groups, users, groups, res_partner, partners
     global user_map, partner_map, force_update, reset_photos, hr
     config = OrmFile(config, types={'_path':Path})
-    localhost = get_connection(
+    oe = get_connection(
             hostname=config.openerp.host,
             database=config.openerp.db,
             login=config.openerp.user,
             password=config.openerp.pw,
             )
     print('getting hr.employee')
-    hr = localhost.get_model('hr.employee')
+    hr = oe.get_model('hr.employee')
     print('getting res.users')
-    res_users = localhost.get_model('res.users')
+    res_users = oe.get_model('res.users')
     print('getting res.groups')
-    res_groups = localhost.get_model('res.groups')
+    res_groups = oe.get_model('res.groups')
     print('retrieving users')
     users = res_users.search_read(
             domain=['|', ('active','=',True), ('active','=',False)],
@@ -48,7 +51,7 @@ def main():
             domain=[('id','!=',0)],
             fields=['category_id', 'full_name', 'id', 'name'],
             )
-    res_partner = localhost.get_model('res.partner')
+    res_partner = oe.get_model('res.partner')
     partners = res_partner.search_read(
             domain=[('module','=','F74')],
             fields=['id', 'user_ids', 'xml_id'],
@@ -316,7 +319,8 @@ def trace(name, emp_no, login):
 
 
 
-@Command()
+@Command(
+        )
 def update():
     "update OpenERP with the new user info"
     print('loading employee records')
@@ -530,6 +534,8 @@ def update():
                 print(row)
                 csv.write('%s, %s, %s, %s, %s, %r, %s, %s, %s\n' % tuple(row))
 
+
+# helpers
 
 def adjust_permissions(oe_groups, allowed_groups, user):
     permissions = set(user.groups_id)
