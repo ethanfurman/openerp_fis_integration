@@ -1366,7 +1366,7 @@ def handle_csmss(method):
     # - quick -> old fis file
     # - full -> current OpenERP data
     #
-    csmss = fisData(34, rematch=r"10......1")
+    csmss = fisData(34, rematch=r"10......1....")
     print(csmss.filename, '%s total records' % len(csmss), verbose=2)
     print('gathering data', border='flag')
     # ignore function
@@ -1382,7 +1382,7 @@ def handle_csmss(method):
         #
         # for a quick compare we can use the fis records as-is
         #
-        csmss_old = fisData(34, rematch=r"10......1", data_path=config.network.fis_data_local_old_path)
+        csmss_old = fisData(34, rematch=r"10......1....", data_path=config.network.fis_data_local_old_path)
         print(csmss_old.filename, verbose=2)
         print('collecting changed records')
         changes, added, deleted = get_changed_fis_records(
