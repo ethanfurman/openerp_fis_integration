@@ -550,39 +550,23 @@ def update_transmitter_numbers(reset, force):
     res_partner = oe.get_model('res.partner')
     res_users = oe.get_model('res.users')
     fis_transmitter_code = oe.get_model('fis.transmitter_code')
-    partners = dict(
-            (r.id, r)
-            for r in get_records(
-                    res_partner,
-                    domain=[('fis_transmitter_code','!=',False)],
-                    fields=['id', 'fis_transmitter_code', 'xml_id', 'name'],
-                    context=ctx,
-                    )
-            if not r.xml_id.startswith('HE')
-            )
-    partner_id_by_xml_id = dict(
-            (r.xml_id, r.id)
-            for r in partners.values()
-            )
-    print('%d candidate partners found' % len(partners), verbose=2)
-    login_id_by_xml_id = dict(
-            (r.login, r.id)
-            for r in get_records(
-                    res_users,
-                    domain=[('login','in',partner_id_by_xml_id.keys())],
-                    fields=['id','login'],
-                    context=ctx,
-                    ))
-    print('%d matching logins found' % len(login_id_by_xml_id), verbose=2)
     transmitters = dict(
             (r.id, r)
             for r in get_records(fis_transmitter_code)
             )
-    transmitter_id_by_xml_id = dict(
-            (r.partner_xml_id, r.id)
-            for r in transmitters.values()
-            )
+    # transmitter_id_by_xml_id = dict(
+    #         (r.partner_xml_id, r.id)
+    #         for r in transmitters.values()
+    #         )
     print('%d transmitter records found' % len(transmitters), verbose=2)
+    login_id_by_xml_id = dict(
+            (r.login, r.id)
+            for r in get_records(
+                    res_users,
+                    fields=['id','login'],
+                    context=ctx,
+                    ))
+    print('%d logins found' % len(login_id_by_xml_id), verbose=2)
     if reset:
         if not force:
             try:
@@ -591,32 +575,41 @@ def update_transmitter_numbers(reset, force):
                 abort('--reset requires --force in batch mode')
         if force:
             res_users.unlink(login_id_by_xml_id.values())
+    partner_id_by_xml_id = dict(
+            (r.xml_id, r.id)
+            for r in get_records(
+                    res_partner,
+                    domain=[('xml_id','!=',False)],
+                    fields=['xml_id'],
+                    context=ctx,
+                    ))
     #
     # now create any new logins
     #
     skipped = []
-    for partner in partners.values():
-        transmitter_id = transmitter_id_by_xml_id[partner.xml_id]
+    for transmitter in transmitters.values():
+        partner_xml_id = transmitter.partner_xml_id
+        user_login = '%s%s' % (partner_xml_id, transmitter.ship_to_code)
         login = {
-                'login': partner.xml_id,
-                'password': partner.fis_transmitter_code,
-                'name': partner.name,
-                'fis_partner_id': partner.id,
-                'fis_transmitter_id': transmitter_id,
-                'fis_product_cross_ref_code': partner.xml_id,
+                'login': user_login,
+                'password': transmitter.transmitter_no,
+                'name': transmitter.name,
+                'fis_partner_id': partner_id_by_xml_id[partner_xml_id],
+                'fis_transmitter_id': transmitter.id,
+                'fis_product_cross_ref_code': partner_xml_id,
                 }
-        if login_id_by_xml_id.get(partner.xml_id):
-            skipped.append(partner.xml_id)
+        if login_id_by_xml_id.get(partner_xml_id):
+            skipped.append(partner_xml_id)
         else:
-            if len(partner.name) > 60:
-                name = partner.name[:57] + '...'
+            if len(transmitter.name) > 60:
+                name = transmitter.name[:57] + '...'
             else:
-                name = partner.name
+                name = transmitter.name
             print(
-                    '| %-10s | %-60s | %7s | %7s | %10s |'
-                    % (partner.xml_id, name, partner.id, transmitter_id, partner.xml_id)
+                    '| %-10s | %-60s | %7s ||'
+                    % (transmitter.partner_xml_id, name, user_login)
                     )
-            login_id_by_xml_id[partner.xml_id] = res_users.create(login)
+            login_id_by_xml_id[transmitter.partner_xml_id] = res_users.create(login)
     if skipped:
         echo('%d accounts already existed: %s' % (len(skipped), ', '.join(skipped)))
 
