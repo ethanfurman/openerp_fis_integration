@@ -1451,7 +1451,7 @@ def handle_csmss(method):
                         'id', 'module', 'xml_id', 'phone',
                         'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
                         'customer', 'fis_ship_to_parent_id', 'use_parent_address', 'is_company',
-                        'fis_transmitter_code_id', 'fis_ship_to_code',
+                        'fis_transmitter_code_id', 'fis_ship_to_code', 'active',
                         ],
                     context=context,
                     )
@@ -3846,6 +3846,7 @@ def convert_csmss_rec(fis_rec, ignore=None):
     #     ],
     #
     ship_to = AttrDict()
+    ship_to.active = True
     ship_to.name = re.sub('sunridge', 'SunRidge', BsnsCase(fis_rec[F34.name]), flags=re.I)
     parent_xml_id = fis_rec[F34.code]
     if not ship_to.name or parent_xml_id not in ship_to_parents or (ignore and ignore(fis_rec)):
