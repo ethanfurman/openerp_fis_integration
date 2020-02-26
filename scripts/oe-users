@@ -535,16 +535,12 @@ def update():
                 csv.write('%s, %s, %s, %s, %s, %r, %s, %s, %s\n' % tuple(row))
 
 @Command(
-        reset=('delete existing records and recreate', FLAG),
-        force=('assume yes to any queries', FLAG),
         )
-def update_transmitter_numbers(reset, force):
+def update_transmitter_numbers():
     """
     Maintain logins for transmitter number / ship-to code pairs.
     """
-    ctx = {}
-    if reset:
-        ctx['active_test'] = False
+    ctx = {'active_test': False}
     res_partner = oe.get_model('res.partner')
     res_users = oe.get_model('res.users')
     fis_transmitter_code = oe.get_model('fis.transmitter_code')
@@ -590,7 +586,7 @@ def update_transmitter_numbers(reset, force):
     inactive_logins = []
     created_logins = []
     deleted_logins = []
-    for transmitter in transmitters.values():
+    for transmitter in sorted(transmitters.values(), key=lambda t: t.transmitter_name):
         master_xml_id = transmitter.partner_xml_id
         if re.match('^HE\d\d\d$', master_xml_id, re.I):
             # do not handle HEB here
@@ -598,9 +594,10 @@ def update_transmitter_numbers(reset, force):
             continue
         ship_to_code = transmitter.ship_to_code
         ship_to_xml_id = '%s-%s' % (master_xml_id, ship_to_code or 'default')
-        user_login = ('%s-%s' % (master_xml_id, ship_to_code)).strip('-')
+        user_login = ('%s-%s' % (master_xml_id, ship_to_code or '')).strip('-')
         ship_to_partner = partner_by_xml_id.get(ship_to_xml_id)
         if ship_to_partner is None or not ship_to_partner.active:
+            error('ship-to code: %r\nship-to partner: %s' % (ship_to_xml_id, ship_to_partner), border='box') 
             inactive_logins.append(user_login)
             continue
         login = {
@@ -616,19 +613,21 @@ def update_transmitter_numbers(reset, force):
                 name = transmitter.name[:57] + '...'
             else:
                 name = transmitter.name
-            print('| %-15s | %-80s |' % (user_login, name))
+            print('| %-15s | %-80s |' % (user_login, name), verbose=3)
             login_id_by_xml_id[user_login] = res_users.create(login)
             created_logins.append(user_login)
-        print('%d HEB records skipped' % (len(heb), ))
-        print(', '.join(heb), verbose=2)
-        for inactive in inactive_logins:
-            login_id = login_id_by_xml_id.get(inactive)
-            if login_id is not None:
-                deleted_logins.append((inactive, login_id))
-        if deleted_logins:
-            res_users.unlink([t[1] for t in deleted_logins])
-            print('%d logins deleted' % (len(deleted_logins), ))
-            print(', '.join([t[0] for t in deleted_logins]), verbose=2)
+    print('%d HEB records skipped' % (len(heb), ))
+    print(', '.join(heb), verbose=2)
+    print('%d logins created' % (len(created_logins), ))
+    print(', '.join(created_logins), verbose=2)
+    for inactive in inactive_logins:
+        login_id = login_id_by_xml_id.get(inactive)
+        if login_id is not None:
+            deleted_logins.append((inactive, login_id))
+    if deleted_logins:
+        res_users.unlink([t[1] for t in deleted_logins])
+        print('%d logins deleted' % (len(deleted_logins), ))
+        print(', '.join([t[0] for t in deleted_logins]), verbose=2)
 
 
 # helpers
