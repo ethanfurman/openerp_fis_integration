@@ -1366,7 +1366,7 @@ def handle_csmss(method):
     # - quick -> old fis file
     # - full -> current OpenERP data
     #
-    csmss = fisData(34, rematch=r"10......1")
+    csmss = fisData(34, rematch=r"10......1....")
     print(csmss.filename, '%s total records' % len(csmss), verbose=2)
     print('gathering data', border='flag')
     # ignore function
@@ -1382,7 +1382,7 @@ def handle_csmss(method):
         #
         # for a quick compare we can use the fis records as-is
         #
-        csmss_old = fisData(34, rematch=r"10......1", data_path=config.network.fis_data_local_old_path)
+        csmss_old = fisData(34, rematch=r"10......1....", data_path=config.network.fis_data_local_old_path)
         print(csmss_old.filename, verbose=2)
         print('collecting changed records')
         changes, added, deleted = get_changed_fis_records(
@@ -1451,7 +1451,7 @@ def handle_csmss(method):
                         'id', 'module', 'xml_id', 'phone',
                         'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
                         'customer', 'fis_ship_to_parent_id', 'use_parent_address', 'is_company',
-                        'fis_transmitter_code_id', 'fis_ship_to_code',
+                        'fis_transmitter_code_id', 'fis_ship_to_code', 'active',
                         ],
                     context=context,
                     )
@@ -3846,6 +3846,7 @@ def convert_csmss_rec(fis_rec, ignore=None):
     #     ],
     #
     ship_to = AttrDict()
+    ship_to.active = True
     ship_to.name = re.sub('sunridge', 'SunRidge', BsnsCase(fis_rec[F34.name]), flags=re.I)
     parent_xml_id = fis_rec[F34.code]
     if not ship_to.name or parent_xml_id not in ship_to_parents or (ignore and ignore(fis_rec)):
