@@ -540,9 +540,7 @@ def update():
         )
 def update_transmitter_numbers(reset, force):
     """
-    select id, xml_id, name, fis_transmitter_code
-    from res.partner
-    where fis_transmitter_code_id is not null and xml_id not like 'HE%'
+    Maintain logins for transmitter number / ship-to code pairs.
     """
     ctx = {}
     if reset:
@@ -550,15 +548,17 @@ def update_transmitter_numbers(reset, force):
     res_partner = oe.get_model('res.partner')
     res_users = oe.get_model('res.users')
     fis_transmitter_code = oe.get_model('fis.transmitter_code')
+    #
+    # transmitter
+    #
     transmitters = dict(
             (r.id, r)
             for r in get_records(fis_transmitter_code)
             )
-    # transmitter_id_by_xml_id = dict(
-    #         (r.partner_xml_id, r.id)
-    #         for r in transmitters.values()
-    #         )
     print('%d transmitter records found' % len(transmitters), verbose=2)
+    #
+    # logins
+    #
     login_id_by_xml_id = dict(
             (r.login, r.id)
             for r in get_records(
@@ -567,51 +567,68 @@ def update_transmitter_numbers(reset, force):
                     context=ctx,
                     ))
     print('%d logins found' % len(login_id_by_xml_id), verbose=2)
-    if reset:
-        if not force:
-            try:
-                force = input("%d existing logins found -- delete?" % len(partners))
-            except EOFError:
-                abort('--reset requires --force in batch mode')
-        if force:
-            res_users.unlink(login_id_by_xml_id.values())
-    partner_id_by_xml_id = dict(
-            (r.xml_id, r.id)
+    #
+    # ship-tos
+    #
+    partner_by_xml_id = dict(
+            (r.xml_id, r)
             for r in get_records(
                     res_partner,
-                    domain=[('xml_id','!=',False)],
-                    fields=['xml_id'],
+                    domain=['|',('fis_ship_to_parent_id','!=',False),('fis_ship_to_ids','!=',False)],
+                    fields=['xml_id', 'fis_ship_to_code', 'fis_ship_to_parent_id', 'active'],
                     context=ctx,
-                    ))
+                    )
+            )
     #
-    # now create any new logins
+    # now create any new logins, keeping track of any now attached to
+    # inactive ship-tos
     #
-    skipped = []
+    # master_xml_id:    main customer record
+    # ship_to_code:     four letters or 'default'
+    #
+    heb = []
+    inactive_logins = []
+    created_logins = []
+    deleted_logins = []
     for transmitter in transmitters.values():
-        partner_xml_id = transmitter.partner_xml_id
-        user_login = '%s%s' % (partner_xml_id, transmitter.ship_to_code)
+        master_xml_id = transmitter.partner_xml_id
+        if re.match('^HE\d\d\d$', master_xml_id, re.I):
+            # do not handle HEB here
+            heb.append(master_xml_id)
+            continue
+        ship_to_code = transmitter.ship_to_code
+        ship_to_xml_id = '%s-%s' % (master_xml_id, ship_to_code or 'default')
+        user_login = ('%s-%s' % (master_xml_id, ship_to_code)).strip('-')
+        ship_to_partner = partner_by_xml_id.get(ship_to_xml_id)
+        if ship_to_partner is None or not ship_to_partner.active:
+            inactive_logins.append(user_login)
+            continue
         login = {
                 'login': user_login,
                 'password': transmitter.transmitter_no,
                 'name': transmitter.name,
-                'fis_partner_id': partner_id_by_xml_id[partner_xml_id],
+                'fis_partner_id': partner_by_xml_id[master_xml_id].id,
                 'fis_transmitter_id': transmitter.id,
-                'fis_product_cross_ref_code': partner_xml_id,
+                'fis_product_cross_ref_code': master_xml_id,
                 }
-        if login_id_by_xml_id.get(partner_xml_id):
-            skipped.append(partner_xml_id)
-        else:
+        if not login_id_by_xml_id.get(user_login):
             if len(transmitter.name) > 60:
                 name = transmitter.name[:57] + '...'
             else:
                 name = transmitter.name
-            print(
-                    '| %-10s | %-60s | %7s ||'
-                    % (transmitter.partner_xml_id, name, user_login)
-                    )
-            login_id_by_xml_id[transmitter.partner_xml_id] = res_users.create(login)
-    if skipped:
-        echo('%d accounts already existed: %s' % (len(skipped), ', '.join(skipped)))
+            print('| %-15s | %-80s |' % (user_login, name))
+            login_id_by_xml_id[user_login] = res_users.create(login)
+            created_logins.append(user_login)
+        print('%d HEB records skipped' % (len(heb), ))
+        print(', '.join(heb), verbose=2)
+        for inactive in inactive_logins:
+            login_id = login_id_by_xml_id.get(inactive)
+            if login_id is not None:
+                deleted_logins.append((inactive, login_id))
+        if deleted_logins:
+            res_users.unlink([t[1] for t in deleted_logins])
+            print('%d logins deleted' % (len(deleted_logins), ))
+            print(', '.join([t[0] for t in deleted_logins]), verbose=2)
 
 
 # helpers
