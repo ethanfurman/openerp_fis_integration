@@ -611,11 +611,12 @@ def write_txt(table, query, fields, file, separator=False, wrap=None):
     for r in query.records:
         if separator:
             lines.append(None)
+        print(r, verbose=3)
         er = ExpandedRow(fields, r)
+        [print(r, verbose=3) for r in er]
         for row in er:
             print('post pre-process row ->', row, verbose=2)
             line = []
-            assert len(row) == len(fields), "row (%d) != fields (%d)\n%r\n%r" % (len(row), len(fields), row, fields)
             for field_name, (cell_index, cell_value) in zip(fields, enumerate(row)):
                 if isinstance(cell_value, Many2One):
                     if SHOW_ID:
@@ -715,6 +716,8 @@ class ExpandedRow(object):
         #   'name_related',
         #   'home_country_id/name',
         #   'home_country_id/code',
+        #   'user_ids',
+        #   'user_ids/partner_id',
         #   ]
         #
         # record = {
@@ -739,18 +742,32 @@ class ExpandedRow(object):
         #           }],
         #   'name_related': 'Vishan Vishal Dimri',
         #   'home_country_id': {'id':235, 'name':'United States', 'code':'US'},
-        print('ExpandedRow.__init__: fields ->', fields, verbose=3)
+        #   'user_ids': [
+        #           AttrDict(id=960, partner_id=Many2One(id=51540, name='Heb 063 Healthy Living'),
+        #               groups_id=[90, 229], alias_id=1090,
+        #               ),
+        #           ],
+        #   }
+        print('ExpandedRow.__init__: fields ->', fields, '  record ->', record, verbose=3)
         rows = []
         row = []
         cache = {}
-        for k, v in record.items():
+        iter_fields = []
+        for fld in fields:
+            fld = fld.split('/',1)[0]
+            if fld not in iter_fields:
+                iter_fields.append(fld)
+        for k in iter_fields:
+            v = record[k]
             print('checking %s -> %r' % (k, v), verbose=3)
             cache[k] = set()
-            if k in fields:
-                print('  adding element ->', k, verbose=3)
-                row.append(v)
-            elif any([f.startswith(k+'/') for f in fields]):
-                sub_fields = [f.split('/',1)[1] for f in fields if f.startswith(k+'/')]
+            if any([f.startswith(k+'/') for f in fields]):
+                sub_fields = []
+                for f in fields:
+                    if f == k:
+                        sub_fields.append('<self>')
+                    elif f.startswith(k+'/'):
+                        sub_fields.append(f.split('/', 1)[1])
                 if v:
                     # many2one = dict
                     # x2many = list
@@ -770,6 +787,10 @@ class ExpandedRow(object):
                     sub_row = [[None] * len(sub_fields)]
                 print('adding subrow', sub_row, verbose=3)
                 row.append(sub_row)
+            elif k in fields:
+                # must go after subfield checking
+                print('  adding element ->', k, verbose=3)
+                row.append(v)
             print('intermediate row ->', row, verbose=3)
         print('final row ->', row, verbose=3)
         for i in counter():
