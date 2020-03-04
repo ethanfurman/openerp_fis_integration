@@ -26,7 +26,7 @@ arch_user = virtual_env / 'var/openerp/archive/'
         )
 def main():
     global config, oe, res_users, res_groups, users, groups, res_partner, partners
-    global user_map, partner_map, force_update, reset_photos, hr
+    global user_map, partner_map, force_update, reset_photos, hr, ir_model_data
     config = OrmFile(config, types={'_path':Path})
     oe = get_connection(
             hostname=config.openerp.host,
@@ -34,6 +34,8 @@ def main():
             login=config.openerp.user,
             password=config.openerp.pw,
             )
+    print('getting ir.model.data')
+    ir_model_data = oe.get_model('ir.model.data')
     print('getting hr.employee')
     hr = oe.get_model('hr.employee')
     print('getting res.users')
@@ -541,9 +543,10 @@ def update_transmitter_numbers():
     Maintain logins for transmitter number / ship-to code pairs.
     """
     ctx = {'active_test': False}
-    res_partner = oe.get_model('res.partner')
-    res_users = oe.get_model('res.users')
     fis_transmitter_code = oe.get_model('fis.transmitter_code')
+    base_user = ir_model_data.get_object_reference('base', 'group_user')
+    fnx_sr_guest = ir_model_data.get_object_reference('fnx_sr','group_fnx_sr_guest')
+    contact_creation = ir_model_data.get_object_reference('base', 'group_partner_manager')
     #
     # transmitter
     #
@@ -607,6 +610,7 @@ def update_transmitter_numbers():
                 'fis_partner_id': partner_by_xml_id[master_xml_id].id,
                 'fis_transmitter_id': transmitter.id,
                 'fis_product_cross_ref_code': master_xml_id,
+                'groups_id': [(4, fnx_sr_guest), (3, base_user), (3, contact_creation)],
                 }
         if not login_id_by_xml_id.get(user_login):
             if len(transmitter.name) > 60:
