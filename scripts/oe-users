@@ -538,7 +538,7 @@ def update():
 
 @Command(
         )
-def update_transmitter_numbers():
+def update_transmitter_logins():
     """
     Maintain logins for transmitter number / ship-to code pairs.
     """
