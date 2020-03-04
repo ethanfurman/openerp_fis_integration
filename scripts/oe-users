@@ -537,16 +537,19 @@ def update():
                 csv.write('%s, %s, %s, %s, %s, %r, %s, %s, %s\n' % tuple(row))
 
 @Command(
+        user=Spec('user to add/reset', force_default=None),
+        reset=Spec('delete/recreate existing logins', FLAG),
+        force=Spec('assume `yes` to all questions', FLAG),
         )
-def update_transmitter_logins():
+def update_transmitter_logins(user, reset, force):
     """
     Maintain logins for transmitter number / ship-to code pairs.
     """
     ctx = {'active_test': False}
     fis_transmitter_code = oe.get_model('fis.transmitter_code')
-    base_user = ir_model_data.get_object_reference('base', 'group_user')
-    fnx_sr_guest = ir_model_data.get_object_reference('fnx_sr','group_fnx_sr_guest')
-    contact_creation = ir_model_data.get_object_reference('base', 'group_partner_manager')
+    base_user = ir_model_data.get_object_reference('base', 'group_user')[1]
+    fnx_sr_guest = ir_model_data.get_object_reference('fnx_sr', 'group_fnx_sr_guest')[1]
+    contact_creation = ir_model_data.get_object_reference('base', 'group_partner_manager')[1]
     #
     # transmitter
     #
@@ -565,6 +568,7 @@ def update_transmitter_logins():
                     fields=['id','login'],
                     context=ctx,
                     ))
+    found_id = Var(login_id_by_xml_id.get)
     print('%d logins found' % len(login_id_by_xml_id), verbose=2)
     #
     # ship-tos
@@ -589,7 +593,12 @@ def update_transmitter_logins():
     inactive_logins = []
     created_logins = []
     deleted_logins = []
-    for transmitter in sorted(transmitters.values(), key=lambda t: t.transmitter_name):
+    found_logins = []
+    for transmitter in ProgressView(
+            iterable=sorted(transmitters.values(), key=lambda t: t.transmitter_name),
+            message='Sifting through $total records...',
+            view_type='bar',
+        ):
         master_xml_id = transmitter.partner_xml_id
         if re.match('^HE\d\d\d$', master_xml_id, re.I):
             # do not handle HEB here
@@ -598,9 +607,10 @@ def update_transmitter_logins():
         ship_to_code = transmitter.ship_to_code
         ship_to_xml_id = '%s-%s' % (master_xml_id, ship_to_code or 'default')
         user_login = ('%s-%s' % (master_xml_id, ship_to_code or '')).strip('-')
+        if user and user != user_login:
+            continue
         ship_to_partner = partner_by_xml_id.get(ship_to_xml_id)
         if ship_to_partner is None or not ship_to_partner.active:
-            error('ship-to code: %r\nship-to partner: %s' % (ship_to_xml_id, ship_to_partner), border='box') 
             inactive_logins.append(user_login)
             continue
         login = {
@@ -611,8 +621,20 @@ def update_transmitter_logins():
                 'fis_transmitter_id': transmitter.id,
                 'fis_product_cross_ref_code': master_xml_id,
                 'groups_id': [(4, fnx_sr_guest), (3, base_user), (3, contact_creation)],
+                'customer': True,
                 }
-        if not login_id_by_xml_id.get(user_login):
+        affirmative = not reset or force
+        if found_id(user_login) and reset:
+            affirmative = force
+            if not affirmative:
+                affirmative = input('delete and recreate %r?' % (user_login, ))
+            if affirmative:
+                print('deleting %s [%r]' % (user_login, found_id()), verbose=3)
+                res_users.unlink(found_id())
+                del login_id_by_xml_id[user_login]
+        elif found_id() and not reset:
+            found_logins.append(found_id())
+        if not found_id(user_login):
             if len(transmitter.name) > 60:
                 name = transmitter.name[:57] + '...'
             else:
@@ -624,6 +646,7 @@ def update_transmitter_logins():
     print(', '.join(heb), verbose=2)
     print('%d logins created' % (len(created_logins), ))
     print(', '.join(created_logins), verbose=2)
+    print('%d logins already created' % (len(found_logins), ))
     for inactive in inactive_logins:
         login_id = login_id_by_xml_id.get(inactive)
         if login_id is not None:
