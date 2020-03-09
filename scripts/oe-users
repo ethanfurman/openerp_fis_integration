@@ -549,6 +549,7 @@ def update_transmitter_logins(user, reset, force):
     fis_transmitter_code = oe.get_model('fis.transmitter_code')
     base_user = ir_model_data.get_object_reference('base', 'group_user')[1]
     fnx_sr_guest = ir_model_data.get_object_reference('fnx_sr', 'group_fnx_sr_guest')[1]
+    portal_account = ir_model_data.get_object_reference('portal', 'group_portal')[1]
     contact_creation = ir_model_data.get_object_reference('base', 'group_partner_manager')[1]
     #
     # transmitter
@@ -620,7 +621,7 @@ def update_transmitter_logins(user, reset, force):
                 'fis_partner_id': partner_by_xml_id[master_xml_id].id,
                 'fis_transmitter_id': transmitter.id,
                 'fis_product_cross_ref_code': master_xml_id,
-                'groups_id': [(4, fnx_sr_guest), (3, base_user), (3, contact_creation)],
+                'groups_id': [(4, fnx_sr_guest), (4, portal_account), (3, base_user), (3, contact_creation)],
                 'customer': True,
                 }
         affirmative = not reset or force
