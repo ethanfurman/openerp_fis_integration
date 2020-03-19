@@ -880,6 +880,8 @@ class product_online_order(osv.Model):
             'fis_integration.online_order_item', 'order_id',
             string='Items',
             ),
+        'req_ship_date': fields.date('Requested Ship Date'),
+        'po_number': fields.char('PO #', size=64),
         }
 
     def onload(self, cr, uid, ids, context=None):

@@ -76,8 +76,8 @@
                                             ~table .oe_kanban_table
                                                 ~tr
                                                     ~td .oe_kanban_title1 align='left' valign='middle'
-                                                        ~div t-if='record.fis_transmitter_code.raw_value'
-                                                            @fis_transmitter_code
+                                                        ~div t-if='record.fis_transmitter_no.raw_value'
+                                                            @fis_transmitter_no
                                                         ~a type='open'
                                                             ~div
                                                                 @name
@@ -104,7 +104,7 @@
                                         ~h1
                                             @name default_focus='1' placeholder='Name'
                                         ~h3
-                                            @fis_transmitter_code_id
+                                            @fis_transmitter_id
                                     ~group
                                         ~group
                                             ~label for='street' $Address
@@ -120,7 +120,7 @@
                                             @phone
                                             @email
                 ~xpath expr="//page[@string='Sales & Purchases']/group/group[position()=1]" position='inside'
-                    @fis_transmitter_code_id
+                    @fis_transmitter_id
                 ~xpath expr="//page[@string='Sales & Purchases']/group/group[position()=2]" position='after'
                     ~group colspan='2' cols='2'
                         ~label $Aging_Info for='fis_credit_current'

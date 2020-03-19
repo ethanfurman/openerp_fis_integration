@@ -12,9 +12,14 @@
                 ~xpath expr="//form/sheet/notebook" position='inside'
                     ~page $Online_Account
                         ~group
-                            @fis_partner_id on_change="onchange_fis_partner(fis_partner_id)" context="{'show_fis': True}"
-                            @fis_transmitter_id
-                            @fis_product_cross_ref_code $Customer_Item_Code
+                            ~group
+                                @fis_partner_id on_change="onchange_fis_partner(fis_partner_id)" context="{'show_fis': True}"
+                                @fis_transmitter_no readonly='1'
+                                @fis_product_cross_ref_code $Customer_Item_Code
+                                @fis_partner_code readonly='1'
+                            ~group
+                                @fis_online_order_show_req_ship_date
+                                @fis_online_order_show_po_number
 
 
         ~record model='ir.actions.act_window' #base.action_res_users

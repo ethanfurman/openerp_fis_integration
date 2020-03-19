@@ -293,16 +293,24 @@ class res_partner(xmlid, osv.Model):
             ),
         'fis_data_address_changed': fields.boolean('FIS data has changed', oldname='fis_data_changed'),
         'fis_updated_by_user': fields.char('Updated by user', size=12, oldname='updated_by_user'),
-        'fis_transmitter_code_id': fields.many2one('fis.transmitter_code', string='FIS Transmitter ID'),
-        'fis_transmitter_code': fields.related(
-                'fis_transmitter_code_id', 'transmitter_no',
+        # online order facilatation
+        'fis_transmitter_id': fields.many2one(
+                'fis.transmitter_code',
+                string='FIS Transmitter ID',
+                oldname='fis_transmitter_code_id',
+                ),
+        'fis_transmitter_no': fields.related(
+                'fis_transmitter_id', 'transmitter_no',
                 string='Transmitter No',
                 type='char',
                 size=6,
+                oldname='fis_transmitter_code',
                 ),
+        # shipping addresses
         'fis_ship_to_parent_id': fields.many2one('res.partner', 'Related Ship-To'),
         'fis_ship_to_ids': fields.one2many('res.partner', 'fis_ship_to_parent_id', 'Ship-To Addresses'),
         'fis_ship_to_code': fields.char('Ship-To Code', size=7),
+        # miscellany
         'fnxfs_files': files('general', string='Available Files'),
         'create_date': fields.datetime('Created', readonly=True),
         'create_uid': fields.many2one('res.users', string='Created by', readonly=True),

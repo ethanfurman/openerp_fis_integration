@@ -4,6 +4,7 @@ from openerp.tools import SUPERUSER_ID, self_ids
 class res_users(osv.Model):
     """ Update of res.users class
         - add link to the FIS partner account
+        - add link to the FIS transmitter accounts
     """
     _name = 'res.users'
     _inherit = ['res.users']
@@ -12,7 +13,7 @@ class res_users(osv.Model):
         'fis_partner_id': fields.many2one(
             'res.partner',
             string='FIS Account',
-            domain=[('customer','=',True),('is_company','=',True),('fis_valid','=',True)],
+            domain = [('fis_ship_to_code','!=',False),('module','in',['F33','F34'])],
             ),
         'fis_partner_code': fields.related(
             'fis_partner_id','xml_id',
@@ -21,7 +22,20 @@ class res_users(osv.Model):
             string='Partner FIS ID',
             ),
         'fis_product_cross_ref_code': fields.char('Online Order Code', size=6, help='usually the customer #'),
-        'fis_transmitter_id': fields.many2one('fis.transmitter_code', 'Transmitter #'),
+        'fis_transmitter_id': fields.related(
+                'fis_partner_id', 'fis_transmitter_id',
+                type='many2one',
+                string='FIS Transmitter ID',
+                relation='fis.transmitter_code',
+                ),
+        'fis_transmitter_no': fields.related(
+            'fis_partner_id','fis_transmitter_id','transmitter_no',
+                string='FIS Transmitter No',
+                type='char',
+                size=6,
+                ),
+        'fis_online_order_show_req_ship_date': fields.boolean('Show Requested Ship Date'),
+        'fis_online_order_show_po_number': fields.boolean('Show PO Number'),
         }
 
 
@@ -32,9 +46,23 @@ class res_users(osv.Model):
             res['value']['fis_transmitter_id'] = False
         else:
             res_partner = self.pool.get('res.partner')
+            fis_transmitter_code = self.pool.get('fis.transmitter_code')
             partner = res_partner.browse(cr, SUPERUSER_ID, fis_partner_id, context=context)
-            res['domain']['fis_transmitter_id'] = [('partner_xml_id','=',partner.xml_id)]
-            res['value']['fis_transmitter_id'] = False
+            if '-' not in partner.xml_id:
+                xml_id, ship_to = partner.xml_id, ''
+            else:
+                xml_id, ship_to = partner.xml_id.split('-')
+                if ship_to == 'default':
+                    ship_to = ''
+            transmitter_ids = fis_transmitter_code.search(
+                    cr, SUPERUSER_ID,
+                    [('partner_xml_id','=',xml_id),('ship_to_code','=',ship_to)],
+                    )
+            value = False
+            if len(transmitter_ids) == 1:
+                [value] = transmitter_ids
+            res['domain']['fis_transmitter_id'] = [('partner_xml_id','=like',xml_id+'%')]
+            res['value']['fis_transmitter_id'] = value
         return res
 
 
