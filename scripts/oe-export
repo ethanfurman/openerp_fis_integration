@@ -97,7 +97,7 @@ def oe_export(name, to_file, domain, table):
     separator=Spec('print separator between lines', FLAG),
     wrap=Spec('field name and width of fields to wrap [ignored in .xls and .csv output]', MULTI),
     )
-def adhoc(table, fields, to_file, domain, order, distinct, separator, wrap, _internal=False):
+def adhoc(table, fields, to_file, domain, order, distinct, separator, wrap, _constraints, _internal=False):
     print('searching %s\n  for %s\n  retreiving %s\n  ordered by %s' % (table, domain, fields, order))
     fields = list(fields)
     if wrap and isinstance(wrap, tuple):
@@ -106,7 +106,7 @@ def adhoc(table, fields, to_file, domain, order, distinct, separator, wrap, _int
             for item in wrap
             for k, v in (item.split(':'), )
             )
-    q = Query(oe.get_model(table), domain=domain, fields=fields[:], order=order, unique=distinct)
+    q = Query(oe.get_model(table), domain=domain, fields=fields[:], order=order, unique=distinct, constraints=_constraints)
     if _internal and not to_file:
         return q
     #
@@ -279,12 +279,13 @@ def sql_select(command, separator, wrap, _internal=False):
     #
     # and get WHERE clause
     #
-    donde = convert_where(clausa)
+    donde, constraints = convert_where(clausa)
     if _internal:
         imprimido = ''
     print('WHERE', donde)
     print('ORDER BY', orden)
     print('TO', imprimido)
+    print('CONSTRAINTS', constraints)
     #
     # at this point we have the fields, the table, and possibly
     # the output file -- hand off to adhoc()
@@ -298,6 +299,7 @@ def sql_select(command, separator, wrap, _internal=False):
             distinta,
             separator,
             wrap,
+            _constraints=constraints,
             _internal=True,
             )
     if _internal:
@@ -445,24 +447,30 @@ def convert_set(clausa):
     return values
 
 def convert_where(clausa):
+    std_match = Var(lambda clausa: re.match(
+            r"^(\w+)\s*(is not|is|like|=like|not like|ilike|=ilike|not ilike|=|<|>|<=|>=|!=)\s*('(?:[^'\\]|\\.)*?'|\S*)\s*(.*?)\s*$",
+            clausa,
+            flags=re.I
+            ))
+    enh_match = Var(lambda clausa: re.match(
+            r"^(\w+)\((\w+)\)\s*(=|<|>|<=|>=|!=)\s*('(?:[^'\\]|\\.)*?'|\S*)\s*(.*?)\s*$",
+            clausa,
+            flags=re.I
+            ))
     donde = []
+    constraints = []
     while clausa:
         # e.g. WHERE login = 'ethan'
         #      WHERE id=201
         #      WHERE blah is not null AND this = 'that'
+        #      WHERE count(fis_portal_logins) > 1
         print('clausa', clausa, verbose=2)
-        try:
-            field, op, condition, clausa = re.match(
-                    r"^(\w+)\s*(is not|is|like|=like|not like|ilike|=ilike|not ilike|=|<|>|<=|>=|!=)\s*('(?:[^'\\]|\\.)*?'|\S*)\s*(.*?)\s*$",
-                    clausa,
-                    flags=re.I
-                    ).groups()
+
+        if std_match(clausa):
+            field, op, condition, clausa = std_match().groups()
             print('\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (field, op, condition, clausa), verbose=2)
             if not (field and op and condition):
-                raise ValueError
-        except (ValueError, AttributeError):
-            abort('malformed WHERE clause')
-        else:
+                abort('malformed WHERE clause')
             lop = op.lower()
             lcond = condition.lower()
             if (
@@ -499,7 +507,28 @@ def convert_where(clausa):
             elif clausa.lower().startswith('and '):
                 donde.insert(0, '&')
                 clausa = clausa[4:]
-    return donde
+        elif enh_match(clausa):
+            function, field, op, condition, clausa = enh_match().groups()
+            print('\nfunction: %r\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (function, field, op, condition, clausa), verbose=2)
+            if not (function and field and op and condition):
+                abort('malformed WHERE clause')
+            func = function.lower()
+            if func.startswith('count'):
+                if op == '=':
+                    op = '=='
+                func = length(field, op, condition)
+                constraints.append(func)
+                donde.append((1,'=',1))
+            else:
+                abort('unknown command in WHERE clause: %r' % function)
+        else:
+            abort('malformed WHERE clause')
+    return donde, constraints
+
+def length(field, op, cond):
+    d = {}
+    exec("def length(rec):\n  return len(rec['%s']) %s %s" % (field, op, cond), d)
+    return d['length']
 
 def write_xls(sheet_name, query, fields, file, separator=False):
     import xlwt
