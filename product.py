@@ -876,11 +876,22 @@ class product_online_order(osv.Model):
             type='char',
             size=6,
             ),
+        'user_id': fields.many2one('res.users', 'Order placed by',),
         'item_ids': fields.one2many(
             'fis_integration.online_order_item', 'order_id',
             string='Items',
             ),
+        'show_req_ship_date': fields.related(
+            'user_id','fis_online_order_show_req_ship_date',
+            type='boolean',
+            string='Show Requested Ship Date',
+            ),
         'req_ship_date': fields.date('Requested Ship Date'),
+        'show_po_number': fields.related(
+            'user_id', 'fis_online_order_show_po_number',
+            type='boolean',
+            string='Show PO #',
+            ),
         'po_number': fields.char('PO #', size=64),
         }
 
@@ -890,8 +901,9 @@ class product_online_order(osv.Model):
         user = res_users.browse(cr, SUPERUSER_ID, uid, context=context)
         fis_partner = user.fis_partner_id
         if fis_partner and user.fis_product_cross_ref_code:
-            res['value']['partner_id'] = fis_partner.id
             res['value']['partner_crossref_list'] = user.fis_product_cross_ref_code
+            res['value']['show_req_ship_date'] = user.fis_online_order_show_req_ship_date
+            res['value']['show_po_number'] = user.fis_online_order_show_po_number
         else:
             res['value']['partner_id'] = False
             res['value']['partner_crossref_list'] = False
@@ -908,7 +920,21 @@ class product_online_order(osv.Model):
         transmitter = user.fis_transmitter_id.transmitter_no
         for order in self.browse(cr, SUPERUSER_ID, ids, context=context):
             lines = ['%s-%s' % (user.login, transmitter)]
+            if order.po_number:
+                lines.append('PON-%s' % (order.po_number, ))
+            if order.req_ship_date:
+                lines.append('RSD-%s' % (order.req_ship_date, ))
+            if not order.item_ids:
+                raise ERPError(
+                        'Missing Items',
+                        'no items listed',
+                        )
             for item in order.item_ids:
+                if item.quantity < 1:
+                    raise ERPError(
+                            'Invalid Quantity',
+                            'quantity for item %s is less than one' % (item.product_desc, ),
+                            )
                 lines.append('%s - %s - %s' % (
                     item.partner_product_id.fis_product_id.xml_id,
                     item.quantity,
