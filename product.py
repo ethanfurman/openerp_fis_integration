@@ -870,13 +870,13 @@ class product_online_order(osv.Model):
 
     _columns = {
         'partner_id': fields.many2one('res.partner', 'Customer'),
+        'user_id': fields.many2one('res.users', 'Order placed by',),
         'partner_crossref_list': fields.related(
-            'partner_id','fis_product_cross_ref_code',
+            'user_id','fis_product_cross_ref_code',
             string='Cross-reference list',
             type='char',
             size=6,
             ),
-        'user_id': fields.many2one('res.users', 'Order placed by',),
         'item_ids': fields.one2many(
             'fis_integration.online_order_item', 'order_id',
             string='Items',
@@ -901,6 +901,7 @@ class product_online_order(osv.Model):
         user = res_users.browse(cr, SUPERUSER_ID, uid, context=context)
         fis_partner = user.fis_partner_id
         if fis_partner and user.fis_product_cross_ref_code:
+            res['value']['partner_id'] = fis_partner.id
             res['value']['partner_crossref_list'] = user.fis_product_cross_ref_code
             res['value']['show_req_ship_date'] = user.fis_online_order_show_req_ship_date
             res['value']['show_po_number'] = user.fis_online_order_show_po_number
@@ -948,8 +949,10 @@ class product_online_order(osv.Model):
             'tag': 'home',
             }
 
-class product_online_order_item(osv.Model):
+
+class product_online_orders_item(osv.Model):
     _name = 'fis_integration.online_order_item'
+    _rec_name = 'product_fis_id'
 
     _columns = {
         'order_id': fields.many2one(

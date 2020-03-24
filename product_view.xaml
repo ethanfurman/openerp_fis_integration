@@ -418,6 +418,7 @@
             @model: fis_integration.online_order
             @arch type='xml'
                 ~form $Online_Order version='7.0' setup="onload()"
+                    @partner_id invisible='1'
                     @partner_crossref_list invisible='1'
                     @show_po_number invisible='1'
                     @show_req_ship_date invisible='1'
