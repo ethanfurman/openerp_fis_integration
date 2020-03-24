@@ -338,7 +338,10 @@ def sql_update(command):
     values = convert_set(set_clause)
     if not values:
         abort('malformed command -- no changes specified')
-    domain = convert_where(where_clause)
+    domain, constraints = convert_where(where_clause)
+    if constraints:
+        abort('constraints not supported in UPDATE command')
+
     #
     # have all the info, make the changes
     #
@@ -366,7 +369,9 @@ def sql_delete(command):
     if len(pieces) > 3 and pieces[3].lower() != 'where':
         abort('malformed command -- missing WHERE keyword')
     where_clause = ' '.join(pieces[4:])
-    domain = convert_where(where_clause)
+    domain, constraints = convert_where(where_clause)
+    if constraints:
+        abort('constraints not supported in DELETE command')
     #
     # have all the info, make the changes
     #
