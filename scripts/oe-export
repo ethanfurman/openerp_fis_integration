@@ -391,7 +391,7 @@ def sql_count(command, separator):
         [ORDER BY field1 [ASC|DESC] [, field2 [ASC|DESC] [, ...]]]
         [TO file] # ignored
     """
-    query = sql_select(command, separator, _internal=True)
+    query = sql_select(command, separator, wrap=None, _internal=True)
     echo('COUNT %d' % len(query.records))
 
 @Command(
