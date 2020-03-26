@@ -1023,7 +1023,7 @@ def handle_csms(method):
                         'fis_valid', 'specials_notification', 'phone', 'is_company', 'customer',
                         'fis_updated_by_user', 'active', 'use_parent_address', 'fis_credit_limit',
                         'fis_credit_10_days', 'fis_credit_20_days', 'fis_credit_30_days',
-                        'fis_credit_current', 'fis_credit_total', 'user_id', 'fis_transmitter_code_id',
+                        'fis_credit_current', 'fis_credit_total', 'user_id', 'fis_transmitter_id',
                         ],
                     context=context,
                     )
@@ -1040,7 +1040,7 @@ def handle_csms(method):
                 del datom.specials_notification, datom.fis_csms_terms, datom.fis_credit_current,
                 del datom.fis_price_list, datom.fis_credit_limit, datom.fis_credit_total
                 del datom.fis_credit_10_days, datom.fis_credit_20_days, datom.fis_credit_30_days
-                del datom.fis_transmitter_code_id
+                del datom.fis_transmitter_id
                 old_contact_records[xml_id] = datom
             else:
                 old_company_records[xml_id] = datom
@@ -1451,7 +1451,7 @@ def handle_csmss(method):
                         'id', 'module', 'xml_id', 'phone',
                         'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
                         'customer', 'fis_ship_to_parent_id', 'use_parent_address', 'is_company',
-                        'fis_transmitter_code_id', 'fis_ship_to_code', 'active',
+                        'fis_transmitter_id', 'fis_ship_to_code', 'active',
                         ],
                     context=context,
                     )
@@ -3729,7 +3729,7 @@ def convert_csms_rec(model, fis_rec, aging=None, _missing_reps=set()):
     # - 'module', 'xml_id',
     # - 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
     # - 'fis_valid', 'specials_notification', 'phone', 'is_company', 'customer',
-    # - 'use_parent_address', 'active', 'fis_transmitter_code_id',
+    # - 'use_parent_address', 'active', 'fis_transmitter_id',
     #
     # fields coming from OpenERP that are missing/invalid on the FIS side
     # - 'id', 'fis_updated_by_user'
@@ -3808,7 +3808,7 @@ def convert_csms_rec(model, fis_rec, aging=None, _missing_reps=set()):
         company.fis_credit_30_days = 0
         company.fis_credit_total = 0
     transmitter_code = transmitter_codes.get(key+'-default', False)
-    company.fis_transmitter_code_id = transmitter_code and transmitter_code.id
+    company.fis_transmitter_id = transmitter_code and transmitter_code.id
     contact = None
     if fis_rec[F33.contact] and fis_rec[F33.contact] != fis_rec[F33.name]:
         contact = AttrDict()
@@ -3864,7 +3864,7 @@ def convert_csmss_rec(fis_rec, ignore=None):
     if transmitter_code:
         ship_to.name = transmitter_code.transmitter_name
         transmitter_code = transmitter_code.id
-    ship_to.fis_transmitter_code_id = transmitter_code
+    ship_to.fis_transmitter_id = transmitter_code
     return ship_to
 
 def convert_supplier_rec(key):
