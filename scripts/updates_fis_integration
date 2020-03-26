@@ -741,7 +741,7 @@ def handle_nvty(method):
                         'fis_qty_purchased', 'fis_10_day_purchased', 'fis_21_day_purchased',
                         'fis_qty_sold', 'fis_10_day_sold', 'fis_21_day_sold',
                         'fis_qty_available', 'fis_10_day_available', 'fis_21_day_available',
-                        'default_code', 'weight', 'weight_net', 'list_price',
+                        'default_code', 'weight', 'weight_net',
                         'fis_web_ingredients', 'fis_web_prep_instructions',
                         ],
                     context=context,
