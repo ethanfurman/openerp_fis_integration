@@ -25,7 +25,6 @@ class ProductLabel(http.Controller):
         target_file = Path(request.httprequest.path[19:])
         # remove timestamp
         target_file = png_base + target_file.dirname + target_file.stem[:-20] + target_file.ext
-        _logger.error('looking for %r', target_file)
         # continue normally
         #
         try:
