@@ -3197,6 +3197,8 @@ def handle_supplier(method):
     for code in sorted(posm.keys()):
         key = code[2:]
         company, contact = convert_supplier_rec(key)
+        if company is None:
+            continue
         # if company/contact are invalid, just put them in the deleted category
         all_fis_records[company.xml_id] = company
         if '**NO LONGER HERE**' in company.name or '**OLDER/N.L.H. EMPLOYEE**' in company.name:
@@ -3214,6 +3216,8 @@ def handle_supplier(method):
         if key in vendor_codes:
             continue
         company, contact = convert_supplier_rec(key)
+        if company is None:
+            continue
         # if company/contact are invalid, just put them in the deleted category
         all_fis_records[company.xml_id] = company
         if '**NO LONGER HERE**' in company.name or '**OLDER/N.L.H. EMPLOYEE**' in company.name:
@@ -3930,7 +3934,8 @@ def convert_supplier_rec(key):
         company.fis_gmo_exp = False
         company.fis_kosher_exp = False
     else:
-        assert False, "invalid xml_id: %r" % (key, )
+        error("invalid POSM/VNMS xml_id: %r" % (key, ))
+        return None, None
     #
     contact = None
     if vnms_rec is not None and vnms_rec[F65.contact]:
