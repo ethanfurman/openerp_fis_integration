@@ -3156,8 +3156,8 @@ def handle_supplier(method):
     #
     global posm, vnms
     print('processing POSM/VNMS', border=('box','#'))
-    vnms = fisData(65, rematch=r"10......")
-    posm = fisData(163, rematch=r"10......")
+    vnms = fisData(65, rematch=r"10(......)")
+    posm = fisData(163, rematch=r"10(......)")
     print(posm.filename, verbose=2)
     print(vnms.filename, verbose=2)
     context = {'fis-updates': True, 'active_test': False}
