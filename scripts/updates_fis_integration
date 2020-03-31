@@ -3243,7 +3243,7 @@ def handle_supplier(method):
                 fields=[
                     'id', 'module', 'xml_id', 'active', 'phone', 'fax',
                     'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
-                    'fis_valid', 'phone', 'is_company', 'customer', 'supplier',
+                    'fis_valid', 'is_company', 'customer', 'supplier',
                     'fis_updated_by_user', 'use_parent_address',
                     'fis_org_cert_file', 'fis_non_gmo', 'fis_kosher', 'fis_org_exp',
                     'fis_gmo_exp', 'fis_kosher_exp',
