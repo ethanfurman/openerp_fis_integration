@@ -3866,7 +3866,7 @@ def convert_csmss_rec(fis_rec, ignore=None):
     ship_to.fis_ship_to_parent_id = ship_to_parents[parent_xml_id]
     transmitter_code = transmitter_codes.get(ship_to.xml_id, False)
     if transmitter_code:
-        ship_to.name = transmitter_code.transmitter_name
+        ship_to.name = transmitter_code.transmitter_name or ship_to.name
         transmitter_code = transmitter_code.id
     ship_to.fis_transmitter_id = transmitter_code
     return ship_to

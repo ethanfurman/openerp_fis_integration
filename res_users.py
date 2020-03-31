@@ -91,10 +91,14 @@ class transmitter(osv.Model):
                 fields=['partner_xml_id','transmitter_name','transmitter_no','ship_to_code'],
                 context=context,
                 ):
-            if rec['ship_to_code']:
+            if rec['ship_to_code'] and rec['transmitter_name']:
                 text = '%s [%s] %s' % (rec['transmitter_no'], rec['ship_to_code'], rec['transmitter_name'])
-            else:
+            elif rec['ship_to_code']:
+                text = '%s [%s]' % (rec['transmitter_no'], rec['ship_to_code'])
+            elif rec['transmitter_name']:
                 text = '%s -- %s' % (rec['transmitter_no'], rec['transmitter_name'])
+            else:
+                text = rec['transmitter_no']
             res[rec['id']] = text
         return res
 
