@@ -145,26 +145,23 @@ def fis_update(method, skip_copy, skip_update, files, dryrun, list_records, bw_l
                 cmd += ' -' + 'v' * script_verbosity
             if extra:
                 cmd += ' %s' % ' '.join(['%s=%s' % (k, v) for k, v in sorted(extra.items())])
-            # process the tables one at a time since we are having memory errors
-            # when we try to do them all at once
             # additionally, if the command errored out due to connectivity issues, rerun
             # the command
             print('processing %r' % tables, verbose=2)
-            for table in tables:
-                command = '%s %s' % (cmd, table)
-                attempts = 0
-                while True:
-                    attempts += 1
-                    try:
-                        system(command, abort_on_error)
-                    except ServiceUnavailable:
-                        # wait five minutes for system to come back up
-                        if attempts > 5:
-                            # but only five times
-                            break
-                        time.sleep(420)
-                    else:
+            command = '%s %s' % (cmd, ','.join(t for t in tables if t))
+            attempts = 0
+            while True:
+                attempts += 1
+                try:
+                    system(command, abort_on_error)
+                except ServiceUnavailable:
+                    # wait five minutes for system to come back up
+                    if attempts > 5:
+                        # but only five times
                         break
+                    time.sleep(420)
+                else:
+                    break
 
 class ServiceUnavailable(Exception):
     "presented when unable to communicate with OpenERP server"
