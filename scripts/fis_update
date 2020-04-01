@@ -148,7 +148,7 @@ def fis_update(method, skip_copy, skip_update, files, dryrun, list_records, bw_l
             # additionally, if the command errored out due to connectivity issues, rerun
             # the command
             print('processing %r' % tables, verbose=2)
-            command = '%s %s' % (cmd, ','.join(t for t in tables if t))
+            command = '%s %s' % (cmd, ' '.join(t for t in tables if t))
             attempts = 0
             while True:
                 attempts += 1
