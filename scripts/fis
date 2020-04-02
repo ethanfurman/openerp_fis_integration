@@ -439,7 +439,7 @@ def records(filenum, subset, code, fields, dbf_name, tabular):
             if not dbf_name and not tabular:
                 echo()
         if tabular:
-            echo(output, border='table')
+            echo([fields, None] + output, border='table')
     except Exception:
         import traceback
         traceback.print_exc()
