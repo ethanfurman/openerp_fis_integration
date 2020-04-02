@@ -436,7 +436,7 @@ def records(filenum, subset, code, fields, dbf_name, tabular):
                     data.append(cnv(field_data[i]))
                 print('field data:', data, verbose=3)
                 table.append(tuple(data))
-            if not dbf_name:
+            if not dbf_name and not tabular:
                 echo()
         if tabular:
             echo(output, border='table')
