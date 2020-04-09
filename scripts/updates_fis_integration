@@ -207,7 +207,6 @@ def aging():
 #   the conversion later when it is determined the records are actually needed
 #
 
-
 def handle_arci(method):
     print('processing ARCI...')
     context = {'fis-updates': True, 'active_test': False}
@@ -489,6 +488,11 @@ def handle_arci(method):
             changes = get_updated_values(old_record, new_record)
             if changes:
                 changed_count += 1
+                logger.info(
+                        'F262: changing -- %s  -->  %s',
+                        key_id,
+                        ', '.join("%s=%r" % (k, v) for k, v in changes.items())
+                        )
                 if LIST_RECORDS:
                     echo('  F262:%s  %s' % (key_id, new_record.key), end='  ')
                     print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
@@ -512,6 +516,11 @@ def handle_arci(method):
                     arci_mapping.error('FIS ID F262:%s (%s) already exists in OpenERP' % (key, cross_ref.key))
                     continue
             added_count += 1
+            logger.info(
+                    'F262:%s -- adding -- %s',
+                    key,
+                    (', '.join(['%s=%r' % (k, v) for k, v in cross_ref.items()]))
+                    )
             if LIST_RECORDS:
                 echo('  F262:%s  %s' % (key, cross_ref.key), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in cross_ref.items()), '||', end='')
@@ -536,6 +545,10 @@ def handle_arci(method):
         deleted_count = len(delete_ids)
         if delete_ids:
             print('deleting records', border='flag')
+            logger.info(
+                    'F262 -- removing -- %s',
+                    ', '.join(sorted(deleted_records.keys()))
+                    )
             if not DRYRUN:
                 arci_mapping.delete(delete_ids, context=context)
     #
@@ -543,7 +556,6 @@ def handle_arci(method):
             % (changed_count, added_count, deleted_count, 'deleted'),
             border='box',
             )
-
 
 def handle_nvty(method):
     global product_available_at, product_sales_category, product
@@ -804,6 +816,11 @@ def handle_nvty(method):
             product.error('FIS ID F135:%s (%s) already exists in OpenERP' % (xml_id, name))
             continue
         added_count += 1
+        logger.info(
+                'F135:%s -- adding -- %s',
+                xml_id,
+                (', '.join(['%s=%r' % (k, v) for k, v in item.items()]))
+                )
         if LIST_RECORDS:
             echo('  F135:%s  %s' % (item.xml_id, name), end='  ')
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in item.items()), '||', end='')
@@ -827,6 +844,11 @@ def handle_nvty(method):
         xml_ids = [r.xml_id for r in records]
         oe_ids = product.search([('module','=','F135'),('xml_id','in',xml_ids)])
         changed_count += len(oe_ids)
+        logger.info(
+                'F135: changing -- %s  -->  %s',
+                xml_ids,
+                ', '.join("%s=%r" % (k, v) for k, v in sorted(changes))
+                )
         if LIST_RECORDS:
             body = []
             for rec in records:
@@ -867,6 +889,10 @@ def handle_nvty(method):
         if ids:
             deleted_count = len(ids)
             if deleted_count:
+                logger.info(
+                        'F262 -- removing -- %s',
+                        ', '.join(sorted(deleted_records.keys()))
+                        )
                 if LIST_RECORDS:
                     for xml_id, rec in sorted(deleted_records.items()):
                         echo('  F135:%s  %s' % (rec.xml_id, rec.fis_name))
@@ -880,7 +906,6 @@ def handle_nvty(method):
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
             border='box',
             )
-
 
 def handle_csms(method):
     global sales_person_recs, transmitter_codes
@@ -1234,6 +1259,11 @@ def handle_csms(method):
         if changes:
             relevant_changes = True
             changed_count += 1
+            logger.info(
+                    'F33: changing -- %s  -->  %s',
+                    xml_id,
+                    ', '.join("%s=%r" % (k, v) for k, v in changes.items())
+                    )
             if LIST_RECORDS:
                 echo('  F33:%s  %s' % (xml_id, list_record_name), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
@@ -1257,6 +1287,11 @@ def handle_csms(method):
                 res_partner.error('FIS ID F33:%s (%s) already exists in OpenERP' % (key, company.name))
                 continue
         added_count += 1
+        logger.info(
+                'F33:%s -- adding -- %s',
+                key,
+                (', '.join(['%s=%r' % (k, v) for k, v in company.items()]))
+                )
         if LIST_RECORDS:
             echo('  F33:%s  %s' % (key, company.name), end='  ')
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
@@ -1295,6 +1330,11 @@ def handle_csms(method):
                         res_partner.error('unable to find parent for %r (%r)' % (key, parent_key, ))
                         continue
         added_count += 1
+        logger.info(
+                'F33:%s -- adding -- %s',
+                key,
+                (', '.join(['%s=%r' % (k, v) for k, v in contact.items()]))
+                )
         if LIST_RECORDS:
             echo('  F33:%s  %s' % (key, contact.name), end='  ')
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in contact.items()), '||', end='')
@@ -1308,10 +1348,13 @@ def handle_csms(method):
     # delete/deactivate customers
     #
     if deleted_records:
-        if not DELETE:
-            print('deactivating customers', border='flag')
-        else:
-            print('deleting customers', border='flag')
+        verb = 'deleting' if DELETE else 'deactivating'
+        print('%s records' % verb, border='flag')
+        logger.info(
+                'F163 -- %s -- %s',
+                verb,
+                ', '.join(sorted(deleted_records.keys()))
+                )
         if LIST_RECORDS:
             for key, rec in sorted(deleted_records.items()):
                 echo('  F163:%s  %s' % (key, rec.name))
@@ -1546,6 +1589,11 @@ def handle_csmss(method):
         if changes:
             relevant_changes = True
             changed_count += 1
+            logger.info(
+                    'F34: changing -- %s  -->  %s',
+                    xml_id,
+                    ', '.join("%s=%r" % (k, v) for k, v in changes.items())
+                    )
             if LIST_RECORDS:
                 echo('  F34:%s  %s' % (xml_id, new_record.name), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
@@ -1569,6 +1617,11 @@ def handle_csmss(method):
                 res_partner.error('FIS ID F34:%s (%s) already exists in OpenERP' % (key, ship_to.name))
                 continue
         added_count += 1
+        logger.info(
+                'F34:%s -- adding -- %s',
+                key,
+                (', '.join(['%s=%r' % (k, v) for k, v in ship_to.items()]))
+                )
         if LIST_RECORDS:
             echo('  F34:%s  %s' % (key, ship_to.name), end='  ')
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in ship_to.items()), '||', end='')
@@ -1582,10 +1635,13 @@ def handle_csmss(method):
     # delete/deactivate ship-tos
     #
     if deleted_records:
-        if not DELETE:
-            print('deactivating ship-tos', border='flag')
-        else:
-            print('deleting ship-tos', border='flag')
+        verb = 'deleting' if DELETE else 'deactivating'
+        print('%s records' % verb, border='flag')
+        logger.info(
+                'F34 -- %s -- %s',
+                verb,
+                ', '.join(sorted(deleted_records.keys()))
+                )
         if LIST_RECORDS:
             for key, rec in sorted(deleted_records.items()):
                 echo('  F34:%s  %s' % (key, rec.name))
@@ -1697,6 +1753,11 @@ def handle_customer_terms():
         changes = get_updated_values(old_record, new_record)
         if changes:
             changed_count += 1
+            logger.info(
+                    'F8: changing -- %s  -->  %s',
+                    xml_id,
+                    ', '.join("%s=%r" % (k, v) for k, v in changes.items())
+                    )
             if LIST_RECORDS:
                 echo('  F8:%s  %s' % (xml_id, new_record.description), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
@@ -1718,6 +1779,11 @@ def handle_customer_terms():
             customer_terms.error('FIS ID F8:%s (%s) already exists in OpenERP' % (key, terms.description))
         else:
             added_count += 1
+            logger.info(
+                    'F8:%s -- adding -- %s',
+                    key,
+                    (', '.join(['%s=%r' % (k, v) for k, v in terms.items()]))
+                    )
             if LIST_RECORDS:
                 echo('  F8:%s  %s' % (key, terms.description), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in terms.items()), '||', end='')
@@ -1732,10 +1798,13 @@ def handle_customer_terms():
     # delete/deactivate customer terms
     #
     if deleted_records:
-        if not DELETE:
-            print('deactivating customer terms', border='flag')
-        else:
-            print('deleting customer terms', border='flag')
+        verb = 'deleting' if DELETE else 'deactivating'
+        print('%s records' % verb, border='flag')
+        logger.info(
+                'F8 -- %s -- %s',
+                verb,
+                ', '.join(sorted(deleted_records.keys()))
+                )
         if LIST_RECORDS:
             for key, rec in sorted(deleted_records.items()):
                 echo('  F8:%s  %s' % (key, rec.description))
@@ -1865,6 +1934,11 @@ def handle_transmitter():
         changes = get_updated_values(old_record, new_record)
         if changes:
             changed_count += 1
+            logger.info(
+                    'F192: changing -- %s  -->  %s',
+                    tran_no,
+                    ', '.join("%s=%r" % (k, v) for k, v in changes.items())
+                    )
             if LIST_RECORDS:
                 echo('  F192:%s  %s' % (tran_no, new_record.description), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
@@ -1886,6 +1960,11 @@ def handle_transmitter():
             transmitter_numbers.error('FIS ID F192:%s (%s) already exists in OpenERP' % (key, transmitter.description))
         else:
             added_count += 1
+            logger.info(
+                    'F192:%s -- adding -- %s',
+                    key,
+                    (', '.join(['%s=%r' % (k, v) for k, v in transmitter.items()]))
+                    )
             if LIST_RECORDS:
                 echo('  F192:%s  %s' % (key, transmitter.description), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in transmitter.items()), '||', end='')
@@ -1900,6 +1979,10 @@ def handle_transmitter():
     #
     if deleted_records:
         print('deleting transmitter records', border='flag')
+        logger.info(
+                'F192 -- removing -- %s',
+                ', '.join(sorted(deleted_records.keys()))
+                )
         if LIST_RECORDS:
             for key, rec in sorted(deleted_records.items()):
                 echo('  F192:%s  %s' % (key, rec.description))
@@ -2007,6 +2090,11 @@ def handle_production_lines():
         changes = get_updated_values(old_record, new_record)
         if changes:
             changed_count += 1
+            logger.info(
+                    'F341: changing -- %s  -->  %s',
+                    changed_line_id,
+                    ', '.join("%s=%r" % (k, v) for k, v in changes.items())
+                    )
             if LIST_RECORDS:
                 echo('  F341:%s  %s' % (changed_line_id, new_record.desc), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
@@ -2054,6 +2142,7 @@ def handle_production_lines():
             % (changed_count, added_count, deleted_count),
             border='box',
             )
+
 def handle_sales_reps():
     print('processing CNVZz (customer sales reps)', border=('flag', '#'))
     context = {'fis-updates': True, 'active_test': False}
@@ -2149,6 +2238,11 @@ def handle_sales_reps():
         changes = get_updated_values(old_record, new_record)
         if changes:
             changed_count += 1
+            logger.info(
+                    'F47: changing -- %s  -->  %s',
+                    xml_id,
+                    ', '.join("%s=%r" % (k, v) for k, v in changes.items())
+                    )
             if LIST_RECORDS:
                 echo('  F47:%s  %s' % (xml_id, new_record.fis_name), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
@@ -2170,6 +2264,11 @@ def handle_sales_reps():
             customer_salesreps.error('FIS ID F47:%s (%s) already exists in OpenERP' % (key, salesrep.fis_name))
         else:
             added_count += 1
+            logger.info(
+                    'F47:%s -- adding -- %s',
+                    key,
+                    (', '.join(['%s=%r' % (k, v) for k, v in salesrep.items()]))
+                    )
             if LIST_RECORDS:
                 echo('  F47:%s  %s' % (key, salesrep.fis_name), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in salesrep.items()), '||', end='')
@@ -2184,10 +2283,13 @@ def handle_sales_reps():
     # delete/deactivate customer salesrep
     #
     if deleted_records:
-        if not DELETE:
-            print('deactivating customer salesrep', border='flag')
-        else:
-            print('deleting customer salesrep', border='flag')
+        verb = 'deleting' if DELETE else 'deactivating'
+        print('%s records' % verb, border='flag')
+        logger.info(
+                'F163 -- %s -- %s',
+                verb,
+                ', '.join(sorted(deleted_records.keys()))
+                )
         if LIST_RECORDS:
             for key, rec in sorted(deleted_records.items()):
                 echo('  F163:%s  %s' % (key, rec.fis_name))
@@ -2408,6 +2510,11 @@ def handle_carrier(method):
         if changes:
             relevant_changes = True
             changed_count += 1
+            logger.info(
+                    'F27: changing -- %s  -->  %s',
+                    xml_id,
+                    ', '.join("%s=%r" % (k, v) for k, v in changes.items())
+                    )
             if LIST_RECORDS:
                 echo('  F27:%s  %s' % (xml_id, new_record.name), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
@@ -2431,6 +2538,11 @@ def handle_carrier(method):
                 res_partner.error('FIS ID F27:%s (%s) already exists in OpenERP' % (key, company.name))
                 continue
         added_count += 1
+        logger.info(
+                'F27:%s -- adding -- %s',
+                key,
+                (', '.join(['%s=%r' % (k, v) for k, v in company.items()]))
+                )
         if LIST_RECORDS:
             echo('  F27:%s  %s' % (key, company.name), end='  ')
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
@@ -2444,13 +2556,16 @@ def handle_carrier(method):
     # delete/deactivate carriers
     #
     if deleted_records:
-        if not DELETE:
-            print('deactivating carriers', border='flag')
-        else:
-            print('deleting carriers', border='flag')
+        verb = 'deleting' if DELETE else 'deactivating'
+        print('%s records' % verb, border='flag')
+        logger.info(
+                'F27 -- %s -- %s',
+                verb,
+                ', '.join(sorted(deleted_records.keys()))
+                )
         if LIST_RECORDS:
             for key, rec in sorted(deleted_records.items()):
-                echo('  F163:%s  %s' % (key, rec.name))
+                echo('  F27:%s  %s' % (key, rec.name))
         deleted_count = len(deleted_records)
         if not DRYRUN:
             oe_ids = res_partner.search(domain=[('xml_id','in',deleted_records.keys())])
@@ -2659,6 +2774,11 @@ def handle_emp1(method):
         if changes:
             relevant_changes = True
             changed_count += 1
+            logger.info(
+                    'F74: changing -- %s  -->  %s',
+                    xml_id,
+                    ', '.join("%s=%r" % (k, v) for k, v in changes.items())
+                    )
             if LIST_RECORDS:
                 echo('  F74-emp:%s  %s' % (xml_id, new_record.name), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
@@ -2682,6 +2802,11 @@ def handle_emp1(method):
                 hr_employee.error('FIS ID F74-emp:%s (%s) already exists in OpenERP' % (key, employee.name))
                 continue
         added_count += 1
+        logger.info(
+                'F74:%s -- adding -- %s',
+                key,
+                (', '.join(['%s=%r' % (k, v) for k, v in employee.items()]))
+                )
         if LIST_RECORDS:
             echo('  F74-emp:%s  %s' % (key, employee.name), end='  ')
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in employee.items()), '||', end='')
@@ -2711,6 +2836,14 @@ def handle_emp1(method):
     #
     if deleted_records:
         print('deactivating employees', border='flag')
+        for emp_num, rec in sorted(deleted_records.items()):
+            logger.info(
+                    'F74 -- deactivating --  %6s  %-11s  %-11s  %s',
+                    emp_num,
+                    rec.hire_date or '',
+                    rec.fire_date or '',
+                    NameCaseReversed(rec.name),
+                    )
         if LIST_RECORDS:
             header_needed = True
             for emp_num, rec in sorted(deleted_records.items()):
@@ -2895,6 +3028,11 @@ def handle_product_category():
                 product_category.error('FIS ID F11:%s (%s) already exists in OpenERP' % (key, category.name))
                 continue
         added_count += 1
+        logger.info(
+                'F11:%s -- adding -- %s',
+                key,
+                (', '.join(['%s=%r' % (k, v) for k, v in category.items()]))
+                )
         if LIST_RECORDS:
             echo('  F11:%s  %s' % (key, category.name), end='  ')
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in category.items()), '||', end='')
@@ -2943,6 +3081,11 @@ def handle_product_category():
         if changes:
             relevant_changes = True
             changed_count += 1
+            logger.info(
+                    'F11: changing -- %s  -->  %s',
+                    xml_id,
+                    ', '.join("%s=%r" % (k, v) for k, v in changes.items())
+                    )
             if LIST_RECORDS:
                 echo('  F11:%s  %s' % (xml_id, new_record.name), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
@@ -2965,10 +3108,13 @@ def handle_product_category():
                 echo('  F11:%s  %s' % (key, rec.name))
         deleted_count = len(deleted_records)
         if deleted_count:
-            if not DELETE:
-                print('deactivating records', border='flag')
-            else:
-                print('deleting records', border='flag')
+            verb = 'deleting' if DELETE else 'deactivating'
+            print('%s records' % verb, border='flag')
+            logger.info(
+                    'F11 -- %s -- %s',
+                    verb,
+                    ', '.join(sorted(deleted_records.keys()))
+                    )
             if not DRYRUN:
                 oe_ids = product_category.search(domain=[('xml_id','in',deleted_records.keys())])
                 if DELETE:
@@ -3076,6 +3222,11 @@ def handle_product_location():
                 product_location.error('FIS ID F97:%s (%s) already exists in OpenERP' % (key, location.name))
                 continue
         added_count += 1
+        logger.info(
+                'F97:%s -- adding -- %s',
+                key,
+                (', '.join(['%s=%r' % (k, v) for k, v in location.items()]))
+                )
         if LIST_RECORDS:
             echo('  F97:%s  %s' % (key, location.name), end='  ')
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in location.items()), '||', end='')
@@ -3110,6 +3261,11 @@ def handle_product_location():
         if changes:
             relevant_changes = True
             changed_count += 1
+            logger.info(
+                    'F97: changing -- %s  -->  %s',
+                    xml_id,
+                    ', '.join("%s=%r" % (k, v) for k, v in changes.items())
+                    )
             if LIST_RECORDS:
                 echo('  F97:%s  %s' % (xml_id, new_record.name), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
@@ -3130,10 +3286,13 @@ def handle_product_location():
                 echo('  F97:%s  %s' % (key, rec.name))
         deleted_count = len(deleted_records)
         if deleted_count:
-            if not DELETE:
-                print('deactivating records', border='flag')
-            else:
-                print('deleting records', border='flag')
+            verb = 'deleting' if DELETE else 'deactivating'
+            print('%s records' % verb, border='flag')
+            logger.info(
+                    'F97 -- %s -- %s',
+                    verb,
+                    ', '.join(sorted(deleted_records.keys()))
+                    )
             if not DRYRUN:
                 oe_ids = product_location.search(domain=[('xml_id','in',deleted_records.keys())])
                 if DELETE:
@@ -3143,8 +3302,6 @@ def handle_product_location():
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
             border='box',
             )
-
-
 
 def handle_supplier(method):
     #
@@ -3386,6 +3543,11 @@ def handle_supplier(method):
         if changes:
             relevant_changes = True
             changed_count += 1
+            logger.info(
+                    'F163: changing -- %s  -->  %s',
+                    xml_id,
+                    ', '.join("%s=%r" % (k, v) for k, v in changes.items())
+                    )
             if LIST_RECORDS:
                 echo('  F163:%s  %s' % (xml_id, new_record.name), end='  ')
                 print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
@@ -3409,6 +3571,11 @@ def handle_supplier(method):
                 res_partner.error('FIS ID F163:%s (%s) already exists in OpenERP' % (key, company.name))
                 continue
         added_count += 1
+        logger.info(
+                'F163:%s -- adding -- %s',
+                key,
+                (', '.join(['%s=%r' % (k, v) for k, v in company.items()]))
+                )
         if LIST_RECORDS:
             echo('  F163:%s  %s' % (key, company.name), end='  ')
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
@@ -3479,6 +3646,11 @@ def handle_supplier(method):
                 res_partner.error('FIS ID F163:%s (%s) already exists in OpenERP' % (key, contact.name))
                 continue
         added_count += 1
+        logger.info(
+                'F163:%s -- adding -- %s',
+                contact.name,
+                (', '.join(['%s=%r' % (k, v) for k, v in contact.items()]))
+                )
         if LIST_RECORDS:
             echo('  F163:%s  %s' % (key, contact.name), end='  ')
             print('||', '||'.join('%s -> %r' % (k, v) for k, v in contact.items()), '||', end='')
@@ -3502,10 +3674,13 @@ def handle_supplier(method):
                 echo('  F163:%s  %s' % (key, rec.name))
         deleted_count = len(deleted_records)
         if deleted_count:
-            if not DELETE:
-                print('deactivating records', border='flag')
-            else:
-                print('deleting records', border='flag')
+            verb = 'deleting' if DELETE else 'deactivating'
+            print('%s records' % verb, border='flag')
+            logger.info(
+                    'F163 -- %s -- %s',
+                    verb,
+                    ', '.join(sorted(deleted_records.keys()))
+                    )
             if not DRYRUN:
                 oe_ids = res_partner.search(domain=[('xml_id','in',deleted_records.keys())])
                 if DELETE:
@@ -3517,7 +3692,6 @@ def handle_supplier(method):
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
             border='box',
             )
-
 
 def convert_arci_rec(fis_rec):
     item = AttrDict()
