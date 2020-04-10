@@ -309,10 +309,14 @@ class product_product(xmlid, osv.Model):
                 if link.count('%s') == 1:
                     link %= '%s/%s' % (xml_id, xml_id)
                     link, ts_link = add_timestamp(link)
+                    if link is None:
+                        continue
                     remote_link = PRODUCT_LABEL_URL + ts_link
                 elif link.count('%s') == 0:
                     header = 'oe_header'
                     link, ts_link = add_timestamp(link)
+                    if link is None:
+                        continue
                     remote_link = PRODUCT_LABEL_URL + ts_link
                 else:
                     _logger.error('unknown link template: %r', link)
@@ -1080,7 +1084,10 @@ def calc_width(src_rows):
         row = []
         # images are either 2x4 or 4x4...
         # open each image to see which it is
+        single = len(images) == 1
         for link, remote_link, align, header in images:
+            if single:
+                align = 'center'
             try:
                 with Image.open(PRODUCT_LABEL_BMP_LOCATION / link) as image:
                     dpi = image.height / 4.0
