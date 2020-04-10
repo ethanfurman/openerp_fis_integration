@@ -389,6 +389,7 @@ def records(filenum, subset, code, fields, dbf_name, tabular):
         dbf_types = []
         dbf_names = []
         fis_fields = record.fieldlist
+        tabular_names = []
         for i, row in enumerate(fis_fields):
             j = i + 1
             print('checking for %d' % (j, ), end='... ', verbose=2)
@@ -397,6 +398,7 @@ def records(filenum, subset, code, fields, dbf_name, tabular):
                 name, spec = row[1:4:2]
                 if not name.strip() or name.strip().lower() == '(open)':
                     continue
+                tabular_names.append(name)
                 max_spec_width = max(max_spec_width, len(spec.strip()))
                 width = fis_table.field_widths[i]
                 field_widths.append(width)
@@ -439,7 +441,7 @@ def records(filenum, subset, code, fields, dbf_name, tabular):
             if not dbf_name and not tabular:
                 echo()
         if tabular:
-            echo([fields, None] + output, border='table')
+            echo([tabular_names, None] + output, border='table')
     except Exception:
         import traceback
         traceback.print_exc()
