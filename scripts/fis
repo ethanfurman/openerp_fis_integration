@@ -364,19 +364,32 @@ def record(filenum, which, id):
 
 @Command(
         filenum=Spec('file abbreviation or number to operate on', ),
-        subset=Spec('subset template to match many records to', ),
+        template=Spec('subset or rematch template to match many records to', ),
         code=Spec('code to match with template', force_default='', type=lambda s: s and tuple(s.split(',') or s)),
         fields=Spec('specific fields to display [default: all]', MULTI, type=int),
         dbf_name=Spec('dbf to create with data', OPTION),
         tabular=Spec('show output in tabular mode', FLAG,),
+        rematch=Spec('template is a re match', FLAG, abbrev=('r', 're')),
         )
-def records(filenum, subset, code, fields, dbf_name, tabular):
+def records(filenum, template, code, fields, dbf_name, tabular, rematch):
     print('fields requested: %s' % (fields, ))
+    print('code given: %r' % (code, ))
     if filenum.isdigit():
         filenum = int(filenum)
-    fis_table = fd.fisData(filenum, subset=subset)
-    print('using file', fis_table.filename)
-    records = [v for k, v in fis_table.get_subset(code)]
+    if template == 'default':
+        if not isinstance(filenum, int):
+            abort('unable to use default with file name')
+        template = table_keys[filenum]
+    if rematch:
+        if code:
+            code = code[0]
+        fis_table = fd.fisData(filenum, rematch=template)
+        print('using rematch and file', fis_table.filename)
+        records = fis_table.get_rekey(code)
+    else:
+        fis_table = fd.fisData(filenum, subset=template)
+        print('using subset and file', fis_table.filename)
+        records = [v for k, v in fis_table.get_subset(code)]
     print('  found %d records' % (len(records), ))
     used_fields = []
     if records:
@@ -640,8 +653,26 @@ def web_data(*items):
 # helpers
 
 table_keys = {
-    328: '10%s000010000',
-    }
+          8: r'D010(.)',                            # customer terms
+         11: r'as10(..)',                           # product category
+         33: r'10(......) ',                        # customer
+         34: r'10(......)1....',                    # customer ship-to
+         27: r'SV10(..)',                           # carrier
+         47: r'Z(...)',                             # sales rep
+         74: r'10(.....)',                          # employee
+         65: r'10(......)',                         # purchasers
+         97: r'aa10(.)',                            # product location
+        135: r'(......)101000    101\*\*',          # products
+        163: r'10(......)',                         # vendors
+        192: r'O110(......)',                       # transmitter number
+        262: r'10(......)......',                   # customer product list
+        320: r'10(..........).....0',               # product formula
+        322: r'10(..........).....0...',            # product ingredients
+        328: r'10(......)000010000',                # production order formula
+        329: r'10(......)000011...',                # production order ingredients
+        341: r'f10(..)',                            # production lines
+
+        }
 
 
 def update_customers(oe, contacts, state_recs, country_recs_name ):
