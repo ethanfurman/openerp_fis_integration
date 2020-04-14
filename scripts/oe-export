@@ -453,12 +453,12 @@ def convert_set(clausa):
 
 def convert_where(clausa):
     std_match = Var(lambda clausa: re.match(
-            r"^(\w+)\s*(is not|is|like|=like|not like|ilike|=ilike|not ilike|=|<|>|<=|>=|!=)\s*('(?:[^'\\]|\\.)*?'|\S*)\s*(.*?)\s*$",
+            r"^(\w+)\s*(is not|is|like|=like|not like|ilike|=ilike|not ilike|<=|>=|!=|=|<|>)\s*('(?:[^'\\]|\\.)*?'|\S*)\s*(.*?)\s*$",
             clausa,
             flags=re.I
             ))
     enh_match = Var(lambda clausa: re.match(
-            r"^(\w+)\((\w+)\)\s*(=|<|>|<=|>=|!=)\s*('(?:[^'\\]|\\.)*?'|\S*)\s*(.*?)\s*$",
+            r"^(\w+)\((\w+)\)\s*(<=|>=|!=|=|<|>)\s*('(?:[^'\\]|\\.)*?'|\S*)\s*(.*?)\s*$",
             clausa,
             flags=re.I
             ))
