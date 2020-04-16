@@ -381,11 +381,12 @@ def records(filenum, template, code, fields, dbf_name, tabular, rematch):
             abort('unable to use default with file name')
         template = table_keys[filenum]
     if rematch:
-        if code:
-            code = code[0]
+        if not code:
+            abort('CODE required for REMATCH match')
+        code = code[0]
         fis_table = fd.fisData(filenum, rematch=template)
         print('using rematch and file', fis_table.filename)
-        records = fis_table.get_rekey(code)
+        records = fis_table.get_rekey(code) or []
     else:
         fis_table = fd.fisData(filenum, subset=template)
         print('using subset and file', fis_table.filename)
@@ -440,7 +441,9 @@ def records(filenum, template, code, fields, dbf_name, tabular, rematch):
             if not dbf_name and not tabular and lines:
                 echo('\n'.join(lines))
                 try:
-                    raw_input('...')
+                    ans = raw_input('... [q to quit]')
+                    if ans.lower() == 'q':
+                        raise KeyboardInterrupt
                 except KeyboardInterrupt:
                     raise SystemExit(1)
             if dbf_name:
