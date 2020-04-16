@@ -3817,10 +3817,8 @@ def convert_emp1_rec(fis_rec):
     if len(ssn) == 9:
         ssn = '%s-%s-%s' % (ssn[:3], ssn[3:5], ssn[5:])
     employee.ssnid = ssn
-    hired = fix_date(fis_rec[F74.date_hired])
-    employee.hire_date = hired and hired.strftime('%Y-%m-%d') or False
-    fired = fix_date(fis_rec[F74.date_terminated])
-    employee.fire_date = fired and fired.strftime('%Y-%m-%d') or False
+    employee.hire_date = hired = fix_date(fis_rec[F74.date_hired]) or False
+    employee.fire_date = fired = fix_date(fis_rec[F74.date_terminated]) or False
     employee.active = (not fired or hired > fired)
     # employee birth dates are stored extra weirdly: if the year is 99 or less
     #   then the it's 19xx, but if any hex digits are present then the year is
@@ -3839,8 +3837,7 @@ def convert_emp1_rec(fis_rec):
     employee.pension_plan = fis_rec[F74.pension_status].upper() == 'Y'
     employee.pay_type = ('salary', 'hourly')[fis_rec[F74.pay_type].upper() == 'H']
     employee.hourly_rate = fis_rec[F74.hourly_rate]
-    last_raise = fix_date(fis_rec[F74.last_raise])
-    employee.last_raise = last_raise and last_raise.strftime('%Y-%m-%d') or False
+    employee.last_raise = fix_date(fis_rec[F74.last_raise]) or False
     employee.marital = ('single', 'married')[fis_rec[F74.marital_status].upper() == 'M']
     employee.gender = ('male', 'female')[fis_rec[F74.gender].upper() == 'F']
     employee.emergency_contact = NameCase(fis_rec[F74.emergency_contact])
@@ -4087,22 +4084,18 @@ def convert_supplier_rec(key):
         company.phone = fix_phone(posm_rec[F163.tele]) or False
         company.fax = fix_phone(posm_rec[F163.fax]) or False
         company.fis_org_cert_file = posm_rec[F163.org_cert_file].upper() in 'YO'
-        fis_org_exp = fix_date(posm_rec[F163.cert_exp])
-        company.fis_org_exp = fis_org_exp and fis_org_exp.strftime('%Y-%m-%d') or False
+        company.fis_org_exp = fix_date(posm_rec[F163.cert_exp]) or False
         company.fis_non_gmo = posm_rec[F163.non_gmo].upper() in 'Y'
         company.fis_kosher = posm_rec[F163.kosher].upper() in 'Y'
-        fis_gmo_exp = fix_date(posm_rec[F163.gmo_exp])
-        company.fis_gmo_exp = fis_gmo_exp and fis_gmo_exp.strftime('%Y-%m-%d') or False
-        fis_kosher_exp = fix_date(posm_rec[F163.kosher_exp])
-        company.fis_kosher_exp = fis_kosher_exp and fis_kosher_exp.strftime('%Y-%m-%d') or False
+        company.fis_gmo_exp = fix_date(posm_rec[F163.gmo_exp]) or False
+        company.fis_kosher_exp = fix_date(posm_rec[F163.kosher_exp]) or False
     elif vnms_rec is not None:
         company.name = re.sub('sunridge', 'SunRidge', BsnsCase(vnms_rec[F65.name]), flags=re.I)
         company.update(process_address(F65, vnms_rec, key=vnms_rec[F65.code], module='posm'))
         company.phone = fix_phone(vnms_rec[F65.tele]) or False
         company.fax = fix_phone(vnms_rec[F65.fax]) or False
         company.fis_org_cert_file = vnms_rec[F65.org_cert_file].upper() in 'YO'
-        fis_org_exp = fix_date(vnms_rec[F65.cert_exp])
-        company.fis_org_exp = fis_org_exp and fis_org_exp.strftime('%Y-%m-%d') or False
+        company.fis_org_exp = fix_date(vnms_rec[F65.cert_exp]) or False
         company.fis_non_gmo = False
         company.fis_kosher = False
         company.fis_gmo_exp = False
