@@ -309,13 +309,13 @@ class product_product(xmlid, osv.Model):
                 if link.count('%s') == 1:
                     link %= '%s/%s' % (xml_id, xml_id)
                     link, ts_link = add_timestamp(link)
-                    if link is None:
+                    if ts_link is None:
                         continue
                     remote_link = PRODUCT_LABEL_URL + ts_link
                 elif link.count('%s') == 0:
                     header = 'oe_header'
                     link, ts_link = add_timestamp(link)
-                    if link is None:
+                    if ts_link is None:
                         continue
                     remote_link = PRODUCT_LABEL_URL + ts_link
                 else:
@@ -1072,7 +1072,7 @@ def add_timestamp(file):
                 timestamp = '-' + DateTime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%S')
                 break
         else:
-            timestamp = '-XXXX-XX-XXTYY:YY:YY'
+            return file, None
         ts_file = target_png_file.stem + timestamp + '.png'
         return file, ts_file
 
