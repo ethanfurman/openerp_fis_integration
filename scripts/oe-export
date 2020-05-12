@@ -1,6 +1,7 @@
 #!/usr/local/sbin/suid-python --virtualenv
 from __future__ import print_function
 
+import dbf
 import os
 from antipathy import Path
 from openerplib import get_connection, get_records, AttrDict, Query, Many2One
@@ -580,6 +581,10 @@ def write_xls(sheet_name, query, fields, file, separator=False):
                     cell_value = ''
                 elif cell_value is True:
                     cell_value = 'True'
+                elif isinstance(cell_value, dbf.Date):
+                    cell_value = cell_value._date
+                elif isinstance(cell_value, dbf.DateTime):
+                    cell_value = cell_value.replace(tzinfo=None)._datetime
                 worksheet.write(i, cell_index, cell_value)
     workbook.save(file)
 
