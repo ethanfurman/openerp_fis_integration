@@ -3,11 +3,13 @@ from __future__ import print_function
 
 import dbf
 import os
+import re
+import xmlrpclib
 from antipathy import Path
+from ast import literal_eval
 from openerplib import get_connection, get_records, AttrDict, Query, Many2One
 from scription import *
-from xmlrpclib import Fault
-import re
+from VSS.utils import translator
 
 virtual_env = os.environ['VIRTUAL_ENV']
 config = '%s/config/fnx.ini' % virtual_env
@@ -122,6 +124,97 @@ def adhoc(table, fields, to_file, domain, order, distinct, separator, wrap, _con
     if _internal:
         return q
 
+def _module_name(text):
+    module, name = text.split('.')
+    return module, name
+
+@Command(
+        module=Spec('module of table', ),
+        table=Spec('table to process names for', ),
+        name=Spec('module.table for name template', type=_module_name),
+        domain=Spec('record selection', OPTION, force_default=ALL_ACTIVE, type=literal_eval),
+        field=Spec('which field to use for `tag` and `name` methods', OPTION),
+        method=Spec(
+            'method of unique name generation [default: id]',
+            OPTION,
+            choices=['id','tag','name'],
+            force_default='id',
+            ),
+
+        )
+def add_imd(module, table, name, domain, field, method):
+    "add ir.model.data names for data export"
+    print(module, table, name, domain, field, method, sep='\n', verbose=2)
+    if method == 'id':
+        if field and field != 'id':
+            abort('field %r not valid with METHOD `id`' % (field, ))
+        field = 'id'
+    elif field == 'id':
+        abort('cannot use the `id` field with METHOD `%s`' % (method, ))
+    elif field is None:
+        abort('field must be specified for METHOD `%s`' % (method, ))
+    target_table = oe.get_model(table)
+    fields = list(set(['id', field, target_table._rec_name]))
+    dot_table = table
+    q = Query(oe.get_model(dot_table), domain=domain, fields=fields[:])
+    imd = oe.get_model('ir.model.data')
+    func = imd_methods[method]
+    imd_module, imd_table = name
+    existing_imd = Query(
+            imd,
+            domain=[('module','=',module),('model','=',dot_table),('res_id','in',q.id_map.keys())],
+            fields=['id','name','res_id','model','module'],
+            )
+    existing_ids = dict(
+            (r.res_id, r.name)
+            for r in existing_imd.records
+            )
+    existing_names = dict(
+            (r.name, r)
+            for r in existing_imd.records
+            )
+    # check for pre-existing alternate names
+    print('existing ids:', existing_ids.keys(), verbose=3)
+    template = '%s_%%s' % (imd_table, )
+    for r in ProgressView(iterable=q.records, view_type='bar'):
+        name = template % (func(r, field), )
+        dedupe_name = '%s_%s' % (name, r.id)
+        print("%7s  %25s  %s" % (r.id, r[field], name), verbose=2)
+        print('checking id:', r.id, verbose=3)
+        if r.id in existing_ids:
+            current_name = existing_ids[r.id]
+            if current_name not in (name, dedupe_name):
+                if input("\n%s already set --- change %r to %r?" % (r[target_table._rec_name], current_name, name)):
+                    imd.write(r.id, {'name': name})
+            continue
+        if name in existing_names:
+            imd_problem = existing_names[name]
+            real_problem = q.id_map[imd_problem.res_id]
+            print(
+                    'attempting to assign %r to %s:%s [%s] which is already taken by %s:%s [%s]... adding id'
+                        % (name, r.id, r[target_table._rec_name], r[field], real_problem.id, real_problem[target_table._rec_name], real_problem[field]),
+                    verbose=2,
+                    )
+            name = '%s_%s' % (name, r.id)
+        try:
+            new_id = imd.create(dict(module=module, name=name, model=dot_table, res_id=r.id))
+            existing_ids[new_id] = name
+            existing_names[name] = AttrDict(id=new_id, name=name, res_id=r.id, model=dot_table, module=module)
+        except xmlrpclib.Fault as e:
+            problem = imd.read([('name','=',name)])
+            if problem:
+                abort('%s already exists' % (problem[0], ))
+            abort('unable to create %s.%s:\n(%s)' % (imd_module, name, str(e)))
+    echo('done')
+
+alnum = translator(keep='abcdefghijklmnopqrstuvwxyz0123456789')
+alnum_space = translator(to=' ', keep='abcdefghijklmnopqrstuvwxyz0123456789 ')
+
+imd_methods = {
+        'id': lambda rec,_: '%05d' % (rec.id, ),
+        'tag': lambda rec,field: alnum(rec[field].lower()),
+        'name': lambda rec,field: ''.join(w[0] for w in alnum_space(rec[field].lower())),
+        }
 
 @Command(
         command=('sql command', REQUIRED),
@@ -178,7 +271,7 @@ def sql_describe(command, separator, wrap):
     desde = command.split()[1]
     try:
         model = oe.get_model(desde)
-    except Fault, exc:
+    except xmlrpclib.Fault, exc:
         if "doesn't exist" in exc.faultCode:
             abort('unknown table %r' % (desde, ))
         raise
@@ -319,7 +412,7 @@ def sql_update(command):
     table = pieces[1]
     try:
         table = oe.get_model(table)
-    except Fault, exc:
+    except xmlrpclib.Fault, exc:
         if "doesn't exist" in exc.faultCode:
             abort('unknown table %r' % (table, ))
         raise
@@ -363,7 +456,7 @@ def sql_delete(command):
     table = pieces[2]
     try:
         table = oe.get_model(table)
-    except Fault, exc:
+    except xmlrpclib.Fault, exc:
         if "doesn't exist" in exc.faultCode:
             abort('unknown table %r' % (table, ))
         raise
