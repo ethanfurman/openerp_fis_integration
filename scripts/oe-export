@@ -154,7 +154,10 @@ def add_imd(module, table, name, domain, field, method):
     elif field is None:
         abort('field must be specified for METHOD `%s`' % (method, ))
     target_table = oe.get_model(table)
-    fields = list(set(['id', field, target_table._rec_name]))
+    _rec_name = target_table._rec_name
+    if _rec_name not in target_table._columns:
+        _rec_name = 'id'
+    fields = list(set(['id', field, _rec_name]))
     dot_table = table
     q = Query(oe.get_model(dot_table), domain=domain, fields=fields[:])
     imd = oe.get_model('ir.model.data')
@@ -184,7 +187,7 @@ def add_imd(module, table, name, domain, field, method):
         if r.id in existing_ids:
             current_name = existing_ids[r.id]
             if current_name not in (name, dedupe_name):
-                if input("\n%s already set --- change %r to %r?" % (r[target_table._rec_name], current_name, name)):
+                if input("\n%s already set --- change %r to %r?" % (r[_rec_name], current_name, name)):
                     imd.write(r.id, {'name': name})
             continue
         if name in existing_names:
@@ -192,14 +195,14 @@ def add_imd(module, table, name, domain, field, method):
             real_problem = q.id_map[imd_problem.res_id]
             print(
                     'attempting to assign %r to %s:%s [%s] which is already taken by %s:%s [%s]... adding id'
-                        % (name, r.id, r[target_table._rec_name], r[field], real_problem.id, real_problem[target_table._rec_name], real_problem[field]),
+                        % (name, r.id, r[_rec_name], r[field], real_problem.id, real_problem[_rec_name], real_problem[field]),
                     verbose=2,
                     )
             name = '%s_%s' % (name, r.id)
         try:
-            new_id = imd.create(dict(module=module, name=name, model=dot_table, res_id=r.id))
+            new_id = imd.create(dict(module=imd_module, name=name, model=dot_table, res_id=r.id))
             existing_ids[new_id] = name
-            existing_names[name] = AttrDict(id=new_id, name=name, res_id=r.id, model=dot_table, module=module)
+            existing_names[name] = AttrDict(id=new_id, name=name, res_id=r.id, model=dot_table, module=imd_module)
         except xmlrpclib.Fault as e:
             problem = imd.read([('name','=',name)])
             if problem:
