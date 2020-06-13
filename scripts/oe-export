@@ -4,10 +4,9 @@ from __future__ import print_function
 import dbf
 import os
 import re
-import xmlrpclib
 from antipathy import Path
 from ast import literal_eval
-from openerplib import get_connection, get_records, AttrDict, Query, Many2One
+from openerplib import get_connection, get_records, AttrDict, Query, Many2One, Fault
 from scription import *
 from VSS.utils import translator
 
@@ -203,7 +202,7 @@ def add_imd(module, table, name, domain, field, method):
             new_id = imd.create(dict(module=imd_module, name=name, model=dot_table, res_id=r.id))
             existing_ids[new_id] = name
             existing_names[name] = AttrDict(id=new_id, name=name, res_id=r.id, model=dot_table, module=imd_module)
-        except xmlrpclib.Fault as e:
+        except Fault as e:
             problem = imd.read([('name','=',name)])
             if problem:
                 abort('%s already exists' % (problem[0], ))
@@ -274,7 +273,7 @@ def sql_describe(command, separator, wrap):
     desde = command.split()[1]
     try:
         model = oe.get_model(desde)
-    except xmlrpclib.Fault, exc:
+    except Fault as exc:
         if "doesn't exist" in exc.faultCode:
             abort('unknown table %r' % (desde, ))
         raise
@@ -415,7 +414,7 @@ def sql_update(command):
     table = pieces[1]
     try:
         table = oe.get_model(table)
-    except xmlrpclib.Fault, exc:
+    except Fault as exc:
         if "doesn't exist" in exc.faultCode:
             abort('unknown table %r' % (table, ))
         raise
@@ -459,7 +458,7 @@ def sql_delete(command):
     table = pieces[2]
     try:
         table = oe.get_model(table)
-    except xmlrpclib.Fault, exc:
+    except Fault as exc:
         if "doesn't exist" in exc.faultCode:
             abort('unknown table %r' % (table, ))
         raise
