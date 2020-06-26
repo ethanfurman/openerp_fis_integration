@@ -3758,7 +3758,7 @@ def convert_nvty_rec(fis_rec):
     item.fis_shipping_size = shipping_size
     #
     category_code = fis_rec[F135.sales_cat].strip()
-    if len(category_code) == 2 and category_code[0] in 'OISG':
+    if len(category_code) == 2 and category_code[0] in 'OIG':
         category_code = {'O':'0', 'I':'1', 'G':'6'}[category_code[0]] + category_code[1]
     category = product_sales_category.get(category_code)
     if category is not None:
