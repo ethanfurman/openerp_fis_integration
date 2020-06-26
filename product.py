@@ -3,7 +3,7 @@ from aenum import NamedTuple
 from antipathy import Path
 from dbf import Date, DateTime
 from fnx_fs.fields import files
-from scription import Execute, OrmFile
+from scription import Execute, OrmFile, TimeoutError
 from fnx import date
 from fnx.oe import dynamic_page_stub
 from fnx.xid import xmlid
@@ -292,7 +292,7 @@ class product_product(xmlid, osv.Model):
         xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
         result = {}
         try:
-            LabelLinks = get_LLC()
+            LabelLinks, use_cache = get_LLC()
         except Exception:
             _logger.exception('error fetching/processing LabelLinkCtl')
             # use the hard-coded display links
@@ -308,13 +308,13 @@ class product_product(xmlid, osv.Model):
                 header = False
                 if link.count('%s') == 1:
                     link %= '%s/%s' % (xml_id, xml_id)
-                    link, ts_link = add_timestamp(link)
+                    link, ts_link = add_timestamp(link, use_cache)
                     if ts_link is None:
                         continue
                     remote_link = PRODUCT_LABEL_URL + ts_link
                 elif link.count('%s') == 0:
                     header = 'oe_header'
-                    link, ts_link = add_timestamp(link)
+                    link, ts_link = add_timestamp(link, use_cache)
                     if ts_link is None:
                         continue
                     remote_link = PRODUCT_LABEL_URL + ts_link
@@ -1015,14 +1015,28 @@ def get_LLC():
     # if TEST_LLC is set, use testing copy below
     global LLC_text
     llc_override = False
+    use_cache = False
+    label_link_lines = LLC_text     # default
     if LLC_OVERRIDE.exists():
         llc_override = True
         with open(LLC_OVERRIDE) as llc:
             label_link_lines = llc.read().strip().split('\n')
     else:
         # attempt to get LabelLinkCtl from labeltime
-        with open(LLC_SOURCE) as llc:
-            label_link_lines = llc.read().strip().split('\n')
+        try:
+            cat = Execute('cat %s' % LLC_SOURCE, timeout=5)
+            if not cat.returncode:
+                label_link_lines = cat.stdout.strip().split('\n')
+            else:
+                _logger.warning('attempt to read %r failed with %r and %r',
+                        LLC_SOURCE,
+                        cat.returncode,
+                        cat.stderr and cat.stderr.strip().split('\n')[-1] or 'unknown',
+                        )
+        except TimeoutError:
+            use_cache = True
+        except Exception:
+            _logger.exception('failed to read %r', LLC_SOURCE)
     # validate LabelLinkCtl file
     LabelLinks = []
     for link_line in label_link_lines:
@@ -1045,9 +1059,9 @@ def get_LLC():
             except:
                 _logger.exception('failed to update LabelLinkCtl cached file')
             LLC_lock.release()
-    return LabelLinks
+    return LabelLinks, use_cache
 
-def add_timestamp(file):
+def add_timestamp(file, use_cache):
     "adds timestamp to filename portion of file"
     file = Path(file)
     possibles = [file]
@@ -1063,14 +1077,23 @@ def add_timestamp(file):
             break
     with NamedLock(file):
         for file in possibles:
-            target_bmp_file = PRODUCT_LABEL_BMP_LOCATION / file
             target_png_file = PRODUCT_LABEL_PNG_LOCATION / file.stem + '.png'
-            if target_bmp_file.exists() and not target_bmp_file.isdir():
+            if use_cache and target_png_file.exists():
                 timestamp = target_bmp_file.stat().st_mtime
-                if not target_png_file.exists() or target_png_file.stat().st_mtime < timestamp:
-                    Image.open(target_bmp_file).save(target_png_file)
                 timestamp = '-' + DateTime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%S')
                 break
+            else:
+                target_bmp_file = PRODUCT_LABEL_BMP_LOCATION / file
+                if target_bmp_file.exists() and not target_bmp_file.isdir():
+                    timestamp = target_bmp_file.stat().st_mtime
+                    if not target_png_file.exists() or target_png_file.stat().st_mtime < timestamp:
+                        try:
+                            Image.open(target_bmp_file).save(target_png_file)
+                        except Exception:
+                            _logger.exception('failure converting %r to %r', target_bmp_file, target_png_file)
+                            continue
+                    timestamp = '-' + DateTime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%S')
+                    break
         else:
             return file, None
         ts_file = target_png_file.stem + timestamp + '.png'
@@ -1090,12 +1113,9 @@ def calc_width(src_rows):
                 align = 'center'
             try:
                 with Image.open(PRODUCT_LABEL_BMP_LOCATION / link) as image:
-                    dpi = image.height / 4.0
                     scale = 1200.0 / image.height
                     new_width = scale * image.width
                     percent = min(int(new_width / 1800 * 100), 100)
-                print ('image: %s  %s' % (image.size, image.info))
-                print ('dpi: %s\nscale: %s\nnew width: %s\npercent: %s' % (dpi, scale, new_width, percent))
             except IOError:
                 percent = 0
             row.append((remote_link, '%s%%' % percent, align, header))
