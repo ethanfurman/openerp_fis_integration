@@ -533,12 +533,14 @@ def handle_arci(method):
                     warn('unable to create cross-reference for %r' % (cross_ref, ), UserWarning)
                     continue
                 cross_ref.id = cross_ref_id
+                all_oe_records[key] = cross_ref
     #
     # delete mappings
     #
     if deleted_records:
         # toss any records that don't already exist in OpenERP
         for key, rec in sorted(deleted_records.items()):
+            all_oe_records.pop(key, None)
             if LIST_RECORDS:
                 echo('  F262:%s  %s' % (rec.id, rec.key))
         delete_ids = [r.id for r in deleted_records.values()]
@@ -551,6 +553,22 @@ def handle_arci(method):
                     )
             if not DRYRUN:
                 arci_mapping.delete(delete_ids, context=context)
+    #
+    # update ir.model.data mappings
+    #
+    oe_records = dict(
+            (r.id, r)
+            for r in get_records(
+                oe,
+                'fis_integration.customer_product_cross_reference',
+                domain=[('source','=','fis')],
+                fields=['key'],
+                ))
+    update_ir_model_data(
+            'fis_integration.customer_product_cross_reference',
+            262,
+            oe_records,
+            )
     #
     print('%d mappings changed\n%d mappings added\n%d mappings %s'
             % (changed_count, added_count, deleted_count, 'deleted'),
@@ -660,7 +678,6 @@ def handle_nvty(method):
                 new_changed_item_records[new_item.xml_id] = new_item
             assert set(old_changed_item_records.keys()) == set(new_changed_item_records.keys()),\
                     "old and new item records mismatch"
-
         #
         # and convert the new and deleted records
         #
@@ -890,7 +907,7 @@ def handle_nvty(method):
             deleted_count = len(ids)
             if deleted_count:
                 logger.info(
-                        'F262 -- removing -- %s',
+                        'F135 -- removing -- %s',
                         ', '.join(sorted(deleted_records.keys()))
                         )
                 if LIST_RECORDS:
@@ -901,6 +918,18 @@ def handle_nvty(method):
                         product.delete(ids, context=context)
                     else:
                         product.write('...', ids, {'active': False})
+    #
+    # update ir.model.data mappings
+    #
+    oe_records = dict(
+            (r.id, r.xml_id)
+            for r in get_records(
+                oe,
+                'product.product',
+                domain=[('module','=','F135')],
+                fields=['xml_id'],
+                ))
+    update_ir_model_data('product.product', 135, oe_records)
     #
     print('%d products changed\n%d products added\n%d products %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -1351,13 +1380,13 @@ def handle_csms(method):
         verb = 'deleting' if DELETE else 'deactivating'
         print('%s records' % verb, border='flag')
         logger.info(
-                'F163 -- %s -- %s',
+                'F33 -- %s -- %s',
                 verb,
                 ', '.join(sorted(deleted_records.keys()))
                 )
         if LIST_RECORDS:
             for key, rec in sorted(deleted_records.items()):
-                echo('  F163:%s  %s' % (key, rec.name))
+                echo('  F33:%s  %s' % (key, rec.name))
         deleted_count = len(deleted_records)
         if not DRYRUN:
             oe_ids = res_partner.search(domain=[('xml_id','in',deleted_records.keys())])
@@ -1365,6 +1394,18 @@ def handle_csms(method):
                 res_partner.delete(oe_ids, context=context)
             else:
                 res_partner.write('...', oe_ids, {'active': False}, context=context)
+    #
+    # update ir.model.data mappings
+    #
+    oe_records = dict(
+            (r.id, r.xml_id)
+            for r in get_records(
+                oe, 'res.partner',
+                domain=[('module','=','F33')],
+                fields=['xml_id'],
+                context=context,
+                ))
+    update_ir_model_data('res.partner', 33, oe_records)
     #
     print('%d customers changed\n%d customers added\n%d customers %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -1528,7 +1569,6 @@ def handle_csmss(method):
             #
             old_changed_ship_to_records[key] = old_rec
             new_changed_ship_to_records[key] = new_rec
-
         assert set(old_changed_ship_to_records.keys()) == set(new_changed_ship_to_records.keys()),\
                 "old and new ship_to records mismatch"
     else:
@@ -1652,6 +1692,18 @@ def handle_csmss(method):
                 res_partner.delete(oe_ids, context=context)
             else:
                 res_partner.write('...', oe_ids, {'active': False}, context=context)
+    #
+    # update ir.model.data mappings
+    #
+    oe_records = dict(
+            (r.id, r.xml_id)
+            for r in get_records(
+                oe, 'res.partner',
+                domain=[('module','=','F34')],
+                fields=['xml_id'],
+                context=context,
+                ))
+    update_ir_model_data('res.partner', 34, oe_records)
     #
     print('%d ship-tos changed\n%d ship-tos added\n%d ship-tos %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -1815,6 +1867,18 @@ def handle_customer_terms():
                 customer_terms.delete(oe_ids, context=context)
             else:
                 customer_terms.write('...', oe_ids, {'active': False}, context=context)
+    #
+    # update ir.model.data mappings
+    #
+    oe_records = dict(
+            (r.id, r.xml_id)
+            for r in get_records(
+                oe, 'fis.account.customer_terms',
+                domain=[('module','=','F8')],
+                fields=['xml_id'],
+                context=context,
+                ))
+    update_ir_model_data('fis.account.customer_terms', 8, oe_records)
     #
     print('%d customer terms changed\n%d customer terms added\n%d customer terms %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -1991,6 +2055,18 @@ def handle_transmitter():
             oe_ids = transmitter_numbers.search(domain=[('transmitter_no','in',deleted_records.keys())])
             transmitter_numbers.delete(oe_ids, context=context)
     #
+    # update ir.model.data mappings
+    #
+    oe_records = dict(
+            (r.id, r.transmitter_no)
+            for r in get_records(
+                oe, 'fis.transmitter_code',
+                domain=[('module','=','F192')],
+                fields=['transmitter_no'],
+                context=context,
+                ))
+    update_ir_model_data('fis.transmitter_code', 192, oe_records)
+    #
     print('%d transmitter records changed\n%d transmitter records added\n%d transmitter records deleted'
             % (changed_count, added_count, deleted_count),
             border='box',
@@ -2137,6 +2213,17 @@ def handle_production_lines():
         if not DRYRUN:
             oe_ids = production_line_model.search(domain=[('xml_id','in',deleted_records.keys())])
             production_line_model.delete(oe_ids, context=context)
+    #
+    # update ir.model.data mappings
+    #
+    oe_records = dict(
+            (r.id, r.xml_id)
+            for r in get_records(
+                oe, 'fis_integration.production_line',
+                fields=['xml_id'],
+                context=context,
+                ))
+    update_ir_model_data('fis_integration.production_line', 341, oe_records)
     #
     print('%d production line records changed\n%d production line records added\n%d production line records deleted'
             % (changed_count, added_count, deleted_count),
@@ -2286,13 +2373,13 @@ def handle_sales_reps():
         verb = 'deleting' if DELETE else 'deactivating'
         print('%s records' % verb, border='flag')
         logger.info(
-                'F163 -- %s -- %s',
+                'F47 -- %s -- %s',
                 verb,
                 ', '.join(sorted(deleted_records.keys()))
                 )
         if LIST_RECORDS:
             for key, rec in sorted(deleted_records.items()):
-                echo('  F163:%s  %s' % (key, rec.fis_name))
+                echo('  F47:%s  %s' % (key, rec.fis_name))
         deleted_count = len(deleted_records)
         if not DRYRUN:
             oe_ids = customer_salesreps.search(domain=[('xml_id','in',deleted_records.keys())])
@@ -2300,6 +2387,18 @@ def handle_sales_reps():
                 customer_salesreps.delete(oe_ids, context=context)
             else:
                 customer_salesreps.write('...', oe_ids, {'active': False}, context=context)
+    #
+    # update ir.model.data mappings
+    #
+    oe_records = dict(
+            (r.id, r.xml_id)
+            for r in get_records(
+                oe, 'fis.account.salesperson',
+                domain=[('module','=','F47')],
+                fields=['xml_id'],
+                context=context,
+                ))
+    update_ir_model_data('fis.account.salesperson', 47, oe_records)
     #
     print('%d customer salesrep changed\n%d customer salesrep added\n%d customer salesrep %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -2573,6 +2672,18 @@ def handle_carrier(method):
                 res_partner.delete(oe_ids, context=context)
             else:
                 res_partner.write('...', oe_ids, {'active': False}, context=context)
+    #
+    # update ir.model.data mappings
+    #
+    oe_records = dict(
+            (r.id, r.xml_id)
+            for r in get_records(
+                oe, 'res.partner',
+                domain=[('module','=','F27')],
+                fields=['xml_id'],
+                context=context,
+                ))
+    update_ir_model_data('res.partner', 27, oe_records)
     #
     print('%d carriers changed\n%d carriers added\n%d carriers %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -2919,6 +3030,28 @@ def handle_emp1(method):
             print('setting %d records inactive' % len(inactive_keys))
             if not DRYRUN:
                 hr_employee.write(inactive_keys, inactive, {'active': False})
+    #
+    # update ir.model.data mappings
+    #
+    oe_records = dict(
+            (r.id, r.xml_id)
+            for r in get_records(
+                oe, 'res.partner',
+                domain=[('module','=','F74')],
+                fields=['xml_id'],
+                context=context,
+                ))
+    update_ir_model_data('res.partner', 74, oe_records)
+    oe_records = dict(
+            (r.id, r.xml_id)
+            for r in get_records(
+                oe, 'hr.employee',
+                domain=[('module','=','F74')],
+                fields=['xml_id'],
+                context=context,
+                ))
+    update_ir_model_data('hr.employee', 74, oe_records)
+    #
     print(
             '%d records changed\n%d records added\n%d records (maybe) deleted'
                 % (changed_count, added_count, deleted_count),
@@ -3122,6 +3255,18 @@ def handle_product_category():
                 else:
                     product_category.write('...', oe_ids, {'active': False}, context=context)
     #
+    # update ir.model.data mappings
+    #
+    oe_records = dict(
+            (r.id, r.xml_id)
+            for r in get_records(
+                oe, 'product.category',
+                domain=[('module','=','F11')],
+                fields=['xml_id'],
+                context=context,
+                ))
+    update_ir_model_data('product.category', 11, oe_records)
+    #
     print('%d categories changed\n%d categories added\n%d categories %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
             border='box',
@@ -3297,6 +3442,18 @@ def handle_product_location():
                 oe_ids = product_location.search(domain=[('xml_id','in',deleted_records.keys())])
                 if DELETE:
                     product_location.delete(oe_ids, context=context)
+    #
+    # update ir.model.data mappings
+    #
+    oe_records = dict(
+            (r.id, r.xml_id)
+            for r in get_records(
+                oe, 'product.available_at',
+                domain=[('module','=','F97')],
+                fields=['xml_id'],
+                context=context,
+                ))
+    update_ir_model_data('product.available_at', 97, oe_records)
     #
     print('%d locations changed\n%d locations added\n%d locations %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -3687,6 +3844,18 @@ def handle_supplier(method):
                     res_partner.delete(oe_ids, context=context)
                 else:
                     res_partner.write('...', oe_ids, {'active': False}, context=context)
+    #
+    # update ir.model.data mappings
+    #
+    oe_records = dict(
+            (r.id, r.xml_id)
+            for r in get_records(
+                oe, 'res.partner',
+                domain=[('module','=','F163')],
+                fields=['xml_id'],
+                context=context,
+                ))
+    update_ir_model_data('res.partner', 163, oe_records)
     #
     print('%d suppliers changed\n%d suppliers added\n%d suppliers %s'
             % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
@@ -4419,6 +4588,42 @@ class Product(IDEquality):
     def __repr__(self):
         return "%s(id=%r, xml_id=%r)" % (self.__class__.__name__, self.id, self.xml_id)
 
+def update_ir_model_data(model, table_number, oe_records):
+    # oe_records = {id: key, ...}
+    ir_model_data = oe.get_model('ir.model.data')
+    imd_by_id = dict()
+    imd_by_name = dict()
+    for rec in ir_model_data.read(
+            [('module','=','fis'), ('model','=',model)],
+            fields=['name','res_id'],
+        ):
+        imd_by_id[rec.res_id] = rec
+        imd_by_name[rec.name] = rec
+    # remove missing ids first
+    dead_ids = set([imd_rec.id for imd_rec in imd_by_id.values if imd_rec.res_id not in oe_records])
+    if dead_ids:
+        ir_model_data.unlink(dead_ids)
+    for id, key in oe_records.items():
+        imd_name = "F%03d_%s_%s" % (table_number, key, model.replace('.','_'))
+        by_id = imd_by_id.get(id)
+        by_name = imd_by_name.get(imd_name)
+        if by_id and by_id == by_name:
+            # we have records and they match
+            continue
+        elif not (by_id and by_name):
+            # no records, so create one
+            new_rec = AttrDict({
+                    'module':'fis',
+                    'model':model.replace('.','_'),
+                    'res_id':id,
+                    'name':imd_name,
+                    })
+            new_rec.id = ir_model_data.create(AttrDict)
+            imd_by_id[new_rec.res_id] = new_rec
+            imd_by_name[imd_name] = new_rec
+        else:
+            error('error with name %r:\n  oe record id: %d\n  ir.model.data res_id: %r\n  ir.model.data name: %r'
+                    % (imd_name, id, by_id, by_name))
 
 # old code
 # def handle_sales_reps():
