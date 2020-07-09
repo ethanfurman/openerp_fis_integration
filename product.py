@@ -9,7 +9,8 @@ from fnx.oe import dynamic_page_stub
 from fnx.xid import xmlid
 from openerp import SUPERUSER_ID, CONFIG_DIR, ROOT_DIR
 from openerp.exceptions import ERPError
-from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids, NamedLock
+from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids, self_uid, NamedLock
+import os
 from osv import osv, fields
 from PIL import Image
 from xaml import Xaml
@@ -899,6 +900,66 @@ class product_online_order(osv.Model):
         'po_number': fields.char('PO #', size=64),
         }
 
+    _defaults = {
+        'user_id': self_uid,
+        }
+
+    def create(self, cr, uid, vals, context=None):
+        item_ids = vals.get('item_ids', [])
+        new_item_ids = []
+        for instruction in item_ids:
+            if instruction[0] == 0:
+                new_item_ids.append(instruction)
+        vals['item_ids'] = item_ids = new_item_ids
+        user = self.pool.get('res.users').browse(cr, SUPERUSER_ID, uid, context=context)
+        transmitter = user.fis_transmitter_id.transmitter_no
+        if not item_ids:
+            raise ERPError(
+                    'Missing Items',
+                    'no items listed',
+                    )
+        lines = ['%s-%s' % (user.login, transmitter)]
+        po_number = vals.get('po_number')
+        req_ship_date = vals.get('req_ship_date')
+        if po_number:
+            lines.append('PON-%s' % (po_number, ))
+        if req_ship_date:
+            lines.append('RSD-%s' % (req_ship_date, ))
+        # {
+        #   'req_ship_date': False,
+        #   'item_ids': [
+        #           [0, False, {
+        #                   'product_desc': 'Almonds - Dry Roasted & Lightly Salted SunRidge NonGMO Verified',
+        #                   'order_id': 5874L,
+        #                   'partner_product_id': 241355,
+        #                   'partner_product_code': '70184',
+        #                   'product_fis_id': '001042',
+        #                   'partner_list_code': 'HE447',
+        #                   'quantity': 1,
+        #                   }],
+        #           [0, False, ...],
+        #           ],
+        #   'partner_crossref_list': 'HE447',
+        #   'po_number': False,
+        #   'show_req_ship_date': False,
+        #   'show_po_number': False,
+        #   'partner_id': 47170,
+        #   },
+        #
+        for command, _, item in item_ids:
+            lines.append('%s - %s - 1 unit' % (
+                item['product_fis_id'],
+                item['quantity'],
+                ))
+        filename = '/home/openerp/sandbox/openerp/var/fis_integration/orders/%s' % vals['partner_id']
+        with open_next_file(filename) as f:
+            f.write('\n'.join(lines))
+            f.write('\n')
+        new_id = super(product_online_order, self).create(cr, uid, vals, context=context)
+        filename = '/home/openerp/sandbox/openerp/var/fis_integration/orders/%s.txt' % new_id
+        Path(f.name).move(filename)
+
+
     def onload(self, cr, uid, ids, context=None):
         res = {'value': {}}
         res_users = self.pool.get('res.users')
@@ -919,35 +980,6 @@ class product_online_order(osv.Model):
         return res
 
     def button_place_order(self, cr, uid, ids, context=None):
-        if isinstance(ids, (int, long)):
-            ids = [ids]
-        user = self.pool.get('res.users').browse(cr, SUPERUSER_ID, uid, context=context)
-        transmitter = user.fis_transmitter_id.transmitter_no
-        for order in self.browse(cr, SUPERUSER_ID, ids, context=context):
-            lines = ['%s-%s' % (user.login, transmitter)]
-            if order.po_number:
-                lines.append('PON-%s' % (order.po_number, ))
-            if order.req_ship_date:
-                lines.append('RSD-%s' % (order.req_ship_date, ))
-            if not order.item_ids:
-                raise ERPError(
-                        'Missing Items',
-                        'no items listed',
-                        )
-            for item in order.item_ids:
-                if item.quantity < 1:
-                    raise ERPError(
-                            'Invalid Quantity',
-                            'quantity for item %s is less than one' % (item.product_desc, ),
-                            )
-                lines.append('%s - %s - %s' % (
-                    item.partner_product_id.fis_product_id.xml_id,
-                    item.quantity,
-                    item.partner_product_id.fis_product_id.fis_shipping_size,
-                    ))
-        with open('/home/openerp/sandbox/openerp/var/fis_integration/orders/%s.txt' % order.id, 'w') as f:
-            f.write('\n'.join(lines))
-            f.write('\n')
         return {
             'type': 'ir.actions.client',
             'tag': 'home',
@@ -1079,7 +1111,7 @@ def add_timestamp(file, use_cache):
         for file in possibles:
             target_png_file = PRODUCT_LABEL_PNG_LOCATION / file.stem + '.png'
             if use_cache and target_png_file.exists():
-                timestamp = target_bmp_file.stat().st_mtime
+                timestamp = target_png_file.stat().st_mtime
                 timestamp = '-' + DateTime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%S')
                 break
             else:
@@ -1121,6 +1153,21 @@ def calc_width(src_rows):
             row.append((remote_link, '%s%%' % percent, align, header))
         res.append(row)
     return res
+
+def open_next_file(filename):
+    """
+    adds numbers to file name until succesfully opened; stops at 99
+    """
+    for i in range(100):
+        try:
+            target = filename + '.%02d' % (i, )
+            fh = os.open(target, os.O_CREAT | os.O_EXCL)
+            os.close(fh)
+            return open(target, 'w')
+        except OSError:
+            pass
+    else:
+        raise ERPError('File Conflicts', 'unable to create order file')
 
 LabelLinkTab = """\
 !!! html
