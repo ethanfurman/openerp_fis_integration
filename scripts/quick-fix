@@ -1,0 +1,102 @@
+#!/usr/local/sbin/suid-python --virtualenv
+from __future__ import print_function
+
+from antipathy import Path
+from openerplib import get_connection
+from os import environ
+from scription import *
+from scription import ViewProgress
+
+
+virtual_env = environ['VIRTUAL_ENV']
+config = OrmFile(Path('%s/config/fnx.ini' % virtual_env), types={'_path':Path})
+
+oe = get_connection(
+        database=config.openerp.db,
+        login=config.openerp.user,
+        password=config.openerp.pw,
+        hostname=config.openerp.host,
+        )
+
+ir_model_data = oe.get_model('ir.model.data')
+
+# ir.model.data name -> "F%03d_%s_%s" % (table_number, key, model.replace('.','_'))
+
+# 262 - ARCI -> key <- fis_integration.customer_product_cross_reference
+
+# 135 - NVTY -> xml_id <- product.product
+
+#  11 - CNVZ -> xml_id <- product.category
+
+#  97 - CNVZ -> xml_id <- product.available_at
+
+#  74 - EMP1 -> xml_id <- hr.employee
+#  74 - EMP1 -> xml_id <- res.partner
+#  27 - CNVZ -> xml_id <- res.partner
+#  33 - CSMS -> xml_id <- res.partner
+#  34 - CSMSS-> xml_id <- res.partner
+# 163 - POSM -> xml_id <- res.partner
+#  65 - VNMS -> xml_id <- res.partner
+
+#  47 - CNVZ -> xml_id <- fis.account.salesperson
+
+#   8 - CNVZ -> xml_id <- fis.account.customer_terms
+
+# 192 - CNVZ -> transmitter_no <- fis.transmitter_code
+
+# 341 - CNVZ -> xml_id <- fis_integration.production_line
+
+errors = []
+
+target_ids = ir_model_data.search([('module','=','fis')])
+echo('removing %d ir.model.data names' % len(target_ids))
+ir_model_data.unlink(target_ids)
+
+for table_num, fis_table_name, key_field, oe_model_name, new_oe_model_name in (
+        # ( 262, 'ARCI', 'key', 'fis_integration.customer_product_cross_reference', 'fis.customer_product_xref'),
+        # ( 135, 'NVTY', 'xml_id', 'product.product', None),
+        # (  11, 'CNVZ', 'xml_id', 'product.category', None),
+        # (  97, 'CNVZ', 'xml_id', 'product.available_at', 'product.location'),
+        # (  74, 'EMP1', 'xml_id', 'hr.employee', None),
+        (  74, 'EMP1', 'xml_id', 'res.users', None),
+        # (  27, 'CNVZ', 'xml_id', 'res.partner', None),
+        # (  33, 'CSMS', 'xml_id', 'res.partner', None),
+        # (  34, 'CSMSS','xml_id', 'res.partner', None),
+        # ( 163, 'POSM', 'xml_id', 'res.partner', None),
+        # (  65, 'VNMS', 'xml_id', 'res.partner', None),
+        # (  47, 'CNVZ', 'xml_id', 'fis.account.salesperson', None),
+        # (   8, 'CNVZ', 'xml_id', 'fis.account.customer_terms', None),
+        # ( 192, 'CNVZ', 'transmitter_no', 'fis.transmitter_code', 'fis.account.transmitter_code'),
+        # ( 341, 'CNVZ', 'xml_id', 'fis_integration.production_line', 'fis.production.line'),
+    ):
+    echo('\n==================================================\nprocessing %s: %s' % (table_num, fis_table_name))
+    oe_module_name = 'F%d' % table_num
+    oe_model = oe.get_model(oe_model_name)
+    domain = [('id','!=',0)]
+    if key_field == 'xml_id':
+        domain.append(('module','=',oe_module_name))
+    echo('domain:', domain)
+    main_records = oe_model.search_read(domain, fields=['id',key_field], context={'active_test':False})
+    echo('adding names to %d records' % len(main_records))
+    seen = set()
+    for rec in ViewProgress(main_records, view_type='percent'):
+        key = rec[key_field]
+        name = "F%03d_%s_%s" % (table_num, rec[key_field], (new_oe_model_name or oe_model_name).replace('.','_'))
+        if key in seen:
+            echo('\nskipping id %d [%s]' % (rec.id, name))
+            errors.append((table_num, oe_model_name, key))
+            continue
+        seen.add(key)
+        # echo('module %r, name %r, model %r, res_id %r' % ('fis', name, oe_model_name, rec.id))
+        ir_model_data.create({
+                'module': 'fis',
+                'name': name.replace('-','_'),
+                'model': oe_model_name,
+                'res_id': rec.id,
+                })
+
+if errors:
+    echo('duplicates found:')
+    errors.insert(0, ('FIS Table','OE Model','IMD Name'))
+    errors.insert(1, None)
+    echo(errors, border='table')
