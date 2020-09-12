@@ -48,9 +48,9 @@ ir_model_data = oe.get_model('ir.model.data')
 
 errors = []
 
-target_ids = ir_model_data.search([('module','=','fis')])
-echo('removing %d ir.model.data names' % len(target_ids))
-ir_model_data.unlink(target_ids)
+# target_ids = ir_model_data.search([('module','=','fis')])
+# echo('removing %d ir.model.data names' % len(target_ids))
+# ir_model_data.unlink(target_ids)
 
 for table_num, fis_table_name, key_field, oe_model_name, new_oe_model_name in (
         # ( 262, 'ARCI', 'key', 'fis_integration.customer_product_cross_reference', 'fis.customer_product_xref'),
