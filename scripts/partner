@@ -352,7 +352,7 @@ def get_now_customers(filename):
                 ],
             ).open(mode='read-only')
     for n in now_dbf[1:]:
-        n = AttrDict([(k, n[k]) for k in dbf.field_names(n)])
+        n = AttrDict(*((k, n[k]) for k in dbf.field_names(n)))
         if n.category in ('SunRidge Retail Accounts', 'Headquarter/Retail Contacts', 'SunRidge Distributors', 'Private Label Account', 'SunRidge Brokers/Reps'):
             n.is_customer = True
         elif n.category in ('Suppliers', 'Business', 'Computer Related', 'Trade Pubs. & Assns.', 'Marketing/PR'):
