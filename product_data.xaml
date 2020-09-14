@@ -1,0 +1,8 @@
+!!! xml1.0
+~openerp
+    ~data
+
+        ~record model='product.category' #fis_product_category_invalid
+            @parent_id ref='product.product_category_all'
+            @name: Invalid/Missing FIS ID
+

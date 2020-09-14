@@ -29,6 +29,7 @@
             'res_partner_view.xaml',
             'res_partner_data.xaml',
             'res_users_view.xaml',
+	    'product_data.xaml',
             'product_view.xaml',
             'project_view.xaml',
             'crm_lead_view.xaml',
