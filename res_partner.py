@@ -3,6 +3,7 @@ from collections import defaultdict
 from itertools import groupby
 from openerp import SUPERUSER_ID
 from openerp.osv import osv, fields
+from openerp.exceptions import ERPError
 # from tools.misc import EnumNoAlias
 from fnx_fs.fields import files
 from VSS.address import normalize_address, Rise
@@ -323,6 +324,8 @@ class res_partner(xmlid, osv.Model):
         }
 
     def create(self, cr, uid, values, context=None):
+        if 'code' in (values.get('zip', False) or ''):
+            raise ERPError('data verification error', 'invalid zip code %r for record %r' % (values['zip'], values))
         if context is None:
             context = {}
         if 'child_ids' in values:
@@ -337,6 +340,8 @@ class res_partner(xmlid, osv.Model):
         return new_id
 
     def write(self, cr, uid, ids, values, context=None):
+        if 'code' in (values.get('zip', False) or ''):
+            raise ERPError('data verification error', 'invalid zip code %r for ids %r' % (values['zip'], ids))
         if context is None:
             context = {}
         if isinstance(ids, (int, long)):
@@ -391,34 +396,35 @@ class res_partner(xmlid, osv.Model):
                         return False
                 return True
         else:
-            # we only care if a latched field is being updated
-            check_fis = ''
-            if 'name' in values:
-                check_fis += 'N'
-            for field in ADDRESS_FIELDS:
-                if field in values:
-                    check_fis += 'A'
-                    break
-            if 'specials_notification' in values:
-                check_fis += 'S'
-            if check_fis:
-                # okay, we really only care if any the records to update are FIS records
-                if any(d['fis_data_address'] for d in datas):
-                    for data in datas:
-                        piecemeal_values = values.copy()
-                        if data['fis_data_address']:
-                            # definitely an FIS record
-                            updated_by_user = data['fis_updated_by_user'] or ''
-                            if 'N' in check_fis:
-                                updated_by_user += 'N'
-                            if 'A' in check_fis:
-                                updated_by_user += 'A'
-                            if 'S' in check_fis:
-                                updated_by_user += 'S'
-                            piecemeal_values['fis_updated_by_user'] = ''.join(sorted(set(updated_by_user)))
-                        if not super(res_partner, self).write(cr, uid, data['id'], piecemeal_values, context=context):
-                            return False
-                    return True
+            if 'fis_updated_by_user' not in values:
+                # we only care if a latched field is being updated
+                check_fis = ''
+                if 'name' in values:
+                    check_fis += 'N'
+                for field in ADDRESS_FIELDS:
+                    if field in values:
+                        check_fis += 'A'
+                        break
+                if 'specials_notification' in values:
+                    check_fis += 'S'
+                if check_fis:
+                    # okay, we really only care if any the records to update are FIS records
+                    if any(d['fis_data_address'] for d in datas):
+                        for data in datas:
+                            piecemeal_values = values.copy()
+                            if data['fis_data_address']:
+                                # definitely an FIS record
+                                updated_by_user = data['fis_updated_by_user'] or ''
+                                if 'N' in check_fis:
+                                    updated_by_user += 'N'
+                                if 'A' in check_fis:
+                                    updated_by_user += 'A'
+                                if 'S' in check_fis:
+                                    updated_by_user += 'S'
+                                piecemeal_values['fis_updated_by_user'] = ''.join(sorted(set(updated_by_user)))
+                            if not super(res_partner, self).write(cr, uid, data['id'], piecemeal_values, context=context):
+                                return False
+                        return True
         return super(res_partner, self).write(cr, uid, ids, values, context=context)
 
     def fnxfs_folder_name(self, records):
@@ -495,22 +501,22 @@ class res_partner(xmlid, osv.Model):
 
 
     def rp_remove_dups(self, cr, uid, *args):
-        print "starting"
+        print("starting")
         ids = self.search(cr, uid, [])
         records = self.browse(cr, uid, ids)
         dup_lists = defaultdict(list)
         for i, rec in enumerate(records):
             if not i % 100:
-                print "%d records sorted" % i
+                print("%d records sorted" % i)
             street, street2 = Rise(normalize_address(rec.street or ''), normalize_address(rec.street2 or ''))
             key = rec.supplier, rec.customer, rec.name, street, street2, rec.city, rec.state_id, rec.country_id, rec.zip
             if rec.supplier or rec.customer:
                 dup_lists[key].append(rec)
         removed = 0
-        print "checking %d possible groups..." % len(dup_lists)
+        print("checking %d possible groups..." % len(dup_lists))
         for i, batch in enumerate(dup_lists.values()):
             if not i % 100:
-                print "%d processed" % i
+                print("%d processed" % i)
             to_kill = []
             to_save = []
             for rec in batch:
@@ -523,6 +529,6 @@ class res_partner(xmlid, osv.Model):
             for rec in to_kill:
                 self.unlink(cr, uid, [rec.id])
                 removed += 1
-        print "%d duplicates removed" % removed
+        print("%d duplicates removed" % removed)
         return True
 
