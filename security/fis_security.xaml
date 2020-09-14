@@ -21,4 +21,3 @@
             @login: fis_daemon
             @active eval='True'
             @name: FIS
-            @customer eval='False'
