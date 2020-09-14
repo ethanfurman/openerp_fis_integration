@@ -511,10 +511,20 @@ def convert_set(clausa):
         print('set', clausa, verbose=2)
         try:
             field, op, value, clausa = re.match(
-                    "^(\w+)\s*(=)\s*('?.*(?<!\\')?|.*?)\s*(.*?)\s*$",
+                    "^"
+                    "(\w+)"
+                    "\s*(=)\s*"
+                    "("
+                        "'[^']*'"
+                        "|"
+                        "[^,]*?"
+                        ")"
+                    "\s*"
+                    "(.*?)\s*"
+                    "$",
                     clausa,
                     ).groups()
-            print('\nfield: %r\nop: %r\nvalue: %r\nwhere: %r\n' % (field, op, value, clausa), verbose=2)
+            print('\nfield: %r\nop: %r\nvalue: %r\nclausa: %r\n' % (field, op, value, clausa), verbose=2)
             if not (field and op and value):
                 raise ValueError
         except (ValueError, AttributeError):
@@ -767,8 +777,6 @@ def write_txt(table, query, fields, file, separator=False, wrap=None):
                         elif isinstance(cv, basestring):
                             cv = '%s' % cv
                             line.append(cv)
-                        elif isinstance(cv, bool):
-                            line.append(' t'[cv])
                         elif cv is None:
                             line.append('')
                         else:
@@ -776,8 +784,6 @@ def write_txt(table, query, fields, file, separator=False, wrap=None):
                 elif isinstance(cell_value, basestring):
                     cell_value = '%s' % cell_value
                     line.append(cell_value)
-                elif isinstance(cell_value, bool):
-                    line.append(' t'[cell_value])
                 elif cell_value is None:
                     line.append('')
                 else:
