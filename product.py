@@ -356,6 +356,10 @@ class product_product(xmlid, osv.Model):
             digits=(15,3),
             help="How much can be made with current inventory.",
             ),
+        'fis_whsle_price': fields.float(
+            string='Wholesale Price',
+            digits=(15,3),
+            ),
         'label_server_stub': fields.function(
             _label_links,
             string='Current Labels',
