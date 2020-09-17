@@ -7,13 +7,12 @@ import re
 from abc import ABCMeta, abstractmethod
 from aenum import Enum
 from antipathy import Path
-from dbf import Date, DateTime, Time, Null, Table, READ_WRITE
-from dbf import NoneType, NullType, Char, Date, Logical, DateTime
+from dbf import Date, DateTime, Time, Table, READ_WRITE
+from dbf import NoneType, NullType, Char, Logical
 from openerplib import DEFAULT_SERVER_DATE_FORMAT, get_records, get_xid_records, XidRec
-from openerplib import Fault, PropertyNames, IDEquality, Many2One, SetOnce, pfm
-from scription import print, echo, error, ViewProgress, input, script_verbosity
+from openerplib import Fault, PropertyNames, IDEquality, Many2One, SetOnce
+from scription import print, echo, error, ViewProgress
 from traceback import format_exception
-from time import time
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, PostalCode
 from VSS.BBxXlate.fisData import fisData
 from VSS.utils import LazyClassAttr, grouped_by_column
@@ -824,9 +823,14 @@ class Synchronize(SynchronizeABC):
         """
         # try the fast method first
         try:
-            print('attempting quick delete of %d records' % len(self.remove_records))
+            print('attempting quick delete/deactivate of %d records' % len(self.remove_records))
             ids = [r.id for r in self.remove_records.values()]
-            self.model.unlink(ids)
+            if 'active' in self.OE_FIELDS:
+                action = 'deactivate'
+                self.model.write(ids, {'active': False})
+            else:
+                action = 'delete'
+                self.model.unlink(ids)
             oe_records = self.oe_records.copy()
             self.oe_records.clear()
             self.oe_records.update(dict(
@@ -835,7 +839,7 @@ class Synchronize(SynchronizeABC):
                 if k not in self.remove_records
                 ))
             self.deleted_count += len(self.remove_records)
-            self.log('delete', *self.remove_records.values())
+            self.log(action, *self.remove_records.values())
         except Fault:
             # that didn't work, do it the slow way
             for key, rec in ViewProgress(
@@ -843,9 +847,12 @@ class Synchronize(SynchronizeABC):
                     message='recording $total deletions',
                     view_type='percent',
                 ):
-                self.log('delete', rec)
+                self.log(action, rec)
                 try:
-                    self.model.unlink(rec.id)
+                    if action == 'deactivate':
+                        self.model.write(rec.id, {'active': False})
+                    else:
+                        self.model.unlink(rec.id)
                     self.deleted_count += 1
                     self.oe_records.pop(key)
                 except Fault as exc:
@@ -913,7 +920,12 @@ class Synchronize(SynchronizeABC):
             if method in ('quick', 'full'):
                 print()
                 print('%d mappings added\n%d mappings changed\n%d mappings %s'
-                        % (self.added_count, self.changed_count, self.deleted_count, 'deleted'),
+                        % (
+                            self.added_count,
+                            self.changed_count,
+                            self.deleted_count,
+                            ('deleted','deactivated')['active' in self.OE_FIELDS],
+                            ),
                         border='box',
                         )
             self.close_dbf_log()
@@ -1068,8 +1080,9 @@ class SynchronizeAddress(Synchronize):
                     city = country
                     result[cf] = city
         zip_code = result[zf]
-        if isinstance(zip_code, dict) or isinstance(zip_code, (str, unicode)) and '{' in zip_code:
-            abort('invalid zip code in:\n%s' % fis_rec)
+        if isinstance(zip_code, dict) or isinstance(zip_code, (str, unicode)) and 'code' in zip_code:
+            print('invalid zip code in:\n%s' % fis_rec)
+            raise SystemExit(1)
         return result
 
 
@@ -1348,7 +1361,7 @@ def get_next_filename(name, limit=99):
     adds numbers to file name until succesfully opened; stops at limit
     """
     file = Path(name)
-    for i in range(100):
+    for i in range(10000):
         try:
             target = file.parent / file.base + '.%02d' % i + file.ext
             fh = os.open(target, os.O_CREAT | os.O_EXCL)
@@ -1357,10 +1370,9 @@ def get_next_filename(name, limit=99):
         except OSError:
             pass
     else:
-        raise ERPError('File Conflicts', 'unable to create order file')
+        raise IOError('unable to create file for %s' % name)
 
 
-NoneType = type(None)
 recipe_sentinels = (
         'Cooking',
         'COOKING',
