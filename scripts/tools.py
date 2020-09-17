@@ -11,7 +11,7 @@ from dbf import Date, DateTime, Time, Table, READ_WRITE
 from dbf import NoneType, NullType, Char, Logical
 from openerplib import DEFAULT_SERVER_DATE_FORMAT, get_records, get_xid_records, XidRec
 from openerplib import Fault, PropertyNames, IDEquality, Many2One, SetOnce
-from scription import print, echo, error, ViewProgress
+from scription import print, echo, error, ViewProgress, script_verbosity, abort
 from traceback import format_exception
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, PostalCode
 from VSS.BBxXlate.fisData import fisData
@@ -19,6 +19,10 @@ from VSS.utils import LazyClassAttr, grouped_by_column
 
 virtualenv = os.environ['VIRTUAL_ENV']
 odoo_erp = 1 if 'odoo' in virtualenv else 0
+
+ # keep pyflakes happy
+script_verbosity
+abort
 
 @PropertyNames
 class XmlLink(IDEquality):
@@ -109,11 +113,17 @@ class Synchronize(SynchronizeABC):
     FIS_IGNORE_RECORD = lambda self, rec: False
     OE_KEY_MODULE = None
     FIELDS_CHECK_IGNORE = ()
+    def FIS_IGNORE_RECORD(self, rec):
+        if self.extra.get('key_filter') is not None:
+            if self.extra['key_filter'] == rec[self.FIS_KEY]:
+                return False
+            return True
+        return False
 
     get_fis_table = staticmethod(fisData)
     get_xid_records = staticmethod(get_xid_records)
 
-    def __init__(self, connect, config):
+    def __init__(self, connect, config, extra=None):
         """
         class level variables that need to be set
 
@@ -139,6 +149,7 @@ class Synchronize(SynchronizeABC):
         self.context = {'fis-updates': True, 'active_test': False}
         self.model = self.erp.get_model(self.OE)
         self.ir_model_data = self.erp.get_model('ir.model.data')
+        self.extra = extra or {}
         #
         # get the "old" data from:
         # - quick -> old fis file
@@ -165,7 +176,9 @@ class Synchronize(SynchronizeABC):
         split records into changed, added, and deleted groups
         """
         print('categorizing...')
+        print('fis record keys: %r\noe record keys:  %r' % (self.fis_records.keys(), self.oe_records.keys()), verbose=3)
         all_keys = set(list(self.fis_records.keys()) + list(self.oe_records.keys()))
+        print('all keys: %r' % (all_keys, ), verbose=3)
         change_records = 0
         for key in sorted(all_keys):
             old = self.oe_records.get(key)
@@ -453,6 +466,7 @@ class Synchronize(SynchronizeABC):
                     key = oe_module, key
                 self.fis_records[key] = rec
         print('%d records retrieved' % len(self.fis_records))
+        print('  ', '\n   '.join(str(r) for r in self.fis_records.values()), verbose=3)
         return None
 
     def fis_quick_load(self):
@@ -712,6 +726,13 @@ class Synchronize(SynchronizeABC):
                     ('module','=','fis'),
                     ('name','in',xid_names),
                     ]
+        elif self.extra.get('key_filter') is not None:
+            domain=[
+                ('module','=','fis'),
+                ('model','=',self.OE),
+                ('name','=like','%s_%s_%s' % (self.F, self.extra['key_filter'], self.IMD),)
+                ]
+
         else:
             domain=[
                 ('module','=','fis'),
@@ -726,6 +747,9 @@ class Synchronize(SynchronizeABC):
                 self.OE_FIELDS,
                 context=self.context,
             ):
+            if self.extra.get('key_filter') is not None:
+                if self.extra['key_filter'] != rec[self.OE_KEY]:
+                    continue
             key = rec[self.OE_KEY]
             if module:
                 key = module, key
@@ -996,11 +1020,11 @@ class Synchronize(SynchronizeABC):
 
 class SynchronizeAddress(Synchronize):
 
-    def __init__(self, connect, config, state_recs, country_recs):
+    def __init__(self, connect, config, state_recs, country_recs, *args, **kwds):
 
         self.state_recs = state_recs
         self.country_recs = country_recs
-        super(SynchronizeAddress, self).__init__(connect, config)
+        super(SynchronizeAddress, self).__init__(connect, config, *args, **kwds)
 
     def normalize_records(self, fis_rec=None, oe_rec=None):
         super(SynchronizeAddress, self).normalize_records(fis_rec, oe_rec)
@@ -1029,7 +1053,7 @@ class SynchronizeAddress(Synchronize):
     def process_address(self, schema, fis_rec, home=False):
         result = {}
         address_lines = (fis_rec[schema.addr1], fis_rec[schema.addr2], fis_rec[schema.addr3])
-        echo('address lines:', *address_lines, sep='\n')
+        print('\naddress lines:\n1: %r\n2: %r\n3: %r\r' % address_lines, sep='\n', border='overline', verbose=3)
         addr1, addr2, addr3 = Sift(*address_lines)
         addr2, city, state, postal, country = cszk(addr2, addr3)
         addr3 = None
@@ -1038,6 +1062,7 @@ class SynchronizeAddress(Synchronize):
         addr1, addr2 = AddrCase(Rise(addr1, addr2))
         city = NameCase(city)
         state, country = NameCase(state), NameCase(country)
+        print('   -----\n1: %r\n2: %r\nc: %r   s: %r   z: %r\nk: %r' % (addr1, addr2, city, state, postal, country), verbose=3)
         valid_address = True
         if not (addr1 or addr2) or not (city or state or country):
             # just use the FIS data without processing

@@ -115,9 +115,8 @@ def main(dryrun, list_records, raise_on_exception):
         )
 def fis_integration(method, delete, *files, **extra):
     global skipped_suppliers, vendor_suppliers, ven2sup, vendor_codes
-    global models, DELETE, EXTRA
+    global models, DELETE
     DELETE = delete
-    EXTRA = extra
     try:
         # make sure we are the only one running
         with PidLockFile(virtualenv / 'var/run/fis_update.pid'):
@@ -149,9 +148,9 @@ def fis_integration(method, delete, *files, **extra):
                     CNVZO1,      # transmitter numbers, 192
                     CNVZz,       # sales reps, 47
                     ):
-                    handler(oe, config).run(method)
+                    handler(oe, config, extra=extra).run(method)
                 # shipping carriers, 27
-                CNVZsv(oe, config, state_recs, country_recs).run(method)
+                CNVZsv(oe, config, state_recs, country_recs, extra=extra).run(method)
             for filename, handler in (
                     ('arci', ARCI),
                     ('nvty', NVTY),
@@ -161,14 +160,14 @@ def fis_integration(method, delete, *files, **extra):
                     ('ifpp', IFPP1),
                 ):
                 if filename in files:
-                    handler(oe, config).run(method)
+                    handler(oe, config, extra=extra).run(method)
             if 'emp1' in files:
-                EMP1(oe, config, state_recs, country_recs).run(method)
+                EMP1(oe, config, state_recs, country_recs, extra=extra).run(method)
             if 'posm' in files or 'vnms' in files:
-                POSM_VNMS(oe, config, state_recs, country_recs).run(method)
+                POSM_VNMS(oe, config, state_recs, country_recs, extra=extra).run(method)
             if 'csms' in files:
-                CSMS(oe, config, state_recs, country_recs).run(method)
-                CSMSS(oe, config, state_recs, country_recs).run(method)
+                CSMS(oe, config, state_recs, country_recs, extra=extra).run(method)
+                CSMSS(oe, config, state_recs, country_recs, extra=extra).run(method)
     except socket.error as s_error:
         if s_error.errno in (
                 errno.ECONNREFUSED,
@@ -656,6 +655,7 @@ class CSMS(SynchronizeAddress):
     RE = r"10...... "
     OE = 'res.partner'
     IMD = 'res_partner'
+    FIS_KEY = F33.code
     OE_KEY = 'xml_id'
     OE_KEY_MODULE = 'F33'
     OE_FIELDS_QUICK = [
@@ -807,7 +807,13 @@ class CSMS(SynchronizeAddress):
             contact.fis_updated_by_user = None
             contact.is_company = False
             contact.customer = True
-            contact.use_parent_address = True
+            contact.use_parent_address = False
+            contact.street = company.street
+            contact.street2 = company.street2
+            contact.city = company.city
+            contact.state_id = company.state_id
+            contact.zip = company.zip
+            contact.country_id = company.country_id
             contact.specials_notification = Specials.company
             contact.fis_valid = company.fis_valid
             contact.active = company.active
@@ -2633,7 +2639,13 @@ class POSM_VNMS(SynchronizeAddress):
             contact.is_company = False
             contact.customer = False
             contact.supplier = True
-            contact.use_parent_address = True
+            contact.use_parent_address = False
+            contact.street = company.street
+            contact.street2 = company.street2
+            contact.city = company.city
+            contact.state_id = company.state_id
+            contact.zip = company.zip
+            contact.country_id = company.country_id
             contact.phone = fix_phone(vnms_rec[F65.tele]) or None
             contact.fax = fix_phone(vnms_rec[F65.fax]) or None
             contact.fis_org_cert_file = False
