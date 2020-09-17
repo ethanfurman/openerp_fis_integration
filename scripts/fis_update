@@ -175,7 +175,7 @@ def fis_update(method, skip_copy, skip_update, files, dryrun, list_records, bw_l
 
 
 @Command(
-        fis_file=Spec('File nanme or number to examine'),
+        fis_file=Spec('File name or number to examine', default='all'),
         key=Spec('key of specific record to look for', OPTION),
         type=Spec('type of records to display', OPTION, choices=['add','change','delete']),
         last=Spec('look in most recent file [default]', FLAG, abbrev=None, radio='when'),
@@ -199,7 +199,11 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
             help("KEY must be a 'field,value' pair, not %r" % (key, ))
     if not location:
         location = dbf_log_path
-    if fis_file.isdigit():
+    if fis_file == 'all':
+        template = '*.dbf'
+        if not (last or today or all):
+            all = True
+    elif fis_file.isdigit():
         template = '%s_*.dbf' % fis_file
     else:
         template = '*_%s-*.dbf' % fis_file.lower()
@@ -208,6 +212,7 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
     if not files:
         abort('unable to find any files for %r in %s' % (fis_file, location))
     files.sort()
+    print('\n'.join(files), verbose=2)
     if today or date:
         target = (today and Date.today() or date).strftime('-%Y-%m-%d.')
         files[:] = [pf for pf in files if target in pf]
@@ -231,30 +236,47 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
         echo('PROCESSING %s' % file, border=('lined','~'))
         with dbf.Table(file, default_data_types=enhanced) as table:
             print('  %d records' % len(table), verbose=2)
-            if info:
-                added = 0
-                deltas = 0
-                changed = 0
-                deleted = 0
-                failed = 0
+            if info:                    # number of...
+                added = 0               #   successfully added records
+                add_failed = 0          #   failed to add records
+                deltas = 0              #   change groups
+                changed = 0             #   successfully changed records
+                change_failed = 0       #   failed to change records
+                change_group = 0        #   records in current delta
+                deleted = 0             #   successfully deleted/deactivated records
+                delete_failed = 0       #   failed to delete/deactivate records
+                section = 'add'         # current type of record being processed
                 for rec in table:
                     if rec.action_ == 'add':
                         added += 1
                     elif rec.action_ == 'delta':
+                        section = 'change'
                         deltas += 1
+                        change_group = 0
                     elif rec.action_ == 'change':
                         changed += 1
-                    elif rec.action_ == 'delete':
-                        deleted += 0
+                        change_group += 1
+                    elif rec.action_ in ('deactivate', 'delete'):
+                        section = 'delete'
+                        deleted += 1
                     elif rec.action_ == 'failed':
-                        failed += 1
-                print((
-                    ('Added', 'Change\nSets', 'Deleted', 'Failures'),
-                    (added, deltas, deleted, failed),
+                        if section == 'add':
+                            added -= 1
+                            add_failed += 1
+                        elif section == 'change':
+                            changed -= change_group
+                            change_failed += change_group
+                        elif section == 'delete':
+                            deleted -= 1
+                            delete_failed += 1
+                echo((
+                    ('Added', 'Failed\nto add', 'Change\nSets', 'Changed', 'Failed\nto change', 'Deleted', 'Failed\nto delete'),
+                    None,
+                    (added, add_failed, deltas, changed, change_failed, deleted, delete_failed),
                     ),
                     border='table',
                     )
-                return
+                continue
             added = []
             changed = {}
             deleted = []
