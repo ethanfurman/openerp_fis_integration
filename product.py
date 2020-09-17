@@ -962,7 +962,7 @@ class product_online_order(osv.Model):
         new_id = super(product_online_order, self).create(cr, uid, vals, context=context)
         filename = '/home/openerp/sandbox/openerp/var/fis_integration/orders/%s.txt' % new_id
         Path(f.name).move(filename)
-
+        return new_id
 
     def onload(self, cr, uid, ids, context=None):
         res = {'value': {}}
