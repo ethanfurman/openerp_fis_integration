@@ -1,8 +1,11 @@
 from __future__ import print_function
 from collections import defaultdict
 from sys import exc_info
+
+import errno
 import os
 import re
+import warnings
 
 from abc import ABCMeta, abstractmethod
 from aenum import Enum
@@ -1342,11 +1345,15 @@ class ProductLabelDescription(object):
     def process(self):
         try:
             lines = self.label_text('B',".91100")
-        except:
+        except IOError as exc1:
             try:
                 lines = self.label_text('TT',".91100")
-            except:
+            except IOError as exc2:
                 lines = []
+                if exc1.errno not in (errno.ENOENT, error.ENOTDIR):   # no such file or directory / not a directory
+                    warnings.warn('item %r: %s' % (self.item_code, exc1))
+                elif exc2.errno not in (errno.ENOENT, errno.ENOTDIR):
+                    warnings.warn('item %r: %s' % (self.item_code, exc1))
         lines.sort()
         found = None
         self.ingredients = []
