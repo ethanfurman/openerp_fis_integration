@@ -2113,7 +2113,7 @@ class NVTY(Synchronize):
         forecast_data = get_product_forecast()
         print('getting description data')
         description_data = get_product_descriptions()
-        for xml_id, rec in self.fis_records.items():
+        for (module, xml_id), rec in self.fis_records.items():
             #
             label_data = ProductLabelDescription(xml_id)
             rec.fis_web_ingredients = label_data.ingredients_text or None
