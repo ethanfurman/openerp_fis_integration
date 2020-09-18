@@ -1350,7 +1350,7 @@ class ProductLabelDescription(object):
                 lines = self.label_text('TT',".91100")
             except IOError as exc2:
                 lines = []
-                if exc1.errno not in (errno.ENOENT, error.ENOTDIR):   # no such file or directory / not a directory
+                if exc1.errno not in (errno.ENOENT, errno.ENOTDIR):   # no such file or directory / not a directory
                     warnings.warn('item %r: %s' % (self.item_code, exc1))
                 elif exc2.errno not in (errno.ENOENT, errno.ENOTDIR):
                     warnings.warn('item %r: %s' % (self.item_code, exc1))
