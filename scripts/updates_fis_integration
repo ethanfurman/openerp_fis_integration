@@ -788,7 +788,7 @@ class CSMS(SynchronizeAddress):
                 company.fis_credit_20_days = 0
                 company.fis_credit_30_days = 0
                 company.fis_credit_total = 0
-        company.fis_transmitter_id = CNVZO1.TransmitterCode(key+'-default')
+        company.fis_transmitter_id = CNVZO1.TransmitterCode(key)
         company = XidRec.fromdict(company, imd)
         contact = None
         if fis_rec[F33.contact] and fis_rec[F33.contact] != fis_rec[F33.name]:
