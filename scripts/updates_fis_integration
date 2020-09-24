@@ -497,8 +497,9 @@ class CNVZO1(Synchronize):
         tran_code = AttrDict.fromkeys(self.OE_FIELDS, None)
         tran_code.transmitter_no = key
         tran_code.transmitter_name = fis_rec[F192.transmitter_name].strip() or None
-        tran_code.ship_to_code = fis_rec[F192.ship_to_id].strip() or None
-        tran_code.partner_xml_id = fis_rec[F192.cust_no].strip() or None
+        tran_code.ship_to_code = ship_to = fis_rec[F192.ship_to_id].strip() or None
+        tran_code.partner_xml_id = partner =  fis_rec[F192.cust_no].strip() or None
+        tran_code.xml_id = ('%s-%s' % (partner, ship_to)).strip('-')
         return (XidRec.fromdict(tran_code, imd), )
 
 

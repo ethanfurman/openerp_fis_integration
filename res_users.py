@@ -80,11 +80,11 @@ class res_users(osv.Model):
 class transmitter(osv.Model):
     _name = 'fis.transmitter_code'
 
-    def _calc_name(self, cr, uid, ids, field_names=None, arg=None, context=None):
+    def _calc_name(self, cr, uid, ids, field_name=None, arg=None, context=None):
         if isinstance(ids, (int, long)):
             ids = [ids]
         res = {}
-        if not ids or 'name' not in field_names and 'xml_id' not in field_names:
+        if not ids or field_name != 'name':
             return res
         for rec in self.read(
                 cr, uid, ids,
@@ -92,17 +92,14 @@ class transmitter(osv.Model):
                 context=context,
                 ):
             if rec['ship_to_code'] and rec['transmitter_name']:
-                name = '%s [%s] %s' % (rec['transmitter_no'], rec['ship_to_code'], rec['transmitter_name'])
-                xml_id = '%s-%s' % (rec['partner_xml_id'], rec['ship_to_code'])
+                text = '%s [%s] %s' % (rec['transmitter_no'], rec['ship_to_code'], rec['transmitter_name'])
             elif rec['ship_to_code']:
-                name = '%s [%s]' % (rec['transmitter_no'], rec['ship_to_code'])
-                xml_id = '%s-%s' % (rec['partner_xml_id'], rec['ship_to_code'])
+                text = '%s [%s]' % (rec['transmitter_no'], rec['ship_to_code'])
             elif rec['transmitter_name']:
-                name = '%s -- %s' % (rec['transmitter_no'], rec['transmitter_name'])
-                xml_id = '%s' % (rec['partner_xml_id'], )
+                text = '%s -- %s' % (rec['transmitter_no'], rec['transmitter_name'])
             else:
-                name = rec['transmitter_no']
-            res[rec['id']] = {'name': name, 'xml_id': xml_id}
+                text = rec['transmitter_no']
+            res[rec['id']] = text
         return res
 
     _columns = {
@@ -114,18 +111,8 @@ class transmitter(osv.Model):
             store={
                 'fis.transmitter_code': (self_ids, [], 10),
                 },
-            multi='xml-name',
             ),
-        'xml_id': fields.function(
-            _calc_name,
-            string='FIS ID',
-            type='char',
-            size=11,
-            store={
-                'fis.transmitter_code': (self_ids, [], 10),
-                },
-            multi='xml-name',
-            ),
+        'xml_id': fields.char('FIS ID', size=11),
         'partner_xml_id': fields.char("Customer #", size=6, help="customer number in FIS"),
         'transmitter_name': fields.char("Transmitter Name", size=128),
         'transmitter_no': fields.char('Transmitter #', size=6),
