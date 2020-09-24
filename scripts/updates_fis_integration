@@ -473,10 +473,13 @@ class CNVZO1(Synchronize):
     IMD = 'account_transmitter_code'
     #
     RE = r"O110......"
-    OE_KEY = 'transmitter_no'
+    OE_KEY = 'xml_id'   # this is a calculated field in OpenERP
     OE_FIELDS = ('id', 'transmitter_no', 'transmitter_name', 'partner_xml_id', 'ship_to_code')
     #
-    FIS_IGNORE_RECORD = lambda self, rec: not rec[F192.transmitter_no].strip().isdigit()
+    FIS_IGNORE_RECORD = lambda self, rec: not (
+            rec[F192.transmitter_no].strip().isdigit()
+            and rec[F192.status][0] == 'A'
+            )
     #
     TransmitterCode = XmlLink
 
@@ -880,8 +883,8 @@ class CSMSS(SynchronizeAddress):
             return ()
         parent_xml_id = fis_rec[F34.code]
         name = re.sub('sunridge', 'SunRidge', BsnsCase(fis_rec[F34.name]), flags=re.I)
-        code = fis_rec[F34.ship_to_no].strip() or 'default'
-        key = '%s-%s' % (fis_rec[F34.code], code)
+        ship_to_code = fis_rec[F34.ship_to_no].strip() or None
+        key = ('%s-%s' % (fis_rec[F34.code], ship_to_code or '')).strip('-')
         imd = AttrDict(
                 id=0,
                 model=self.OE,
@@ -892,7 +895,7 @@ class CSMSS(SynchronizeAddress):
         ship_to = AttrDict.fromkeys(self.OE_FIELDS, None)
         ship_to.name = name
         ship_to.active = True
-        ship_to.fis_ship_to_code = code
+        ship_to.fis_ship_to_code = ship_to_code
         ship_to.module = self.OE_KEY_MODULE
         ship_to.xml_id = key
         ship_to.update(self.process_address(F34, fis_rec))
