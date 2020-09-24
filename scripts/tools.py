@@ -415,7 +415,7 @@ class Synchronize(SynchronizeABC):
             path /= 'var/log/sync-updates'
             if not path.exists():
                 path.mkdir()
-        specs = ['action_ C(7)', 'failure_ M null']
+        specs = ['action_ C(10)', 'failure_ M null']
         names = []
         for name in ('id',self.OE_KEY,'name','street','street2','city','state_id','zip','country_id'):
             if name in names:
@@ -794,7 +794,6 @@ class Synchronize(SynchronizeABC):
                 with log_record:
                     log_record.id = new_id
             except Exception as exc:
-                raise
                 vals = {self.OE_KEY: rec[self.OE_KEY]}
                 if self.OE_KEY_MODULE:
                     value = self.OE_KEY_MODULE
