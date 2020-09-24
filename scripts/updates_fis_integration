@@ -473,12 +473,13 @@ class CNVZO1(Synchronize):
     IMD = 'account_transmitter_code'
     #
     RE = r"O110......"
-    OE_KEY = 'xml_id'   # this is a calculated field in OpenERP
-    OE_FIELDS = ('id', 'transmitter_no', 'transmitter_name', 'partner_xml_id', 'ship_to_code')
+    OE_KEY = 'xml_id'
+    OE_FIELDS = ('id', 'transmitter_no', 'transmitter_name', 'partner_xml_id', 'ship_to_code', 'xml_id')
     #
     FIS_IGNORE_RECORD = lambda self, rec: not (
             rec[F192.transmitter_no].strip().isdigit()
-            and rec[F192.status][0] == 'A'
+            and rec[F192.status][0:1] == 'A'
+            and rec[F192.cust_no].strip()
             )
     #
     TransmitterCode = XmlLink
@@ -499,7 +500,7 @@ class CNVZO1(Synchronize):
         tran_code.transmitter_name = fis_rec[F192.transmitter_name].strip() or None
         tran_code.ship_to_code = ship_to = fis_rec[F192.ship_to_id].strip() or None
         tran_code.partner_xml_id = partner =  fis_rec[F192.cust_no].strip() or None
-        tran_code.xml_id = ('%s-%s' % (partner, ship_to)).strip('-')
+        tran_code.xml_id = ('%s-%s' % (partner, ship_to or '')).strip('-')
         return (XidRec.fromdict(tran_code, imd), )
 
 
