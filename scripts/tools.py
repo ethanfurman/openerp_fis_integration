@@ -937,11 +937,11 @@ class Synchronize(SynchronizeABC):
                 raise ValueError('unknown METHOD: %r' % (method, ))
             names = self.load_fis_data()    # load fis data
             self.oe_load_data(names)        # load oe data
-            self.normalize_fis()                # adjust fis data as needed
+            self.normalize_fis()            # adjust fis data as needed
             self.categorize()               # split into changed, added, deleted groups
+            self.record_deletions()         # deletions first, in case imd changed
             self.record_additions()
             self.record_changes()
-            self.record_deletions()
         finally:
             if method in ('quick', 'full'):
                 print()
