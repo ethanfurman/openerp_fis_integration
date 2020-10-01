@@ -8,7 +8,6 @@ appropriate script, and runs it.
 
 from __future__ import print_function
 from scription import *
-from scription import ViewProgress
 from antipathy import Path
 from dbf import Char, Date, DateTime, Time, Logical, NoneType, Null, NullType
 from logging import getLogger, INFO, Formatter, handlers
@@ -393,7 +392,7 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
                             table.skip(-1)
                             break
                         if key:
-                            if re.match(key_value, rec[key]):
+                            if rec[key] and re.match(key_value, rec[key]):
                                 key_found = True
                             else:
                                 continue
