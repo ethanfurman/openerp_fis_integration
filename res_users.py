@@ -1,5 +1,6 @@
 from openerp.osv import fields, osv
 from openerp.tools import SUPERUSER_ID, self_ids
+from openerp.exceptions import ERPError
 
 class res_users(osv.Model):
     """ Update of res.users class
@@ -123,4 +124,7 @@ class transmitter(osv.Model):
             ('transmitter_unique', 'unique(transmitter_no)', 'transmitter code already exists'),
             ]
 
-
+    def write(self, cr, uid, ids, values, context=None):
+        if 'transmitter_no' in values and not values['transmitter_no']:
+            raise ERPError('No', 'not authorized to remove the transmitter number')
+        return super(transmitter, self).write(cr, uid, ids, values, context=context)
