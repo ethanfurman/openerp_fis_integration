@@ -1,4 +1,4 @@
-scripts/fis --suid openerp
+scripts/fis --suid
 scripts/oe-users --suid
 scripts/oe-export
 scripts/recipe
