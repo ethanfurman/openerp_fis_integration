@@ -1,19 +1,35 @@
 #!/usr/local/bin/python2
+"""
+transform the order output from OpenERP's Customer Portal Online Ordering
+to a transfer file that FIS can import
+"""
 from __future__ import print_function
 
 from scription import *
 from antipathy import Path
 from traceback import format_exc
-from dbf import Date, Period
+from datetime import timedelta
+from dbf import Date, DateTime, Period
 
 # all order numbers must be in the 10000-19999 range or we have collisions
 # with other FIS-feeding processes
 
 BASE_SEQ = 10000
-ORDERS = Path("/home/openerp/sandbox/openerp/var/fis_integration/orders/")
-ARCHIVE = Path("/home/openerp/sandbox/openerp/var/fis_integration/orders/archive/")
+CUT_OFF = timedelta(seconds=300)
 
-@Command()
+BASE_PATH = Path("/home/openerp/sandbox/openerp/var/fis_integration/orders")
+ORDERS = BASE_PATH
+ARCHIVE = BASE_PATH / "archive"
+RECIPIENT_FILE = BASE_PATH / 'notify'
+ERROR_FILE = BASE_PATH / 'notified'
+
+dt_NOW = DateTime.now()
+i_NOW = dt_NOW.hour * 100 + dt_NOW.minute
+
+# API
+
+@Command(
+        )
 def process_openerp_orders():
     """
     transform OpenERP Customer Portal orders into FIS input
@@ -22,7 +38,7 @@ def process_openerp_orders():
     tomorrow = Date.today().replace(delta_day=+1).strftime("%m%d%y")
     # order files to process
     new_order_list = get_files_to_process(ORDERS)
-    errors_encountered = False
+    errors = []
     for order_file in new_order_list:
         print('processing %s' % (order_file, ))
         try:
@@ -57,10 +73,13 @@ def process_openerp_orders():
                 out_file.write(rec)
             order_file.move("/home/openerp/sandbox/openerp/var/fis_integration/orders/archive/")
         except Exception:
-            errors_encountered = True
-            error('%s: error occured:\n%s' % (order_no, format_exc()))
+            exc_type, exc, _ = sys.exc_info()
+            error_lines = format_exception_only(exc_type, exc)
+            error(''.join(error_lines))
+            errors.extend(format_exception_only(exc_type, exc))
             continue
-    if errors_encountered:
+    if errors:
+        notify(errors)
         return Exit.Unknown
 
 
@@ -83,6 +102,7 @@ def daily_digest(date):
         echo('===================')
     print('checking %d order files' % len(archive_order_list, ))
     orders = {}
+    # TODO: keep orders sorted when printing
     for order in archive_order_list:
         order_date = Date.fromtimestamp(order.stat().st_mtime)
         if order_date in target_period:
@@ -99,9 +119,11 @@ def daily_digest(date):
             echo()
 
 
+# helprs
+
 def get_files_to_process(path):
     """
-    returns files match \d*.txt
+    returns files that match \d*.txt
     """
     # path must be a Path
     order_list = [
@@ -112,6 +134,112 @@ def get_files_to_process(path):
     order_list.sort(key=lambda fn: int(fn.stem)) 
     return order_list
 
+def filter_recipients(addresses):
+    """
+    return recipients that have not been contacted for current situation
+    """
+    with open(ERROR_FILE) as fh:
+        lines = fh.readlines()
+    if lines[0].startswith('time'):
+        lines.pop(0)
+    contacted = []
+    for line in lines:
+        date, time, address = line
+        contacted.append(address)
+    return [a for a in addresses if a not in contacted]
 
-Run()
 
+def get_recipients():
+    """
+    read address file and return eligible recipients based on allowed times
+    """
+    with open(RECIPIENT_FILE) as fh:
+        lines = fh.readlines()
+    if lines[0].startswith('email'):
+        lines.pop(0)
+    addresses = []
+    for line in lines:
+        pieces = line.split()
+        if len(pieces) == 3:
+            email, start, stop = pieces
+            phone = None
+        elif len(pieces) == 4:
+            email, phone, start, stop = pieces
+        else:
+            abort("bad line in %s: %r" % (RECIPIENT_FILE.filename, line))
+        start, stop = int(start), int(stop)
+        addresses.append(email, 0, 2359)
+        if phone and start <= i_NOW <= stop:
+            addresses.append(phone, start, stop)
+    addresses = filter_recipients(addresses)
+    return addresses
+
+
+def notify(errors):
+    """
+    send errors to email recipients, notifications to text message recipients
+    """
+    last_accessed = ERROR_FILE.stat().st_atime
+    if dt_NOW - DateTime.fromtimestamp() > CUTOFF:
+        with open(ERROR_FILE, 'w') as fh:
+            fh.write("time contacted      address\n")
+    addresses = filter_recipients(get_recipients())
+    sent_addresses = []
+    message = ''.join(errors)
+    failed_to_send = []
+    for address in addresses:
+        try:
+            job = Job(
+                    '/usr/bin/mail -s "errors encountered in process_openerp_orders" %s'
+                    % address,
+                    pty=True,
+                    )
+            job.communicate(input=message, timeout=60)
+            sent_addresses.append(address)
+        except Exception as exc:
+            error(exc)
+            failed_to_send.append(address)
+            continue
+    if failed_to_send:
+        error('\n\nUnable to contact:\n  %s' % ('\n  '.join(failed_to_send)))
+    update_recipients(sent_addresses)
+
+def send_mail(recipients, subject, message):
+    """
+    use system mail command to send MESSAGE to RECIPIENTS
+    """
+    command = '/usr/bin/mail -s "%s" %s' % (subject, ','.join(recipients))
+    job = Job(command, pty=True)
+    try:
+        job.communicate(input=message)
+    except Exception:
+        echo(job.stdout)
+        error(job.stderr)
+        raise
+
+def update_recipients(addresses):
+    """
+    update notification file with who was contacted at what time
+    """
+    with open(ERROR_FILE, 'a') as fh:
+        for address in addresses:
+            fh.write('%-20s %s\n' % (dt_NOW.strftime('%Y-%M-%D %h:%m'), address))
+
+
+Main()
+
+
+# recipient file format, space-delimited
+# email, start time, and end time fields are required
+# example only
+"""
+email                 phone             start time      end time
+ethan@stoneleaf.us    971.506.1961      0800            1700
+emile@gmail.com       650.343.3458      0500            2000
+"""
+
+# notification file format
+"""
+time contacted      address
+2020-05-20 03:47    ethan@stoneleaf.us
+"""
