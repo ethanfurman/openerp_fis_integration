@@ -340,6 +340,8 @@ class res_partner(xmlid, osv.Model):
         return new_id
 
     def write(self, cr, uid, ids, values, context=None):
+        if 'fis_transmitter_no' in values and not values['fis_transmitter_no']:
+            raise ERPError('No', 'not authorized to remove the transmitter number')
         if 'code' in (values.get('zip', False) or ''):
             raise ERPError('data verification error', 'invalid zip code %r for ids %r' % (values['zip'], ids))
         if context is None:

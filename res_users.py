@@ -77,6 +77,10 @@ class res_users(osv.Model):
             res['domain']['fis_transmitter_id'] = [('partner_xml_id','=',partner.xml_id)]
         return res
 
+    def write(self, cr, uid, ids, values, context=None):
+        if 'fis_transmitter_no' in values and not values['fis_transmitter_no']:
+            raise ERPError('No', 'not authorized to remove the transmitter number')
+        return super(res_users, self).write(cr, uid, ids, values, context=context)
 
 class transmitter(osv.Model):
     _name = 'fis.transmitter_code'
