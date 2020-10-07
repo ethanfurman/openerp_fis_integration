@@ -122,6 +122,7 @@ def adhoc(table, fields, to_file, domain, order, distinct, separator, wrap, _con
         abort('unknown file type: %r' % to_file)
     if _internal:
         return q
+    return not q
 
 def _module_name(text):
     module, name = text.split('.')
@@ -252,15 +253,15 @@ def sql(command, separator, wrap):
     if ';' in check_command:
         abort('more than one command specified')
     if check_command.startswith('select '):
-        sql_select(command, separator, wrap)
+        return not sql_select(command, separator, wrap)
     elif check_command.startswith('count '):
         sql_count(command, separator)
     elif check_command.startswith('describe '):
         sql_describe(command, separator, wrap)
     elif check_command.startswith('update '):
-        sql_update(command)
+        return not sql_update(command)
     elif check_command.startswith('delete from '):
-        sql_delete(command)
+        return not sql_delete(command)
     else:
         abort('one of SELECT | UPDATE | DELETE | DESCRIBE | COUNT not specified')
 
@@ -400,7 +401,8 @@ def sql_select(command, separator, wrap, _internal=False):
             )
     if _internal:
         return query
-    echo('SELECT %d' % len(query.records))
+    echo('SELECT %d' % len(query))
+    return len(query)
 
 def sql_update(command):
     """\
@@ -446,6 +448,7 @@ def sql_update(command):
     print('writing\n  %r\nto %s for ids\n%r' % (values, table._name, ids))
     table.write(ids, values)
     echo('UPDATE %d' % len(ids))
+    return len(ids)
 
 def sql_delete(command):
     """\
@@ -478,6 +481,7 @@ def sql_delete(command):
     print('deleting %d records from %s' % (len(ids), table._name))
     table.unlink(ids)
     echo('DELETE %d' % len(ids))
+    return len(ids)
 
 def sql_count(command, separator):
     """
@@ -488,7 +492,8 @@ def sql_count(command, separator):
         [TO file] # ignored
     """
     query = sql_select(command, separator, wrap=None, _internal=True)
-    echo('COUNT %d' % len(query.records))
+    echo('COUNT %d' % len(query))
+    return len(query)
 
 @Command(
         table=("show exports for TABLE", )
