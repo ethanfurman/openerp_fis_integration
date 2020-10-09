@@ -244,9 +244,12 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
                 change_group = 0        #   records in current delta
                 deleted = 0             #   successfully deleted/deactivated records
                 delete_failed = 0       #   failed to delete/deactivate records
-                section = 'add'         # current type of record being processed
+                section = 'delete'         # current type of record being processed
                 for rec in table:
-                    if rec.action_ == 'add':
+                    if rec.action_ in ('deactivate', 'delete'):
+                        deleted += 1
+                    elif rec.action_ == 'add':
+                        section = 'add'
                         added += 1
                     elif rec.action_ == 'delta':
                         section = 'change'
@@ -255,9 +258,6 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
                     elif rec.action_ == 'change':
                         changed += 1
                         change_group += 1
-                    elif rec.action_ in ('deactivate', 'delete'):
-                        section = 'delete'
-                        deleted += 1
                     elif rec.action_ == 'failed':
                         if section == 'add':
                             added -= 1
@@ -285,7 +285,43 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
             widths, types = calc_widths_types(field_names, table)
             last_list = None
             table.top()
+            echo(table.current, table.current_record)
+            if not type or type == 'delete':
+                # one big table with all fields from all deletes
+                def process_deletes():
+                    first = True
+                    key_found = False
+                    failed = False
+                    while not table.eof:
+                        table.skip()
+                        rec = table.current_record
+                        if rec.action_ not in ('delete', 'deactivate', 'failed'):
+                            table.skip(-1)
+                            break
+                        if key:
+                            if rec[key] and re.match(key_value, rec[key]):
+                                key_found = True
+                            else:
+                                continue
+                        if first:
+                            yield('-- deletes --')
+                            yield(field_names)
+                            yield(None)
+                            first = False
+                        if rec.action_ == 'failed':
+                            if key and not key_found:
+                                continue
+                            yield(' ')
+                            yield(rec.failure_)
+                            failed = True
+                        else:
+                            if failed:
+                                yield('-')
+                                failed = False
+                            yield([rec[fn] for fn in field_names])
+                echo(table_display(process_deletes(), widths=widths, types=types, header=False))
             if not type or type == 'add':
+                echo(table.current, table.current_record)
                 # one big table with all fields from all adds
                 def process_adds():
                     first = True
@@ -326,6 +362,7 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
                             yield([rec[fn] for fn in field_names])
                 echo(table_display(process_adds(), widths=widths, types=types, header=False))
             if not type or type == 'change':
+                echo(table.current, table.current_record)
                 # many little tables, one per change set
                 def process_changes():
                     "process one table at a time"
@@ -379,40 +416,6 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
                     return {'rows': rows, 'widths': widths, 'types': types}
                 while table.next_record.action_ == 'delta':
                     echo(table_display(display_none='!', **process_changes()))
-            if not type or type == 'delete':
-                # one big table with all fields from all deletes
-                def process_deletes():
-                    first = True
-                    key_found = False
-                    failed = False
-                    while not table.eof:
-                        table.skip()
-                        rec = table.current_record
-                        if rec.action_ not in ('delete', 'failed'):
-                            table.skip(-1)
-                            break
-                        if key:
-                            if rec[key] and re.match(key_value, rec[key]):
-                                key_found = True
-                            else:
-                                continue
-                        if first:
-                            yield('-- deletes --')
-                            yield(field_names)
-                            yield(None)
-                            first = False
-                        if rec.action_ == 'failed':
-                            if key and not key_found:
-                                continue
-                            yield(' ')
-                            yield(rec.failure_)
-                            failed = True
-                        else:
-                            if failed:
-                                yield('-')
-                                failed = False
-                            yield([rec[fn] for fn in field_names])
-                echo(table_display(process_deletes(), widths=widths, types=types, header=False))
 
 
 class ServiceUnavailable(Exception):
