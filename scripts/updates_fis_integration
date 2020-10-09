@@ -488,19 +488,22 @@ class CNVZO1(Synchronize):
         if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
             return ()
         key = fis_rec[F192.transmitter_no].strip()
+        ship_to = fis_rec[F192.ship_to_id].strip() or None
+        partner = fis_rec[F192.cust_no].strip() or None
+        xml_id = ('%s-%s' % (partner, ship_to or '')).strip('-')
         imd = AttrDict(
                 id=0,
                 model=self.OE,
                 res_id=0,
                 module='fis',
-                name=self.calc_xid(key),
+                name=self.calc_xid(xml_id),
                 )
         tran_code = AttrDict.fromkeys(self.OE_FIELDS, None)
         tran_code.transmitter_no = key
         tran_code.transmitter_name = fis_rec[F192.transmitter_name].strip() or None
-        tran_code.ship_to_code = ship_to = fis_rec[F192.ship_to_id].strip() or None
-        tran_code.partner_xml_id = partner =  fis_rec[F192.cust_no].strip() or None
-        tran_code.xml_id = ('%s-%s' % (partner, ship_to or '')).strip('-')
+        tran_code.ship_to_code = ship_to
+        tran_code.partner_xml_id = partner
+        tran_code.xml_id = xml_id
         return (XidRec.fromdict(tran_code, imd), )
 
 
@@ -886,7 +889,8 @@ class CSMSS(SynchronizeAddress):
         parent_xml_id = fis_rec[F34.code]
         name = re.sub('sunridge', 'SunRidge', BsnsCase(fis_rec[F34.name]), flags=re.I)
         ship_to_code = fis_rec[F34.ship_to_no].strip() or None
-        key = ('%s-%s' % (fis_rec[F34.code], ship_to_code or '')).strip('-')
+        o1_key = ('%s-%s' % (fis_rec[F34.code], ship_to_code or '')).strip('-')
+        key = '%s-%s' % (fis_rec[F34.code], ship_to_code or 'default')
         imd = AttrDict(
                 id=0,
                 model=self.OE,
@@ -906,7 +910,7 @@ class CSMSS(SynchronizeAddress):
         ship_to.use_parent_address = False
         ship_to.phone = fix_phone(fis_rec[F34.tele]) or None
         ship_to.fis_ship_to_parent_id = CSMS.Partner(parent_xml_id)
-        ship_to.fis_transmitter_id = CNVZO1.TransmitterCode(key)
+        ship_to.fis_transmitter_id = CNVZO1.TransmitterCode(o1_key)
         return (XidRec.fromdict(ship_to, imd), )
 
 
