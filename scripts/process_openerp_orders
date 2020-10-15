@@ -118,6 +118,18 @@ def daily_digest(date):
             echo('   ', '    '.join(lines))
             echo()
 
+@Command(
+        recipients=Spec('addresses to send mail to', MULTIREQ),
+        subject=Spec('subject line', OPTION, force_default='process_openerp_orders mail test'),
+        message=Spec('message body', OPTION, force_default='hope you got this!'),
+        )
+def test_mail(recipients, subject, message):
+    sent, failed = send_mail(recipients, subject, message)
+    if failed:
+        error('failed to send to: %s' % ', '.join(failed))
+        return Exit.UnknownError
+    else:
+        return Exit.Success
 
 # helpers
 
