@@ -328,6 +328,8 @@ class Synchronize(SynchronizeABC):
             oe_rec = oe_records.get(key)
             if fis_rec is None:
                 errors.setdefault(key, {})['fis'] = 'missing'
+                if 'active' in oe_rec and not oe_rec.active:
+                    errors[key]['oe'] = 'inactive'
             elif oe_rec is None:
                 errors.setdefault(key, {})['oe'] = 'missing'
             else:
@@ -373,7 +375,11 @@ class Synchronize(SynchronizeABC):
             echo('FIS and OpenERP records for %s/%d match (%d total)' % (self.FN.upper(), self.TN, len(all_keys)))
         else:
             table = [('xml id', 'FIS', 'OpenERP'), None]
+            i = 0
             for key, values in sorted(errors.items()):
+                i += 1
+                if not i % 50:
+                    table.extend([None, ('xml_id', 'FIS', 'OpenERP'), None])
                 table.append((
                     repr(key).replace(' ','\\s').replace('\t','\\t')[2:-1] or '<empty key>',
                     errors[key].get('fis', ''),
@@ -669,10 +675,16 @@ class Synchronize(SynchronizeABC):
         if not(self.fis_records):
             return
         fields = []
-        rec = self.fis_records.values()[0]
-        for field_name, value in rec.items():
-            if isinstance(value, XmlLink):
-                fields.append((field_name, value.host))
+        check_fields = self.fis_records.values()[0].keys()
+        for rec in self.fis_records.values():
+            for field_name in check_fields:
+                value = rec[field_name]
+                if value is not None:
+                    check_fields.remove(field_name)
+                    if isinstance(value, XmlLink):
+                        fields.append((field_name, value.host))
+            if not check_fields:
+                break
         if not fields:
             return
         else:
@@ -1055,7 +1067,7 @@ class SynchronizeAddress(Synchronize):
     def process_address(self, schema, fis_rec, home=False):
         result = {}
         address_lines = (fis_rec[schema.addr1], fis_rec[schema.addr2], fis_rec[schema.addr3])
-        print('\naddress lines:\n1: %r\n2: %r\n3: %r\r' % address_lines, sep='\n', border='overline', verbose=3)
+        print('\naddress lines:\n1: %r\n2: %r\n3: %r\r' % address_lines, sep='\n', border='overline', verbose=4)
         addr1, addr2, addr3 = Sift(*address_lines)
         addr2, city, state, postal, country = cszk(addr2, addr3)
         addr3 = None
@@ -1064,7 +1076,7 @@ class SynchronizeAddress(Synchronize):
         addr1, addr2 = AddrCase(Rise(addr1, addr2))
         city = NameCase(city)
         state, country = NameCase(state), NameCase(country)
-        print('   -----\n1: %r\n2: %r\nc: %r   s: %r   z: %r\nk: %r' % (addr1, addr2, city, state, postal, country), verbose=3)
+        print('   -----\n1: %r\n2: %r\nc: %r   s: %r   z: %r\nk: %r' % (addr1, addr2, city, state, postal, country), verbose=4)
         valid_address = True
         if not (addr1 or addr2) or not (city or state or country):
             # just use the FIS data without processing

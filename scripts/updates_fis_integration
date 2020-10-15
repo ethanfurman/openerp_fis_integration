@@ -798,6 +798,7 @@ class CSMS(SynchronizeAddress):
                 company.fis_credit_total = 0
         company.fis_transmitter_id = CNVZO1.TransmitterCode(key)
         company = XidRec.fromdict(company, imd)
+        assert set(company._keys) == set(company._values.keys())
         contact = None
         if fis_rec[F33.contact] and fis_rec[F33.contact] != fis_rec[F33.name]:
             key = 'cntct_' + key
@@ -834,6 +835,7 @@ class CSMS(SynchronizeAddress):
                 contact.fis_credit_30_days = 0
                 contact.fis_credit_total = 0
             contact = XidRec.fromdict(contact, imd)
+            assert set(contact._keys) == set(contact._values.keys())
             return company, contact
         return (company, )
 
