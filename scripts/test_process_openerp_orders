@@ -1,0 +1,419 @@
+import os
+import unittest
+import imp
+import tempfile
+from antipathy import Path
+from datetime import date, time, datetime, timedelta
+from scription import Exit
+from textwrap import dedent
+
+with open('process_openerp_orders', 'rb') as fh:
+    poo = imp.load_source('process_openerp_orders', 'process_openerp_orders', fh)
+    poo.script_fullname = 'process_openerp_orders'
+
+assert poo.BASE_SEQ == 10000
+assert poo.CUT_OFF == timedelta(seconds=600)
+assert poo.BASE_PATH == "/home/openerp/sandbox/openerp/var/fis_integration/orders"
+assert poo.ORDERS == "/home/openerp/sandbox/openerp/var/fis_integration/orders"
+assert poo.ARCHIVE == "/home/openerp/sandbox/openerp/var/fis_integration/orders/archive"
+assert poo.RECIPIENT_FILE == "/home/openerp/sandbox/openerp/var/fis_integration/orders/notify"
+assert poo.ERROR_FILE == "/home/openerp/sandbox/openerp/var/fis_integration/orders/notified"
+
+TEMPDIR = Path(tempfile.mkdtemp())
+TEMPDIR.rmtree(ignore_errors=True)
+
+class TestDynamicProcessOpenerpOrders(unittest.TestCase):
+
+    poo.BASE_PATH = Path(TEMPDIR)/'orders'
+    poo.ORDERS = poo.BASE_PATH
+    poo.ARCHIVE = poo.BASE_PATH/'archive'
+    poo.RECIPIENT_FILE = poo.BASE_PATH/'notify'
+    poo.ERROR_FILE = poo.BASE_PATH/'notified'
+
+    def setUp(self):
+        TEMPDIR.rmtree(ignore_errors=True)
+        TEMPDIR.mkdir()
+        poo.ORDERS.mkdir()
+        poo.ARCHIVE.mkdir()
+        with open(poo.ERROR_FILE, 'w') as fh:
+            pass
+        with open(poo.RECIPIENT_FILE, 'w') as fh:
+            fh.write(dedent("""\
+                    email                 phone@carrier             availability
+                    ethan@stoneleaf.us    9715061961@vtext.com      Mo-Tu:800-1700   We,Fr:1300-1700   Th:1700-2100   Sa:0000-0300,1200-1500 Su:-
+                    emile@gmail.com       6503433458@txt.att.net
+                    tony@togo.net
+                    """))
+        for file in (
+                'blah', '23banjo', '12345', '23456',
+            ):
+            poo.ORDERS.touch('%s.txt' % file)
+        for file in (
+                '776', '777', '778', '779', '780',
+            ):
+            poo.ARCHIVE.touch('%s.txt' % file)
+
+    def test_get_files_to_process(self):
+        """
+        returns files that match \d*.txt
+        """
+        self.assertEqual(
+                poo.get_files_to_process(poo.ORDERS),
+                [poo.ORDERS/'12345.txt', poo.ORDERS/'23456.txt'])
+        self.assertEqual(
+                poo.get_files_to_process(poo.ARCHIVE),
+                [
+                    poo.ARCHIVE/'776.txt',
+                    poo.ARCHIVE/'777.txt',
+                    poo.ARCHIVE/'778.txt',
+                    poo.ARCHIVE/'779.txt',
+                    poo.ARCHIVE/'780.txt',
+                    ])
+
+    def test_filter_recipients(self):
+        """
+        return recipients that have not been contacted for current situation
+        """
+        recipients = [
+                'ethan@stoneleaf.us',
+                'emile@gmail.com',
+                'tony@togo.net',
+                '971.506.1961@vtext.com',
+                ]
+        self.assertEqual(poo.filter_recipients(recipients), recipients)
+        #
+        with open(poo.ERROR_FILE, 'w') as fh:
+            fh.write('2020-05-20 0531 ethan@stoneleaf.us\n')
+            fh.write('2020-07-19 1644 tony@togo.net\n')
+        self.assertEqual(
+                poo.filter_recipients(recipients),
+                ['emile@gmail.com', '971.506.1961@vtext.com'],
+                )
+
+    def test_get_recipients(self):
+        """
+        read address file and return eligible recipients based on allowed times
+        """
+        poo.NOW = datetime(2019, 12, 30, 2, 19)
+        self.assertEqual(
+                poo.get_recipients(poo.RECIPIENT_FILE),
+                ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
+                )
+        poo.NOW = datetime(2020, 4, 14, 6, 33)
+        self.assertEqual(
+                poo.get_recipients(poo.RECIPIENT_FILE),
+                ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
+                )
+        poo.NOW = datetime(2020, 8, 19, 13, 45)
+        self.assertEqual(
+                poo.get_recipients(poo.RECIPIENT_FILE),
+                ['ethan@stoneleaf.us','9715061961@vtext.com','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
+                )
+        with open(poo.ERROR_FILE, 'w') as fh:
+            fh.write(dedent("""\
+                    2020-10-14 13:26 ethan.stoneleaf@gmail.com
+                    2020-10-14 13:26 emile@sunridgefarms.com
+                    """))
+        self.assertEqual(
+                poo.get_recipients(poo.ERROR_FILE),
+                ['ethan.stoneleaf@gmail.com', 'emile@sunridgefarms.com'],
+                )
+
+    def test_notify(self):
+        class MockFunction(object):
+            #
+            def __init__(self, name, return_value=None):
+                self.name = name
+                self.return_value = return_value
+                self.called = 0
+                self.called_args = []
+                self.called_kwds = []
+            #
+            def __repr__(self):
+                return "MockFunction_%s" % self.name
+            #
+            def __call__(self, *args, **kwds):
+                self.called_args.append(args)
+                self.called_kwds.append(kwds)
+                self.called += 1
+                return self.return_value
+        #
+        old_send = poo.send_mail
+        old_error = poo.error
+        old_update = poo.update_recipients
+        try:
+            poo.send_mail = send_mail = MockFunction("send_mail")
+            poo.update_recipients = update_recipients = MockFunction("update_recipients")
+            poo.error = error = MockFunction("error")
+            # test initial notification
+            poo.ERROR_FILE.touch((datetime(2019, 12, 30, 2, 18).timestamp(), None))
+            poo.NOW = datetime(2019, 12, 30, 2, 19)
+            send_mail.return_value = (
+                    ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
+                    [],
+                    )
+            notify_result = poo.notify(['error 1\n', 'error 2\n'])
+            poo.ERROR_FILE.touch((datetime(2019, 12, 30, 2, 20).timestamp(), None))
+            self.assertEqual(notify_result, Exit.Unknown)
+            self.assertEqual(
+                    send_mail.called_args[-1],
+                    (
+                        ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
+                        "process_openerp_orders: errors encountered",
+                        "error 1\nerror 2\n",
+                        ))
+            self.assertEqual(
+                    update_recipients.called_args[-1][0],
+                    ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
+                    )
+            self.assertEqual(error.called_args, [])
+            old_update(['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'])
+            # test no new notifications, but timestamp progresses
+            poo.NOW = datetime(2019, 12, 30, 2, 25)
+            send_mail.return_value = ([], [])
+            prev_error_stat = poo.ERROR_FILE.stat()
+            notify_result = poo.notify(['error 5\n', 'error 6\n'])
+            old_update([])
+            new_error_stat = poo.ERROR_FILE.stat()
+            self.assertEqual(notify_result, Exit.Unknown)
+            self.assertTrue(new_error_stat.st_atime > prev_error_stat.st_atime)
+            # test only new addresses notified
+            poo.ERROR_FILE.touch((datetime(2020, 8, 19, 13, 36).timestamp(), None))
+            poo.NOW = datetime(2020, 8, 19, 13, 45)
+            send_mail.return_value = (
+                    ['9715061961@vtext.com'],
+                    [],
+                    )
+            notify_result = poo.notify(['error 3\n', 'error 4\n'])
+            poo.ERROR_FILE.touch((datetime(2020, 8, 19, 13, 45).timestamp(), None))
+            self.assertEqual(notify_result, Exit.Unknown)
+            self.assertEqual(
+                    send_mail.called_args[-1],
+                    (
+                        ['9715061961@vtext.com'],
+                        "process_openerp_orders: errors encountered",
+                        "error 3\nerror 4\n",
+                        ))
+            self.assertEqual(
+                    update_recipients.called_args[-1][0],
+                    ['9715061961@vtext.com'],
+                    )
+            self.assertEqual(error.called_args, [])
+            with open(poo.ERROR_FILE) as fh:
+                self.assertEqual(
+                        fh.read(),
+                        dedent("""\
+                            2019-12-30 02:19     ethan@stoneleaf.us
+                            2019-12-30 02:19     emile@gmail.com
+                            2019-12-30 02:19     6503433458@txt.att.net
+                            2019-12-30 02:19     tony@togo.net
+                            """))
+            old_update(['9715061961@vtext.com'])
+            with open(poo.ERROR_FILE) as fh:
+                self.assertEqual(
+                        fh.read(),
+                        dedent("""\
+                            2019-12-30 02:19     ethan@stoneleaf.us
+                            2019-12-30 02:19     emile@gmail.com
+                            2019-12-30 02:19     6503433458@txt.att.net
+                            2019-12-30 02:19     tony@togo.net
+                            2020-08-19 13:45     9715061961@vtext.com
+                            """))
+            # test no errors but error file remains
+            poo.ERROR_FILE.touch((datetime(2020, 10, 10, 13, 47).timestamp(), None))
+            prev_stat = poo.ERROR_FILE.stat()
+            poo.NOW = datetime(2020, 10, 10, 13, 52)
+            send_mail.return_value = None
+            send_mail.called = 0
+            notify_result = poo.notify([])
+            new_stat = poo.ERROR_FILE.stat()
+            self.assertEqual(notify_result, Exit.Success)
+            self.assertEqual(send_mail.called, 0)
+            self.assertEqual(prev_stat, new_stat)
+            # test no errors and error file goes away
+            poo.NOW = datetime(2020, 10, 10, 13, 57)
+            send_mail.return_value = (
+                    ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net',
+                     'tony@togo.net','9715061961@vtext.com'],
+                    [],
+                    )
+            notify_result = poo.notify([])
+            self.assertEqual(notify_result, Exit.Success)
+            self.assertEqual(
+                    send_mail.called_args[-1],
+                    (
+                    ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net',
+                     'tony@togo.net','9715061961@vtext.com'],
+                    "process_openerp_orders: all good",
+                    "problem has been resolved",
+                    ))
+            self.assertFalse(poo.ERROR_FILE.exists())
+        finally:
+            poo.send_mail = old_send
+            poo.error = old_error
+            poo.update_recipients = old_update
+        self.assertEqual(old_send, poo.send_mail)
+
+    def test_notify_with_send_failure(self):
+        pass
+
+    def test_update_recipients(self):
+        """
+        update notification file with who was contacted at what time
+        """
+        with open(poo.ERROR_FILE) as fh:
+            self.assertEqual(fh.read(), "")
+        poo.NOW = datetime(2020, 5, 20, 6, 39)  # wednesday
+        poo.update_recipients(['ethan@stoneleaf.us', 'tony@togo.net'])
+        expected = ""
+        expected += "%-20s ethan@stoneleaf.us\n" % poo.NOW.strftime('%Y-%m-%d %H:%M')
+        expected += "%-20s tony@togo.net\n" % poo.NOW.strftime('%Y-%m-%d %H:%M')
+        with open(poo.ERROR_FILE) as fh:
+            self.assertEqual(fh.read(), expected)
+        poo.NOW = datetime(2020, 5, 20, 13, 39)  # wednesday
+        to_notify = poo.get_recipients(poo.RECIPIENT_FILE)
+        self.assertEqual(
+                to_notify,
+                ['ethan@stoneleaf.us','9715061961@vtext.com','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
+                )
+        needs_notify = poo.filter_recipients(to_notify)
+        self.assertEqual(
+                needs_notify,
+                ['9715061961@vtext.com','emile@gmail.com','6503433458@txt.att.net'],
+                )
+        poo.update_recipients(needs_notify)
+        expected += "%-20s 9715061961@vtext.com\n" % poo.NOW.strftime('%Y-%m-%d %H:%M')
+        expected += "%-20s emile@gmail.com\n" % poo.NOW.strftime('%Y-%m-%d %H:%M')
+        expected += "%-20s 6503433458@txt.att.net\n" % poo.NOW.strftime('%Y-%m-%d %H:%M')
+        with open(poo.ERROR_FILE) as fh:
+            self.assertEqual(fh.read(), expected)
+
+    def test_weekly_availability(self):
+        ethan = poo.WeeklyAvailability(
+                'Mo-Tu:800-1700',
+                'We,Fr:1300-1700',
+                'Th:1700-2100',
+                'Sa:0000-0300,1200-1500',
+                'Su:-',
+                )
+        tony = poo.WeeklyAvailability(
+            'Mo-We:0500-1200',
+            'Th,Fr:1200-1700',
+            'Sa-Su:0800-2100',
+            )
+        emile = poo.WeeklyAvailability.always()
+        def test_periods(tests):
+            for e, t, dt in tests:
+                self.assertEqual(e, dt in ethan, dt.strftime("%a %H:%M %%s %%s") % (('in', 'not in')[e], ethan,))
+                self.assertEqual(t, dt in tony, dt.strftime("%a %H:%M %%s %%s") % (('in', 'not in')[t], tony))
+                self.assertTrue(dt in emile, dt.strftime("%a %H:%M %%s %%s") % (('in', 'not in')[True], emile))
+        # monday
+        dt1 = datetime(2019, 12, 30, 2, 19)     # e t
+        dt2 = datetime(2020, 3, 9, 6, 33)     # e T
+        dt3 = datetime(2020, 6, 15, 8, 1)      # E T
+        dt4 = datetime(2020, 8, 31, 13, 45)    # E t
+        dt5 = datetime(2020, 11, 2, 17, 1)     # e t
+        test_periods((
+                (False, False, dt1),
+                (False, True, dt2),
+                (True, True, dt3),
+                (True, False, dt4),
+                (False, False, dt5),
+                ))
+        # tuesday
+        dt1 = datetime(2020, 2, 11, 2, 19)     # e t
+        dt2 = datetime(2020, 4, 14, 6, 33)     # e T
+        dt3 = datetime(2020, 7, 7, 8, 1)      # E T
+        dt4 = datetime(2020, 9, 15, 13, 45)    # E t
+        dt5 = datetime(2020, 12, 29, 17, 1)     # e t
+        test_periods((
+                (False, False, dt1),
+                (False, True, dt2),
+                (True, True, dt3),
+                (True, False, dt4),
+                (False, False, dt5),
+                ))
+        # wednesday
+        dt1 = datetime(2020, 1, 1, 2, 19)       # e t
+        dt2 = datetime(2020, 5, 6, 6, 33)       # e T
+        dt3 = datetime(2020, 6, 3, 12, 13)      # e t
+        dt4 = datetime(2020, 8, 19, 13, 45)      # E t
+        dt5 = datetime(2020, 10, 28, 17, 1)       # e t
+        test_periods((
+                (False, False, dt1),
+                (False, True, dt2),
+                (False, False, dt3),
+                (True, False, dt4),
+                (False, False, dt5),
+                ))
+        # thursday
+        dt1 = datetime(2020, 2, 6, 2, 19)       # e t
+        dt2 = datetime(2020, 5, 7, 6, 33)       # e t
+        dt3 = datetime(2020, 8, 13, 12, 13)      # e T
+        dt4 = datetime(2020, 10, 29, 17, 0)       # E T
+        dt5 = datetime(2020, 11, 12, 19, 19)      # E t
+        dt6 = datetime(2020, 12, 31, 23, 19)      # e t
+        test_periods((
+                (False, False, dt1),
+                (False, False, dt2),
+                (False, True, dt3),
+                (True, True, dt4),
+                (True, False, dt5),
+                (False, False, dt6),
+                ))
+        # friday
+        dt1 = datetime(2020, 3, 6, 2, 19)       # e t
+        dt2 = datetime(2020, 4, 10, 6, 33)       # e t
+        dt3 = datetime(2020, 7, 3, 12, 13)      # e T
+        dt4 = datetime(2020, 8, 28, 17, 0)       # E T
+        dt5 = datetime(2020, 9, 11, 19, 19)      # e t
+        dt6 = datetime(2020, 11, 27, 23, 19)      # e t
+        test_periods((
+                (False, False, dt1),
+                (False, False, dt2),
+                (False, True, dt3),
+                (True, True, dt4),
+                (False, False, dt5),
+                (False, False, dt6),
+                ))
+        # saturday
+        dt1 = datetime(2020, 1, 25, 2, 19)       # E t
+        dt2 = datetime(2020, 2, 8, 6, 33)       # e t
+        dt3 = datetime(2020, 3, 14, 8, 33)       # e T
+        dt4 = datetime(2020, 4, 18, 12, 13)      # E T
+        dt5 = datetime(2020, 5, 16, 17, 0)       # e T
+        dt6 = datetime(2020, 6, 27, 19, 19)      # e T
+        dt7 = datetime(2020, 7, 4, 23, 19)      # e t
+        test_periods((
+                (True, False, dt1),
+                (False, False, dt2),
+                (False, True, dt3),
+                (True, True, dt4),
+                (False, True, dt5),
+                (False, True, dt6),
+                (False, False, dt7),
+                ))
+        dt1 = datetime(2020, 6, 7, 2, 19)       # e t
+        dt2 = datetime(2020, 7, 12, 6, 33)       # e t
+        dt3 = datetime(2020, 8, 16, 8, 33)       # e t
+        dt4 = datetime(2020, 9, 13, 12, 13)      # e T
+        dt5 = datetime(2020, 10, 11, 17, 0)       # e T
+        dt6 = datetime(2020, 11, 29, 19, 19)      # e T
+        dt7 = datetime(2020, 12, 27, 23, 19)      # e t
+        test_periods((
+                (False, False, dt1),
+                (False, False, dt2),
+                (False, True, dt3),
+                (False, True, dt4),
+                (False, True, dt5),
+                (False, True, dt6),
+                (False, False, dt7),
+                ))
+
+
+if __name__ == '__main__':
+    try:
+        unittest.main()
+    finally:
+        TEMPDIR.rmtree(ignore_errors=True)
+

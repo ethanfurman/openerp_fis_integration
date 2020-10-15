@@ -1,4 +1,4 @@
-#!/usr/local/bin/python2
+#!/usr/local/bin/python3
 """
 transform the order output from OpenERP's Customer Portal Online Ordering
 to a transfer file that FIS can import
@@ -15,7 +15,7 @@ from dbf import Date, DateTime, Period
 # with other FIS-feeding processes
 
 BASE_SEQ = 10000
-CUT_OFF = timedelta(seconds=300)
+CUT_OFF = timedelta(seconds=600)
 
 BASE_PATH = Path("/home/openerp/sandbox/openerp/var/fis_integration/orders")
 ORDERS = BASE_PATH
@@ -23,8 +23,7 @@ ARCHIVE = BASE_PATH / "archive"
 RECIPIENT_FILE = BASE_PATH / 'notify'
 ERROR_FILE = BASE_PATH / 'notified'
 
-dt_NOW = DateTime.now()
-i_NOW = dt_NOW.hour * 100 + dt_NOW.minute
+NOW = DateTime.now()
 
 # API
 
@@ -78,9 +77,7 @@ def process_openerp_orders():
             error(''.join(error_lines))
             errors.extend(format_exception_only(exc_type, exc))
             continue
-    if errors:
-        notify(errors)
-        return Exit.Unknown
+    return notify(errors)
 
 
 @Command(
@@ -111,15 +108,16 @@ def daily_digest(date):
     echo('found %d records for %s' % (len(orders), target))
     if orders:
         echo()
-        echo('\n'.join(orders.keys()))
+        echo('\n'.join(archive_order_list))
         echo()
-        for order, lines in orders.items():
+        for order in archive_order_list:
+            lines = orders[order]
             echo('=== %s ===' % (order, ))
             echo('   ', '    '.join(lines))
             echo()
 
 
-# helprs
+# helpers
 
 def get_files_to_process(path):
     """
@@ -139,83 +137,116 @@ def filter_recipients(addresses):
     return recipients that have not been contacted for current situation
     """
     with open(ERROR_FILE) as fh:
-        lines = fh.readlines()
-    if lines[0].startswith('time'):
+        lines = [line for line in fh.read().strip().split('\n') if line]
+    if lines and lines[0].startswith('time'):
         lines.pop(0)
     contacted = []
     for line in lines:
-        date, time, address = line
+        date, time, address = line.split()
         contacted.append(address)
     return [a for a in addresses if a not in contacted]
 
 
-def get_recipients():
+def get_recipients(source):
     """
     read address file and return eligible recipients based on allowed times
     """
-    with open(RECIPIENT_FILE) as fh:
-        lines = fh.readlines()
-    if lines[0].startswith('email'):
-        lines.pop(0)
-    addresses = []
-    for line in lines:
-        pieces = line.split()
-        if len(pieces) == 3:
-            email, start, stop = pieces
-            phone = None
-        elif len(pieces) == 4:
-            email, phone, start, stop = pieces
-        else:
-            abort("bad line in %s: %r" % (RECIPIENT_FILE.filename, line))
-        start, stop = int(start), int(stop)
-        addresses.append(email, 0, 2359)
-        if phone and start <= i_NOW <= stop:
-            addresses.append(phone, start, stop)
-    addresses = filter_recipients(addresses)
+    if source == ERROR_FILE:
+        with open(ERROR_FILE) as fh:
+            addresses = [line.split()[2] for line in fh.read().strip().split('\n')]
+    elif source == RECIPIENT_FILE:
+        with open(RECIPIENT_FILE) as fh:
+            lines = [line for line in fh.read().strip().split('\n') if line]
+        if lines and lines[0].startswith('email'):
+            lines.pop(0)
+        addresses = []
+        for line in lines:
+            pieces = line.split()
+            if len(pieces) == 1:
+                # email only
+                email, = pieces
+                phone = None
+                availability = WeeklyAvailability.none()
+            elif len(pieces) == 2:
+                # email and phone (means always available)
+                email, phone = pieces
+                availability = WeeklyAvailability.always()
+            else:
+                email, phone = pieces[:2]
+                availability = WeeklyAvailability(*pieces[3:])
+            #
+            addresses.append(email)
+            if phone and NOW in availability:
+                addresses.append(phone)
+    else:
+        raise ValueError('unknown file: %r' % (source, ))
     return addresses
 
 
 def notify(errors):
     """
-    send errors to email recipients, notifications to text message recipients
+    send errors to valid recipients or cancellation to all notified thus far
     """
-    last_accessed = ERROR_FILE.stat().st_atime
-    if dt_NOW - DateTime.fromtimestamp() > CUTOFF:
-        with open(ERROR_FILE, 'w') as fh:
-            fh.write("time contacted      address\n")
-    addresses = filter_recipients(get_recipients())
-    sent_addresses = []
-    message = ''.join(errors)
-    failed_to_send = []
-    for address in addresses:
-        try:
-            job = Job(
-                    '/usr/bin/mail -s "errors encountered in process_openerp_orders" %s'
-                    % address,
-                    pty=True,
-                    )
-            job.communicate(input=message, timeout=60)
-            sent_addresses.append(address)
-        except Exception as exc:
-            error(exc)
-            failed_to_send.append(address)
-            continue
+    if not errors:
+        if not ERROR_FILE.exists():
+            return Exit.Success
+        last_accessed = ERROR_FILE.stat().st_atime
+        if NOW - DateTime.fromtimestamp(last_accessed) < CUT_OFF:
+            # too soon to notify, maybe next time
+            return Exit.Success
+        # get names from file and notify each one that problem is resolved
+        addresses = get_recipients(ERROR_FILE)
+        subject = "%s: all good" % script_fullname
+        message = "problem has been resolved"
+    else:
+        # errors happened; check if ERROR_FILE needs (re)creating
+        create_error_file = False
+        if not ERROR_FILE.exists():
+            create_error_file = True
+        else:
+            last_accessed = ERROR_FILE.stat().st_atime
+            if NOW - DateTime.fromtimestamp(last_accessed) > CUT_OFF:
+                # file should have been deleted; create fresh now
+                create_error_file = True
+        if create_error_file:
+            with open(ERROR_FILE, 'w') as fh:
+                fh.write("time contacted      address\n")
+        ERROR_FILE.touch((NOW.timestamp(), None))
+        addresses = filter_recipients(get_recipients(RECIPIENT_FILE))
+        subject = "%s: errors encountered" % script_fullname
+        message = ''.join(errors)
+    sent_addresses, failed_to_send = send_mail(addresses, subject, message)
     if failed_to_send:
         error('\n\nUnable to contact:\n  %s' % ('\n  '.join(failed_to_send)))
-    update_recipients(sent_addresses)
+    if errors:
+        update_recipients(sent_addresses)
+    else:
+        ERROR_FILE.unlink()
+    if errors or failed_to_send:
+        return Exit.UnknownError
+    else:
+        return Exit.Success
 
 def send_mail(recipients, subject, message):
     """
     use system mail command to send MESSAGE to RECIPIENTS
     """
-    command = '/usr/bin/mail -s "%s" %s' % (subject, ','.join(recipients))
-    job = Job(command, pty=True)
-    try:
-        job.communicate(input=message)
-    except Exception:
-        echo(job.stdout)
-        error(job.stderr)
-        raise
+    sent_addresses = []
+    failed_to_send = []
+    for address in recipients:
+        # may be skipped if all eligible addresses have already been notified
+        try:
+            job = Job(
+                    '/usr/bin/mail -s "%s" %s' % (subject, address),
+                    pty=True,
+                    )
+            job.communicate(input=message, timeout=30)
+            sent_addresses.append(address)
+        except Exception as exc:
+            error(exc)
+            failed_to_send.append(address)
+            continue
+    return sent_addresses, failed_to_send
 
 def update_recipients(addresses):
     """
@@ -223,23 +254,144 @@ def update_recipients(addresses):
     """
     with open(ERROR_FILE, 'a') as fh:
         for address in addresses:
-            fh.write('%-20s %s\n' % (dt_NOW.strftime('%Y-%M-%D %h:%m'), address))
+            fh.write('%-20s %s\n' % (NOW.strftime('%Y-%m-%d %H:%M'), address))
+
+
+class WeeklyAvailability(object):
+    """
+    maintain periods of availability on a weekly basis
+    """
+    def __init__(self, *times):
+        # times -> ['Mo:800-1700', 'Tu,Th:1100-1330,1730-2000', 'We:-', 'Fr', 'Sa-Su:1400-2100']
+        self.text = str(times)
+        matrix = {
+                'mo': [0] * 1440,
+                'tu': [0] * 1440,
+                'we': [0] * 1440,
+                'th': [0] * 1440,
+                'fr': [0] * 1440,
+                'sa': [0] * 1440,
+                'su': [0] * 1440,
+                }
+        for period in times:
+            period = period.lower()
+            if ':' not in period:
+                period += ':'
+            days, minutes = period.split(':')
+            if minutes == '-':
+                minutes = None
+            elif minutes == '':
+                minutes = ['0-2359']
+            else:
+                minutes = minutes.split(',')
+            for day in which_days(days):
+                day = matrix[day]
+                if minutes is None:
+                    continue
+                for sub_period in minutes:
+                    start, end = sub_period.split('-')
+                    start = int(start[:-2] or 0) * 60 + int(start[-2:])
+                    end = int(end[:-2] or 0) * 60 + int(end[-2:])
+                    for minute in range(start, end+1):
+                        day[minute] = 1
+        self.days = [matrix['su'], matrix['mo'], matrix['tu'], matrix['we'], matrix['th'], matrix['fr'], matrix['sa'], matrix['su']]
+
+    def __repr__(self):
+        return "WeeklyAvailability(%r)" % self.text
+
+    def __contains__(self, dt):
+        """
+        checks if dt.day, hour, minute is 1
+        """
+        day = dt.isoweekday()
+        moment = dt.hour * 60 + dt.minute
+        return self.days[day][moment] == 1
+
+    @classmethod
+    def always(cls):
+        """
+        create a WeeklyAvailability with all availability
+        """
+        return cls('su-sa')
+
+    @classmethod
+    def none(cls):
+        """
+        create a WeeklyAvailability with no availability
+        """
+        return cls('su-sa:-')
+
+
+def which_days(text):
+    week = ['su','mo','tu','we','th','fr','sa']
+    text = text.lower()
+    groups = text.split(',')
+    days = []
+    for group in groups:
+        if '-' not in group:
+            days.append(group)
+        else:
+            start, stop = group.split('-')
+            if start not in week:
+                raise ValueError('invalid start day: %r' % (start, ))
+            if stop not in week:
+                raise ValueError('invalid stop day: %r' % (stop, ))
+            start = week.index(start)
+            while True:
+                days.append(week[start])
+                if week[start] == stop:
+                    break
+                start = (start + 1) % 7
+    return days
+
 
 
 Main()
 
+# file formats
 
 # recipient file format, space-delimited
-# email, start time, and end time fields are required
-# example only
+# email, phone, text-message okay times ("-" means no time)
 """
-email                 phone             start time      end time
-ethan@stoneleaf.us    971.506.1961      0800            1700
-emile@gmail.com       650.343.3458      0500            2000
+email                 phone@carrier             availability
+ethan@stoneleaf.us    9715061961@vtext.com      Mo-Tu:800-1700   We,Fr:1300-1700   Th:1700-2100   Sa:0000-0300,1200-1500 Su:-
+emile@gmail.com       6503433458@txt.att.net
+tony@togo.net
 """
 
 # notification file format
 """
 time contacted      address
 2020-05-20 03:47    ethan@stoneleaf.us
+"""
+
+# text message carrier email addresses
+"""
+Alltel:          [10-digit number] at message.alltel.com
+AT&T:            [10-digit number] at txt.att.net
+Boost Mobile:    [10-digit number] at myboostmobile.com
+Cricket Wireless [10-digit number] at mms.cricketwireless.net
+Sprint:          [10-digit number] at messaging.sprintpcs.com
+T-Mobile:        [10-digit number] at tmomail.net
+U.S. Cellular:   [10-digit number] at email.uscc.net
+Verizon:         [10-digit number] at vtext.com
+Virgin Mobile:   [10-digit number] at vmobl.com
+
+Could be handy if we need to have a script text-message us.
+
+> Thanks! Any follow up on determining which service to email by
+> telephone number? Particularly now that numbers are carrier
+> independent?
+
+There are a few services, none free:
+
+data24-7.com: $12/mo + $0.006 per lookup -- API for immediate look-ups
+
+realphonevalidation.com: request a quote -- batch processing of files
+
+textmagic.com: $4/mo + $0.04 per lookup -- API for immediate look-ups
+the $4 gives us a virtual phone number to send/receive messages with
+
+Looks like textmagic is the best option so far.  If we go with them the fellow that helped answer my questions is
+Peter (in case they care).
 """
