@@ -7,9 +7,10 @@ from __future__ import print_function
 
 from scription import *
 from antipathy import Path
-from traceback import format_exc
+from traceback import format_exception_only
 from datetime import timedelta
 from dbf import Date, DateTime, Period
+import sys
 
 # all order numbers must be in the 10000-19999 range or we have collisions
 # with other FIS-feeding processes
@@ -17,6 +18,7 @@ from dbf import Date, DateTime, Period
 BASE_SEQ = 10000
 CUT_OFF = timedelta(seconds=600)
 
+EOE_PATH = Path("/mnt/11-111/home/eoe/")
 BASE_PATH = Path("/home/openerp/sandbox/openerp/var/fis_integration/orders")
 ORDERS = BASE_PATH
 ARCHIVE = BASE_PATH / "archive"
@@ -24,6 +26,7 @@ RECIPIENT_FILE = BASE_PATH / 'notify'
 ERROR_FILE = BASE_PATH / 'notified'
 
 NOW = DateTime.now()
+TOMORROW = NOW.replace(delta_day=+1).strftime("%m%d%y")
 
 # API
 
@@ -34,7 +37,6 @@ def process_openerp_orders():
     transform OpenERP Customer Portal orders into FIS input
     """
     # default ship date
-    tomorrow = Date.today().replace(delta_day=+1).strftime("%m%d%y")
     # order files to process
     new_order_list = get_files_to_process(ORDERS)
     errors = []
@@ -44,36 +46,36 @@ def process_openerp_orders():
             order_no = int(order_file.stem)
             seq = BASE_SEQ + order_no % 10000
             with open(order_file) as in_file:
-                order_lines = in_file.readlines()
+                order_lines = in_file.read().strip().split('\n')
+            # order_lines looks like 
+            #   ['LUCKY-407B-900002',
+            #    'RSD-041920',
+            #    'PON-8172943',
+            #    '002080 - 1 - 25 lb',
+            #    '001045 - 1 - 25 lb', '']
             # customer login may have dashes, but transmitter numbers never will
             # so split on the right-most dash
             cust, trans = order_lines[0].strip().rsplit("-", 1)
-            #order_lines looks like ['LUCKY-407B-900002', 'RSD-041920', 'PON-8172943', '002080 - 1 - 25 lb', '001045 - 1 - 25 lb', '']
-            rsd = [xx for xx in order_lines if xx.startswith('RSD')]
-            #rsd will be ['RSD-041920'] if specified
-            pon = [xx for xx in order_lines if xx.startswith('PON')]
-            #pon will be ['PON-8172943'] if specified
-            if pon:
-                PON = "-".split(pon[0])[-1]
-            else:
-                PON = "0000000037"
-            if rsd:
-                RSD = "-".split(rsd[0])[-1]
-            else:
-                RSD = tomorrow
+            [rsd] = [xx for xx in order_lines if xx.startswith('RSD')] or ['dflt-%s' % TOMORROW]
+            [pon] = [xx for xx in order_lines if xx.startswith('PON')] or ['dflt-0000000037']
+            PON = pon.split('-')[-1]
+            RSD = rsd.split('-')[-1]
             hdr = "C%s+P%s+D%s+" % (trans, PON, RSD)
             rec = hdr
             for line in order_lines[1:]:
+                if line.startswith(('RSD','PON')):
+                    continue
                 item, qty = [val.strip() for val in line.strip().split('-')][:2]
                 if qty != "0":
                     rec += "I%s+Q%s+" % (item, qty)
-            extfile = "/mnt/11-111/home/eoe/%s.ext" % seq
+            extfile = EOE_PATH / "%s.ext" % seq
             with open(extfile, 'w') as out_file:
                 out_file.write(rec)
-            order_file.move("/home/openerp/sandbox/openerp/var/fis_integration/orders/archive/")
+            order_file.move(ARCHIVE)
         except Exception:
             exc_type, exc, _ = sys.exc_info()
             error_lines = format_exception_only(exc_type, exc)
+            error_lines[0] = ("[%s]  " % order_file.filename) + error_lines[0]
             error(''.join(error_lines))
             errors.extend(format_exception_only(exc_type, exc))
             continue
@@ -108,11 +110,11 @@ def daily_digest(date):
     echo('found %d records for %s' % (len(orders), target))
     if orders:
         echo()
-        echo('\n'.join(archive_order_list))
+        echo('\n'.join(a.filename for a in archive_order_list))
         echo()
         for order in archive_order_list:
-            lines = orders[order]
-            echo('=== %s ===' % (order, ))
+            lines = orders[order.filename]
+            echo('=== %s ===' % (order.filename, ))
             echo('   ', '    '.join(lines))
             echo()
 
