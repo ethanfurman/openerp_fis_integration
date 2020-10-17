@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/env python3
 """
 transform the order output from OpenERP's Customer Portal Online Ordering
 to a transfer file that FIS can import
@@ -77,7 +77,7 @@ def process_openerp_orders():
             error_lines = format_exception_only(exc_type, exc)
             error_lines[0] = ("[%s]  " % order_file.filename) + error_lines[0]
             error(''.join(error_lines))
-            errors.extend(format_exception_only(exc_type, exc))
+            errors.extend(error_lines)
             continue
     return notify(errors)
 
@@ -251,10 +251,10 @@ def send_mail(recipients, subject, message):
         # may be skipped if all eligible addresses have already been notified
         try:
             job = Job(
-                    '/usr/bin/mail -s "%s" %s' % (subject, address),
+                    '/usr/bin/mail -# -s "%s" %s' % (subject, address),
                     pty=True,
                     )
-            job.communicate(input=message, timeout=30)
+            job.communicate(input=message+'\n\x04', timeout=30)
             sent_addresses.append(address)
         except Exception as exc:
             error(exc)
