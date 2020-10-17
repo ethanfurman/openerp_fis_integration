@@ -339,6 +339,11 @@ class TestDynamicProcessOpenerpOrders(unittest.TestCase):
                 process_orders.get_recipients(process_orders.RECIPIENT_FILE),
                 ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
                 )
+        process_orders.NOW = datetime(2020, 4, 14, 8, 23)
+        self.assertEqual(
+                process_orders.get_recipients(process_orders.RECIPIENT_FILE),
+                ['ethan@stoneleaf.us','9715061961@vtext.com','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
+                )
         process_orders.NOW = datetime(2020, 8, 19, 13, 45)
         self.assertEqual(
                 process_orders.get_recipients(process_orders.RECIPIENT_FILE),
@@ -524,8 +529,8 @@ class TestDynamicProcessOpenerpOrders(unittest.TestCase):
         emile = process_orders.WeeklyAvailability.always()
         def test_periods(tests):
             for e, t, dt in tests:
-                self.assertEqual(e, dt in ethan, dt.strftime("%a %H:%M %%s %%s") % (('in', 'not in')[e], ethan,))
-                self.assertEqual(t, dt in tony, dt.strftime("%a %H:%M %%s %%s") % (('in', 'not in')[t], tony))
+                self.assertEqual(e, dt in ethan, dt.strftime("%a %H:%M %%s %%s") % (('in', 'not in')[dt in ethan], ethan,))
+                self.assertEqual(t, dt in tony, dt.strftime("%a %H:%M %%s %%s") % (('in', 'not in')[dt in tony], tony))
                 self.assertTrue(dt in emile, dt.strftime("%a %H:%M %%s %%s") % (('in', 'not in')[True], emile))
         # monday
         dt1 = datetime(2019, 12, 30, 2, 19)     # e t
