@@ -119,6 +119,8 @@ def daily_digest(date, email):
             with open(order) as in_file:
                 orders[order.filename] = in_file.read().strip().split('\n')
     lines.append('found %d records for %s' % (len(orders), target))
+    # discard all orders not in date
+    archive_order_list = [a for a in archive_order_list if a.filename in orders]
     if orders:
         total_orders = len(orders)
         if total_orders < 7:
@@ -288,7 +290,7 @@ def send_mail(recipients, subject, message):
                     '/usr/bin/mail -# -s "%s" %s' % (subject, address),
                     pty=True,
                     )
-            job.communicate(input=message+'\n\x04', timeout=30)
+            job.communicate(input=message+'\n\x04', timeout=300)
             sent_addresses.append(address)
         except Exception as exc:
             error(exc)
