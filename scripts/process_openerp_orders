@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/local/bin/suid-python --virtualenv
 """
 transform the order output from OpenERP's Customer Portal Online Ordering
 to a transfer file that FIS can import
@@ -10,7 +10,9 @@ from antipathy import Path
 from traceback import format_exception_only
 from datetime import timedelta
 from dbf import Date, DateTime, Period
+from VSS.utils import grouped_by_column
 import sys
+import time
 
 # all order numbers must be in the 10000-19999 range or we have collisions
 # with other FIS-feeding processes
@@ -84,8 +86,9 @@ def process_openerp_orders():
 
 @Command(
         date=Spec('date to examine', OPTION, type=Date),
+        email=Spec('send email to these addresses', MULTI),
         )
-def daily_digest(date):
+def daily_digest(date, email):
     """
     print list of orders sent to FIS, and their detail
     """
@@ -95,28 +98,59 @@ def daily_digest(date):
     print('       period: %r' % (target_period, ))
     archive_order_list = get_files_to_process(ARCHIVE)
     process_order_list = get_files_to_process(ORDERS)
+    lines = []
     if process_order_list:
-        echo('FILES NOT PROCESSED')
-        echo('\n'.join([o.filename for o in process_order_list]))
-        echo('===================')
+        total_missed = len(process_order_list)
+        columns, remainder = divmod(total_missed, 5)
+        if remainder:
+            columns += 1
+        columns = min(columns, 5)
+        template = '   ' + '%-16s ' * columns
+
+        lines.append('FILES NOT PROCESSED')
+        lines.extend([(template % row).rstrip() for row in grouped_by_column([o.filename for o in process_order_list], columns)])
+        lines.append('===================')
+        lines.extend(['',''])
     print('checking %d order files' % len(archive_order_list, ))
     orders = {}
-    # TODO: keep orders sorted when printing
     for order in archive_order_list:
         order_date = Date.fromtimestamp(order.stat().st_mtime)
         if order_date in target_period:
             with open(order) as in_file:
-                orders[order.filename] = in_file.readlines()
-    echo('found %d records for %s' % (len(orders), target))
+                orders[order.filename] = in_file.read().strip().split('\n')
+    lines.append('found %d records for %s' % (len(orders), target))
     if orders:
-        echo()
-        echo('\n'.join(a.filename for a in archive_order_list))
-        echo()
+        total_orders = len(orders)
+        if total_orders < 7:
+            columns = 1
+        else:
+            columns, remainder = divmod(total_orders, 5)
+            if remainder:
+                columns += 1
+            columns = min(columns, 5)
+        template = '   ' + '%-16s ' * columns
+        lines.append('')
+        lines.extend([(template % row).rstrip() for row in grouped_by_column([o.filename for o in archive_order_list], columns)])
+        lines.append('')
         for order in archive_order_list:
-            lines = orders[order.filename]
-            echo('=== %s ===' % (order.filename, ))
-            echo('   ', '    '.join(lines))
-            echo()
+            order_lines = orders[order.filename]
+            total_lines = len(order_lines)
+            if total_lines < 7:
+                columns = 1
+            else:
+                columns, remainder = divmod(total_orders, 5)
+                if remainder:
+                    columns += 1
+                columns = min(columns, 3)
+            template = '   ' + '%-25s ' * columns
+            lines.append('=== %s ===' % (order.filename, ))
+            lines.extend([(template % row).rstrip() for row in grouped_by_column(order_lines, columns)])
+            lines.append('')
+    if lines:
+        if email:
+            send_mail(email, "portal orders", '\n'.join(lines))
+        else:
+            echo('\n'.join(lines))
 
 @Command(
         recipients=Spec('addresses to send mail to', MULTIREQ),
@@ -140,7 +174,7 @@ def get_files_to_process(path):
     # path must be a Path
     order_list = [
             fn
-            for fn in path.glob('*')
+            for fn in path.glob('*.txt')
             if fn.stem.isdigit()
             ]
     order_list.sort(key=lambda fn: int(fn.stem)) 
@@ -225,7 +259,7 @@ def notify(errors):
         if create_error_file:
             with open(ERROR_FILE, 'w') as fh:
                 fh.write("time contacted      address\n")
-        ERROR_FILE.touch((NOW.timestamp(), None))
+        ERROR_FILE.touch((time_stamp(NOW), None))
         addresses = filter_recipients(get_recipients(RECIPIENT_FILE))
         subject = "%s: errors encountered" % script_fullname
         message = ''.join(errors)
@@ -358,6 +392,9 @@ def which_days(text):
                 start = (start + 1) % 7
     return days
 
+def time_stamp(dt):
+    "return POSIX timestamp as float"
+    return time.mktime((dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, -1, -1, -1)) + dt.microsecond / 1e6
 
 
 Main()
