@@ -1,0 +1,137 @@
+#!/usr/local/sbin/suid-python --virtualenv
+from __future__ import print_function
+
+from scription import *
+import scription
+scription.VERBOSITY = 0
+
+import os
+VIRTUALENV_ROOT = os.environ['VIRTUAL_ENV']
+import sys
+sys.path.pop(0)
+sys.path.append(VIRTUALENV_ROOT)
+print(sys.path)
+import openerp
+from openerp.service import start_services, stop_services
+from openerp.tools import config
+
+import time
+
+
+@Script(
+        conf=Spec('configuration file to use', OPTION, default='%s/config/server.conf' % VIRTUALENV_ROOT),
+        )
+def main(conf):
+    # if os.getuid() != 0:
+    #     abort('must be run as root')
+    config.parse_config(['--conf', conf])
+
+
+@Command(
+        model=Spec('model to display',),
+        domain=Spec('restrictions on records to show', OPTION),
+        )
+def show(model, domain=[None]):
+    config = OrmFile('%s/config/fnx.ini' % VIRTUALENV_ROOT, section='openerp')
+    with OpenERP(config.db) as oe:
+        oe_model = oe.pool.get(model)
+        records = oe_model.read(oe.cr, 1, domain)
+        if not records:
+            echo('no records matching domain')
+        keys = sorted(records[0].keys())
+        echo('\n', ','.join(keys))
+        for rec in records:
+            echo(','.join([str(rec[k]) for k in keys]), '\n')
+
+
+@Command(
+        keep=Spec('keep unchanged [mail, networks, users, schedules]', MULTI),
+        )
+def neuter(keep):
+    keep_arg = keep
+    keep = []
+    for arg in keep_arg:
+        arg = arg.lower()
+        if arg not in ('mail', 'networks', 'users', 'schedules'):
+            abort('%s not recognized' % arg)
+        keep.append(arg)
+
+    config = OrmFile('%s/config/fnx.ini' % VIRTUALENV_ROOT, section='openerp')
+
+    with OpenERP(config.db) as oe:
+
+        cr = oe.cr
+
+        if 'schedules' not in keep:
+            echo('disabling scheduled jobs...')
+            ir_cron = oe.pool.get('ir.cron')
+            cron_ids = ir_cron.search(cr, 1, [])
+            if cron_ids:
+                ir_cron.write(cr, 1, cron_ids, {'active':False})
+
+        if 'users' not in keep:
+            echo('setting user passwords...')
+            res_users = oe.pool.get('res.users')
+            user_ids = res_users.search(cr, 1, [('login','!=','ethan')])
+            if user_ids:
+                res_users.write(cr, 1, user_ids, {'password':'fnx243tu', 'email':'', })
+
+            echo('turning off user email forwarding...')
+            res_partner = oe.pool.get('res.partner')
+            partner_ids = res_partner.search(cr, 1, [('user_ids','!=',False)])
+            if partner_ids:
+                res_partner.write(cr, 1, partner_ids, {'notification_email_send':'none', 'email':''})
+
+        if 'networks' not in keep:
+            echo('switching network map...')
+            ip_map_network = oe.pool.get('ip_map.network')
+            network_ids = ip_map_network.search(cr, 1, [])
+            if network_ids:
+                ip_map_network.unlink(cr, 1, network_ids)
+            ip_map_network.create(cr, 1, {'network':'172.27.11.0/24'})
+
+            echo('removing old network devices...')
+            ip_map_devices = oe.pool.get('ip_map.device')
+            device_ids = ip_map_devices.search(cr, 1, [])
+            if device_ids:
+                ip_map_devices.unlink(cr, 1, device_ids)
+
+        if 'mail' not in keep:
+            echo('removing non-localhost mail servers')
+            ir_mail_server = oe.pool.get('ir.mail_server')
+            for rec in ir_mail_server.browse(cr, 1):
+                if rec.name != 'localhost' or rec.smtp_host != 'localhost':
+                    rec.unlink()
+
+        oe.pool.get('res.company').write(cr, 1, [1], {'pad_server': '172.27.11.16:9001'})
+        icp = oe.pool.get('ir.config_parameter')
+        wbu_id = icp.search(cr, 1, [('key','=','web.base.url')])[0]
+        icp.write(cr, 1, [wbu_id], {'value': 'http://173.12.184.233:8069'})
+
+
+        echo('done')
+
+
+class OpenERP(object):
+    def __init__(self, database):
+        self.db = database
+    def __enter__(self):
+        try:
+            start_services()
+            time.sleep(2)
+            self.db, self.pool = openerp.pooler.get_db_and_pool(self.db)
+            self.cr = self.db.cursor()
+            return self
+        except:
+            stop_services()
+            raise
+    def __exit__(self, *args):
+        try:
+            if args == (None, None, None):
+                self.cr.commit()
+            else:
+                self.cr.rollback()
+        finally:
+            self.cr.close()
+            stop_services()
+Run()
