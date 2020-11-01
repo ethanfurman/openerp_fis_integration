@@ -11,3 +11,4 @@ scripts/updates.py updates/__init__.py
 scripts/updates_fis_integration updates/fis_integration --suid openerp
 scripts/updates_mapping.py updates/fis_integration_mapping.py
 scripts/check_active_products --suid openerp
+scripts/test_labeltime_connection /usr/local/bin/test_labeltime_connection

@@ -1,0 +1,59 @@
+#!/usr/local/bin/suid-python
+"""
+This script is designed to:
+
+    - lock up if the labeltime connection is hosed
+    - abort subsequent runs if previous locked-up run exists
+
+The product image display routines will look for this script's PID file,
+and use the cached versions if it is present.
+"""
+
+from __future__ import print_function
+from pandaemonium import PidLockFile, AlreadyLocked
+from scription import *
+from textwrap import dedent
+
+PID_FILE = '/opt/openerp/var/run/test_mnt_labeltime.pid'
+LLC_FILE = '/mnt/labeltime/Labels/LabelLinkCtl'
+
+@Command(
+        test=('pretend error condition and send mail', FLAG)
+        )
+def test_labeltime_connection(test):
+    try:
+        if test:
+            raise AlreadyLocked('testing mail')
+        with PidLockFile(PID_FILE, timeout=1):
+            cat = Execute('cat %s' % LLC_FILE, timeout=10)
+            print(cat.stdout)
+    except AlreadyLocked as exc:
+        send_mail(
+                recipients=['ethan@stoneleaf.us', '9715061961@vtext.com'],
+                subject='labeltime connection lost?',
+                message="cat of LabelLinkCtl has stalled",
+                )
+
+def send_mail(recipients, subject, message):
+    """
+    use system mail command to send MESSAGE to RECIPIENTS
+    """
+    sent_addresses = []
+    failed_to_send = []
+    for address in recipients:
+        # may be skipped if all eligible addresses have already been notified
+        try:
+            job = Job(
+                    '/usr/bin/mail -# -s "%s" %s' % (subject, address),
+                    pty=True,
+                    )
+            job.communicate(input=message+'\n\x04', timeout=300)
+            sent_addresses.append(address)
+        except Exception as exc:
+            error(exc)
+            failed_to_send.append(address)
+            continue
+    return sent_addresses, failed_to_send
+
+
+Run()
