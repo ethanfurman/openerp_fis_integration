@@ -12,6 +12,7 @@ from openerp.exceptions import ERPError
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids, self_uid, NamedLock
 import os
 from osv import osv, fields
+from pandaemonium import PidLockFile, AlreadyLocked
 from PIL import Image
 from xaml import Xaml
 import logging
@@ -33,6 +34,7 @@ with LLC_lock:
         LLC_text = llc.read().strip().split('\n')
 LLC_OVERRIDE = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.override'
 LLC_SOURCE = Path('/mnt/labeltime/Labels/LabelLinkCtl')
+LLC_PID_FILE = Path('/opt/openerp/var/run/test_mnt_labeltime.pid')
 
 PRODUCT_LABEL_URL = Path("https://openerp.sunridgefarms.com/fis/product/label/")
 PRODUCT_LABEL_BMP_LOCATION = Path("/mnt/labeltime/Labels/")
@@ -1057,10 +1059,13 @@ def get_LLC():
         llc_override = True
         with open(LLC_OVERRIDE) as llc:
             label_link_lines = llc.read().strip().split('\n')
+    elif LLC_PID_FILE.exists():
+        use_cache = True
     else:
         # attempt to get LabelLinkCtl from labeltime
         try:
-            cat = Execute('cat %s' % LLC_SOURCE, timeout=5)
+            with PidLockFile(LLC_PID_FILE, timeout=1):
+                cat = Execute('cat %s' % LLC_SOURCE, timeout=10)
             if not cat.returncode:
                 label_link_lines = cat.stdout.strip().split('\n')
             else:
@@ -1069,7 +1074,7 @@ def get_LLC():
                         cat.returncode,
                         cat.stderr and cat.stderr.strip().split('\n')[-1] or 'unknown',
                         )
-        except TimeoutError:
+        except (AlreadyLocked, TimeoutError):
             use_cache = True
         except Exception:
             _logger.exception('failed to read %r', LLC_SOURCE)
