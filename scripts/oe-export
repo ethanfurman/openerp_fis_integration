@@ -179,7 +179,7 @@ def add_imd(module, table, name, domain, field, method):
     # check for pre-existing alternate names
     print('existing ids:', existing_ids.keys(), verbose=3)
     template = '%s_%%s' % (imd_table, )
-    for r in ProgressView(iterable=q.records, view_type='bar'):
+    for r in ViewProgress(q.records, view_type='bar'):
         name = template % (func(r, field), )
         dedupe_name = '%s_%s' % (name, r.id)
         print("%7s  %25s  %s" % (r.id, r[field], name), verbose=2)

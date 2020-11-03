@@ -291,20 +291,21 @@ def product_forecast(*items):
     if not items:
         items = []
         nvty = fd.fisData('NVTY1', keymatch="%s101000    101**")   # 135
-        for item_rec in ProgressView(
-                iterable=nvty,
+        for item_rec in ViewProgress(
+                nvty,
+                'getting %d item numbers' % len(nvty)
                 view_type='bar',
-                message='getting %d item numbers' % len(nvty)
             ):
             items.append(item_rec[F135.item_id])
         print('%d items retrieved' % len(items), verbose=2)
     else:
         items = list(items)
-    items = ProgressView(
-            iterable=(i+'\n' for i in items + ['exit']),
+    items = ViewProgress(
+            (i+'\n' for i in items + ['exit']),
+            'communicating with 11.11',
             view_type='bar',
             total=len(items),
-            message='communicating with 11.11')
+            )
     start = time.time()
     with user_ids(0, 0):
         result = Execute(

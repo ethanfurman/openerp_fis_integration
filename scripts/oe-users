@@ -602,9 +602,9 @@ def update_transmitter_logins(user, reset, force):
     created_logins = []
     deleted_logins = []
     updated_logins = []
-    for transmitter in ProgressView(
-            iterable=sorted(transmitters.values(), key=lambda t: t.transmitter_name),
-            message='Sifting through $total records...',
+    for transmitter in ViewProgress(
+            sorted(transmitters.values(), key=lambda t: t.transmitter_name),
+            'Sifting through $total records...',
             view_type='bar',
         ):
         master_xml_id = transmitter.partner_xml_id
