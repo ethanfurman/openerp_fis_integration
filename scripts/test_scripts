@@ -655,7 +655,6 @@ class TestProcessOpenerpOrders(unittest.TestCase):
                 '776', '777', '778', '779', '780', '781', '782',
             ):
             process_orders.ARCHIVE.touch('%s.txt' % file, (None, fnx_script_support.time_stamp(datetime(2020, 5, 20, 9, 51))))
-        #
         with Patch(fnx_script_support, 'error') as s:
             with Patch(process_orders, 'echo', 'send_mail') as p:
                 process_orders.daily_digest(date(2020, 5, 20), ())
@@ -726,7 +725,7 @@ class TestProcessOpenerpOrders(unittest.TestCase):
                         p.send_mail._called_args_[-1],
                         (
                             ('ethan@stoneleaf.us','tony@togo.net'),
-                            "portal orders",
+                            "portal orders - 2020-05-20",
                             dedent("""\
                                 FILES NOT PROCESSED
                                    1274.txt         12345.txt
@@ -787,6 +786,77 @@ class TestProcessOpenerpOrders(unittest.TestCase):
                                    286911 - 2 - 25 lb
                                 """),
                             ))
+        #
+        with Patch(fnx_script_support, 'Job') as s:
+            job = Ersatz('job')
+            job.communicate = Ersatz('communicate')
+            s.Job._return_ = job
+            process_orders.daily_digest(date(2020, 5, 20), ('ethan@stoneleaf.us','tony@togo.net'))
+            self.assertEqual(
+                    job.communicate._called_kwds_[-1]['input'],
+                    dedent("""\
+                        FILES NOT PROCESSED
+                           1274.txt         12345.txt
+                           2345.txt         18891.txt
+                           2819.txt         91827.txt
+                           8273.txt
+                        ===================
+
+
+                        found 7 records for 2020-05-20
+                        
+                           776.txt          780.txt
+                           777.txt          781.txt
+                           778.txt          782.txt
+                           779.txt
+                        
+                        === 776.txt ===
+                           HE649-150649
+                           802180 - 1
+                           223921 - 2 - 25 lb
+                        
+                        === 777.txt ===
+                           HE018-150018
+                           072010 - 8
+                           683931 - 9 - 25 lb
+                        
+                        === 778.txt ===
+                           WHOLE-BULK-715234
+                           RSD-041920
+                           007010 - 4 - 15 oz
+                           573911 - 1
+                        
+                        === 779.txt ===
+                           LUCKY-407B-900002
+                           PON-819287
+                           002085 - 1
+                           283001 - 7
+                        
+                        === 780.txt ===
+                           ALBER-GROC-112843
+                           PON-10005196
+                           RSD-052020
+                           032180 - 3 - 10 lb
+                           286911 - 2 - 25 lb
+
+                        === 781.txt ===
+                           ALBER-GROC-112843         072010 - 8
+                           PON-10005196              683931 - 9 - 25 lb
+                           RSD-052020                802180 - 1
+                           032180 - 3 - 10 lb        223921 - 2 - 25 lb
+                           286911 - 2 - 25 lb
+
+                        === 782.txt ===
+                           ALBER-GROC-112843
+                           PON-10005196
+                           RSD-052020
+                           032180 - 3 - 10 lb
+                           286911 - 2 - 25 lb
+
+                        \x04
+                        """).strip(),
+                    )
+
 
 class TestFisIntegrationConversion(unittest.TestCase):
 
