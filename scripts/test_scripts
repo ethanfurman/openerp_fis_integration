@@ -1,443 +1,65 @@
 #!/usr/local/bin/suid-python --virtualenv
+# -*- coding: utf-8
+from __future__ import print_function
+
 import os
 import unittest
 import imp
+import scription
+import sys
 import tempfile
+import tools
+import fnx_script_support
+
+from aenum import NamedTuple
 from antipathy import Path
 from datetime import date, time, datetime, timedelta
 from dbf import DateTime
-from scription import Exit
+from openerplib.stoneleaf import AttrDict, XidRec
+from scription import Exit, raise_with_traceback
+from testily import import_script, Ersatz, Patch
 from textwrap import dedent
-
-with open('process_openerp_orders', 'rb') as fh:
-    process_orders = imp.load_source('process_openerp_orders', 'process_openerp_orders', fh)
-    process_orders.script_fullname = 'process_openerp_orders'
-
-assert process_orders.BASE_SEQ == 10000
-assert process_orders.CUT_OFF == timedelta(seconds=600)
-assert process_orders.EOE_PATH == Path("/mnt/11-111/home/eoe/")
-assert process_orders.BASE_PATH == "/home/openerp/sandbox/openerp/var/fis_integration/orders"
-assert process_orders.ORDERS == "/home/openerp/sandbox/openerp/var/fis_integration/orders"
-assert process_orders.ARCHIVE == "/home/openerp/sandbox/openerp/var/fis_integration/orders/archive"
-assert process_orders.RECIPIENT_FILE == "/home/openerp/sandbox/openerp/var/fis_integration/orders/notify"
-assert process_orders.ERROR_FILE == "/home/openerp/sandbox/openerp/var/fis_integration/orders/notified"
+from tools import OE7, Odoo13
 
 TEMPDIR = Path(tempfile.mkdtemp())
 TEMPDIR.rmtree(ignore_errors=True)
 
-class TestDynamicProcessOpenerpOrders(unittest.TestCase):
+CUT_OFF = timedelta(seconds=600)
 
-    maxDiff = None
+process_orders = import_script('process_openerp_orders')
+process_orders.script_fullname = 'process_openerp_orders'
 
-    process_orders.EOE_PATH = Path(TEMPDIR/'eoe/')
-    process_orders.BASE_PATH = Path(TEMPDIR)/'orders'
-    process_orders.ORDERS = process_orders.BASE_PATH
-    process_orders.ARCHIVE = process_orders.BASE_PATH/'archive'
-    process_orders.RECIPIENT_FILE = process_orders.BASE_PATH/'notify'
-    process_orders.ERROR_FILE = process_orders.BASE_PATH/'notified'
+with Patch(tools, odoo_erp=tools.OE7):
+    fis_integration_oe7 = fi_oe7 = import_script('updates_fis_integration')
+    fis_integration_oe7.script_fullname = 'updates_fis_integration'
+del sys.modules['scription']
+del sys.modules['updates_fis_integration']
+
+with Patch(tools, odoo_erp=tools.Odoo13):
+    fis_integration_odoo13 = fi_odoo13 = import_script('updates_fis_integration')
+    fis_integration_odoo13.script_fullname = 'updates_fis_integration'
+del sys.modules['scription']
+del sys.modules['updates_fis_integration']
+
+assert fi_oe7.XmlLink is fi_odoo13.XmlLink
+
+class TestScriptSupport(unittest.TestCase):
 
     def setUp(self):
         TEMPDIR.rmtree(ignore_errors=True)
         TEMPDIR.mkdir()
-        process_orders.ORDERS.mkdir()
-        process_orders.ARCHIVE.mkdir()
-        process_orders.EOE_PATH.mkdir()
-        with open(process_orders.ERROR_FILE, 'w') as fh:
+        self.NOTIFIED = TEMPDIR / 'notified'
+        self.SCHEDULE = TEMPDIR / 'schedule'
+        with open(self.NOTIFIED, 'w') as fh:
             pass
-        with open(process_orders.RECIPIENT_FILE, 'w') as fh:
+        with open(self.SCHEDULE, 'w') as fh:
             fh.write(dedent("""\
                     email                 phone@carrier             availability
                     ethan@stoneleaf.us    9715061961@vtext.com      Mo-Tu:800-1700   We,Fr:1300-1700   Th:1700-2100   Sa:0000-0300,1200-1500 Su:-
                     emile@gmail.com       6503433458@txt.att.net
                     tony@togo.net
                     """))
-        for file in (
-                'blah', '23banjo', '12345', '2345', '8273', '1274', '2819', '91827', '18891',
-            ):
-            process_orders.ORDERS.touch('%s.txt' % file)
-        for file in (
-                'blah', '23banjo', '12345', '2345',
-            ):
-            process_orders.ORDERS.touch(file)
-        for file in (
-                '776', '777', '778', '779', '780',
-            ):
-            process_orders.ARCHIVE.touch('%s.txt' % file)
-
-    def test_process_openerp_orders(self):
-        with open(process_orders.ORDERS/'1234.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    HE649-150649
-                    802180 - 1
-                    223921 - 2 - 25 lb
-                    """))
-        with open(process_orders.ORDERS/'3456.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    HE018-150018
-                    072010 - 8
-                    683931 - 9 - 25 lb
-                    """))
-        with open(process_orders.ORDERS/'4567.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    HE018-150018
-                    072010, 8
-                    683931 - 9 - 25 lb
-                    """))
-        with open(process_orders.ORDERS/'5678.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    WHOLE-BULK-715234
-                    RSD-041920
-                    007010 - 4 - 15 oz
-                    573911 - 1
-                    """))
-        with open(process_orders.ORDERS/'7890.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    LUCKY-407B-900002
-                    PON-819287
-                    002085 - 1
-                    283001 - 7
-                    """))
-        with open(process_orders.ORDERS/'12345.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    ALBER-GROC-112843
-                    PON-10005196
-                    RSD-052020
-                    032180 - 3 - 10 lb
-                    286911 - 2 - 25 lb
-                    """))
-        with open(process_orders.ORDERS/'18891.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    ALBER-DELI-112877
-                    PON-10005196
-                    RSD-052020
-                    032180 - 3 - 10 lb
-                    286911 - 2 - 25 lb
-                    """))
-        with open(process_orders.ORDERS/'91827.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    ALBER-BULK-115141
-                    PON-10005196
-                    RSD-052020
-                    032180 - 3 - 10 lb
-                    286911 - 2 - 25 lb
-                    """))
-        # for file in (
-        #         '2345', '3456', '5678', '7890', '12345',
-        #     ):
-        #     process_orders.ORDERS.touch('%s.txt' % file, (None, datetime(2020, 5, 20, 9, 51).timestamp()))
-        #
-        old_send = None
-        old_echo = None
-        old_error = None
-        old_update = None
-        old_notify = None
-        try:
-            old_send = process_orders.send_mail
-            old_echo = process_orders.echo
-            old_error = process_orders.error
-            old_update = process_orders.update_recipients
-            old_notify = process_orders.notify
-            process_orders.error = MockFunction("error")
-            process_orders.echo = MockFunction("echo")
-            process_orders.notify = MockFunction('notify')
-            process_orders.TOMORROW = '091518'
-            process_orders.process_openerp_orders()
-            error_args = process_orders.error.called_args
-            self.assertEqual(len(error_args), 5)
-            self.assertTrue(error_args[0][0].startswith('[1274.txt]  ValueError:'))
-            self.assertTrue(error_args[1][0].startswith('[2345.txt]  ValueError:'))
-            self.assertTrue((process_orders.ORDERS/'1274.txt').exists())
-            self.assertTrue((process_orders.ORDERS/'2345.txt').exists())
-            # 2345.txt
-            with open(process_orders.EOE_PATH/'11234.ext') as fh:
-                self.assertEqual(
-                        dedent("""\
-                            C150649+P0000000037+D091518+I802180+Q1+I223921+Q2+
-                            """.strip()),
-                        fh.read(),
-                        )
-            # 3456.txt
-            with open(process_orders.EOE_PATH/'13456.ext') as fh:
-                self.assertEqual(
-                        dedent("""\
-                            C150018+P0000000037+D091518+I072010+Q8+I683931+Q9+
-                            """.strip()),
-                        fh.read(),
-                        )
-            # 5678.txt
-            with open(process_orders.EOE_PATH/'15678.ext') as fh:
-                self.assertEqual(
-                        dedent("""\
-                            C715234+P0000000037+D041920+I007010+Q4+I573911+Q1+
-                            """.strip()),
-                        fh.read(),
-                        )
-            # 7890.txt
-            with open(process_orders.EOE_PATH/'17890.ext') as fh:
-                self.assertEqual(
-                    dedent("""\
-                            C900002+P819287+D091518+I002085+Q1+I283001+Q7+
-                            """.strip()),
-                    fh.read(),
-                    )
-            # 12345.txt
-            with open(process_orders.EOE_PATH/'12345.ext') as fh:
-                self.assertEqual(
-                    dedent("""\
-                            C112843+P10005196+D052020+I032180+Q3+I286911+Q2+
-                            """.strip()),
-                    fh.read(),
-                    )
-
-        finally:
-            if old_send is not None:
-                process_orders.send_mail = old_send
-            if old_echo is not None:
-                process_orders.echo = old_echo
-            if old_error is not None:
-                process_orders.error = old_error
-            if old_update is not None:
-                process_orders.update_recipients = old_update
-            if old_notify is not None:
-                process_orders.notify = old_notify
-
-    def test_daily_digest(self):
-        with open(process_orders.ARCHIVE/'776.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    HE649-150649
-                    802180 - 1
-                    223921 - 2 - 25 lb
-                    """))
-        with open(process_orders.ARCHIVE/'777.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    HE018-150018
-                    072010 - 8
-                    683931 - 9 - 25 lb
-                    """))
-        with open(process_orders.ARCHIVE/'778.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    WHOLE-BULK-715234
-                    RSD-041920
-                    007010 - 4 - 15 oz
-                    573911 - 1
-                    """))
-        with open(process_orders.ARCHIVE/'779.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    LUCKY-407B-900002
-                    PON-819287
-                    002085 - 1
-                    283001 - 7
-                    """))
-        with open(process_orders.ARCHIVE/'780.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    ALBER-GROC-112843
-                    PON-10005196
-                    RSD-052020
-                    032180 - 3 - 10 lb
-                    286911 - 2 - 25 lb
-                    """))
-        with open(process_orders.ARCHIVE/'781.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    ALBER-GROC-112843
-                    PON-10005196
-                    RSD-052020
-                    032180 - 3 - 10 lb
-                    286911 - 2 - 25 lb
-                    072010 - 8
-                    683931 - 9 - 25 lb
-                    802180 - 1
-                    223921 - 2 - 25 lb
-                    """))
-        with open(process_orders.ARCHIVE/'782.txt', 'w') as fh:
-            fh.write(dedent("""\
-                    ALBER-GROC-112843
-                    PON-10005196
-                    RSD-052020
-                    032180 - 3 - 10 lb
-                    286911 - 2 - 25 lb
-                    """))
-        for file in (
-                '776', '777', '778', '779', '780', '781', '782',
-            ):
-            process_orders.ARCHIVE.touch('%s.txt' % file, (None, process_orders.time_stamp(datetime(2020, 5, 20, 9, 51))))
-        #
-        old_send = None
-        old_echo = None
-        old_error = None
-        old_update = None
-        try:
-            old_send = process_orders.send_mail
-            old_echo = process_orders.echo
-            old_error = process_orders.error
-            old_update = process_orders.update_recipients
-            process_orders.error = MockFunction("error")
-            process_orders.echo = MockFunction("echo")
-            process_orders.send_mail = MockFunction("send_mail")
-            process_orders.daily_digest(date(2020, 5, 20), ())
-            self.assertEqual(
-                    process_orders.echo.called_args[-1],
-                    (dedent("""\
-                            FILES NOT PROCESSED
-                               1274.txt         12345.txt
-                               2345.txt         18891.txt
-                               2819.txt         91827.txt
-                               8273.txt
-                            ===================
-
-
-                            found 7 records for 2020-05-20
-                            
-                               776.txt          780.txt
-                               777.txt          781.txt
-                               778.txt          782.txt
-                               779.txt
-                            
-                            === 776.txt ===
-                               HE649-150649
-                               802180 - 1
-                               223921 - 2 - 25 lb
-                            
-                            === 777.txt ===
-                               HE018-150018
-                               072010 - 8
-                               683931 - 9 - 25 lb
-                            
-                            === 778.txt ===
-                               WHOLE-BULK-715234
-                               RSD-041920
-                               007010 - 4 - 15 oz
-                               573911 - 1
-                            
-                            === 779.txt ===
-                               LUCKY-407B-900002
-                               PON-819287
-                               002085 - 1
-                               283001 - 7
-                            
-                            === 780.txt ===
-                               ALBER-GROC-112843
-                               PON-10005196
-                               RSD-052020
-                               032180 - 3 - 10 lb
-                               286911 - 2 - 25 lb
-
-                            === 781.txt ===
-                               ALBER-GROC-112843         072010 - 8
-                               PON-10005196              683931 - 9 - 25 lb
-                               RSD-052020                802180 - 1
-                               032180 - 3 - 10 lb        223921 - 2 - 25 lb
-                               286911 - 2 - 25 lb
-
-                            === 782.txt ===
-                               ALBER-GROC-112843
-                               PON-10005196
-                               RSD-052020
-                               032180 - 3 - 10 lb
-                               286911 - 2 - 25 lb
-                            """),
-                        ))
-            process_orders.daily_digest(date(2020, 5, 20), ('ethan@stoneleaf.us','tony@togo.net'))
-            self.assertEqual(
-                    process_orders.send_mail.called_args[-1],
-                    (
-                        ('ethan@stoneleaf.us','tony@togo.net'),
-                        "portal orders",
-                        dedent("""\
-                            FILES NOT PROCESSED
-                               1274.txt         12345.txt
-                               2345.txt         18891.txt
-                               2819.txt         91827.txt
-                               8273.txt
-                            ===================
-
-
-                            found 7 records for 2020-05-20
-                            
-                               776.txt          780.txt
-                               777.txt          781.txt
-                               778.txt          782.txt
-                               779.txt
-                            
-                            === 776.txt ===
-                               HE649-150649
-                               802180 - 1
-                               223921 - 2 - 25 lb
-                            
-                            === 777.txt ===
-                               HE018-150018
-                               072010 - 8
-                               683931 - 9 - 25 lb
-                            
-                            === 778.txt ===
-                               WHOLE-BULK-715234
-                               RSD-041920
-                               007010 - 4 - 15 oz
-                               573911 - 1
-                            
-                            === 779.txt ===
-                               LUCKY-407B-900002
-                               PON-819287
-                               002085 - 1
-                               283001 - 7
-                            
-                            === 780.txt ===
-                               ALBER-GROC-112843
-                               PON-10005196
-                               RSD-052020
-                               032180 - 3 - 10 lb
-                               286911 - 2 - 25 lb
-
-                            === 781.txt ===
-                               ALBER-GROC-112843         072010 - 8
-                               PON-10005196              683931 - 9 - 25 lb
-                               RSD-052020                802180 - 1
-                               032180 - 3 - 10 lb        223921 - 2 - 25 lb
-                               286911 - 2 - 25 lb
-
-                            === 782.txt ===
-                               ALBER-GROC-112843
-                               PON-10005196
-                               RSD-052020
-                               032180 - 3 - 10 lb
-                               286911 - 2 - 25 lb
-                            """),
-                        ))
-        finally:
-            if old_send is not None:
-                process_orders.send_mail = old_send
-            if old_echo is not None:
-                process_orders.echo = old_echo
-            if old_error is not None:
-                process_orders.error = old_error
-            if old_update is not None:
-                process_orders.update_recipients = old_update
-
-
-    def test_get_files_to_process(self):
-        """
-        returns files that match \d*.txt
-        """
-        self.assertEqual(
-                process_orders.get_files_to_process(process_orders.ORDERS),
-                [
-                    process_orders.ORDERS/'1274.txt',
-                    process_orders.ORDERS/'2345.txt',
-                    process_orders.ORDERS/'2819.txt',
-                    process_orders.ORDERS/'8273.txt',
-                    process_orders.ORDERS/'12345.txt',
-                    process_orders.ORDERS/'18891.txt',
-                    process_orders.ORDERS/'91827.txt',
-                    ])
-        self.assertEqual(
-                process_orders.get_files_to_process(process_orders.ARCHIVE),
-                [
-                    process_orders.ARCHIVE/'776.txt',
-                    process_orders.ARCHIVE/'777.txt',
-                    process_orders.ARCHIVE/'778.txt',
-                    process_orders.ARCHIVE/'779.txt',
-                    process_orders.ARCHIVE/'780.txt',
-                    ])
-
+            
     def test_filter_recipients(self):
         """
         return recipients that have not been contacted for current situation
@@ -448,13 +70,16 @@ class TestDynamicProcessOpenerpOrders(unittest.TestCase):
                 'tony@togo.net',
                 '971.506.1961@vtext.com',
                 ]
-        self.assertEqual(process_orders.filter_recipients(recipients), recipients)
+        self.assertEqual(
+                fnx_script_support.filter_recipients(recipients, self.NOTIFIED),
+                recipients,
+                )
         #
-        with open(process_orders.ERROR_FILE, 'w') as fh:
+        with open(self.NOTIFIED, 'w') as fh:
             fh.write('2020-05-20 0531 ethan@stoneleaf.us\n')
             fh.write('2020-07-19 1644 tony@togo.net\n')
         self.assertEqual(
-                process_orders.filter_recipients(recipients),
+                fnx_script_support.filter_recipients(recipients, self.NOTIFIED),
                 ['emile@gmail.com', '971.506.1961@vtext.com'],
                 )
 
@@ -462,221 +87,221 @@ class TestDynamicProcessOpenerpOrders(unittest.TestCase):
         """
         read address file and return eligible recipients based on allowed times
         """
-        process_orders.NOW = datetime(2019, 12, 30, 2, 19)
+        fnx_script_support.NOW = datetime(2019, 12, 30, 2, 19)
         self.assertEqual(
-                process_orders.get_recipients(process_orders.RECIPIENT_FILE),
+                fnx_script_support.get_recipients(self.SCHEDULE, source_type=fnx_script_support.SCHEDULE),
                 ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
                 )
-        process_orders.NOW = datetime(2020, 4, 14, 6, 33)
+        fnx_script_support.NOW = datetime(2020, 4, 14, 6, 33)
         self.assertEqual(
-                process_orders.get_recipients(process_orders.RECIPIENT_FILE),
+                fnx_script_support.get_recipients(self.SCHEDULE, source_type=fnx_script_support.SCHEDULE),
                 ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
                 )
-        process_orders.NOW = datetime(2020, 4, 14, 8, 23)
+        fnx_script_support.NOW = datetime(2020, 4, 14, 8, 23)
         self.assertEqual(
-                process_orders.get_recipients(process_orders.RECIPIENT_FILE),
+                fnx_script_support.get_recipients(self.SCHEDULE, source_type=fnx_script_support.SCHEDULE),
                 ['ethan@stoneleaf.us','9715061961@vtext.com','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
                 )
-        process_orders.NOW = datetime(2020, 8, 19, 13, 45)
+        fnx_script_support.NOW = datetime(2020, 8, 19, 13, 45)
         self.assertEqual(
-                process_orders.get_recipients(process_orders.RECIPIENT_FILE),
+                fnx_script_support.get_recipients(self.SCHEDULE, source_type=fnx_script_support.SCHEDULE),
                 ['ethan@stoneleaf.us','9715061961@vtext.com','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
                 )
-        with open(process_orders.ERROR_FILE, 'w') as fh:
+        with open(self.NOTIFIED, 'w') as fh:
             fh.write(dedent("""\
                     2020-10-14 13:26 ethan.stoneleaf@gmail.com
                     2020-10-14 13:26 emile@sunridgefarms.com
                     """))
         self.assertEqual(
-                process_orders.get_recipients(process_orders.ERROR_FILE),
+                fnx_script_support.get_recipients(self.NOTIFIED, source_type=fnx_script_support.NOTIFIED),
                 ['ethan.stoneleaf@gmail.com', 'emile@sunridgefarms.com'],
                 )
 
     def test_notify_initial_no_error_file(self):
-        process_orders.ERROR_FILE.unlink()
-        process_orders.NOW = datetime(2019, 12, 30, 2, 19)
+        self.NOTIFIED.unlink()
+        fnx_script_support.NOW = datetime(2019, 12, 30, 2, 19)
         with Patch(
-                process_orders,
+                fnx_script_support,
                 'send_mail', 'error', 'update_recipients', 'get_recipients', 'filter_recipients',
                 ) as p:
-            p.send_mail.return_value = (
+            p.send_mail._return_ = (
                     ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
                     [],
                     )
-            p.filter_recipients.return_value = ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net']
-            notify_result = process_orders.notify(['error 1\n', 'error 2\n'])
+            p.filter_recipients._return_ = ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net']
+            notify_result = fnx_script_support.notify('test_script_support', self.SCHEDULE, self.NOTIFIED, ['error 1\n', 'error 2\n'], cut_off=CUT_OFF)
             self.assertEqual(notify_result, Exit.Unknown)
             self.assertEqual(
-                    p.send_mail.called_args[-1],
+                    p.send_mail._called_args_[-1],
                     (
                         ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
-                        "process_openerp_orders: errors encountered",
+                        "test_script_support: errors encountered",
                         "error 1\nerror 2\n",
                         ))
             self.assertEqual(
-                    p.update_recipients.called_args[-1][0],
+                    p.update_recipients._called_args_[-1][0],
                     ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
                     )
-            self.assertEqual(p.error.called_args, [])
+            self.assertEqual(p.error._called_args_, [])
 
     def test_notify_initial_old_error_file(self):
-        new_time = process_orders.time_stamp(datetime(2019, 12, 30, 2, 1))
-        process_orders.ERROR_FILE.touch((new_time, new_time))
-        process_orders.NOW = datetime(2019, 12, 30, 2, 19)
+        new_time = fnx_script_support.time_stamp(datetime(2019, 12, 30, 2, 1))
+        self.NOTIFIED.touch((new_time, new_time))
+        fnx_script_support.NOW = datetime(2019, 12, 30, 2, 19)
         with Patch(
-                process_orders,
+                fnx_script_support,
                 'send_mail', 'error', 'update_recipients', 'get_recipients', 'filter_recipients',
                 ) as p:
-            p.send_mail.return_value = (
+            p.send_mail._return_ = (
                     ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
                     [],
                     )
-            p.filter_recipients.return_value = ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net']
-            notify_result = process_orders.notify(['error 1\n', 'error 2\n'])
+            p.filter_recipients._return_ = ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net']
+            notify_result = fnx_script_support.notify('test_script_support', self.SCHEDULE, self.NOTIFIED, ['error 1\n', 'error 2\n'], CUT_OFF)
             self.assertEqual(notify_result, Exit.Unknown)
             self.assertEqual(
-                    p.send_mail.called_args[-1],
+                    p.send_mail._called_args_[-1],
                     (
                         ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
-                        "process_openerp_orders: errors encountered",
+                        "test_script_support: errors encountered",
                         "error 1\nerror 2\n",
                         ))
             self.assertEqual(
-                    p.update_recipients.called_args[-1][0],
+                    p.update_recipients._called_args_[-1][0],
                     ['ethan@stoneleaf.us','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
                     )
-            self.assertEqual(p.error.called_args, [])
+            self.assertEqual(p.error._called_args_, [])
 
     def test_notify_timestamp_progresses(self):
         # errors are present, but no new notification addresses
         # timestamp on ERROR file should advance
-        new_time = process_orders.time_stamp(datetime(2020, 7, 4, 14, 19))
-        process_orders.ERROR_FILE.touch((new_time, new_time))
-        process_orders.NOW = datetime(2020, 7, 4, 14, 23)
-        prev_error_stat = process_orders.ERROR_FILE.stat()
+        new_time = fnx_script_support.time_stamp(datetime(2020, 7, 4, 14, 19))
+        self.NOTIFIED.touch((new_time, new_time))
+        fnx_script_support.NOW = datetime(2020, 7, 4, 14, 23)
+        prev_error_stat = self.NOTIFIED.stat()
         with Patch(
-                process_orders,
+                fnx_script_support,
                 'send_mail', 'error', 'update_recipients', 'get_recipients', 'filter_recipients',
                 ) as p:
-            p.filter_recipients.return_value = ([])
-            p.send_mail.return_value = ([], [])
-            notify_result = process_orders.notify(['error 5\n', 'error 6\n'])
+            p.filter_recipients._return_ = ([])
+            p.send_mail._return_ = ([], [])
+            notify_result = fnx_script_support.notify('test_script_support', self.SCHEDULE, self.NOTIFIED, ['error 5\n', 'error 6\n'], CUT_OFF)
             self.assertEqual(notify_result, Exit.Unknown)
-            self.assertTrue(process_orders.send_mail.called in (0, 1), 'send_mail called more than once')
-            if process_orders.send_mail.called == 1:
-                self.assertEqual(process_orders.send_mail.called_args[-1], (
+            self.assertTrue(fnx_script_support.send_mail._called_ in (0, 1), 'send_mail called more than once')
+            if fnx_script_support.send_mail._called_ == 1:
+                self.assertEqual(fnx_script_support.send_mail._called_args_[-1], (
                     [],
-                    'process_openerp_orders: errors encountered',
+                    'test_script_support: errors encountered',
                     'error 5\nerror 6\n',
                     ))
-            new_error_stat = process_orders.ERROR_FILE.stat()
+            new_error_stat = self.NOTIFIED.stat()
             self.assertTrue(new_error_stat.st_atime > prev_error_stat.st_atime)
-            self.assertEqual(p.error.called_args, [])
+            self.assertEqual(p.error._called_args_, [])
 
     def test_notify_no_errors_but_file_remains(self):
-        new_time = process_orders.time_stamp(datetime(2020, 10, 15, 10, 18))
-        process_orders.ERROR_FILE.touch((new_time, new_time))
-        process_orders.NOW = datetime(2020, 10, 15, 10, 26)
-        old_stat = process_orders.ERROR_FILE.stat()
+        new_time = fnx_script_support.time_stamp(datetime(2020, 10, 15, 10, 18))
+        self.NOTIFIED.touch((new_time, new_time))
+        fnx_script_support.NOW = datetime(2020, 10, 15, 10, 26)
+        old_stat = self.NOTIFIED.stat()
         last_accessed = old_stat.st_atime
-        self.assertTrue((process_orders.NOW - DateTime.fromtimestamp(last_accessed)) < process_orders.CUT_OFF)
+        self.assertTrue((fnx_script_support.NOW - DateTime.fromtimestamp(last_accessed)) < process_orders.CUT_OFF)
         with Patch(
-                process_orders,
+                fnx_script_support,
                 'send_mail', 'error', 'update_recipients', 'get_recipients', 'filter_recipients',
                 ) as p:
-            notify_result = process_orders.notify([])
-        new_stat = process_orders.ERROR_FILE.stat()
+            notify_result = fnx_script_support.notify('test_script_support', self.SCHEDULE, self.NOTIFIED, [], CUT_OFF)
+        new_stat = self.NOTIFIED.stat()
         self.assertEqual(notify_result, Exit.Success)
         self.assertEqual(old_stat, new_stat)
-        self.assertEqual(p.send_mail.called, 0)
-        self.assertEqual(p.error.called, 0)
-        self.assertEqual(p.update_recipients.called, 0)
-        self.assertEqual(p.get_recipients.called, 0)
-        self.assertEqual(p.filter_recipients.called, 0)
-        self.assertEqual(p.error.called_args, [])
+        self.assertEqual(p.send_mail._called_, 0)
+        self.assertEqual(p.error._called_, 0)
+        self.assertEqual(p.update_recipients._called_, 0)
+        self.assertEqual(p.get_recipients._called_, 0)
+        self.assertEqual(p.filter_recipients._called_, 0)
+        self.assertEqual(p.error._called_args_, [])
 
     def test_notify_no_errors_file_removed(self):
-        new_time = process_orders.time_stamp(datetime(2020, 1, 15, 10, 18))
-        process_orders.ERROR_FILE.touch((new_time, new_time))
-        process_orders.NOW = datetime(2020, 1, 15, 10, 29)
+        new_time = fnx_script_support.time_stamp(datetime(2020, 1, 15, 10, 18))
+        self.NOTIFIED.touch((new_time, new_time))
+        fnx_script_support.NOW = datetime(2020, 1, 15, 10, 29)
         with Patch(
-                process_orders,
+                fnx_script_support,
                 'send_mail', 'error', 'update_recipients', 'get_recipients', 'filter_recipients',
                 ) as p:
-            p.get_recipients.return_value = ['ethan@stoneleaf.us','9715061961@vtext.com']
-            p.send_mail.return_value = (['ethan@stoneleaf.us','9715061961@vtext.com'], [])
-            notify_result = process_orders.notify([])
+            p.get_recipients._return_ = ['ethan@stoneleaf.us','9715061961@vtext.com']
+            p.send_mail._return_ = (['ethan@stoneleaf.us','9715061961@vtext.com'], [])
+            notify_result = fnx_script_support.notify('test_script_support', self.SCHEDULE, self.NOTIFIED, [], CUT_OFF)
         self.assertEqual(notify_result, Exit.Success)
-        self.assertFalse(process_orders.ERROR_FILE.exists())
+        self.assertFalse(self.NOTIFIED.exists())
         self.assertEqual(
-                p.send_mail.called_args[-1],
+                p.send_mail._called_args_[-1],
                 (
                     ['ethan@stoneleaf.us','9715061961@vtext.com'],
-                    'process_openerp_orders: all good',
+                    'test_script_support: all good',
                     'problem has been resolved',
                     ))
-        self.assertEqual(p.error.called_args, [])
+        self.assertEqual(p.error._called_args_, [])
 
     def test_notify_no_errors_file_removed_bad_send(self):
-        new_time = process_orders.time_stamp(datetime(2020, 1, 15, 10, 18))
-        process_orders.ERROR_FILE.touch((new_time, new_time))
-        process_orders.NOW = datetime(2020, 1, 15, 10, 29)
+        new_time = fnx_script_support.time_stamp(datetime(2020, 1, 15, 10, 18))
+        self.NOTIFIED.touch((new_time, new_time))
+        fnx_script_support.NOW = datetime(2020, 1, 15, 10, 29)
         with Patch(
-                process_orders,
+                fnx_script_support,
                 'send_mail', 'error', 'update_recipients', 'get_recipients', 'filter_recipients',
                 ) as p:
-            p.get_recipients.return_value = ['ethan@stoneleaf.us','9715061961@vtext.com']
-            p.send_mail.return_value = (['ethan@stoneleaf.us'],['9715061961@vtext.com'])
-            notify_result = process_orders.notify([])
+            p.get_recipients._return_ = ['ethan@stoneleaf.us','9715061961@vtext.com']
+            p.send_mail._return_ = (['ethan@stoneleaf.us'],['9715061961@vtext.com'])
+            notify_result = fnx_script_support.notify('test_script_support', self.SCHEDULE, self.NOTIFIED, [], CUT_OFF)
         self.assertEqual(notify_result, Exit.UnknownError)
-        self.assertFalse(process_orders.ERROR_FILE.exists())
-        self.assertEquals(p.error.called_args[-1], ('\n\nUnable to contact:\n  9715061961@vtext.com',))
+        self.assertFalse(self.NOTIFIED.exists())
+        self.assertEquals(p.error._called_args_[-1], ('\n\nUnable to contact:\n  9715061961@vtext.com',))
 
     def test_update_recipients(self):
         """
         update notification file with who was contacted at what time
         """
-        with open(process_orders.ERROR_FILE) as fh:
+        with open(self.NOTIFIED) as fh:
             self.assertEqual(fh.read(), "")
-        process_orders.NOW = datetime(2020, 5, 20, 6, 39)  # wednesday
-        process_orders.update_recipients(['ethan@stoneleaf.us', 'tony@togo.net'])
+        fnx_script_support.NOW = datetime(2020, 5, 20, 6, 39)  # wednesday
+        fnx_script_support.update_recipients(['ethan@stoneleaf.us', 'tony@togo.net'], self.NOTIFIED)
         expected = ""
-        expected += "%-20s ethan@stoneleaf.us\n" % process_orders.NOW.strftime('%Y-%m-%d %H:%M')
-        expected += "%-20s tony@togo.net\n" % process_orders.NOW.strftime('%Y-%m-%d %H:%M')
-        with open(process_orders.ERROR_FILE) as fh:
+        expected += "%-20s ethan@stoneleaf.us\n" % fnx_script_support.NOW.strftime('%Y-%m-%d %H:%M')
+        expected += "%-20s tony@togo.net\n" % fnx_script_support.NOW.strftime('%Y-%m-%d %H:%M')
+        with open(self.NOTIFIED) as fh:
             self.assertEqual(fh.read(), expected)
-        process_orders.NOW = datetime(2020, 5, 20, 13, 39)  # wednesday
-        to_notify = process_orders.get_recipients(process_orders.RECIPIENT_FILE)
+        fnx_script_support.NOW = datetime(2020, 5, 20, 13, 39)  # wednesday
+        to_notify = fnx_script_support.get_recipients(self.SCHEDULE, source_type=fnx_script_support.SCHEDULE)
         self.assertEqual(
                 to_notify,
                 ['ethan@stoneleaf.us','9715061961@vtext.com','emile@gmail.com','6503433458@txt.att.net','tony@togo.net'],
                 )
-        needs_notify = process_orders.filter_recipients(to_notify)
+        needs_notify = fnx_script_support.filter_recipients(to_notify, self.NOTIFIED)
         self.assertEqual(
                 needs_notify,
                 ['9715061961@vtext.com','emile@gmail.com','6503433458@txt.att.net'],
                 )
-        process_orders.update_recipients(needs_notify)
-        expected += "%-20s 9715061961@vtext.com\n" % process_orders.NOW.strftime('%Y-%m-%d %H:%M')
-        expected += "%-20s emile@gmail.com\n" % process_orders.NOW.strftime('%Y-%m-%d %H:%M')
-        expected += "%-20s 6503433458@txt.att.net\n" % process_orders.NOW.strftime('%Y-%m-%d %H:%M')
-        with open(process_orders.ERROR_FILE) as fh:
+        fnx_script_support.update_recipients(needs_notify, self.NOTIFIED)
+        expected += "%-20s 9715061961@vtext.com\n" % fnx_script_support.NOW.strftime('%Y-%m-%d %H:%M')
+        expected += "%-20s emile@gmail.com\n" % fnx_script_support.NOW.strftime('%Y-%m-%d %H:%M')
+        expected += "%-20s 6503433458@txt.att.net\n" % fnx_script_support.NOW.strftime('%Y-%m-%d %H:%M')
+        with open(self.NOTIFIED) as fh:
             self.assertEqual(fh.read(), expected)
 
     def test_weekly_availability(self):
-        ethan = process_orders.WeeklyAvailability(
+        ethan = fnx_script_support.WeeklyAvailability(
                 'Mo-Tu:800-1700',
                 'We,Fr:1300-1700',
                 'Th:1700-2100',
                 'Sa:0000-0300,1200-1500',
                 'Su:-',
                 )
-        tony = process_orders.WeeklyAvailability(
+        tony = fnx_script_support.WeeklyAvailability(
             'Mo-We:0500-1200',
             'Th,Fr:1200-1700',
             'Sa-Su:0800-2100',
             )
-        emile = process_orders.WeeklyAvailability.always()
+        emile = fnx_script_support.WeeklyAvailability.always()
         def test_periods(tests):
             for e, t, dt in tests:
                 self.assertEqual(e, dt in ethan, dt.strftime("%a %H:%M %%s %%s") % (('in', 'not in')[dt in ethan], ethan,))
@@ -786,46 +411,1917 @@ class TestDynamicProcessOpenerpOrders(unittest.TestCase):
                 ))
 
 
-class MockFunction(object):
-    #
-    def __init__(self, name, return_value=None):
-        self.name = name
-        self.return_value = return_value
-        self.called = 0
-        self.called_args = []
-        self.called_kwds = []
-    #
-    def __repr__(self):
-        return "MockFunction_%s" % self.name
-    #
-    def __call__(self, *args, **kwds):
-        self.called_args.append(args)
-        self.called_kwds.append(kwds)
-        self.called += 1
-        return self.return_value
+    
+class TestProcessOpenerpOrders(unittest.TestCase):
+
+    assert process_orders.BASE_SEQ == 10000
+    assert process_orders.CUT_OFF == timedelta(seconds=600)
+    assert process_orders.EOE_PATH == Path("/mnt/11-111/home/eoe/")
+    assert process_orders.BASE_PATH == "/home/openerp/sandbox/openerp/var/fis_integration/orders"
+    assert process_orders.ORDERS == "/home/openerp/sandbox/openerp/var/fis_integration/orders"
+    assert process_orders.ARCHIVE == "/home/openerp/sandbox/openerp/var/fis_integration/orders/archive"
+    assert process_orders.RECIPIENT_FILE == "/home/openerp/sandbox/openerp/var/fis_integration/orders/notify"
+    assert process_orders.ERROR_FILE == "/home/openerp/sandbox/openerp/var/fis_integration/orders/notified"
+
+    process_orders.EOE_PATH = Path(TEMPDIR/'eoe/')
+    process_orders.BASE_PATH = Path(TEMPDIR)/'orders'
+    process_orders.ORDERS = process_orders.BASE_PATH
+    process_orders.ARCHIVE = process_orders.BASE_PATH/'archive'
+    process_orders.RECIPIENT_FILE = process_orders.BASE_PATH/'notify'
+    process_orders.ERROR_FILE = process_orders.BASE_PATH/'notified'
+
+    def setUp(self):
+        TEMPDIR.rmtree(ignore_errors=True)
+        TEMPDIR.mkdir()
+        process_orders.ORDERS.mkdir()
+        process_orders.ARCHIVE.mkdir()
+        process_orders.EOE_PATH.mkdir()
+        with open(process_orders.ERROR_FILE, 'w') as fh:
+            pass
+        with open(process_orders.RECIPIENT_FILE, 'w') as fh:
+            fh.write(dedent("""\
+                    email                 phone@carrier             availability
+                    ethan@stoneleaf.us    9715061961@vtext.com      Mo-Tu:800-1700   We,Fr:1300-1700   Th:1700-2100   Sa:0000-0300,1200-1500 Su:-
+                    emile@gmail.com       6503433458@txt.att.net
+                    tony@togo.net
+                    """))
+        for file in (
+                'blah', '23banjo', '12345', '2345', '8273', '1274', '2819', '91827', '18891',
+            ):
+            process_orders.ORDERS.touch('%s.txt' % file)
+        for file in (
+                'blah', '23banjo', '12345', '2345',
+            ):
+            process_orders.ORDERS.touch(file)
+        for file in (
+                '776', '777', '778', '779', '780',
+            ):
+            process_orders.ARCHIVE.touch('%s.txt' % file)
+
+    def test_get_files_to_process(self):
+        """
+        returns files that match \d*.txt
+        """
+        self.assertEqual(
+                process_orders.get_files_to_process(process_orders.ORDERS),
+                [
+                    process_orders.ORDERS/'1274.txt',
+                    process_orders.ORDERS/'2345.txt',
+                    process_orders.ORDERS/'2819.txt',
+                    process_orders.ORDERS/'8273.txt',
+                    process_orders.ORDERS/'12345.txt',
+                    process_orders.ORDERS/'18891.txt',
+                    process_orders.ORDERS/'91827.txt',
+                    ])
+        self.assertEqual(
+                process_orders.get_files_to_process(process_orders.ARCHIVE),
+                [
+                    process_orders.ARCHIVE/'776.txt',
+                    process_orders.ARCHIVE/'777.txt',
+                    process_orders.ARCHIVE/'778.txt',
+                    process_orders.ARCHIVE/'779.txt',
+                    process_orders.ARCHIVE/'780.txt',
+                    ])
+
+    def test_process_openerp_orders(self):
+        with open(process_orders.ORDERS/'1234.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    HE649-150649
+                    802180 - 1
+                    223921 - 2 - 25 lb
+                    """))
+        with open(process_orders.ORDERS/'3456.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    HE018-150018
+                    072010 - 8
+                    683931 - 9 - 25 lb
+                    """))
+        with open(process_orders.ORDERS/'4567.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    HE018-150018
+                    072010, 8
+                    683931 - 9 - 25 lb
+                    """))
+        with open(process_orders.ORDERS/'5678.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    WHOLE-BULK-715234
+                    RSD-041920
+                    007010 - 4 - 15 oz
+                    573911 - 1
+                    """))
+        with open(process_orders.ORDERS/'7890.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    LUCKY-407B-900002
+                    PON-819287
+                    002085 - 1
+                    283001 - 7
+                    """))
+        with open(process_orders.ORDERS/'12345.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    ALBER-GROC-112843
+                    PON-10005196
+                    RSD-052020
+                    032180 - 3 - 10 lb
+                    286911 - 2 - 25 lb
+                    """))
+        with open(process_orders.ORDERS/'18891.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    ALBER-DELI-112877
+                    PON-10005196
+                    RSD-052020
+                    032180 - 3 - 10 lb
+                    286911 - 2 - 25 lb
+                    """))
+        with open(process_orders.ORDERS/'91827.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    ALBER-BULK-115141
+                    PON-10005196
+                    RSD-052020
+                    032180 - 3 - 10 lb
+                    286911 - 2 - 25 lb
+                    """))
+        # for file in (
+        #         '2345', '3456', '5678', '7890', '12345',
+        #     ):
+        #     process_orders.ORDERS.touch('%s.txt' % file, (None, datetime(2020, 5, 20, 9, 51).timestamp()))
+        #
+        with Patch(process_orders, 'echo', 'error', 'notify', 'send_mail', 'update_recipients') as p:
+            process_orders.TOMORROW = '091518'
+            process_orders.process_openerp_orders()
+            error_args = p.error._called_args_
+            self.assertEqual(len(error_args), 5)
+            self.assertTrue(error_args[0][0].startswith('[1274.txt]  ValueError:'))
+            self.assertTrue(error_args[1][0].startswith('[2345.txt]  ValueError:'))
+            self.assertTrue((process_orders.ORDERS/'1274.txt').exists())
+            self.assertTrue((process_orders.ORDERS/'2345.txt').exists())
+            # 2345.txt
+            with open(process_orders.EOE_PATH/'11234.ext') as fh:
+                self.assertEqual(
+                        dedent("""\
+                            C150649+P0000000037+D091518+I802180+Q1+I223921+Q2+
+                            """.strip()),
+                        fh.read(),
+                        )
+            # 3456.txt
+            with open(process_orders.EOE_PATH/'13456.ext') as fh:
+                self.assertEqual(
+                        dedent("""\
+                            C150018+P0000000037+D091518+I072010+Q8+I683931+Q9+
+                            """.strip()),
+                        fh.read(),
+                        )
+            # 5678.txt
+            with open(process_orders.EOE_PATH/'15678.ext') as fh:
+                self.assertEqual(
+                        dedent("""\
+                            C715234+P0000000037+D041920+I007010+Q4+I573911+Q1+
+                            """.strip()),
+                        fh.read(),
+                        )
+            # 7890.txt
+            with open(process_orders.EOE_PATH/'17890.ext') as fh:
+                self.assertEqual(
+                    dedent("""\
+                            C900002+P819287+D091518+I002085+Q1+I283001+Q7+
+                            """.strip()),
+                    fh.read(),
+                    )
+            # 12345.txt
+            with open(process_orders.EOE_PATH/'12345.ext') as fh:
+                self.assertEqual(
+                    dedent("""\
+                            C112843+P10005196+D052020+I032180+Q3+I286911+Q2+
+                            """.strip()),
+                    fh.read(),
+                    )
+
+    def test_daily_digest(self):
+        with open(process_orders.ARCHIVE/'776.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    HE649-150649
+                    802180 - 1
+                    223921 - 2 - 25 lb
+                    """))
+        with open(process_orders.ARCHIVE/'777.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    HE018-150018
+                    072010 - 8
+                    683931 - 9 - 25 lb
+                    """))
+        with open(process_orders.ARCHIVE/'778.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    WHOLE-BULK-715234
+                    RSD-041920
+                    007010 - 4 - 15 oz
+                    573911 - 1
+                    """))
+        with open(process_orders.ARCHIVE/'779.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    LUCKY-407B-900002
+                    PON-819287
+                    002085 - 1
+                    283001 - 7
+                    """))
+        with open(process_orders.ARCHIVE/'780.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    ALBER-GROC-112843
+                    PON-10005196
+                    RSD-052020
+                    032180 - 3 - 10 lb
+                    286911 - 2 - 25 lb
+                    """))
+        with open(process_orders.ARCHIVE/'781.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    ALBER-GROC-112843
+                    PON-10005196
+                    RSD-052020
+                    032180 - 3 - 10 lb
+                    286911 - 2 - 25 lb
+                    072010 - 8
+                    683931 - 9 - 25 lb
+                    802180 - 1
+                    223921 - 2 - 25 lb
+                    """))
+        with open(process_orders.ARCHIVE/'782.txt', 'w') as fh:
+            fh.write(dedent("""\
+                    ALBER-GROC-112843
+                    PON-10005196
+                    RSD-052020
+                    032180 - 3 - 10 lb
+                    286911 - 2 - 25 lb
+                    """))
+        for file in (
+                '776', '777', '778', '779', '780', '781', '782',
+            ):
+            process_orders.ARCHIVE.touch('%s.txt' % file, (None, fnx_script_support.time_stamp(datetime(2020, 5, 20, 9, 51))))
+        #
+        with Patch(process_orders, 'echo', 'error', 'send_mail', 'update_recipients') as p:
+            process_orders.daily_digest(date(2020, 5, 20), ())
+            self.assertEqual(
+                    p.echo._called_args_[-1],
+                    (dedent("""\
+                            FILES NOT PROCESSED
+                               1274.txt         12345.txt
+                               2345.txt         18891.txt
+                               2819.txt         91827.txt
+                               8273.txt
+                            ===================
 
 
-class Patch(object):
-    #
-    def __init__(self, module, *names):
-        self.module = module
-        self.names = names
-        self.original_objs = {}
-        for f in names:
-            orig = getattr(module, f)
-            patch = MockFunction(f)
-            self.original_objs[f] = orig
-            setattr(self, f, patch)
-            setattr(module, f, patch)
-    #
-    def __enter__(self):
-        return self
-    #
-    def __exit__(self, *exc):
-        for f in self.names:
-            setattr(self.module, f, self.original_objs[f])
+                            found 7 records for 2020-05-20
+                            
+                               776.txt          780.txt
+                               777.txt          781.txt
+                               778.txt          782.txt
+                               779.txt
+                            
+                            === 776.txt ===
+                               HE649-150649
+                               802180 - 1
+                               223921 - 2 - 25 lb
+                            
+                            === 777.txt ===
+                               HE018-150018
+                               072010 - 8
+                               683931 - 9 - 25 lb
+                            
+                            === 778.txt ===
+                               WHOLE-BULK-715234
+                               RSD-041920
+                               007010 - 4 - 15 oz
+                               573911 - 1
+                            
+                            === 779.txt ===
+                               LUCKY-407B-900002
+                               PON-819287
+                               002085 - 1
+                               283001 - 7
+                            
+                            === 780.txt ===
+                               ALBER-GROC-112843
+                               PON-10005196
+                               RSD-052020
+                               032180 - 3 - 10 lb
+                               286911 - 2 - 25 lb
+
+                            === 781.txt ===
+                               ALBER-GROC-112843         072010 - 8
+                               PON-10005196              683931 - 9 - 25 lb
+                               RSD-052020                802180 - 1
+                               032180 - 3 - 10 lb        223921 - 2 - 25 lb
+                               286911 - 2 - 25 lb
+
+                            === 782.txt ===
+                               ALBER-GROC-112843
+                               PON-10005196
+                               RSD-052020
+                               032180 - 3 - 10 lb
+                               286911 - 2 - 25 lb
+                            """),
+                        ))
+            process_orders.daily_digest(date(2020, 5, 20), ('ethan@stoneleaf.us','tony@togo.net'))
+            self.assertEqual(
+                    p.send_mail._called_args_[-1],
+                    (
+                        ('ethan@stoneleaf.us','tony@togo.net'),
+                        "portal orders",
+                        dedent("""\
+                            FILES NOT PROCESSED
+                               1274.txt         12345.txt
+                               2345.txt         18891.txt
+                               2819.txt         91827.txt
+                               8273.txt
+                            ===================
 
 
+                            found 7 records for 2020-05-20
+                            
+                               776.txt          780.txt
+                               777.txt          781.txt
+                               778.txt          782.txt
+                               779.txt
+                            
+                            === 776.txt ===
+                               HE649-150649
+                               802180 - 1
+                               223921 - 2 - 25 lb
+                            
+                            === 777.txt ===
+                               HE018-150018
+                               072010 - 8
+                               683931 - 9 - 25 lb
+                            
+                            === 778.txt ===
+                               WHOLE-BULK-715234
+                               RSD-041920
+                               007010 - 4 - 15 oz
+                               573911 - 1
+                            
+                            === 779.txt ===
+                               LUCKY-407B-900002
+                               PON-819287
+                               002085 - 1
+                               283001 - 7
+                            
+                            === 780.txt ===
+                               ALBER-GROC-112843
+                               PON-10005196
+                               RSD-052020
+                               032180 - 3 - 10 lb
+                               286911 - 2 - 25 lb
+
+                            === 781.txt ===
+                               ALBER-GROC-112843         072010 - 8
+                               PON-10005196              683931 - 9 - 25 lb
+                               RSD-052020                802180 - 1
+                               032180 - 3 - 10 lb        223921 - 2 - 25 lb
+                               286911 - 2 - 25 lb
+
+                            === 782.txt ===
+                               ALBER-GROC-112843
+                               PON-10005196
+                               RSD-052020
+                               032180 - 3 - 10 lb
+                               286911 - 2 - 25 lb
+                            """),
+                        ))
+
+class TestFisIntegrationConversion(unittest.TestCase):
+
+    def setUp(self):
+        class IrModelData(Ersatz):
+            def get_object_reference(self, module, name):
+                return object_references.get((module, name), Ersatz())
+        class Connect(Ersatz):
+            def get_model(self, model):
+                if model == 'ir.model.data':
+                    return IrModelData()
+                else:
+                    return Ersatz()
+        self.connect = Connect()
+        self.config = None
+
+    def validate_record_conversion(self, class_name, oe_model, odoo_model, data, cls_fields=None, *address, **attrs):
+        # f_class: ARCI, CSMS, etc.
+        # oe_model: e.g. fis_integration.customer_product_cross_reference
+        # odoo_model: e.g. customer_product_xref
+        # data set: see `data sets` below
+        # address is the state and country records for tables using addresses
+        # attrs are patches to apply to f_instance once instantiated
+
+        odoo_model = odoo_model or oe_model
+        for script, model in (
+                (fis_integration_oe7, oe_model),
+                (fis_integration_odoo13, odoo_model),
+            ):
+            erp = script.odoo_erp
+            f_class = getattr(script, class_name)
+            if not cls_fields:
+                cls_fields = f_class.OE_FIELDS
+            fields = cls_fields
+            with Patch(f_class, **attrs):
+                f_instance = f_class(self.connect, self.config, *address)
+                for i, data_set in enumerate(data(script)):
+                    try:
+                        for ignore in (False, True):
+                            converted_records = f_instance.convert_fis_rec(data_set.on_disk, use_ignore=ignore)
+                            if data_set.ignore and ignore:
+                                if not converted_records:
+                                    continue
+                                else:
+                                    raise AssertionError("failed ignore: erp %r, model %s, data_set %d"
+                                            % (erp, f_instance, i)
+                                            )
+                            self.assertEqual(
+                                    len(converted_records), len(data_set.fis_rec),
+                                    "len(records) mismatch: erp %r, model %s, use_ignore %r, "
+                                    "data set %d, lengths %r vs %r"
+                                        % (erp, f_instance, ignore, i, len(converted_records), len(data_set.fis_rec))
+                                    )
+                            for j, converted_rec in enumerate(converted_records):
+                                target_rec = data_set.fis_rec[j]
+                                target_rec._imd.model = model
+                                extra_fields = data_set[erp+2][j]  # the +2 becase DataSet[2] is where the erp specific data starts
+                                self.assertEqual(
+                                        len(converted_rec), len(target_rec) + len(extra_fields),
+                                        "len(fields) mismatch: erp %r, model %s, data set %d, %r vs %r + %r\n%r\n%r\n%r"
+                                            % (
+                                                erp, f_instance, i, len(converted_rec), len(target_rec), len(extra_fields),
+                                                converted_rec.keys(), target_rec.keys(), extra_fields.keys(),
+                                                ))
+                                self.assertEqual(
+                                        converted_rec._imd, target_rec._imd,
+                                        "imds don't match: erp %r, model %s, data set %d\n%r\n vs.\n%r"
+                                            % (erp, f_instance, i, converted_rec._imd, target_rec._imd),
+                                        )
+                                for field, target_value in target_rec.items():
+                                    self.assertEqual(
+                                            converted_rec[field], target_value,
+                                            "field mismatch: erp %r, model %s, data set %d, field %r -> %r vs %r"
+                                                % (erp, f_instance, i, field, converted_rec[field], target_value)
+                                                )
+                                for field, target_value in extra_fields.items():
+                                    self.assertEqual(
+                                            converted_rec[field], target_value,
+                                            "field mismatch: erp %r, model %s, data set %d, field %r"
+                                                % (erp, f_instance, i, field)
+                                                )
+                    except AssertionError:
+                        raise
+                    except Exception:
+                        exc_type, exc, tb = sys.exc_info()
+                        raise_with_traceback(
+                                exc_type("erp %r, model %s with data set %d -> %s" 
+                                    % (erp, f_instance, i, '; '.join(exc.args))),
+                                tb,
+                                )
+
+    def test_all_tables_tested(self):
+        """
+        ensure we have one test per table
+        """
+        tables = 0
+        tests = 0
+        missing = []
+        for name in dir(fi_odoo13):
+            if name in ('Synchronize', 'SynchronizeAddress'):
+                continue
+            obj = getattr(fi_odoo13, name)
+            try:
+                if not issubclass(obj, tools.Synchronize):
+                    continue
+            except TypeError:
+                    continue
+            tables += 1
+            test_name = 'test_%s_convert' % name.lower()
+            if test_name in self.__class__.__dict__:
+                tests += 1
+            else:
+                missing.append(test_name)
+        if missing:
+            raise AssertionError('%d of %d tests missing:\n    %s' % (tables-tests, tables, '\n    '.join(missing)))
+
+    def test_arci_convert(self):
+        self.validate_record_conversion(
+                'ARCI',
+                'fis_integration.customer_product_cross_reference',
+                'fis.customer_product_xref',
+                arci_data,
+                )
+
+    def test_cnvzaa_convert(self):
+        oe_fields = 'id', 'module', 'xml_id', 'name', 'available'
+        odoo_fields = 'id', 'fis_module', 'fis_id', 'name', 'saleable'
+        self.validate_record_conversion(
+                'CNVZaa',
+                'product.available_at',
+                'product.availability',
+                cnvzaa_data,
+                (oe_fields, odoo_fields),
+                )
+
+    def test_cnvzas_convert(self):
+        self.validate_record_conversion(
+                'CNVZas',
+                'product.category',
+                'product.category',
+                cnvzas_data,
+                )
+
+    def test_cnvzd0_convert(self):
+        self.validate_record_conversion(
+                'CNVZd0',
+                'fis.account.customer_terms',
+                'fis.account.customer_terms',
+                cnvzd0_data,
+                )
+
+    def test_cnvzf_convert(self):
+        oe_fields = 'id', 'module', 'xml_id', 'desc'
+        odoo_fields = 'id', 'fis_module', 'fis_id', 'description'
+        self.validate_record_conversion(
+                'CNVZf',
+                'fis_integration.production_line',
+                'fis.production.line',
+                cnvzf_data,
+                (oe_fields, odoo_fields),
+                )
+
+
+    def test_cnvzo1_convert(self):
+        self.validate_record_conversion(
+                'CNVZO1',
+                'fis.transmitter_code',
+                'fis.account.transmitter_code',
+                cnvzo1_data,
+                )
+
+    def test_cnvzsv_convert(self):
+        oe_fields = [
+                'id', 'module', 'xml_id', 'is_carrier', 'is_company', 'use_parent_address',
+                'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
+                'phone', 'fuel_surcharge', 'fis_updated_by_user',
+                ]
+        odoo_fields = [
+                'id', 'fis_module', 'fis_id', 'is_carrier', 'is_company', 'use_parent_address',
+                'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
+                'phone', 'fuel_surcharge', 'fis_updated_by_user',
+                ]
+        self.validate_record_conversion(
+                'CNVZSV',
+                'res.partner',
+                'res.partner',
+                cnvzsv_data,
+                (oe_fields, odoo_fields),
+                state_recs,
+                country_recs,
+                )
+
+    def test_cnvzz_convert(self):
+        oe_fields = 'id', 'module', 'xml_id', 'fis_name', 'user_id'
+        odoo_fields = 'id', 'fis_module', 'fis_id', 'fis_name', 'user_id'
+        self.validate_record_conversion(
+                'CNVZz',
+                'fis.account.salesperson',
+                'fis.account.salesperson',
+                cnvzz_data,
+                (oe_fields, odoo_fields),
+                get_xid_records=get_xid_records,
+                )
+
+
+# fixtures
+
+Many2One = fi_odoo13.Many2One
+
+INVALID_CATEGORY_XMLID = 'fis_product_category_invalid' 
+SALEABLE_CATEGORY_XMLID = 'product_category_1'
+SALEABLE_CATEGORY_ID = 7
+ETC_CATEGORY_XMLID = '9'
+ETC_CATEGORY_ID = 11
+USER_MARK_DEVENCENZI = 'F074_917_res_users'
+USER_GREGG_ARMSTRONG = 'F074_109_res_users'
+USER_MARY_MICHELLE = 'F074_770_res_users'
+USER_MORTY_COHEN = 'F074_1_res_users'
+
+object_references = {
+        ('product', SALEABLE_CATEGORY_XMLID): ('product.category', SALEABLE_CATEGORY_ID),
+        ('product', ETC_CATEGORY_XMLID): ('product.category', ETC_CATEGORY_ID),
+        ('fis', INVALID_CATEGORY_XMLID): ('product.category', 13),
+        ('fis_integration', INVALID_CATEGORY_XMLID): ('product.category', 13),
+        ('fis', USER_MARK_DEVENCENZI): ('res.users', 128),
+        ('fis', USER_GREGG_ARMSTRONG): ('res.users', 138),
+        ('fis', USER_MARY_MICHELLE): ('res.users', 143),
+        ('fis', USER_MORTY_COHEN): ('res.users', 185),
+        }
+
+# F074_res_users
+F074_res_users = [
+        (
+            AttrDict(
+                id=128,
+                login='mdevencenzi',
+                name='Mark Devencenzi',
+                ),
+            AttrDict(
+                id=214262,
+                module='fis',
+                name=USER_MARK_DEVENCENZI,
+                model='res.users',
+                res_id=128,
+                ),
+            ),
+        (
+            AttrDict(
+                id=138,
+                login='garmstrong',
+                name='Gregg R. Armstrong',
+                ),
+            AttrDict(
+                id=214271,
+                module='fis',
+                name=USER_GREGG_ARMSTRONG,
+                model='res.users',
+                res_id=138,
+                ),
+            ),
+        (
+            AttrDict(
+                id=143,
+                login='mdemay',
+                name='Mary Michelle Demay',
+                ),
+            AttrDict(
+                id=214275,
+                module='fis',
+                name=USER_MARY_MICHELLE,
+                model='res.users',
+                res_id=143,
+                ),
+            ),
+        (
+            AttrDict(
+                id=185,
+                login='mcohen',
+                name='Morty Cohen',
+                ),
+            AttrDict(
+                id=214315,
+                module='fis',
+                name=USER_MORTY_COHEN,
+                model='res.users',
+                res_id=185,
+                ),
+            ),
+        ]
+
+# F328_production_order
+# F328_production_order = [
+#         XidRec.fromdict(
+#             AttrDict(
+#                 ),
+#             AttrDict(
+#                 id=,
+#                 module='fis',
+#                 name=,
+#                 model=,
+#                 res_id=,
+#                 ),
+#             ),
+#         ]
+
+# F341_production_line
+# F341_production_line = [
+#         (
+#             AttrDict(
+#                 id=,
+#                 xml_id=,
+#                 fis_id=,
+#                 module='F341',
+#                 fis_module='F341',
+#                 desc=,
+#                 description=,
+#                 ),
+#             AttrDict(
+#                 id=,
+#                 module='fis',
+#                 name='F341_?_production_line',
+#                 model=('fis_integration.production_line','fis.production.line'),
+#                 res_id=,
+#                 ),
+#             ),
+#         ]
+
+def get_xid_records(self, erp, domain, fields, context):
+    # self is part of the real get_xid_records, but needed as this function
+    # will get patched into the class instance and Python will pass `self` in;
+    # we'll use it to make sure we return the correct fields
+    #
+    # currently supported searches
+    # - F074_%_res_users
+    # - F328_%_production_order  XXX
+    # - F341_%_production_line   XXX
+    result = []
+    if ('name','=like','F074_%_res_users') in domain:
+        source = F074_res_users
+        model = 'res.users'
+
+    elif ('name','=like','F341_%_production_line') in domain:
+        source = F341_production_line
+        model = fis_integr
+    else:
+        raise ValueError('unprepped domain: %r' % (domain, ))
+    for rec, imd in source:
+        new_rec = dict(
+                (f, v)
+                for f, v in rec.items()
+                if f in fields
+                )
+        imd.model = model
+        result.append(XidRec.fromdict(new_rec, imd))
+    return result
+
+# state & country records
+class StateCountry(NamedTuple):
+    state = 0
+    country = 1
+
+    # id, code, name
+country_records_raw = dedent("""\
+        1,"AD","Andorra, Principality of"
+        2,"AE","United Arab Emirates"
+        3,"AF","Afghanistan, Islamic State of"
+        4,"AG","Antigua and Barbuda"
+        5,"AI","Anguilla"
+        6,"AL","Albania"
+        7,"AM","Armenia"
+        8,"AN","Netherlands Antilles"
+        9,"AO","Angola"
+        10,"AQ","Antarctica"
+        11,"AR","Argentina"
+        12,"AS","American Samoa"
+        13,"AT","Austria"
+        14,"AU","Australia"
+        15,"AW","Aruba"
+        16,"AX","Åland Islands"
+        17,"AZ","Azerbaijan"
+        18,"BA","Bosnia-Herzegovina"
+        19,"BB","Barbados"
+        20,"BD","Bangladesh"
+        21,"BE","Belgium"
+        22,"BF","Burkina Faso"
+        23,"BG","Bulgaria"
+        24,"BH","Bahrain"
+        25,"BI","Burundi"
+        26,"BJ","Benin"
+        27,"BL","Saint Barthélémy"
+        28,"BM","Bermuda"
+        29,"BN","Brunei Darussalam"
+        30,"BO","Bolivia"
+        31,"BQ","Bonaire, Sint Eustatius and Saba"
+        32,"BR","Brazil"
+        33,"BS","Bahamas"
+        34,"BT","Bhutan"
+        35,"BV","Bouvet Island"
+        36,"BW","Botswana"
+        37,"BY","Belarus"
+        38,"BZ","Belize"
+        39,"CA","Canada"
+        40,"CC","Cocos (Keeling) Islands"
+        41,"CF","Central African Republic"
+        42,"CD","Congo, Democratic Republic of the"
+        43,"CG","Congo"
+        44,"CH","Switzerland"
+        45,"CI","Ivory Coast (Cote D'Ivoire)"
+        46,"CK","Cook Islands"
+        47,"CL","Chile"
+        48,"CM","Cameroon"
+        49,"CN","China"
+        50,"CO","Colombia"
+        51,"CR","Costa Rica"
+        52,"CU","Cuba"
+        53,"CV","Cape Verde"
+        54,"CW","Curaçao"
+        55,"CX","Christmas Island"
+        56,"CY","Cyprus"
+        57,"CZ","Czech Republic"
+        58,"DE","Germany"
+        59,"DJ","Djibouti"
+        60,"DK","Denmark"
+        61,"DM","Dominica"
+        62,"DO","Dominican Republic"
+        63,"DZ","Algeria"
+        64,"EC","Ecuador"
+        65,"EE","Estonia"
+        66,"EG","Egypt"
+        67,"EH","Western Sahara"
+        68,"ER","Eritrea"
+        69,"ES","Spain"
+        70,"ET","Ethiopia"
+        71,"FI","Finland"
+        72,"FJ","Fiji"
+        73,"FK","Falkland Islands"
+        74,"FM","Micronesia"
+        75,"FO","Faroe Islands"
+        76,"FR","France"
+        77,"GA","Gabon"
+        78,"GD","Grenada"
+        79,"GE","Georgia"
+        80,"GF","French Guyana"
+        81,"GH","Ghana"
+        82,"GI","Gibraltar"
+        83,"GG","Guernsey"
+        84,"GL","Greenland"
+        85,"GM","Gambia"
+        86,"GN","Guinea"
+        87,"GP","Guadeloupe (French)"
+        88,"GQ","Equatorial Guinea"
+        89,"GR","Greece"
+        90,"GS","South Georgia and the South Sandwich Islands"
+        91,"GT","Guatemala"
+        92,"GU","Guam (USA)"
+        93,"GW","Guinea Bissau"
+        94,"GY","Guyana"
+        95,"HK","Hong Kong"
+        96,"HM","Heard and McDonald Islands"
+        97,"HN","Honduras"
+        98,"HR","Croatia"
+        99,"HT","Haiti"
+        100,"HU","Hungary"
+        101,"ID","Indonesia"
+        102,"IE","Ireland"
+        103,"IL","Israel"
+        104,"IM","Isle of Man"
+        105,"IN","India"
+        106,"IO","British Indian Ocean Territory"
+        107,"IQ","Iraq"
+        108,"IR","Iran"
+        109,"IS","Iceland"
+        110,"IT","Italy"
+        111,"JE","Jersey"
+        112,"JM","Jamaica"
+        113,"JO","Jordan"
+        114,"JP","Japan"
+        115,"KE","Kenya"
+        116,"KG","Kyrgyz Republic (Kyrgyzstan)"
+        117,"KH","Cambodia, Kingdom of"
+        118,"KI","Kiribati"
+        119,"KM","Comoros"
+        120,"KN","Saint Kitts & Nevis Anguilla"
+        121,"KP","North Korea"
+        122,"KR","South Korea"
+        123,"KW","Kuwait"
+        124,"KY","Cayman Islands"
+        125,"KZ","Kazakhstan"
+        126,"LA","Laos"
+        127,"LB","Lebanon"
+        128,"LC","Saint Lucia"
+        129,"LI","Liechtenstein"
+        130,"LK","Sri Lanka"
+        131,"LR","Liberia"
+        132,"LS","Lesotho"
+        133,"LT","Lithuania"
+        134,"LU","Luxembourg"
+        135,"LV","Latvia"
+        136,"LY","Libya"
+        137,"MA","Morocco"
+        138,"MC","Monaco"
+        139,"MD","Moldavia"
+        140,"ME","Montenegro"
+        141,"MF","Saint Martin (French part)"
+        142,"MG","Madagascar"
+        143,"MH","Marshall Islands"
+        144,"MK","Macedonia, the former Yugoslav Republic of"
+        145,"ML","Mali"
+        146,"MM","Myanmar"
+        147,"MN","Mongolia"
+        148,"MO","Macau"
+        149,"MP","Northern Mariana Islands"
+        150,"MQ","Martinique (French)"
+        151,"MR","Mauritania"
+        152,"MS","Montserrat"
+        153,"MT","Malta"
+        154,"MU","Mauritius"
+        155,"MV","Maldives"
+        156,"MW","Malawi"
+        157,"MX","Mexico"
+        158,"MY","Malaysia"
+        159,"MZ","Mozambique"
+        160,"NA","Namibia"
+        161,"NC","New Caledonia (French)"
+        162,"NE","Niger"
+        163,"NF","Norfolk Island"
+        164,"NG","Nigeria"
+        165,"NI","Nicaragua"
+        166,"NL","Netherlands"
+        167,"NO","Norway"
+        168,"NP","Nepal"
+        169,"NR","Nauru"
+        170,"NT","Neutral Zone"
+        171,"NU","Niue"
+        172,"NZ","New Zealand"
+        173,"OM","Oman"
+        174,"PA","Panama"
+        175,"PE","Peru"
+        176,"PF","Polynesia (French)"
+        177,"PG","Papua New Guinea"
+        178,"PH","Philippines"
+        179,"PK","Pakistan"
+        180,"PL","Poland"
+        181,"PM","Saint Pierre and Miquelon"
+        182,"PN","Pitcairn Island"
+        183,"PR","Puerto Rico"
+        184,"PS","Palestinian Territory, Occupied"
+        185,"PT","Portugal"
+        186,"PW","Palau"
+        187,"PY","Paraguay"
+        188,"QA","Qatar"
+        189,"RE","Reunion (French)"
+        190,"RO","Romania"
+        191,"RS","Serbia"
+        192,"RU","Russian Federation"
+        193,"RW","Rwanda"
+        194,"SA","Saudi Arabia"
+        195,"SB","Solomon Islands"
+        196,"SC","Seychelles"
+        197,"SD","Sudan"
+        198,"SE","Sweden"
+        199,"SG","Singapore"
+        200,"SH","Saint Helena"
+        201,"SI","Slovenia"
+        202,"SJ","Svalbard and Jan Mayen Islands"
+        203,"SK","Slovakia"
+        204,"SL","Sierra Leone"
+        205,"SM","San Marino"
+        206,"SN","Senegal"
+        207,"SO","Somalia"
+        208,"SR","Suriname"
+        209,"SS","South Sudan"
+        210,"ST","Saint Tome (Sao Tome) and Principe"
+        211,"SV","El Salvador"
+        212,"SX","Sint Maarten (Dutch part)"
+        213,"SY","Syria"
+        214,"SZ","Swaziland"
+        215,"TC","Turks and Caicos Islands"
+        216,"TD","Chad"
+        217,"TF","French Southern Territories"
+        218,"TG","Togo"
+        219,"TH","Thailand"
+        220,"TJ","Tajikistan"
+        221,"TK","Tokelau"
+        222,"TM","Turkmenistan"
+        223,"TN","Tunisia"
+        224,"TO","Tonga"
+        225,"TP","East Timor"
+        226,"TR","Turkey"
+        227,"TT","Trinidad and Tobago"
+        228,"TV","Tuvalu"
+        229,"TW","Taiwan"
+        230,"TZ","Tanzania"
+        231,"UA","Ukraine"
+        232,"UG","Uganda"
+        233,"GB","United Kingdom"
+        234,"UM","USA Minor Outlying Islands"
+        235,"US","United States"
+        236,"UY","Uruguay"
+        237,"UZ","Uzbekistan"
+        238,"VA","Holy See (Vatican City State)"
+        239,"VC","Saint Vincent & Grenadines"
+        240,"VE","Venezuela"
+        241,"VG","Virgin Islands (British)"
+        242,"VI","Virgin Islands (USA)"
+        243,"VN","Vietnam"
+        244,"VU","Vanuatu"
+        245,"WF","Wallis and Futuna Islands"
+        246,"WS","Samoa"
+        247,"YE","Yemen"
+        248,"YT","Mayotte"
+        249,"YU","Yugoslavia"
+        250,"ZA","South Africa"
+        251,"ZM","Zambia"
+        252,"ZR","Zaire"
+        253,"ZW","Zimbabwe"
+        """)
+
+country_recs = {}
+for line in country_records_raw.strip().split('\n'):
+    id, abbr, name = line.split(',', 2)
+    abbr = abbr.strip('"')
+    name = name.strip('"')
+    m2o = Many2One(id, name, 'res.country')
+    country_recs[id] = m2o
+    country_recs[name] = m2o
+    country_recs[abbr] = m2o
+
+
+    # id, code, name, country_id
+state_records_raw = dedent("""\
+        53,"AB","Alberta",39
+        2,"AK","Alaska",235
+        1,"AL","Alabama",235
+        4,"AR","Arkansas",235
+        80,"AS","American Samoa",235
+        3,"AZ","Arizona",235
+        55,"BC","British Columbia",39
+        5,"CA","California",235
+        6,"CO","Colorado",235
+        7,"CT","Connecticut",235
+        9,"DC","District of Columbia",235
+        8,"DE","Delaware",235
+        10,"FL","Florida",235
+        74,"G","Gyeonggi-do",122
+        11,"GA","Georgia",235
+        87,"GU","Guam",235
+        12,"HI","Hawaii",235
+        16,"IA","Iowa",235
+        13,"ID","Idaho",235
+        14,"IL","Illinois",235
+        15,"IN","Indiana",235
+        17,"KS","Kansas",235
+        18,"KY","Kentucky",235
+        19,"LA","Louisiana",235
+        34,"MA","Massachusetts",235
+        56,"MB","Manitoba",39
+        33,"MD","Maryland",235
+        20,"ME","Maine",235
+        35,"MI","Michigan",235
+        36,"MN","Minnesota",235
+        38,"MO","Missouri",235
+        37,"MS","Mississippi",235
+        21,"MT","Montana",235
+        86,"MTL","Montreal",39
+        81,"NAG","Nagoya",114
+        57,"NB","New Brunswick",39
+        28,"NC","North Carolina",235
+        29,"ND","North Dakota",235
+        22,"NE","Nebraska",235
+        24,"NH","New Hampshire",235
+        25,"NJ","New Jersey",235
+        58,"NL","Newfoundland and Labrador",39
+        26,"NM","New Mexico",235
+        59,"NS","Nova Scotia",39
+        64,"NT","Northwest Territories",39
+        66,"NU","Nunavut",39
+        23,"NV","Nevada",235
+        27,"NY","New York",235
+        30,"OH","Ohio",235
+        31,"OK","Oklahoma",235
+        60,"ON","Ontario",39
+        32,"OR","Oregon",235
+        39,"PA","Pennsylvania",235
+        61,"PE","Prince Edward Island",39
+        67,"PR","Puerto Rico",235
+        62,"QC","Quebec",39
+        40,"RI","Rhode Island",235
+        79,"Ruh","Ruhr",58
+        41,"SC","South Carolina",235
+        42,"SD","South Dakota",235
+        63,"SK","Saskatchewan",39
+        43,"TN","Tennessee",235
+        44,"TX","Texas",235
+        45,"UT","Utah",235
+        47,"VA","Virginia",235
+        68,"VI","US Virgin Islands",235
+        46,"VT","Vermont",235
+        48,"WA","Washington",235
+        50,"WI","Wisconsin",235
+        49,"WV","West Virginia",235
+        51,"WY","Wyoming",235
+        65,"YT","Yukon",39
+        """)
+
+state_recs = {}
+for line in state_records_raw.strip().split('\n'):
+    id, abbr, name, country_id = line.split(',', 3)
+    abbr = abbr.strip('"')
+    name = name.strip('"')
+    m2o = Many2One(id, name, 'res.country.state')
+    country_m2o = country_recs[country_id]
+    state_country = StateCountry(m2o, country_m2o)
+    state_recs[id] = state_country
+    state_recs[name] = state_country
+    state_recs[abbr] = state_country
+
+# data sets
+# 
+# each set consists of a sequence of two- or four-tuples: the first item is the FIS disk data as a dictionary of schema ids
+# to data elements, while the second set is a dictionary of oe/odoo fields to converted record data; the third and fourth
+# tuple items, if present, are the oe7/odoo specific field names to data
+
+class DataSet(NamedTuple):
+    """
+    contains both incoming data and final converted data
+
+    defaults for all fields is an empty dictionary
+    """
+    #
+    def __new__(cls, on_disk, fis_rec, OE7=None, Odoo13=None, ignore=False):
+        if not isinstance(fis_rec, tuple):
+            fis_rec = (fis_rec, )
+        if not isinstance(OE7, tuple):
+            OE7 = (OE7, )
+        OE7 = tuple([(oe or {}).copy() for oe in OE7])
+        if not isinstance(Odoo13, tuple):
+            Odoo13 = (Odoo13, )
+        Odoo13 = tuple([(odoo or {}).copy() for odoo in Odoo13])
+        return super(DataSet, cls).__new__(cls, on_disk, fis_rec, OE7, Odoo13, ignore)
+    #
+    on_disk = 0, "simulated disk data"
+    fis_rec = 1, "converted data (common fields)"
+    OE7 = 2, "OpenERP only fields"
+    Odoo13 = 3, "Odoo only fields"
+    ignore = 4, "record should be ignored"
+
+def imd(name, id=0, res_id=0, module='fis', model=None):
+    return AttrDict(name=name, id=id, res_id=res_id, module=module, model=model)
+
+# ARCI
+from fis_schema import F262
+def arci_data(script):
+    return (
+            DataSet(
+                # on disk
+                on_disk={
+                    F262.cust_no: 'HE590',
+                    F262.our_item_id: '500991',
+                    F262.cust_item_id: '70929',
+                    },
+                # converted record
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        key='HE590-500991',
+                        list_code='HE590',
+                        fis_code='500991',
+                        partner_id=script.CSMS.Partner('HE590'),
+                        fis_product_id=script.NVTY.Product('500991'),
+                        customer_product_code='70929',
+                        source='fis',
+                        ),
+                    imd(name='F262_HE590_500991_customer_product_xref')
+                    )),
+                )
+
+# CNVZaa
+from fis_schema import F97
+def cnvzaa_data(script):
+    return (
+            DataSet(
+                on_disk={
+                    F97.availability_id: 'Z',
+                    F97.desc: 'SRF SnglPk',
+                    F97.availability: 'Y',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(name='Srf Snglpk'),
+                    imd(name='F097_Z_product_availability'),
+                    ),
+                OE7=AttrDict(
+                    module='F97',
+                    xml_id='Z',
+                    available='Y',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F97',
+                    fis_id='Z',
+                    saleable='Y',
+                    )),
+            DataSet(
+                on_disk={
+                    F97.availability_id: 'S',
+                    F97.desc: 'SPECIAL ORDER ITEM',
+                    F97.availability: 'N',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(name='Special Order Item'),
+                    imd(name='F097_S_product_availability'),
+                    ),
+                OE7=AttrDict(
+                    module='F97',
+                    xml_id='S',
+                    available='N',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F97',
+                    fis_id='S',
+                    saleable='N',
+                    )),
+            DataSet(
+                on_disk={
+                    F97.availability_id: 'M',
+                    F97.desc: 'DISCONTINUED - MANUFACTURER',
+                    F97.availability: 'D',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(name='Discontinued - Manufacturer'),
+                    imd(name='F097_M_product_availability'),
+                    ),
+                OE7=AttrDict(
+                    module='F97',
+                    xml_id='M',
+                    available=None,
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F97',
+                    fis_id='M',
+                    saleable=None,
+                    )),
+                )
+
+# CNVZas
+from fis_schema import F11
+def cnvzas_data(script):
+    return (
+            DataSet(
+                on_disk={
+                    F11.sales_category_id: '0Y',
+                    F11.shelf_life: 12,
+                    F11.desc: 'SHIPPERS/DISPLAYS',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='0Y',
+                        module='F11',
+                        fis_shelf_life=12,
+                        parent_id=script.CNVZas.ProductCategory('0'),
+                        name='Shippers/Displays',
+                        ),
+                    imd(name='F011_0Y_product_category'),
+                    )
+                ),
+            DataSet(
+                on_disk={
+                    F11.sales_category_id: '0L',
+                    F11.shelf_life: 12,
+                    F11.desc: 'OPEN',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='0L',
+                        module='F11',
+                        fis_shelf_life=12,
+                        parent_id=script.CNVZas.ProductCategory('0'),
+                        name='Open',
+                        ),
+                    imd(name='F011_0L_product_category'),
+                    )
+                ),
+            DataSet(
+                on_disk={
+                    F11.sales_category_id: '9',
+                    F11.shelf_life: 12,
+                    F11.desc: '-- DISPLAYS/ETC --',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='9',
+                        module='F11',
+                        fis_shelf_life=12,
+                        parent_id=script.CNVZas.ProductCategory(SALEABLE_CATEGORY_XMLID),
+                        name='9 - Displays/Etc',
+                        ),
+                    imd(name='F011_9_product_category'),
+                    )
+                ),
+            DataSet(
+                on_disk={
+                    F11.sales_category_id: '9H',
+                    F11.shelf_life: 12,
+                    F11.desc: 'SUPPLY-SANITATION',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='9H',
+                        module='F11',
+                        fis_shelf_life=12,
+                        parent_id=script.CNVZas.ProductCategory('9'),
+                        name='Supply-Sanitation',
+                        ),
+                    imd(name='F011_9H_product_category'),
+                    )
+                ),
+            DataSet(
+                on_disk={
+                    F11.sales_category_id: '0',
+                    F11.shelf_life: 0,
+                    F11.desc: 'GROCERY',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='0',
+                        module='F11',
+                        fis_shelf_life=0,
+                        parent_id=script.CNVZas.ProductCategory(SALEABLE_CATEGORY_XMLID),
+                        name='0 - Grocery',
+                        ),
+                    imd(name='F011_0_product_category'),
+                    )
+                ),
+            DataSet(
+                on_disk={
+                    F11.sales_category_id: '3',
+                    F11.shelf_life: 12,
+                    F11.desc: '---- BULK ----',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id= '3',
+                        module='F11',
+                        fis_shelf_life=12,
+                        parent_id=script.CNVZas.ProductCategory(SALEABLE_CATEGORY_XMLID),
+                        name='3 - Bulk',
+                        ),
+                    imd(name='F011_3_product_category'),
+                    )
+                ),
+            DataSet(
+                on_disk={
+                    F11.sales_category_id: '3G',
+                    F11.shelf_life: 18,
+                    F11.desc: 'CANDY CHOCOLATE BULK',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id= '3G',
+                        module='F11',
+                        fis_shelf_life=18,
+                        parent_id=script.CNVZas.ProductCategory('3'),
+                        name='Candy Chocolate Bulk',
+                        ),
+                    imd(name='F011_3G_product_category'),
+                    )
+                ),
+            )
+
+# CNVZd0
+from fis_schema import F8
+def cnvzd0_data(script):
+    return (
+            DataSet(
+                on_disk={
+                    F8.code: 'b',
+                    F8.description: '2% 15/Net 30',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='b',
+                        module='F8',
+                        description='2% 15 / Net 30',
+                        ),
+                    imd(name='F008_b_account_customer_terms'),
+                    ),
+                ),
+            DataSet(
+                on_disk={
+                    F8.code: 'B',
+                    F8.description: '1% 10 / NET 14',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='B',
+                        module='F8',
+                        description='1% 10 / NET 14',
+                        ),
+                    imd(name='F008_B_account_customer_terms'),
+                    ),
+                ),
+            DataSet(
+                on_disk={
+                    F8.code: '8',
+                    F8.description: 'CASHIER CHECK/CASH ONLY',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='8',
+                        module='F8',
+                        description='CASHIER CHECK / CASH ONLY',
+                        ),
+                    imd(name='F008_8_account_customer_terms'),
+                    ),
+                ),
+            )
+
+# CNVZf
+from fis_schema import F341
+def cnvzf_data(script):
+    return (
+            DataSet(
+                on_disk={
+                    F341.prod_line_code: '99',
+                    F341.desc: 'SUNRIDGE SAMPLES-EACHES',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(),
+                    imd(name='F341_99_production_line'),
+                    ),
+                OE7=AttrDict(
+                    module='F341',
+                    xml_id='99',
+                    desc='Sunridge Samples-Eaches',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F341',
+                    fis_id='99',
+                    description='Sunridge Samples-Eaches',
+                    )),
+            DataSet(
+                on_disk={
+                    F341.prod_line_code: '33',
+                    F341.desc: 'KFK SEASONINGS, LLC',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(),
+                    imd(name='F341_33_production_line'),
+                    ),
+                OE7=AttrDict(
+                    module='F341',
+                    xml_id='33',
+                    desc='KFK Seasonings, LLC',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F341',
+                    fis_id='33',
+                    description='KFK Seasonings, LLC',
+                    )),
+            DataSet(
+                on_disk={
+                    F341.prod_line_code: '31',
+                    F341.desc: 'PURATOS CHOCOLATE USA',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(),
+                    imd(name='F341_31_production_line'),
+                    ),
+                OE7=AttrDict(
+                    module='F341',
+                    xml_id='31',
+                    desc='Puratos Chocolate USA',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F341',
+                    fis_id='31',
+                    description='Puratos Chocolate USA',
+                    )),
+                )
+
+# CNVZO1
+from fis_schema import F192
+def cnvzo1_data(script):
+    return (
+            DataSet(
+                on_disk={
+                    F192.transmitter_no: '',
+                    F192.transmitter_name: 'RUSTIC BAKERY',
+                    F192.cust_no: 'RUSTB',
+                    F192.ship_to_id: '',
+                    F192.status: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='RUSTB',
+                        transmitter_no='',
+                        transmitter_name='RUSTIC BAKERY',
+                        partner_xml_id='RUSTB',
+                        ship_to_code=None,
+                        ),
+                    imd(name='F192_RUSTB_account_transmitter_code'),
+                    ),
+                ignore=True,
+                ),
+            DataSet(
+                on_disk={
+                    F192.transmitter_no: '700007',
+                    F192.transmitter_name: 'USE NATURAL ABIL - 701015',
+                    F192.cust_no: '',
+                    F192.ship_to_id: 'BULK',
+                    F192.status: 'A',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='None-BULK',
+                        transmitter_no='700007',
+                        transmitter_name='USE NATURAL ABIL - 701015',
+                        partner_xml_id=None,
+                        ship_to_code='BULK',
+                        ),
+                    imd(name='F192_None_BULK_account_transmitter_code'),
+                    ),
+                ignore=True,
+                ),
+            DataSet(
+                on_disk={
+                    F192.transmitter_no: '500110',
+                    F192.transmitter_name: '',
+                    F192.cust_no: 'CORNT',
+                    F192.ship_to_id: 'GEOR',
+                    F192.status: 'YPN',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='CORNT-GEOR',
+                        transmitter_no='500110',
+                        transmitter_name=None,
+                        partner_xml_id='CORNT',
+                        ship_to_code='GEOR',
+                        ),
+                    imd(name='F192_CORNT_GEOR_account_transmitter_code'),
+                    ),
+                ignore=True,
+                ),
+            DataSet(
+                on_disk={
+                    F192.transmitter_no: '900215',
+                    F192.transmitter_name: "GELSON'S MARKET",
+                    F192.cust_no: 'GELSO',
+                    F192.ship_to_id: 'GR29',
+                    F192.status: 'A',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='GELSO-GR29',
+                        transmitter_no='900215',
+                        transmitter_name="GELSON'S MARKET",
+                        partner_xml_id='GELSO',
+                        ship_to_code='GR29',
+                        ),
+                    imd(name='F192_GELSO_GR29_account_transmitter_code'),
+                    ),
+                ignore=False,
+                ),
+            DataSet(
+                on_disk={
+                    F192.transmitter_no: '900000',
+                    F192.transmitter_name: 'RAINBOW GROCERY',
+                    F192.cust_no: 'RAING',
+                    F192.ship_to_id: 'HEAL',
+                    F192.status: 'A',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='RAING-HEAL',
+                        transmitter_no='900000',
+                        transmitter_name='RAINBOW GROCERY',
+                        partner_xml_id='RAING',
+                        ship_to_code='HEAL',
+                        ),
+                    imd(name='F192_RAING_HEAL_account_transmitter_code'),
+                    ),
+                ignore=False,
+                ),
+            DataSet(
+                on_disk={
+                    F192.transmitter_no: '150492',
+                    F192.transmitter_name: 'HEB 492 HEALTHY LIVING',
+                    F192.cust_no: 'HE492',
+                    F192.ship_to_id: '',
+                    F192.status: 'A',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='HE492',
+                        transmitter_no='150492',
+                        transmitter_name='HEB 492 HEALTHY LIVING',
+                        partner_xml_id='HE492',
+                        ship_to_code=None,
+                        ),
+                    imd(name='F192_HE492_account_transmitter_code'),
+                    ),
+                ignore=False,
+                ),
+            DataSet(
+                on_disk={
+                    F192.transmitter_no: '150714',
+                    F192.transmitter_name: 'HEB 714 HEALTHY LIVING',
+                    F192.cust_no: 'HE714',
+                    F192.ship_to_id: '',
+                    F192.status: 'A',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        xml_id='HE714',
+                        transmitter_no='150714',
+                        transmitter_name='HEB 714 HEALTHY LIVING',
+                        partner_xml_id='HE714',
+                        ship_to_code=None,
+                        ),
+                    imd(name='F192_HE714_account_transmitter_code'),
+                    ),
+                ignore=False,
+                ),
+            )
+
+# CNVZSV
+from fis_schema import F27
+def cnvzsv_data(script):
+    return (
+            DataSet(
+                on_disk={
+                    F27.code: '59',
+                    F27.name: 'CROSSET COMPANY',
+                    F27.addr1: '10295 TOEBBEN DRIVE',
+                    F27.addr2: '',
+                    F27.addr3: 'INDEPENDENCE, KY 41051',
+                    F27.tele: '8598177620',
+                    F27.fuel_surcharge: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='Crosset Company',
+                        street='10295 Toebben Dr',
+                        street2=None,
+                        city='Independence',
+                        state_id=state_recs['KY'].state,
+                        zip='41051',
+                        country_id=state_recs['KY'].country,
+                        phone='859.817.7620',
+                        fuel_surcharge=False,
+                        is_company=True,
+                        is_carrier=True,
+                        use_parent_address=False,
+                        fis_updated_by_user=None,
+                        ),
+                    imd(name='F027_59_res_partner'),
+                    ),
+                OE7=AttrDict(
+                    module='F27',
+                    xml_id='59',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F27',
+                    fis_id='59',
+                    ),
+                ),
+            DataSet(
+                on_disk={
+                    F27.code: '30',
+                    F27.name: 'AMERICAN GROUP',
+                    F27.addr1: '',
+                    F27.addr2: '',
+                    F27.addr3: '',
+                    F27.tele: '',
+                    F27.fuel_surcharge: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='American Group',
+                        street=None,
+                        street2=None,
+                        city=None,
+                        state_id=None,
+                        zip=None,
+                        country_id=None,
+                        phone=None,
+                        fuel_surcharge=False,
+                        is_company=True,
+                        is_carrier=True,
+                        use_parent_address=False,
+                        fis_updated_by_user=None,
+                        ),
+                    imd(name='F027_30_res_partner'),
+                    ),
+                OE7=AttrDict(
+                    module='F27',
+                    xml_id='30',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F27',
+                    fis_id='30',
+                    ),
+                ),
+            DataSet(
+                on_disk={
+                    F27.code: '03',
+                    F27.name: "DON'S TRANSPORT",
+                    F27.addr1: 'TRANSFAC CAPITAL, INC',
+                    F27.addr2: 'P.O. BOX 3238',
+                    F27.addr3: 'SALT LAKE CITY, UT 84110',
+                    F27.tele: '8004586056',
+                    F27.fuel_surcharge: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name="Don's Transport",
+                        street='Transfac Capital, Inc',
+                        street2='PO Box 3238',
+                        city='Salt Lake City',
+                        state_id=state_recs['UT'].state,
+                        zip='84110',
+                        country_id=state_recs['UT'].country,
+                        phone='800.458.6056',
+                        fuel_surcharge=False,
+                        is_company=True,
+                        is_carrier=True,
+                        use_parent_address=False,
+                        fis_updated_by_user=None,
+                        ),
+                    imd(name='F027_03_res_partner'),
+                    ),
+                OE7=AttrDict(
+                    module='F27',
+                    xml_id='03',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F27',
+                    fis_id='03',
+                    ),
+                ),
+            DataSet(
+                on_disk={
+                    F27.code: '21',
+                    F27.name: 'SORRENSON TRANSPORTATION',
+                    F27.addr1: 'P.O. BOX 311',
+                    F27.addr2: 'CHEHALIS WA',
+                    F27.addr3: '',
+                    F27.tele: '8003323213',
+                    F27.fuel_surcharge: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='Sorrenson Transportation',
+                        street='PO Box 311',
+                        street2=None,
+                        city='Chehalis',
+                        state_id=state_recs['WA'].state,
+                        zip=None,
+                        country_id=state_recs['WA'].country,
+                        phone='800.332.3213',
+                        fuel_surcharge=False,
+                        is_company=True,
+                        is_carrier=True,
+                        use_parent_address=False,
+                        fis_updated_by_user=None,
+                        ),
+                    imd(name='F027_21_res_partner'),
+                    ),
+                OE7=AttrDict(
+                    module='F27',
+                    xml_id='21',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F27',
+                    fis_id='21',
+                    ),
+                ),
+            DataSet(
+                on_disk={
+                    F27.code: '99',
+                    F27.name: '',
+                    F27.addr1: '',
+                    F27.addr2: '',
+                    F27.addr3: '',
+                    F27.tele: '',
+                    F27.fuel_surcharge: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='____________',
+                        street=None,
+                        street2=None,
+                        city=None,
+                        state_id=None,
+                        zip=None,
+                        country_id=None,
+                        phone=None,
+                        fuel_surcharge=False,
+                        is_company=True,
+                        is_carrier=True,
+                        use_parent_address=False,
+                        fis_updated_by_user=None,
+                        ),
+                    imd(name='F027_99_res_partner'),
+                    ),
+                OE7=AttrDict(
+                    module='F27',
+                    xml_id='99',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F27',
+                    fis_id='99',
+                    ),
+                ),
+            )
+
+# CNVZz
+from fis_schema import F47
+def cnvzz_data(script):
+    return (
+            DataSet(
+                # on disk
+                on_disk={
+                    F47.salesperson_id: 'DEV',
+                    F47.salesperson_name: 'MARK DEVENCENZI',
+                    },
+                # converted record
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        fis_name='MARK DEVENCENZI',
+                        user_id=128,
+                        ),
+                    imd(name='F047_DEV_account_salesperson')
+                    ),
+                OE7=AttrDict(
+                    module='F47',
+                    xml_id='DEV',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F47',
+                    fis_id='DEV',
+                    ),
+                ),
+            DataSet(
+                # on disk
+                on_disk={
+                    F47.salesperson_id: 'ARM',
+                    F47.salesperson_name: 'GREGG ARMSTRONG-HEALTHY LIVING',
+                    },
+                # converted record
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        fis_name='GREGG ARMSTRONG',
+                        user_id=138,
+                        ),
+                    imd(name='F047_ARM_account_salesperson')
+                    ),
+                OE7=AttrDict(
+                    module='F47',
+                    xml_id='ARM',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F47',
+                    fis_id='ARM',
+                    ),
+                ),
+            DataSet(
+                # on disk
+                on_disk={
+                    F47.salesperson_id: 'MLC',
+                    F47.salesperson_name: 'MORTY',
+                    },
+                # converted record
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        fis_name='MORTY',
+                        user_id=185,
+                        ),
+                    imd(name='F047_MLC_account_salesperson')
+                    ),
+                OE7=AttrDict(
+                    module='F47',
+                    xml_id='MLC',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F47',
+                    fis_id='MLC',
+                    ),
+                ),
+            DataSet(
+                # on disk
+                on_disk={
+                    F47.salesperson_id: 'MAR',
+                    F47.salesperson_name: 'MARY MICHELLE-999189',
+                    },
+                # converted record
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        fis_name='MARY MICHELLE',
+                        user_id=143,
+                        ),
+                    imd(name='F047_MAR_account_salesperson')
+                    ),
+                OE7=AttrDict(
+                    module='F47',
+                    xml_id='MAR',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F47',
+                    fis_id='MAR',
+                    ),
+                ),
+            DataSet(
+                # on disk
+                on_disk={
+                    F47.salesperson_id: 'GGG',
+                    F47.salesperson_name: 'GREGG ARMSTRONG-999170',
+                    },
+                # converted record
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        fis_name='GREGG ARMSTRONG',
+                        user_id=138,
+                        ),
+                    imd(name='F047_GGG_account_salesperson')
+                    ),
+                OE7=AttrDict(
+                    module='F47',
+                    xml_id='GGG',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F47',
+                    fis_id='GGG',
+                    ),
+                ),
+            )
+
+# main
 if __name__ == '__main__':
     try:
         unittest.main()
