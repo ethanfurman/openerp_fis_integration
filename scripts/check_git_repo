@@ -1,17 +1,30 @@
 #!/usr/local/bin/suid-python
+from __future__ import print_function
 
 from scription import *
 from antipathy import Path
+from fnx_script_support import send_mail, NOW
 
 @Command(
         repo=Spec('git repo to examine', type=Path),
+        email=Spec('addresses to send report to', MULTI)
         )
-def check_git_repo(repo):
-    status = Execute('git status', cwd=repo)
-    if status.stdout == "On branch master\nnothing to commit, working directory clean\n":
-        return Exit.Success
-    echo(status.stdout)
-    error(status.stderr)
-    raise SystemExit(status.returncode or Exit.UnknownError)
+def check_git_repo(email, *repo):
+    errors = False
+    for r in repo:
+        print('checking', r)
+        status = Execute('git status', cwd=r)
+        print(status.stdout, verbose=2)
+        print(status.stderr, verbose=2)
+        if status.stdout == "On branch master\nnothing to commit, working directory clean\n":
+            continue
+        errors = True
+        message = '\n'.join([status.stdout, status.stderr])
+        if email:
+            send_mail(email, "git repo %s at %s" % (r, NOW.strftime('%Y-%m-%d')), message)
+        else:
+            error('repository %s' % r, message, sep='\n')
+
+    raise SystemExit(errors)
 
 Run()
