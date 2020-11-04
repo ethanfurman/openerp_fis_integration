@@ -9,7 +9,7 @@ __all__ = [
 
 from aenum import Enum
 from dbf import Date, DateTime, Period
-from scription import Exit, error
+from scription import Exit, error, Job 
 import time
 
 NOW = DateTime.now()
