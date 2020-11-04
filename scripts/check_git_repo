@@ -1,0 +1,17 @@
+#!/usr/local/bin/suid-python
+
+from scription import *
+from antipathy import Path
+
+@Command(
+        repo=Spec('git repo to examine', type=Path),
+        )
+def check_git_repo(repo):
+    status = Execute('git status', cwd=repo)
+    if status.stdout == "On branch master\nnothing to commit, working directory clean\n":
+        return Exit.Success
+    echo(status.stdout)
+    error(status.stderr)
+    raise SystemExit(status.returncode or Exit.UnknownError)
+
+Run()
