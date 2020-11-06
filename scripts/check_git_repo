@@ -1,30 +1,112 @@
 #!/usr/local/bin/suid-python
+"""
+checks repositories for uncommitted changes, notifying once per day per change
+
+the git output is saved in a file in /var, and touched to a future date/time;
+when that date/time has arrived and the changes have not been reverted or
+committed, an email is sent as a reminder and the file is touched to the
+morning of the next day
+"""
 from __future__ import print_function
 
 from scription import *
 from antipathy import Path
-from fnx_script_support import send_mail, NOW
+from dbf import DateTime
+from fnx_script_support import send_mail, time_stamp, NOW
+
+CACHE = Path('/var')
+BASE = 'git_repo_check-'
+
+# API
 
 @Command(
-        repo=Spec('git repo to examine', type=Path),
-        email=Spec('addresses to send report to', MULTI)
+        repositories=Spec('git repositories to examine', type=Path),
+        email=Spec('addresses to send report to', MULTI),
+        grace_period=Spec('grace period before notifying', FLAG, ('g','grace'), force_default=90),
         )
-def check_git_repo(email, *repo):
-    errors = False
-    for r in repo:
-        print('checking', r)
-        status = Execute('git status', cwd=r)
+def check_git_repo(email, grace_period, *repositories):
+    for repo in repositories:
+        print('checking', repo)
+        if not repo.startswith('/'):
+            abort('repo path must be absolute')
+        if any(d in ('.','..') for d in repo):
+            abort('. and .. not allowed in directory paths')
+        status = Execute('git status', cwd=repo)
         print(status.stdout, verbose=2)
         print(status.stderr, verbose=2)
         if status.stdout == "On branch master\nnothing to commit, working directory clean\n":
+            clear(repo, email)
             continue
-        errors = True
         message = '\n'.join([status.stdout, status.stderr])
         if email:
-            send_mail(email, "git repo %s at %s" % (r, NOW.strftime('%Y-%m-%d')), message)
+            maybe_warn(repo, email, message, grace_period)
         else:
-            error('repository %s' % r, message, sep='\n')
+            error('repository %s' % repo, message, sep='\n')
 
-    raise SystemExit(errors)
+@Command(
+        )
+def status():
+    for status_file in CACHE.glob(BASE+'*'):
+        stat = status_file.stat()
+        echo('repo file: %s\naccess:   %s\nmodified: %s'
+             % (status_file, 
+                DateTime.fromtimestamp(stat.st_atime).strftime('%Y-%m-%d %H:%M:%S'),
+                DateTime.fromtimestamp(stat.st_mtime).strftime('%Y-%m-%d %H:%M:%S'),
+                ),
+             border='flag',
+             )
+        with open(status_file) as sf:
+            echo(sf.read(), border='underline')
 
+# helpers
+
+def status_file(repo):
+    return CACHE / (BASE + repo.strip('/').replace('/','_'))
+
+def clear(repo, addresses):
+    cache_file = status_file(repo)
+    if not cache_file.exists():
+        return
+    cache_file.unlink()
+    message = "changes have been dealt with"
+    send_mail(addresses, "git repository %s is stable" % repo, message)
+    return
+
+def maybe_warn(repo, addresses, message, grace_period):
+    # if no previous error file exists
+    # - create
+    # - touch to (grace_period) minutes later
+    # - return
+    # if previous file exists, but errors are different
+    # - update contents
+    # - touch to (grace_period) minutes later
+    # - return
+    # if previous file exists and errors are the same
+    # - if access time of file is now in the past
+    #   - send email
+    #   - touch to tomorrow at 0900
+    #
+    def update_file():
+        with open(cache_file, 'w') as cf:
+            cf.write(message)
+        then = time_stamp(NOW.replace(delta_minute=grace_period))
+        cache_file.touch((then, None))
+        return
+    #
+    cache_file = status_file(repo)
+    if not cache_file.exists():
+        return update_file()
+    cf_stat = cache_file.stat()
+    with open(cache_file) as cf:
+        new_error = cf.read() != message
+    if new_error:
+        return update_file()
+    access = DateTime.fromtimestamp(cf_stat.st_atime)
+    if NOW >= access:
+        then = time_stamp(NOW.replace(delta_day=1, hour=9, minute=0, second=0))
+        cache_file.touch((then, None))
+        send_mail(addresses, "git repository %s at %s" % (repo, NOW.strftime('%Y-%m-%d')), message)
+
+
+# do it
 Run()
