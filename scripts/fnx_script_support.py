@@ -3,17 +3,23 @@ support for short-running scripts
 """
 
 __all__ = [
-        'notify', 'send_mail', 'grouped_by_column',
+        'notify', 'send_mail', 'grouped', 'grouped_by_column',
+        'zip_longest',
         'NOW', 'TOMORROW', 'SCHEDULE', 'NOTIFIED',
         ]
 
+try:
+    from itertools import izip_longest as zip_longest
+except ImportError:
+    from itertools import zip_longest
+
 from aenum import Enum
-from dbf import Date, DateTime, Period
+from dbf import DateTime
 from scription import Exit, error, Job 
 import time
 
 NOW = DateTime.now()
-TOMORROW = NOW.replace(delta_day=+1).strftime("%m%d%y")
+TOMORROW = NOW.replace(delta_day=+1).date()
 
 class FileType(Enum):
     SCHEDULE = "addresses and times"
@@ -66,7 +72,7 @@ def get_recipients(source_file, source_type):
             if phone and NOW in availability:
                 addresses.append(phone)
     else:
-        raise ValueError('unknown source type: %r' % (source, ))
+        raise ValueError('unknown source type: %r' % (source_type, ))
     return addresses
 
 
@@ -235,6 +241,22 @@ def which_days(text):
 def time_stamp(dt):
     "return POSIX timestamp as float"
     return time.mktime((dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, -1, -1, -1)) + dt.microsecond / 1e6
+
+def grouped(it, size):
+    'yield chunks of it in groups of size'
+    if size < 1:
+        raise ValueError('size must be greater than 0 (not %r)' % size)
+    result = []
+    count = 0
+    for ele in it:
+        result.append(ele)
+        count += 1
+        if count == size:
+            yield tuple(result)
+            count = 0
+            result = []
+    if result:
+        yield tuple(result)
 
 def grouped_by_column(it, size):
     'yield chunks of it in groups of size columns'
