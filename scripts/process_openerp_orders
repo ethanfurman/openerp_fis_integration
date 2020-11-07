@@ -10,10 +10,8 @@ from fnx_script_support import *
 from antipathy import Path
 from traceback import format_exception_only
 from datetime import timedelta
-from dbf import Date, DateTime, Period
-from VSS.utils import grouped_by_column
+from dbf import Date, Period
 import sys
-import time
 
 # all order numbers must be in the 10000-19999 range or we have collisions
 # with other FIS-feeding processes
