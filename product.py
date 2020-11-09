@@ -1119,7 +1119,9 @@ def add_timestamp(file, use_cache):
     with NamedLock(file):
         for file in possibles:
             target_png_file = PRODUCT_LABEL_PNG_LOCATION / file.stem + '.png'
-            if use_cache and target_png_file.exists():
+            if use_cache:
+                if not target_png_file.exists():
+                    continue
                 timestamp = target_png_file.stat().st_mtime
                 timestamp = '-' + DateTime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%S')
                 break
@@ -1153,7 +1155,7 @@ def calc_width(src_rows):
             if single:
                 align = 'center'
             try:
-                with Image.open(PRODUCT_LABEL_BMP_LOCATION / link) as image:
+                with Image.open(PRODUCT_LABEL_PNG_LOCATION / link) as image:
                     scale = 1200.0 / image.height
                     new_width = scale * image.width
                     percent = min(int(new_width / 1800 * 100), 100)
