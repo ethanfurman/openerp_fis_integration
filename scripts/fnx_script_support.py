@@ -80,6 +80,12 @@ def notify(script_name, schedule, notified, errors, cut_off):
     """
     send errors to valid recipients or cancellation to all notified thus far
     """
+    # script_name: name of calling script (used in subject line)
+    # schedule: file with schedules of whom to contact and when
+    # notified: file with contacted details
+    # errors: list of errors (will become the message body)
+    # cut_off: how long before an error free condition clears the last error
+    #          how long since the last error before a new error is reported
     if not errors:
         if not notified.exists():
             return Exit.Success
@@ -113,7 +119,7 @@ def notify(script_name, schedule, notified, errors, cut_off):
     if failed_to_send:
         error('\n\nUnable to contact:\n  %s' % ('\n  '.join(failed_to_send)))
     if errors:
-        update_recipients(sent_addresses)
+        update_recipients(sent_addresses, notified)
     else:
         notified.unlink()
     if errors or failed_to_send:
