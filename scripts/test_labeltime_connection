@@ -10,12 +10,17 @@ and use the cached versions if it is present.
 """
 
 from __future__ import print_function
-from pandaemonium import PidLockFile, AlreadyLocked
 from scription import *
-from textwrap import dedent
+from antipathy import Path
+from datetime import timedelta
+from fnx_script_support import notify
+from pandaemonium import PidLockFile, AlreadyLocked
 
-PID_FILE = '/opt/openerp/var/run/test_mnt_labeltime.pid'
-LLC_FILE = '/mnt/labeltime/Labels/LabelLinkCtl'
+PID_FILE = Path('/opt/openerp/var/run/test_mnt_labeltime.pid')
+LLC_FILE = Path('/mnt/labeltime/Labels/LabelLinkCtl')
+RECIPIENT_FILE = Path('/home/openerp/sandbox/etc/notify.test_labeltime_connection')
+NOTIFIED_FILE = Path('/home/openerp/sandbox/var/notified.test_labeltime_connection')
+CUT_OFF = timedelta(seconds=1200)
 
 @Command(
         test=('pretend error condition and send mail', FLAG)
@@ -23,37 +28,18 @@ LLC_FILE = '/mnt/labeltime/Labels/LabelLinkCtl'
 def test_labeltime_connection(test):
     try:
         if test:
-            raise AlreadyLocked('testing mail')
+            raise AlreadyLocked('testing labeltime mail sending')
         with PidLockFile(PID_FILE, timeout=1):
             cat = Execute('cat %s' % LLC_FILE, timeout=10)
             print(cat.stdout)
-    except AlreadyLocked as exc:
-        send_mail(
-                recipients=['ethan@stoneleaf.us', '9715061961@vtext.com'],
-                subject='labeltime connection lost?',
-                message="cat of LabelLinkCtl has stalled",
+    except AlreadyLocked:
+        notify(
+                script_fullname,
+                RECIPIENT_FILE,
+                NOTIFIED_FILE,
+                [("cat of LabelLinkCtl has stalled","testing notifications")[test]],
+                CUT_OFF,
                 )
-
-def send_mail(recipients, subject, message):
-    """
-    use system mail command to send MESSAGE to RECIPIENTS
-    """
-    sent_addresses = []
-    failed_to_send = []
-    for address in recipients:
-        # may be skipped if all eligible addresses have already been notified
-        try:
-            job = Job(
-                    '/usr/bin/mail -# -s "%s" %s' % (subject, address),
-                    pty=True,
-                    )
-            job.communicate(input=message+'\n\x04', timeout=300)
-            sent_addresses.append(address)
-        except Exception as exc:
-            error(exc)
-            failed_to_send.append(address)
-            continue
-    return sent_addresses, failed_to_send
 
 
 Run()
