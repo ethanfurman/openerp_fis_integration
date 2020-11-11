@@ -293,7 +293,7 @@ def product_forecast(*items):
         nvty = fd.fisData('NVTY1', keymatch="%s101000    101**")   # 135
         for item_rec in ViewProgress(
                 nvty,
-                'getting %d item numbers' % len(nvty)
+                'getting %d item numbers' % len(nvty),
                 view_type='bar',
             ):
             items.append(item_rec[F135.item_id])
