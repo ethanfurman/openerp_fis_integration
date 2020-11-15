@@ -7,39 +7,42 @@ This script is designed to:
 
 The product image display routines will look for this script's PID file,
 and use the cached versions if it is present.
+
+This scripts is meant to run at least every five minutes.
 """
 
 from __future__ import print_function
 from scription import *
 from antipathy import Path
 from datetime import timedelta
-from fnx_script_support import notify
+from fnx_script_support import Notify
 from pandaemonium import PidLockFile, AlreadyLocked
 
 PID_FILE = Path('/opt/openerp/var/run/test_mnt_labeltime.pid')
 LLC_FILE = Path('/mnt/labeltime/Labels/LabelLinkCtl')
-RECIPIENT_FILE = Path('/home/openerp/sandbox/etc/notify.test_labeltime_connection')
-NOTIFIED_FILE = Path('/home/openerp/sandbox/var/notified.test_labeltime_connection')
-CUT_OFF = timedelta(seconds=1200)
+CUT_OFF = 6
 
 @Command(
         test=('pretend error condition and send mail', FLAG)
         )
 def test_labeltime_connection(test):
+    errors = []
+    #
     try:
         if test:
-            raise AlreadyLocked('testing labeltime mail sending')
-        with PidLockFile(PID_FILE, timeout=1):
-            cat = Execute('cat %s' % LLC_FILE, timeout=10)
-            print(cat.stdout)
+            errors.append('testing notifications')
+        else:
+            with PidLockFile(PID_FILE, timeout=1):
+                cat = Execute('cat %s' % LLC_FILE, timeout=10)
+                print(cat.stdout)
     except AlreadyLocked:
-        notify(
-                script_fullname,
-                RECIPIENT_FILE,
-                NOTIFIED_FILE,
-                [("cat of LabelLinkCtl has stalled","testing notifications")[test]],
-                CUT_OFF,
-                )
+        errors.append('cat of LabelLinkCtl has stalled')
+    #
+    notify = Notify(
+            script_fullname,
+            cut_off=CUT_OFF,
+            )
+    notify(errors)
 
 
 Run()

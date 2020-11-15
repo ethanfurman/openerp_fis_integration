@@ -3,9 +3,9 @@ support for short-running scripts
 """
 
 __all__ = [
-        'notify', 'send_mail', 'grouped', 'grouped_by_column',
+        'Notify', 'send_mail', 'grouped', 'grouped_by_column',
         'zip_longest',
-        'NOW', 'TOMORROW', 'SCHEDULE', 'NOTIFIED',
+        'NOW', 'TOMORROW',
         ]
 
 try:
@@ -13,119 +13,182 @@ try:
 except ImportError:
     from itertools import zip_longest
 
-from aenum import Enum
+from antipathy import Path
+from datetime import timedelta
 from dbf import DateTime
-from scription import Exit, error, Job 
+from scription import Exit, error, Job, OrmFile
 import time
 
 NOW = DateTime.now()
 TOMORROW = NOW.replace(delta_day=+1).date()
 
-class FileType(Enum):
-    SCHEDULE = "addresses and times"
-    NOTIFIED = "who's been contacted"
-SCHEDULE, NOTIFIED = FileType.SCHEDULE, FileType.NOTIFIED
+BASE = Path('/home/openerp/sandbox')
+SCHEDULE = BASE / 'etc/notify.ini'
+NOTIFIED = BASE / 'var/notified.'
 
-def filter_recipients(addresses, notified_file):
-    """
-    return recipients that have not been contacted for current situation
-    """
-    with open(notified_file) as fh:
-        lines = [line for line in fh.read().strip().split('\n') if line]
-    if lines and lines[0].startswith('time'):
-        lines.pop(0)
-    contacted = []
-    for line in lines:
-        date, time, address = line.split()
-        contacted.append(address)
-    return [a for a in addresses if a not in contacted]
+SCRIPT_NAME = None
 
-def get_recipients(source_file, source_type):
-    """
-    read address file and return eligible recipients based on allowed times
-    """
-    if source_type is NOTIFIED:
-        with open(source_file) as fh:
-            addresses = [line.split()[2] for line in fh.read().strip().split('\n')]
-    elif source_type is SCHEDULE:
-        with open(source_file) as fh:
-            lines = [line for line in fh.read().strip().split('\n') if line]
-        if lines and lines[0].startswith('email'):
-            lines.pop(0)
-        addresses = []
-        for line in lines:
-            pieces = line.split()
-            if len(pieces) == 1:
-                # email only
-                email, = pieces
-                phone = None
-                availability = WeeklyAvailability.none()
-            elif len(pieces) == 2:
-                # email and phone (means always available)
-                email, phone = pieces
-                availability = WeeklyAvailability.always()
-            else:
-                email, phone = pieces[:2]
-                availability = WeeklyAvailability(*pieces[2:])
-            #
-            addresses.append(email)
-            if phone and NOW in availability:
-                addresses.append(phone)
-    else:
-        raise ValueError('unknown source type: %r' % (source_type, ))
-    return addresses
+class Notify(object):
 
+    def __init__(self, name, schedule=SCHEDULE, notified=NOTIFIED, cut_off=0):
+        # name: name of script (used for notified file name)
+        # schedule: file that holds user name, email, text, and availability
+        # notified: file that rememebers who has been notified
+        # cut_off: how long to wait, in minutes, before resending errors or
+        # sending all clear
+        self.name = name
+        self.schedule = Path(schedule)
+        notified = Path(notified)
+        if notified == NOTIFIED:
+            notified += name
+        self.notified = notified
+        self.cut_off = timedelta(seconds=cut_off * 60)
 
-def notify(script_name, schedule, notified, errors, cut_off):
-    """
-    send errors to valid recipients or cancellation to all notified thus far
-    """
-    # script_name: name of calling script (used in subject line)
-    # schedule: file with schedules of whom to contact and when
-    # notified: file with contacted details
-    # errors: list of errors (will become the message body)
-    # cut_off: how long before an error free condition clears the last error
-    #          how long since the last error before a new error is reported
-    if not errors:
-        if not notified.exists():
-            return Exit.Success
-        last_accessed = notified.stat().st_atime
-        if NOW - DateTime.fromtimestamp(last_accessed) < cut_off:
-            # too soon to notify, maybe next time
-            return Exit.Success
-        # get names from file and notify each one that problem is resolved
-        addresses = get_recipients(notified, source_type=NOTIFIED)
-        subject = "%s: all good" % script_name
-        message = "problem has been resolved"
-    else:
-        # errors happened; check if notified needs (re)creating
-        create_error_file = False
-        if not notified.exists():
-            create_error_file = True
+    def __call__(self, errors):
+        """
+        send errors to valid recipients or cancellation to all notified thus far
+
+        notification file format
+        ---
+        time contacted      address
+        2020-05-20 03:47    ethan@stoneleaf.us
+        ---
+        """
+        # script_name: name of calling script (used in subject line)
+        # schedule: file with schedules of whom to contact and when
+        # notified: file with contacted details
+        # errors: list of errors (will become the message body)
+        # cut_off: how long before an error free condition clears the last error
+        #          how long since the last error before a new error is reported
+        if not errors:
+            if not self.notified.exists():
+                return Exit.Success
+            last_accessed = self.notified.stat().st_atime
+            if NOW - DateTime.fromtimestamp(last_accessed) < self.cut_off:
+                # too soon to notify, maybe next time
+                return Exit.Success
+            # get names from file and notify each one that problem is resolved
+            addresses = self.get_notified()
+            subject = "%s: all good" % self.name
+            message = "problem has been resolved"
         else:
-            last_accessed = notified.stat().st_atime
-            if NOW - DateTime.fromtimestamp(last_accessed) > cut_off:
-                # file should have been deleted; create fresh now
+            # errors happened; check if notified needs (re)creating
+            create_error_file = False
+            if not self.notified.exists():
                 create_error_file = True
-        if create_error_file:
-            with open(notified, 'w') as fh:
-                fh.write("time contacted      address\n")
-        notified.touch((time_stamp(NOW), None))
-        all_addresses = get_recipients(schedule, source_type=SCHEDULE)
-        addresses = filter_recipients(all_addresses, notified)
-        subject = "%s: errors encountered" % script_name
-        message = ''.join(errors)
-    sent_addresses, failed_to_send = send_mail(addresses, subject, message)
-    if failed_to_send:
-        error('\n\nUnable to contact:\n  %s' % ('\n  '.join(failed_to_send)))
-    if errors:
-        update_recipients(sent_addresses, notified)
-    else:
-        notified.unlink()
-    if errors or failed_to_send:
-        return Exit.UnknownError
-    else:
-        return Exit.Success
+            else:
+                last_accessed = self.notified.stat().st_atime
+                if NOW - DateTime.fromtimestamp(last_accessed) > self.cut_off:
+                    # file should have been deleted; create fresh now
+                    create_error_file = True
+            if create_error_file:
+                with open(self.notified, 'w') as fh:
+                    fh.write("time contacted      address\n")
+            self.notified.touch((time_stamp(NOW), None))
+            all_addresses = self.get_recipients()
+            addresses = self.filter_recipients(all_addresses)
+            subject = "%s: errors encountered" % self.name
+            message = ''.join(errors)
+        sent_addresses, failed_to_send = send_mail(addresses, subject, message)
+        if failed_to_send:
+            error('\n\nUnable to contact:\n  %s' % ('\n  '.join(failed_to_send)))
+        if errors:
+            self.update_recipients(sent_addresses)
+        else:
+            self.notified.unlink()
+        if errors or failed_to_send:
+            return Exit.UnknownError
+        else:
+            return Exit.Success
+
+    def filter_recipients(self, addresses):
+        """
+        return recipients that have not been contacted for current situation
+        """
+        with open(self.notified) as fh:
+            lines = [line for line in fh.read().strip().split('\n') if line]
+        if lines and lines[0].startswith('time'):
+            lines.pop(0)
+        contacted = []
+        for line in lines:
+            date, time, address = line.split()
+            contacted.append(address)
+        return [a for a in addresses if a not in contacted]
+
+    def get_notified(self):
+        """
+        return address that have been notified
+
+        file format is
+        ---
+        time contacted      address
+        2020-05-20 03:47    ethan@stoneleaf.us
+        ---
+        """
+        addresses = []
+        with open(self.notified) as fh:
+            data = fh.read().strip()
+        if data:
+            addresses = [line.split()[2] for line in data.split('\n')]
+        return addresses
+
+    def get_recipients(self):
+        """
+        read address file and return eligible recipients based on allowed times
+
+        recipient file format is scription's OrmFile
+        ---
+        users = ['ethan', 'emile']
+        email = None
+        text = None
+
+        [ethan]
+        email = ['ethan@stoneleaf.us', ]
+        text =  ['9715061961@vtext.com', ]
+
+        [emile]
+        email = ['emile@gmail.com', ]
+        text = ['6503433458@tmomail.net', ]
+
+        [available]
+        ethan = ('Mo-Fr:600-1900', 'Su:1700-2100')
+        emile = True
+        tony = True
+        ron = True
+
+        [available.process_openerp_orders]
+        ---
+        """
+        addresses = []
+        settings = OrmFile(self.schedule)
+        if self.name not in settings.available:
+            raise ValueError('%r not in %s' % (self.name, SCHEDULE))
+        section = settings.available[self.name]
+        for user in settings.users:
+            email = settings[user].email
+            text = settings[user].text
+            times = section[user]
+            if times is True:
+                available = WeeklyAvailability.always()
+            elif times:
+                available = WeeklyAvailability(*section[user])
+            else:
+                available = WeeklyAvailability.none()
+            if email:
+                addresses.extend(email)
+            if text and NOW in available:
+                addresses.extend(text)
+        return addresses
+
+
+    def update_recipients(self, addresses):
+        """
+        update notification file with who was contacted at what time
+        """
+        with open(self.notified, 'a') as fh:
+            for address in addresses:
+                fh.write('%-20s %s\n' % (NOW.strftime('%Y-%m-%d %H:%M'), address))
+
 
 def send_mail(recipients, subject, message):
     """
@@ -147,15 +210,6 @@ def send_mail(recipients, subject, message):
             failed_to_send.append(address)
             continue
     return sent_addresses, failed_to_send
-
-def update_recipients(addresses, notified):
-    """
-    update notification file with who was contacted at what time
-    """
-    with open(notified, 'a') as fh:
-        for address in addresses:
-            fh.write('%-20s %s\n' % (NOW.strftime('%Y-%m-%d %H:%M'), address))
-
 
 class WeeklyAvailability(object):
     """
@@ -276,4 +330,3 @@ def grouped_by_column(it, size):
     for column in grouped(elements, rows):
         iters.append(column)
     return zip_longest(*iters, fillvalue='')
-

@@ -9,7 +9,6 @@ from scription import *
 from fnx_script_support import *
 from antipathy import Path
 from traceback import format_exception_only
-from datetime import timedelta
 from dbf import Date, Period
 import sys
 
@@ -17,7 +16,7 @@ import sys
 # with other FIS-feeding processes
 
 BASE_SEQ = 10000
-CUT_OFF = timedelta(seconds=600)
+CUT_OFF = 10
 
 EOE_PATH = Path("/mnt/11-111/home/eoe/")
 BASE_PATH = Path("/home/openerp/sandbox/openerp/var/fis_integration/orders")
@@ -77,7 +76,8 @@ def process_openerp_orders():
             error(''.join(error_lines))
             errors.extend(error_lines)
             continue
-    return notify(script_fullname, schedule=RECIPIENT_FILE, notified=ERROR_FILE, errors=errors, cut_off=CUT_OFF)
+    notify = Notify(script_fullname, schedule=RECIPIENT_FILE, notified=ERROR_FILE, cut_off=CUT_OFF)
+    return notify(errors)
 
 
 @Command(
@@ -181,13 +181,25 @@ Main()
 
 # file formats
 
-# recipient file format, space-delimited
-# email, phone, text-message okay times ("-" means no time)
+# recipient file format is scription's OrmFile
 """
-email                 phone@carrier             availability
-ethan@stoneleaf.us    9715061961@vtext.com      Mo-Tu:800-1700   We,Fr:1300-1700   Th:1700-2100   Sa:0000-0300,1200-1500 Su:-
-emile@gmail.com       6503433458@txt.att.net
-tony@togo.net         4157354115@tmomail.net
+users = ['ethan', 'emile']
+
+[ethan]
+email = ['ethan@stoneleaf.us', ]
+text =  ['9715061961@vtext.com', ]
+
+[emile]
+email = ['emile@gmail.com', ]
+text = ['6503433458@tmomail.net', ]
+
+[availability]
+ethan = "Mo-Fr:600-1900  Su:1700-2100"
+emile = True
+tony = True
+ron = True
+
+[availability.process_openerp_orders]
 """
 
 # notification file format
