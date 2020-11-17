@@ -307,7 +307,7 @@ class product_product(xmlid, osv.Model):
         # group images by rows
         for xml_id, id in xml_ids.items():
             raw_rows = defaultdict(list)
-            for row, link, align in LabelLinks:
+            for row, link, align, width in LabelLinks:
                 header = False
                 if link.count('%s') == 1:
                     link %= '%s/%s' % (xml_id, xml_id)
@@ -324,7 +324,7 @@ class product_product(xmlid, osv.Model):
                 else:
                     _logger.error('unknown link template: %r', link)
                     continue
-                raw_rows[int(row)].append((link, remote_link, align, header))
+                raw_rows[int(row)].append((link, remote_link, align, width, header))
             width_rows = calc_width(raw_rows)
             doc = Xaml(LabelLinkTab).document.pages[0]
             tab = doc.string(rows = width_rows)
@@ -1081,14 +1081,22 @@ def get_LLC():
     # validate LabelLinkCtl file
     LabelLinks = []
     for link_line in label_link_lines:
-        LabelLinks.append([piece.strip() for piece in link_line.split(",")])
-        last_link = LabelLinks[-1][0].replace('Plone/LabelDirectory/', '')
-        if last_link.count('%s') == 2:
+        pieces = [piece.strip() for piece in link_line.split(",")]
+        pieces = (pieces + [None])[:4]
+        if pieces[-1] is not None:
+            try:
+                pieces[-1] = int(pieces[-1].strip('%'))
+            except ValueError:
+                _logger.error('unable to convert width of %r in %r', pieces[-1], link_line)
+                pieces[-1] = None
+        link = pieces[0].replace('Plone/LabelDirectory/', '')
+        if link.count('%s') == 2:
             # abort with exception if this fails
-            last_link % ('a', 'test')
-            if last_link.startswith('%s/'):
-                last_link = last_link[3:]
-        LabelLinks[-1][0] = last_link
+            link % ('a', 'test')
+            if link.startswith('%s/'):
+                link = link[3:]
+        pieces[0] = link
+        LabelLinks.append(pieces)
     if label_link_lines != LLC_text and not llc_override:
         # store current lines at module level
         LLC_text = label_link_lines
@@ -1151,14 +1159,17 @@ def calc_width(src_rows):
         # images are either 2x4 or 4x4...
         # open each image to see which it is
         single = len(images) == 1
-        for link, remote_link, align, header in images:
+        for link, remote_link, align, width, header in images:
             if single:
                 align = 'center'
             try:
-                with Image.open(PRODUCT_LABEL_PNG_LOCATION / link.stem + '.png') as image:
-                    scale = 1200.0 / image.height
-                    new_width = scale * image.width
-                    percent = min(int(new_width / 1800 * 100), 100)
+                if width is not None:
+                    percent = width
+                else:
+                    with Image.open(PRODUCT_LABEL_PNG_LOCATION / link.stem + '.png') as image:
+                        scale = 1200.0 / image.height
+                        new_width = scale * image.width
+                        percent = min(int(new_width / 1800 * 100), 100)
             except IOError:
                 percent = 0
             row.append((remote_link, '%s%%' % percent, align, header))
