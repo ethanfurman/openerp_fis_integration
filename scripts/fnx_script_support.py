@@ -329,4 +329,6 @@ def grouped_by_column(it, size):
         rows += 1
     for column in grouped(elements, rows):
         iters.append(column)
+    while len(iters) < size:
+        iters.append(iter(' '))
     return zip_longest(*iters, fillvalue='')
