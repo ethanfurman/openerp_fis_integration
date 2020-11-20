@@ -25,7 +25,7 @@ CUT_OFF = 6
 @Command(
         test=('pretend error condition and send mail', FLAG)
         )
-def test_labeltime_connection(test):
+def check_labeltime_connection(test):
     errors = []
     #
     try:
@@ -39,7 +39,7 @@ def test_labeltime_connection(test):
         errors.append('cat of LabelLinkCtl has stalled')
     #
     notify = Notify(
-            script_fullname,
+            script_name,
             cut_off=CUT_OFF,
             )
     notify(errors)
