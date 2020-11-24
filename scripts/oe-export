@@ -1,4 +1,4 @@
-#!/usr/local/sbin/suid-python --virtualenv
+#!/usr/local/bin/suid-python --virtualenv
 from __future__ import print_function
 
 import dbf
@@ -6,6 +6,7 @@ import os
 import re
 from antipathy import Path
 from ast import literal_eval
+from fnx_script_support import all_equal
 from openerplib import get_connection, get_records, AttrDict, Query, Many2One, Fault
 from scription import *
 from VSS.utils import translator
@@ -241,6 +242,11 @@ def sql(command, separator, wrap):
 
     DELETE FROM table
         [WHERE ...]
+
+    DIFF field_name [, field_name [, ...]]
+        FROM table
+        [WHERE ...]
+        [ORDER BY field1 [ASC|DESC] [, field2 [ASC|DESC] [, ...]]]
     """
     if wrap and isinstance(wrap, tuple):
         wrap = dict(
@@ -262,6 +268,8 @@ def sql(command, separator, wrap):
         return not sql_update(command)
     elif check_command.startswith('delete from '):
         return not sql_delete(command)
+    elif check_command.startswith('diff '):
+        return not sql_diff(command, separator, wrap)
     else:
         abort('one of SELECT | UPDATE | DELETE | DESCRIBE | COUNT not specified')
 
@@ -369,8 +377,20 @@ def sql_select(command, separator, wrap, _internal=False):
         if resto:
             abort('malformed query')
     # get field names if * specified
+    model = oe.get_model(desde)
     if seleccion == ['*']:
-        seleccion = ['id'] + sorted(oe.get_model(desde).fields_get().keys())
+        fields = list(model._all_columns.keys())
+        if '-binary' in _internal:
+            for field in model._binary_fields:
+                fields.remove(field)
+        if '-x2many' in _internal:
+            for field in model._x2many_fields:
+                fields.remove(field)
+        if '-html' in _internal:
+            for field in model._html_fields:
+                fields.remove(field)
+        fields.remove('id')
+        seleccion = ['id'] + sorted(fields)
         print('SELECT:', seleccion)
     print('FROM', desde)
     #
@@ -403,6 +423,55 @@ def sql_select(command, separator, wrap, _internal=False):
         return query
     echo('SELECT %d' % len(query))
     return len(query)
+
+def sql_diff(command, separator, wrap):
+    """
+    use SELECT to get all records/fields, then diff them
+    """
+    changed_only = False
+    if command.upper().startswith('DIFF ^ '):
+        changed_only = True
+        command = command[:5] + '*' + command[6:]
+    query = sql_select(command, separator, wrap, _internal='-binary -html')
+    if not query.records:
+        abort('no records found')
+    if len(query.records) == 1:
+        # if only one record, display all fields
+        changed_only = False
+    header = [rec['id'] for rec in query.records]
+    rows = [['fields \ ids']+header]
+    fields = query.records[1].keys()
+    fields.remove('id')
+    for field in fields:
+        row = []
+        for record in query.records:
+            row.append(record[field])
+        no_diff = all_equal(row)
+        if changed_only and no_diff:
+            continue
+        final_row = []
+        for cell_value in row:
+            if isinstance(cell_value, Many2One):
+                final_row.append('[%6s] %s' % (cell_value.id, cell_value.name))
+            elif isinstance(cell_value, (list, tuple)):
+                new_value = []
+                for cv in cell_value:
+                    if isinstance(cv, Many2One):
+                        new_value.append('[%6s] %s' % (cv.id, cv.name))
+                    elif isinstance(cv, basestring):
+                        cv = '%s' % cv
+                        new_value.append(cv)
+                    elif cv is None:
+                        new_value.append('')
+                    else:
+                        new_value.append(cv)
+                final_row.append('\n'.join(new_value))
+            else:
+                final_row.append(cell_value)
+        final_row.insert(0, '%s %s' % ('^ '[no_diff], field))
+        rows.append(final_row)
+    echo(rows, border='table', table_record='column')
+
 
 def sql_update(command):
     """\
@@ -749,7 +818,7 @@ def write_csv(table, query, fields, file, separator=False):
     with open(file, 'w') as output:
         output.write('\n'.join(lines).encode('utf8'))
 
-def write_txt(table, query, fields, file, separator=False, wrap=None):
+def write_txt(table, query, fields, file, separator=False, wrap=None,):
     lines = []
     line = []
     print('field count:', len(fields), fields, verbose=2)
