@@ -838,14 +838,14 @@ def write_txt(table, query, fields, file, separator=False, wrap=None,):
             for field_name, (cell_index, cell_value) in zip(fields, enumerate(row)):
                 if isinstance(cell_value, Many2One):
                     if SHOW_ID:
-                        line.append('[%6s] %s' % cell_value)
+                        line.append('[%6s] %s' % (cell_value.id, cell_value.name))
                     else:
                         line.append(cell_value.essence())
                 elif isinstance(cell_value, (list, tuple)):
                     for cv in cell_value:
                         if isinstance(cv, Many2One):
                             if SHOW_ID:
-                                line.append('[%6s] %s' % cv)
+                                line.append('[%6s] %s' % (cv.id, cv.name))
                             else:
                                 line.append(cv.essence())
                         elif isinstance(cv, basestring):
