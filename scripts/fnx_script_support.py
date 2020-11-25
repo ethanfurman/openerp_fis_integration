@@ -332,3 +332,18 @@ def grouped_by_column(it, size):
     while len(iters) < size:
         iters.append(iter(' '))
     return zip_longest(*iters, fillvalue='')
+
+def all_equal(iterator, test=None):
+    '''if `test is None` do a straight equality test'''
+    it = iter(iterator)
+    if test is None:
+        try:
+            target = next(it)
+            test = lambda x: x == target
+        except StopIteration:
+            return True
+    for item in it:
+        if not test(item):
+            return False
+    return True
+
