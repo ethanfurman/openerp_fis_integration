@@ -14,7 +14,11 @@ class res_users(osv.Model):
         'fis_partner_id': fields.many2one(
             'res.partner',
             string='FIS Account',
-            domain = [('fis_ship_to_code','!=',False),('module','in',['F33','F34'])],
+            domain=[
+                    ('fis_transmitter_id','!=',False),
+                    ('module','in',['F33','F34']),
+                    ('xml_id','not like','-default'),
+                    ],
             ),
         'fis_partner_code': fields.related(
             'fis_partner_id','xml_id',
