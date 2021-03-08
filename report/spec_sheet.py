@@ -16,8 +16,6 @@ from openerp.report.interface import report_int
 from openerp.report.render import render
 
 from openerp import pooler
-# import time
-# import unicodedata
 from aenum import NamedConstant, export
 import logging
 
@@ -64,7 +62,6 @@ class report_spec_sheet(report_int):
             display.addOutlineEntry('Product %s' % xml_id, xml_id)
             xml_ids.add(xml_id)
             # download images and convert width and align
-            _logger.warning('working with:\n%s', data['label_server_stub'])
             image_specs = re.findall(
                     r'''<img src="([^"]*)" align="([^"]*)" *(oe_header="oe_header")? *width="(\d*)%"''',
                     data['label_server_stub'],
@@ -148,7 +145,6 @@ class report_spec_sheet(report_int):
                     if anchor.y - bbox.height < bottom_margin:
                         pages.append(page)
                         page = []
-                        # display.showPage()
                         anchor = top_left
                         max_height = 0
                     max_height = max(max_height, bbox.height)
@@ -327,7 +323,6 @@ def _width(word):
 def trim(image):
     bg = Image.new(image.mode, image.size, image.getpixel((0,0)))
     diff = ImageChops.difference(image, bg)
-    # diff = ImageChops.add(diff, diff) # should be whitespace trim only
     diff = ImageChops.add(diff, diff, 2.0, -100)
     bbox = diff.getbbox()
     if bbox:

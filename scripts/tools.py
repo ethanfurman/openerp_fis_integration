@@ -12,13 +12,14 @@ from aenum import Enum
 from antipathy import Path
 from dbf import Date, DateTime, Time, Table, READ_WRITE
 from dbf import NoneType, NullType, Char, Logical
+from fnx_script_support import grouped_by_column
 from openerplib import DEFAULT_SERVER_DATE_FORMAT, get_records, get_xid_records, XidRec
 from openerplib import Fault, PropertyNames, IDEquality, Many2One, SetOnce
 from scription import print, echo, error, ViewProgress, script_verbosity, abort
 from traceback import format_exception
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, PostalCode
 from VSS.BBxXlate.fisData import fisData
-from VSS.utils import LazyClassAttr, grouped_by_column
+from VSS.utils import LazyClassAttr
 
 virtualenv = os.environ['VIRTUAL_ENV']
 odoo_erp = 1 if 'odoo' in virtualenv else 0
