@@ -413,6 +413,8 @@
         ~report model='fis_integration.product_traffic' name='fis_integration.product_traffic.selected_records' header='True' auto='True' multi='True' xml='fis_integration/report/product-traffic.xml' xsl='fis_integration/report/product-traffic.xsl' $Product_Traffic #report_fis_integration_product_traffic
         ~report model='product.product' name='product.product.spec_sheet' auto='False' $Spec_Sheet #report_product_spec_sheet
 
+        // Online Orders
+
         ~record #fis_integration_online_order_form model='ir.ui.view'
             @name: Online Orders
             @model: fis_integration.online_order
@@ -427,17 +429,32 @@
                             @po_number attrs="{'invisible': [('show_po_number','=',False)]}"
                         ~group
                             @req_ship_date placeholder='next standard delivery' attrs="{'invisible': [('show_req_ship_date','=',False)]}"
-                    ~group
+                    ~group attrs="{'invisible': [('partner_crossref_list','=',False)]}"
                         @item_ids
                          | nolabel='1'
-                         | attrs="{'invisible': [('partner_crossref_list','=',False)]}"
                          | context="{'default_partner_list_code': partner_crossref_list}"
                             ~tree editable='bottom' $New_Order
                                 @partner_product_id $Item
                                  | required='1'
                                  | domain="[('list_code','=',partner_list_code)]"
                                  | options="{'create': False, 'create_edit': False}"
-                                 | on_change="onchange_product(partner_product_id)"
+                                 | on_change="onchange_product(partner_product_id, partner_list_code, 'old')"
+                                @quantity required='1'
+                                @partner_list_code invisible='1'
+                                @product_fis_id invisible='1'
+                                @partner_product_code invisible='1'
+                                @product_desc invisible='1'
+                        ~label for='new_item_ids' $New_Items
+                        @new_item_ids
+                         | nolabel='1'
+                         | attrs="{'invisible': [('partner_crossref_list','=','HE447')]}"
+                         | context="{'default_partner_list_code': partner_crossref_list}"
+                            ~tree editable='bottom' $New_Order
+                                @partner_product_id $Item
+                                 | required='1'
+                                 | options="{'create': False, 'create_edit': False}"
+                                 | domain="[('list_code','=','-all-')]"
+                                 | on_change="onchange_product(partner_product_id, partner_list_code, 'new')"
                                 @quantity required='1'
                                 @partner_list_code invisible='1'
                                 @product_fis_id invisible='1'

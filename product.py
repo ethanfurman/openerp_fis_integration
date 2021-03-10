@@ -868,7 +868,7 @@ class product_fis2customer(osv.Model):
             ),
         'customer_product_code': fields.char('Code', size=15),
         'source': fields.selection((
-            ('fis', 'FIS'), ('salesinq', 'SalesInq'),
+            ('fis', 'FIS'), ('salesinq', 'SalesInq'),('all_avail','11.111'),
             ),
             string='Data Source',
             order='definition',
@@ -889,6 +889,10 @@ class product_online_order(osv.Model):
             size=6,
             ),
         'item_ids': fields.one2many(
+            'fis_integration.online_order_item', 'order_id',
+            string='Items',
+            ),
+        'new_item_ids': fields.one2many(
             'fis_integration.online_order_item', 'order_id',
             string='Items',
             ),
@@ -1017,7 +1021,14 @@ class product_online_orders_item(osv.Model):
         'product_fis_id': fields.char('FIS ID', size=6),
         }
 
-    def onchange_product(self, cr, uid, ids, partner_product_id, context=None):
+    def onchange_product(
+            self, cr, uid, ids,
+            partner_product_id, partner_list_code, item_type,
+            context=None,
+        ):
+        """
+        updates hidden fields with product information and ensures separate old vs new items
+        """
         if not partner_product_id:
             return {
                 'value': {
@@ -1026,8 +1037,12 @@ class product_online_orders_item(osv.Model):
                         'product_fis_id': False,
                         }
                     }
+        #
         cross_ref = self.pool.get('fis_integration.customer_product_cross_reference')
         product = cross_ref.browse(cr, uid, partner_product_id, context=context)
+        new_product = cross_ref.browse(cr, uid, partner_product_id, context=context)
+        # if item_type == 'old':
+            # item id must be associated with 
         value = {
                 'partner_product_code': product.customer_product_code,
                 'product_desc': product.fis_product_id.name,

@@ -249,8 +249,9 @@ def field_check(filenum, which):
 @Command(
     quick=('use local copy of product descriptions', FLAG),
     items=Spec('item number to look up', usage='ITEM'),
+    update=Spec('update OpenERP cross references',  FLAG),
     )
-def product_description(quick, *items):
+def product_description(quick, update, *items):
     "retrieve and save the latest product descriptions"
     if not quick:
         # get the data
@@ -281,6 +282,62 @@ def product_description(quick, *items):
                 fis_desc, item_code, full_desc = match.groups()
                 if fis_desc in items:
                     echo('%s:  %s' % (item_code, full_desc))
+    if update:
+        print('updating -all- cross-reference codes')
+        oe = connect_oe()
+        cross_ref = oe.get_model('fis_integration.customer_product_cross_reference')
+        processed = set()
+        current_items = dict(
+                (r.fis_code, r.id)
+                for r in get_records(
+                    cross_ref,
+                    domain=[('list_code','=','-all-')],
+                    ))
+        print('  %d existing items' % len(current_items))
+        item_id = Var(lambda haystack: re.search('\((\d{6})\)', haystack))
+        with open(config.network.fis_data_local_path/'product_descriptions.txt') as f:
+            lines = f.read().strip().split('\n')
+        print('  %d lines to process' % len(lines))
+        new = updated = 0
+        for line in ViewProgress(lines):
+            if item_id(line):
+                fis_code = item_id().group(1)
+                if fis_code in processed:
+                    # fis_code may be in several lines
+                    continue
+                processed.add(fis_code)
+                print('  code: %r' % (fis_code, ), verbose=3)
+                try:
+                    product_id = product.search([('xml_id','=',fis_code)])[0]
+                except IndexError:
+                    error('%r: not found' % (fis_code, ))
+                    continue
+                values = {
+                        'key': '-all--%s-' % (fis_code, ),
+                        'list_code': '-all-',
+                        'fis_code': fis_code,
+                        'fis_product_id': product_id,
+                        'customer_product_code': fis_code,
+                        'source': 'all_avail',
+                        }
+                crossref_id = current_items.pop(fis_code, None)
+                if crossref_id is None:
+                    echo('n', end='')
+                    # create it
+                    cross_ref.create(values)
+                    new += 1
+                else:
+                    echo('.', end='')
+                    # update it
+                    cross_ref.write(crossref_id, values)
+                    updated += 1
+        removed = len(current_items)
+        if current_items:
+            print('removing %d cross references' % len(current_items))
+            cross_ref.unlink(current_items.values())
+        print('%d existing/updated items\n%d added items\n%d deleted items' %
+                (updated, new, removed)
+                )
 
 
 @Command(
@@ -1399,8 +1456,9 @@ uncommon = {
     'total':        'ttl',
     }
 
-def connect_oe(database, connection=[]):
+def connect_oe(database=None, connection=[]):
     global res_partner, product, fis_user
+    database = database or config.openerp.db
     if not connection:
         print('using %r and %r to connect to %r:%r' % ('fis_daemon', config.openerp.pw, config.openerp.host, database))
         connection.append(
