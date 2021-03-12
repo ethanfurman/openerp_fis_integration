@@ -432,19 +432,19 @@
                     ~group attrs="{'invisible': [('partner_crossref_list','=',False)]}"
                         @item_ids
                          | nolabel='1'
+                         | attrs="{'invisible': [('partner_crossref_list','!=','HE447')]}"
                          | context="{'default_partner_list_code': partner_crossref_list}"
                             ~tree editable='bottom' $New_Order
                                 @partner_product_id $Item
                                  | required='1'
                                  | domain="[('list_code','=',partner_list_code)]"
-                                 | options="{'create': False, 'create_edit': False}"
+                                 | options="{'create': False, 'create_edit': False, 'no_open': True}"
                                  | on_change="onchange_product(partner_product_id, partner_list_code, 'old')"
                                 @quantity required='1'
                                 @partner_list_code invisible='1'
                                 @product_fis_id invisible='1'
                                 @partner_product_code invisible='1'
                                 @product_desc invisible='1'
-                        ~label for='new_item_ids' $New_Items
                         @new_item_ids
                          | nolabel='1'
                          | attrs="{'invisible': [('partner_crossref_list','=','HE447')]}"
@@ -452,7 +452,7 @@
                             ~tree editable='bottom' $New_Order
                                 @partner_product_id $Item
                                  | required='1'
-                                 | options="{'create': False, 'create_edit': False}"
+                                 | options="{'create': False, 'create_edit': False, 'no_open': True}"
                                  | domain="[('list_code','=','-all-')]"
                                  | on_change="onchange_product(partner_product_id, partner_list_code, 'new')"
                                 @quantity required='1'

@@ -916,14 +916,15 @@ class product_online_order(osv.Model):
 
     def create(self, cr, uid, vals, context=None):
         item_ids = vals.get('item_ids', [])
-        new_item_ids = []
+        item_ids.extend(vals.get('new_item_ids', []))
+        valid_item_ids = []
         for instruction in item_ids:
             if instruction[0] == 0:
-                new_item_ids.append(instruction)
-        vals['item_ids'] = item_ids = new_item_ids
+                valid_item_ids.append(instruction)
+        vals['item_ids'] = valid_item_ids
         user = self.pool.get('res.users').browse(cr, SUPERUSER_ID, uid, context=context)
         transmitter = user.fis_transmitter_id.transmitter_no
-        if not item_ids:
+        if not valid_item_ids:
             raise ERPError(
                     'Missing Items',
                     'no items listed',
@@ -937,7 +938,7 @@ class product_online_order(osv.Model):
             lines.append('RSD-%s' % (req_ship_date, ))
         # {
         #   'req_ship_date': False,
-        #   'item_ids': [
+        #   'valid_item_ids': [
         #           [0, False, {
         #                   'product_desc': 'Almonds - Dry Roasted & Lightly Salted SunRidge NonGMO Verified',
         #                   'order_id': 5874L,
@@ -956,8 +957,8 @@ class product_online_order(osv.Model):
         #   'partner_id': 47170,
         #   },
         #
-        for command, _, item in item_ids:
-            lines.append('%s - %s - 1 unit' % (
+        for command, _, item in valid_item_ids:
+            lines.append('%s - %s' % (
                 item['product_fis_id'],
                 item['quantity'],
                 ))
@@ -1041,8 +1042,6 @@ class product_online_orders_item(osv.Model):
         cross_ref = self.pool.get('fis_integration.customer_product_cross_reference')
         product = cross_ref.browse(cr, uid, partner_product_id, context=context)
         new_product = cross_ref.browse(cr, uid, partner_product_id, context=context)
-        # if item_type == 'old':
-            # item id must be associated with 
         value = {
                 'partner_product_code': product.customer_product_code,
                 'product_desc': product.fis_product_id.name,
