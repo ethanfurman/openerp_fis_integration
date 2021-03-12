@@ -286,7 +286,6 @@ def product_description(quick, update, *items):
         print('updating -all- cross-reference codes')
         oe = connect_oe()
         cross_ref = oe.get_model('fis_integration.customer_product_cross_reference')
-        processed = set()
         current_items = dict(
                 (r.fis_code, r.id)
                 for r in get_records(
@@ -294,24 +293,22 @@ def product_description(quick, update, *items):
                     domain=[('list_code','=','-all-')],
                     ))
         print('  %d existing items' % len(current_items))
-        item_id = Var(lambda haystack: re.search('\((\d{6})\)', haystack))
-        with open(config.network.fis_data_local_path/'product_descriptions.txt') as f:
-            lines = f.read().strip().split('\n')
-        print('  %d lines to process' % len(lines))
+        #
+        # TODO
+        # method of getting saleable items has changed -- this section needs to move
+        # to another function
+        #
+        # get saleable items from OpenERP
+        saleable_items = dict(
+                (r.xml_id, r.id)
+                for r in get_records(
+                    product,
+                    domain=[('sale_ok','=',True)],
+                    fields=['id','xml_id']),
+                    )
         new = updated = 0
-        for line in ViewProgress(lines):
-            if item_id(line):
-                fis_code = item_id().group(1)
-                if fis_code in processed:
-                    # fis_code may be in several lines
-                    continue
-                processed.add(fis_code)
+        for fis_code, product_id in ViewProgress(saleable_items.items()):
                 print('  code: %r' % (fis_code, ), verbose=3)
-                try:
-                    product_id = product.search([('xml_id','=',fis_code)])[0]
-                except IndexError:
-                    error('%r: not found' % (fis_code, ))
-                    continue
                 values = {
                         'key': '-all--%s-' % (fis_code, ),
                         'list_code': '-all-',
@@ -322,12 +319,10 @@ def product_description(quick, update, *items):
                         }
                 crossref_id = current_items.pop(fis_code, None)
                 if crossref_id is None:
-                    echo('n', end='')
                     # create it
                     cross_ref.create(values)
                     new += 1
                 else:
-                    echo('.', end='')
                     # update it
                     cross_ref.write(crossref_id, values)
                     updated += 1
