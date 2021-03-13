@@ -303,7 +303,7 @@ def product_description(quick, update, *items):
                 (r.xml_id, r.id)
                 for r in get_records(
                     product,
-                    domain=[('sale_ok','=',True)],
+                    domain=[('sale_ok','=',True),('active','=',True),('fis_availability_code','=','Y')],
                     fields=['id','xml_id']),
                     )
         new = updated = 0
