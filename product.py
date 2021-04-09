@@ -907,7 +907,7 @@ class product_online_order(osv.Model):
             type='boolean',
             string='Show PO #',
             ),
-        'po_number': fields.char('PO #', size=64),
+        'po_number': fields.char('PO #', size=10),
         }
 
     _defaults = {
@@ -933,9 +933,11 @@ class product_online_order(osv.Model):
         po_number = vals.get('po_number')
         req_ship_date = vals.get('req_ship_date')
         if po_number:
+            po_number = ('0000000000' + po_number)[-10:]
             lines.append('PON-%s' % (po_number, ))
         if req_ship_date:
-            lines.append('RSD-%s' % (req_ship_date, ))
+            yy, mm, dd = req_ship_date[2:].split('-')
+            lines.append('RSD-%s%s%s' % (mm, dd, yy))
         # {
         #   'req_ship_date': False,
         #   'valid_item_ids': [
