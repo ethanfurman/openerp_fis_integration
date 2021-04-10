@@ -1297,6 +1297,7 @@ class FISenum(str, Enum):
 
     def __new__(cls, value, *args):
         enum = str.__new__(cls, value)
+	enum._value_ = value
         if '(' in value:
             fis_name, segment = value.split('(', 1)
             segment = segment.strip(' )')

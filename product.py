@@ -888,6 +888,12 @@ class product_online_order(osv.Model):
             type='char',
             size=6,
             ),
+        'transmitter_no': fields.related(
+            'user_id','fis_partner_id','fis_transmitter_id','transmitter_no',
+            string='Transmitter #',
+            type='char',
+            size=6,
+            ),
         'item_ids': fields.one2many(
             'fis_integration.online_order_item', 'order_id',
             string='Items',
@@ -915,6 +921,27 @@ class product_online_order(osv.Model):
         }
 
     def create(self, cr, uid, vals, context=None):
+        res_users = self.pool.get('res.users')
+        user = res_users.browse(cr, SUPERUSER_ID, uid, context=context)
+        if user.has_group('base.group_sale_salesman'):
+            partner = self.pool.get('res.partner').browse(
+                    cr, uid, vals['partner_id'], context=None
+                    )
+            partner_xmlid = partner.fis_ship_to_parent_id.xml_id
+            transmitter_no = partner.fis_transmitter_id.transmitter_no
+        elif user.has_group('portal.group_portal'):
+            user = self.pool.get('res.users').browse(cr, SUPERUSER_ID, uid, context=context)
+            partner_xmlid = user.fis_partner_id.xml_id
+            transmitter_no = user.fis_partner_id.fis_transmitter_id.transmitter_no
+        else:
+            # we shouldn't get here, as a user who is not a sales person nor
+            # a portal customer should not be able to:
+            # - login to the portal
+            # - see a customer record
+            raise ERPError(
+                    'System Error',
+                    'please notify tech support',
+                    )
         item_ids = vals.get('item_ids', [])
         item_ids.extend(vals.get('new_item_ids', []))
         valid_item_ids = []
@@ -922,14 +949,12 @@ class product_online_order(osv.Model):
             if instruction[0] == 0:
                 valid_item_ids.append(instruction)
         vals['item_ids'] = valid_item_ids
-        user = self.pool.get('res.users').browse(cr, SUPERUSER_ID, uid, context=context)
-        transmitter = user.fis_transmitter_id.transmitter_no
         if not valid_item_ids:
             raise ERPError(
                     'Missing Items',
                     'no items listed',
                     )
-        lines = ['%s-%s' % (user.login, transmitter)]
+        lines = ['%s-%s' % (partner_xmlid, transmitter_no)]
         po_number = vals.get('po_number')
         req_ship_date = vals.get('req_ship_date')
         if po_number:
@@ -974,28 +999,53 @@ class product_online_order(osv.Model):
         return new_id
 
     def onload(self, cr, uid, ids, context=None):
+        """
+        make changes solely on the user id
+
+        context will always be None, so determine actions on whether:
+        - the user has the Portal access bit
+        - the user has the Salesperson access bit
+        - the user has neither
+        """
         res = {'value': {}}
         res_users = self.pool.get('res.users')
         user = res_users.browse(cr, SUPERUSER_ID, uid, context=context)
-        fis_partner = user.fis_partner_id
-        if fis_partner and user.fis_product_cross_ref_code:
-            res['value']['partner_id'] = fis_partner.id
-            res['value']['partner_crossref_list'] = user.fis_product_cross_ref_code
-            res['value']['show_req_ship_date'] = user.fis_online_order_show_req_ship_date
-            res['value']['show_po_number'] = user.fis_online_order_show_po_number
+        if user.has_group('base.group_sale_salesman'):
+            # by leaving res empty, the defaults from res.partner.button_place_order_by_salesperson
+            # will not be overridden
+            pass
+        elif user.has_group('portal.group_portal'):
+            fis_partner = user.fis_partner_id
+            if fis_partner and user.fis_product_cross_ref_code:
+                res['value']['partner_id'] = fis_partner.id
+                res['value']['partner_crossref_list'] = user.fis_product_cross_ref_code
+                res['value']['show_req_ship_date'] = user.fis_online_order_show_req_ship_date
+                res['value']['show_po_number'] = user.fis_online_order_show_po_number
+            else:
+                res['value']['partner_id'] = False
+                res['value']['partner_crossref_list'] = False
+                res['warning'] = {
+                        'title': 'Invalid setup',
+                        'message': 'This account has not been set up for orders',
+                        }
         else:
+            # we shouldn't get here, as a user who is not a sales person nor
+            # a portal customer should not be able to:
+            # - login to the portal
+            # - see a customer record
             res['value']['partner_id'] = False
             res['value']['partner_crossref_list'] = False
             res['warning'] = {
-                    'title': 'Invalid setup',
-                    'message': 'This account has not been set up for orders',
+                    'title': 'Access Denied',
+                    'message': 'You do not have permission to place orders.',
                     }
         return res
 
     def button_place_order(self, cr, uid, ids, context=None):
         return {
             'type': 'ir.actions.client',
-            'tag': 'home',
+            'tag': 'reload',
+            'params': {'wait': True},
             }
 
 
@@ -1043,7 +1093,6 @@ class product_online_orders_item(osv.Model):
         #
         cross_ref = self.pool.get('fis_integration.customer_product_cross_reference')
         product = cross_ref.browse(cr, uid, partner_product_id, context=context)
-        new_product = cross_ref.browse(cr, uid, partner_product_id, context=context)
         value = {
                 'partner_product_code': product.customer_product_code,
                 'product_desc': product.fis_product_id.name,
