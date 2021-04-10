@@ -927,7 +927,7 @@ class product_online_order(osv.Model):
             partner = self.pool.get('res.partner').browse(
                     cr, uid, vals['partner_id'], context=None
                     )
-            partner_xmlid = partner.xml_id
+            partner_xmlid = partner.fis_ship_to_parent_id.xml_id
             transmitter_no = partner.fis_transmitter_id.transmitter_no
         elif user.has_group('portal.group_portal'):
             user = self.pool.get('res.users').browse(cr, SUPERUSER_ID, uid, context=context)
