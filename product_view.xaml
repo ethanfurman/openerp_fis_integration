@@ -420,15 +420,16 @@
             @model: fis_integration.online_order
             @arch type='xml'
                 ~form $Online_Order version='7.0' setup="onload()"
+                    @id invisible='1'
                     @partner_id invisible='1'
-                    @partner_crossref_list invisible='1'
                     @show_po_number invisible='1'
                     @show_req_ship_date invisible='1'
-                    ~group attrs="{'invisible': [('show_po_number','=',False),('show_req_ship_date','=',False)]}"
+                    ~group
                         ~group
                             @po_number attrs="{'invisible': [('show_po_number','=',False)]}"
-                        ~group
                             @req_ship_date placeholder='next standard delivery' attrs="{'invisible': [('show_req_ship_date','=',False)]}"
+                        ~group attrs="{'invisible': [('id','!=',False)]}"
+                            @partner_crossref_list $Product_list_for readonly='1'
                     ~group attrs="{'invisible': [('partner_crossref_list','=',False)]}"
                         @item_ids
                          | nolabel='1'
@@ -462,7 +463,9 @@
                                 @product_desc invisible='1'
                     ~button @button_place_order $Place_Order
                      | type='object' .oe_highlight
-                     | attrs="{'invisible': [('partner_crossref_list','=',False)]}"
+                     | attrs="{'invisible': ['|',('partner_crossref_list','=',False),('id','!=',False)]}"
+                    ~div attrs="{'invisible': [('id','=',False)]}"
+                        ~h2: Order has been placed.
 
     ~data noupdate='1'
 

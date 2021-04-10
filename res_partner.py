@@ -4,6 +4,7 @@ from itertools import groupby
 from openerp import SUPERUSER_ID
 from openerp.osv import osv, fields
 from openerp.exceptions import ERPError
+from openerp.tools import self_ids
 # from tools.misc import EnumNoAlias
 from fnx_fs.fields import files
 from VSS.address import normalize_address, Rise
@@ -49,6 +50,21 @@ class res_partner(xmlid, osv.Model):
 
     _fnxfs_path = 'res_partner'
     _fnxfs_path_fields = ['xml_id', 'name']
+
+    def _check_transmitter(self, cr, uid, ids, field_name, args, context=None):
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        id = ids[0]
+        res = {id: False}
+        partner = self.browse(cr, uid, id, context=context)
+        if partner.fis_transmitter_id:
+            res[id] = True
+        else:
+            for ship_to in partner.fis_ship_to_ids:
+                if ship_to.fis_transmitter_id:
+                    res[id] = True
+                    break
+        return res
 
     def _get_specials_type(self, cr, uid, ids, field_names, args, context=None):
         res = {}
@@ -307,6 +323,17 @@ class res_partner(xmlid, osv.Model):
                 size=6,
                 oldname='fis_transmitter_code',
                 ),
+        'fis_online_ordering_enabled': fields.function(
+                _check_transmitter,
+                type='boolean',
+                string="Online Order Okay",
+                store={
+                    'res.partner': (
+                        self_ids,
+                        ['fis_ship_to_ids', 'fis_transmitter_id'],
+                        10,
+                        )},
+                ),
         # shipping addresses
         'fis_ship_to_parent_id': fields.many2one('res.partner', 'Related Ship-To'),                       # F34
         'fis_ship_to_ids': fields.one2many('res.partner', 'fis_ship_to_parent_id', 'Ship-To Addresses'),  # F33
@@ -429,6 +456,39 @@ class res_partner(xmlid, osv.Model):
                         return True
         return super(res_partner, self).write(cr, uid, ids, values, context=context)
 
+    def button_place_order_by_salesperson(self, cr, uid, ids, context=None):
+        """
+        This button is shown on ship-to displays that have a transmitter number.
+        """
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        ship_to = self.browse(cr, uid, ids[0], context=context)
+        # find matching login account
+        res_users = self.pool.get('res.users')
+        login_ids = res_users.search(cr, uid, [('fis_transmitter_id','=',ship_to.fis_transmitter_id.id)])
+        if login_ids:
+            login = res_users.browse(cr, uid, login_ids[0], context=context)
+            xref_list = login.fis_product_cross_ref_code
+        else:
+            _logger.warning('no users found for %r', ship_to.fis_transmitter_id.transmitter_no)
+            # fall back to parent xml_id
+            xref_list = ship_to.fis_ship_to_parent_id.xml_id
+        return {
+                'type': 'ir.actions.act_window',
+                'res_model': 'fis_integration.online_order',
+                'view_type': 'form',
+                'view_mode': 'form',
+                'target': 'new',
+                'domain': "[('id','=',False)]",
+                'context': {
+                        'default_partner_id': ship_to.id,
+                        'default_partner_crossref_list': xref_list,
+                        'default_show_req_ship_date': True,
+                        'default_show_po_number': True,
+			'default_id': False,
+                        },
+                }
+
     def fnxfs_folder_name(self, records):
         "return name of folder to hold related files"
         res = {}
@@ -500,7 +560,6 @@ class res_partner(xmlid, osv.Model):
             if not parent_id:
                 res['value']['specials_notification'] = Specials.neither
         return res
-
 
     def rp_remove_dups(self, cr, uid, *args):
         print("starting")
