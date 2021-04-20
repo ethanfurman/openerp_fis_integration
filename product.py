@@ -1008,13 +1008,12 @@ class product_online_order(osv.Model):
         - the user has neither
         """
         res = {'value': {}}
-        res_users = self.pool.get('res.users')
-        user = res_users.browse(cr, SUPERUSER_ID, uid, context=context)
-        if user.has_group('base.group_sale_salesman'):
+        user, user_type = self.user_and_type(cr, uid, context=context)
+        if user_type == 'sales':
             # by leaving res empty, the defaults from res.partner.button_place_order_by_salesperson
             # will not be overridden
             pass
-        elif user.has_group('portal.group_portal'):
+        elif user_type == 'portal':
             fis_partner = user.fis_partner_id
             if fis_partner and user.fis_product_cross_ref_code:
                 res['value']['partner_id'] = fis_partner.id
@@ -1041,12 +1040,30 @@ class product_online_order(osv.Model):
                     }
         return res
 
+    def user_and_type(self, cr, uid, context=None):
+        res_users = self.pool.get('res.users')
+        user = res_users.browse(cr, SUPERUSER_ID, uid, context=context)
+        if user.has_group('base.group_sale_salesman'):
+            type = 'sales'
+        elif user.has_group('portal.group_portal'):
+            type = 'portal'
+        else:
+            type = 'other'
+        return user, type
+
     def button_place_order(self, cr, uid, ids, context=None):
-        return {
-            'type': 'ir.actions.client',
-            'tag': 'reload',
-            'params': {'wait': True},
-            }
+        _, user_type = self.user_and_type(cr, uid, context=context)
+        if user_type == 'portal':
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'reload',
+                'params': {'wait': True},
+                }
+        else:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'history_back',
+                }
 
 
 class product_online_orders_item(osv.Model):
