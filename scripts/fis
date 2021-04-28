@@ -333,6 +333,7 @@ def product_description(quick, update, *items):
         print('%d existing/updated items\n%d added items\n%d deleted items' %
                 (updated, new, removed)
                 )
+        time.sleep(900) # temp delay until OpenERP job can be reset
 
 
 @Command(
@@ -423,8 +424,9 @@ def record(filenum, which, id):
         dbf_name=Spec('dbf to create with data', OPTION),
         tabular=Spec('show output in tabular mode', FLAG,),
         rematch=Spec('template is a re match', FLAG, abbrev=('r', 're')),
+        check_old=Spec('use older version of data files', FLAG, None),
         )
-def records(filenum, template, code, fields, dbf_name, tabular, rematch):
+def records(filenum, template, code, fields, dbf_name, tabular, rematch, check_old):
     print('fields requested: %s' % (fields, ))
     print('code given: %r' % (code, ))
     if filenum.isdigit():
@@ -433,19 +435,21 @@ def records(filenum, template, code, fields, dbf_name, tabular, rematch):
         if not isinstance(filenum, int):
             abort('unable to use default with file name')
         template = table_keys[filenum]
+    target_path = check_old and config.network.fis_data_local_old_path or None
     if rematch:
         if not code:
             abort('CODE required for REMATCH match')
         code = code[0]
-        fis_table = fd.fisData(filenum, rematch=template)
-        print('using rematch and file', fis_table.filename)
+        fis_table = fd.fisData(filenum, rematch=template, data_path=target_path)
+        print('using rematch and file', fis_table.filename, 'in', target_path or config.network.fis_data_local_path)
         records = fis_table.get_rekey(code) or []
     else:
-        fis_table = fd.fisData(filenum, subset=template)
-        print('using subset and file', fis_table.filename)
+        fis_table = fd.fisData(filenum, subset=template, data_path=target_path)
+        print('using subset and file', fis_table.filename, 'in', target_path or config.network.fis_data_local_path)
         records = [v for k, v in fis_table.get_subset(code)]
     print('  found %d records' % (len(records), ))
     used_fields = []
+    tabular_names = []
     if records:
         # get field defs now, may be needed for dbf creation
         record = records[0]
@@ -456,7 +460,6 @@ def records(filenum, template, code, fields, dbf_name, tabular, rematch):
         dbf_types = []
         dbf_names = []
         fis_fields = record.fieldlist
-        tabular_names = []
         for i, row in enumerate(fis_fields):
             j = i + 1
             print('checking for %d' % (j, ), end='... ', verbose=2)
@@ -509,7 +512,7 @@ def records(filenum, template, code, fields, dbf_name, tabular, rematch):
                 table.append(tuple(data))
             if not dbf_name and not tabular:
                 echo()
-        if tabular:
+        if tabular and tabular_names:
             echo([tabular_names, None] + output, border='table')
     except Exception:
         import traceback
