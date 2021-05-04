@@ -10,7 +10,7 @@ from fnx_script_support import *
 from antipathy import Path
 from traceback import format_exception_only
 from dbf import Date, Period
-import sys
+import errno, sys
 
 # all order numbers must be in the 10000-19999 range or we have collisions
 # with other FIS-feeding processes
@@ -65,6 +65,8 @@ def process_openerp_orders():
                 item, qty = [val.strip() for val in line.strip().split('-')][:2]
                 if qty != "0":
                     rec += "I%s+Q%s+" % (item, qty)
+            if not EOE_PATH.exists():
+                raise OSError(errno.ENOENT, 'directory does not exist', EOE_PATH)
             extfile = EOE_PATH / "%s.ext" % seq
             with open(extfile, 'w') as out_file:
                 out_file.write(rec)
