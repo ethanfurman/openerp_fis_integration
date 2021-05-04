@@ -1,4 +1,6 @@
 #!/usr/local/bin/suid-python --virtualenv
+
+# imports
 from __future__ import print_function
 
 import dbf
@@ -10,6 +12,8 @@ from fnx_script_support import all_equal
 from openerplib import get_connection, get_records, AttrDict, Query, Many2One, Fault
 from scription import *
 from VSS.utils import translator
+
+# globals
 
 virtual_env = os.environ['VIRTUAL_ENV']
 config = '%s/config/fnx.ini' % virtual_env
@@ -31,6 +35,8 @@ TEST_DOMAIN = [('name_related','in',['Abraham S. Cohen','Aurelia Garcia'])]
 ALL_ACTIVE = [(1,'=',1)]
 
 SHOW_ID = False
+
+# API
 
 @Script(
         hostname=('host to connect to'),
@@ -240,6 +246,11 @@ def sql(command, separator, wrap):
         SET field_name=... [, field_name=... [...]]
         [WHERE ...]
 
+    INSERT INTO table
+        (field1, field2, ...)
+        VALUES
+        (value1, value2, ...)
+
     DELETE FROM table
         [WHERE ...]
 
@@ -255,7 +266,7 @@ def sql(command, separator, wrap):
             for k, v in (item.split(':'), )
             )
     command = command.strip(' ;')
-    check_command = command.lower()
+    check_command = ' '.join(command.lower().split())
     if ';' in check_command:
         abort('more than one command specified')
     if check_command.startswith('select '):
@@ -266,6 +277,8 @@ def sql(command, separator, wrap):
         sql_describe(command, separator, wrap)
     elif check_command.startswith('update '):
         return not sql_update(command)
+    elif check_command.startswith('insert into '):
+        return not sql_insert(command)
     elif check_command.startswith('delete from '):
         return not sql_delete(command)
     elif check_command.startswith('diff '):
@@ -472,6 +485,31 @@ def sql_diff(command, separator, wrap):
         rows.append(final_row)
     echo(rows, border='table', table_record='column')
 
+def sql_insert(command):
+    """\
+    INSERT INTO table
+    (field1, field2, field3, ...)
+    VALUES (val1, val2, val3, ...)
+    """
+    # use re to isolate fields and values
+    matched = re.match(" *INSERT +INTO +(.*) +\((.*)\) +VALUES +\((.*)\)", command, re.I)
+    if not matched:
+        abort('malformed command; use --help for help')
+    table, fields, values = matched.groups()
+    try:
+        table = oe.get_model(table)
+    except Fault as exc:
+        if "doesn't exist" in exc.faultCode:
+            abort('unknown table %r' % (table, ))
+        raise
+    fields = [f.strip() for f in fields.split(',')]
+    values = literal_eval(values)
+    if len(fields) != len(values):
+        print('fields: %r\nvalues: %r' % (fields, values))
+        abort('fields/values mismatch')
+    # create the record
+    values = dict(zip(fields, values))
+    table.create(values)
 
 def sql_update(command):
     """\
@@ -508,7 +546,6 @@ def sql_update(command):
     domain, constraints = convert_where(where_clause)
     if constraints:
         abort('constraints not supported in UPDATE command')
-
     #
     # have all the info, make the changes
     #

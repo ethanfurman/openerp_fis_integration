@@ -446,6 +446,7 @@ def update():
                     for id in (actual - (before | target)):
                         print('        also added: %3d -- %s' % (id, all_groups[id]))
                     print()
+    ir_model_data = oe.get_model('ir.model.data')
     with employees:
         emp_ndx = employees.create_index(lambda rec: rec.login)
         for row in not_found:
@@ -474,6 +475,13 @@ def update():
                         del values['module']
                     print('creating user: %s\n\twith: %s' % (login, values))
                     id = res_users.create(values)
+                    print('updating ir.model.data')
+                    ir_model_data.create({
+                            'module':'fis',
+                            'name': 'F074_%s_res_users' % emp_num,
+                            'model': 'res.users',
+                            'res_id': id,
+                            })
                 except Exception, exc:
                     error('unable to create user:\n======================')
                     error(str(exc).replace('\\n','\n'))

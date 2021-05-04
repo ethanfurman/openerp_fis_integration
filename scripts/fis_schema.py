@@ -389,6 +389,7 @@ class F47(FISenum):
     key_type                  = 'An$(1,1)',    0     # KEY TYPE = 'Z'
     salesperson_id            = 'An$(2,3)',    1     # SALESPERSON CODE
     salesperson_name          = 'Bn$',         2     # SALESPERSON NAME
+    employee_no               = 'Cn',          8     # employee number of sales person (not COMM %)
     company_id                = 'Fn$(1,2)',    9     # COMPANY CODE
     phone_no                  = 'Fn$(3,10)',  10     # PHONE NUMBER
     salesinq_access           = 'Hn$',        13     # SalesInq Access

@@ -139,6 +139,8 @@ def fis_integration(method, delete, *files, **extra):
             skipped_suppliers = set()
             vendor_suppliers = {}
             vendor_codes = set()
+            if 'emp1' in files:
+                EMP1(oe, config, state_recs, country_recs, extra=extra).run(method)
             if 'cnvz' in files:
                 for handler in (
                     CNVZaa,      # product location, 97
@@ -161,8 +163,6 @@ def fis_integration(method, delete, *files, **extra):
                 ):
                 if filename in files:
                     handler(oe, config, extra=extra).run(method)
-            if 'emp1' in files:
-                EMP1(oe, config, state_recs, country_recs, extra=extra).run(method)
             if 'posm' in files or 'vnms' in files:
                 POSM_VNMS(oe, config, state_recs, country_recs, extra=extra).run(method)
             if 'csms' in files:
@@ -571,12 +571,16 @@ class CNVZz(Synchronize):
 
     def __init__(self, *args, **kwds):
         super(CNVZz, self).__init__(*args, **kwds)
-        self.users = self.get_xid_records(
+        users = self.get_xid_records(
                 self.erp,
                 domain=[('module','=','fis'),('name','=like','F074_%_res_users')],
                 fields=['id','login','name'],
                 context=self.context,
                 )
+        self.users = {}
+        for u in users:
+            key = int(u._imd.name.split('_')[1])
+            self.users[key] = u
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
@@ -592,14 +596,12 @@ class CNVZz(Synchronize):
         salesrep = AttrDict.fromkeys(self.OE_FIELDS, None)
         salesrep.xml_id = key
         salesrep.module = self.OE_KEY_MODULE
-        salesrep.fis_name = fis_name = fis_rec[F47.salesperson_name].split('-')[0] or None
-        if fis_name is None:
-            salesrep.user_id = None
-        else:
-            # try to find a match in res.users
-            salesrep.user_id = self.match(fis_name)
-            if salesrep.user_id is not None:
-                salesrep.user_id = Many2One(salesrep.user_id, key, 'res.users')
+        salesrep.fis_name = fis_rec[F47.salesperson_name].split('-')[0] or None
+        emp_no = fis_rec[F47.employee_no] or None
+        user = self.users.get(emp_no)
+        if user is not None:
+            user = Many2One(user.id, key, 'res.users')
+        salesrep.user_id = user
         return (XidRec.fromdict(salesrep, imd), )
 
     def match(self, name):
