@@ -333,7 +333,6 @@ def product_description(quick, update, *items):
         print('%d existing/updated items\n%d added items\n%d deleted items' %
                 (updated, new, removed)
                 )
-        time.sleep(900) # temp delay until OpenERP job can be reset
 
 
 @Command(
