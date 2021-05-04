@@ -76,7 +76,7 @@ def process_openerp_orders():
             error(''.join(error_lines))
             errors.extend(error_lines)
             continue
-    notify = Notify(script_fullname, schedule=RECIPIENT_FILE, notified=ERROR_FILE, cut_off=CUT_OFF)
+    notify = Notify(script_name, schedule=RECIPIENT_FILE, notified=ERROR_FILE, cut_off=CUT_OFF)
     return notify(errors)
 
 
@@ -183,7 +183,7 @@ Main()
 
 # recipient file format is scription's OrmFile
 """
-users = ['ethan', 'emile']
+users = ['ethan', 'emile', 'tony', 'ron']
 
 [ethan]
 email = ['ethan@stoneleaf.us', ]
@@ -192,6 +192,14 @@ text =  ['9715061961@vtext.com', ]
 [emile]
 email = ['emile@gmail.com', ]
 text = ['6503433458@tmomail.net', ]
+
+[tony]
+email = ['tony@togo.net', ]
+text = ['4159174115@msg.fi.google.com', ]
+
+[ron]
+email = ['rgiannini@sunridgefarms.com', ]
+text = ['4086400865@vtext.com', ]
 
 [availability]
 ethan = "Mo-Fr:600-1900  Su:1700-2100"
