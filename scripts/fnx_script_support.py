@@ -21,6 +21,7 @@ import time
 
 NOW = DateTime.now()
 TOMORROW = NOW.replace(delta_day=+1).date()
+MINUTE = timedelta(seconds=60)
 
 BASE = Path('/home/openerp/sandbox')
 SCHEDULE = BASE / 'etc/notify.ini'
@@ -30,19 +31,34 @@ SCRIPT_NAME = None
 
 class Notify(object):
 
-    def __init__(self, name, schedule=SCHEDULE, notified=NOTIFIED, cut_off=0):
+    def __init__(self, name, schedule=SCHEDULE, notified=NOTIFIED, cut_off=0, grace=13, stable=5, renotify=67):
         # name: name of script (used for notified file name)
         # schedule: file that holds user name, email, text, and availability
         # notified: file that rememebers who has been notified
+        # grace: how long to wait for error to clear before notifying
+        # stable: how long before an error-free condition clears the last error
+        # renotify: how long before re-reporting an error
         # cut_off: how long to wait, in minutes, before resending errors or
-        # sending all clear
+        #          sending all clear
         self.name = name
         self.schedule = Path(schedule)
         notified = Path(notified)
         if notified == NOTIFIED:
             notified += name
         self.notified = notified
-        self.cut_off = timedelta(seconds=cut_off * 60)
+        settings = OrmFile(self.schedule)
+        if name not in settings.available:
+            raise ValueError("%r not in '%s'" % (name, SCHEDULE))
+        if cut_off:
+            cut_off = timedelta(seconds=cut_off * 60)
+            self.grace_period = 0
+            self.stablized = cut_off
+            self.renotify = cut_off
+        else:
+            section = settings.available[name]
+            self.grace_period = section.grace * MINUTE
+            self.stablized = section.stable * MINUTE
+            self.renotify = section.renotify * MINUTE
 
     def __call__(self, errors):
         """
@@ -58,13 +74,14 @@ class Notify(object):
         # schedule: file with schedules of whom to contact and when
         # notified: file with contacted details
         # errors: list of errors (will become the message body)
-        # cut_off: how long before an error free condition clears the last error
-        #          how long since the last error before a new error is reported
+        # grace: how long to wait for error to clear before notifying
+        # stable: how long before an error-free condition clears the last error
+        # renotify: how long before re-reporting an error
         if not errors:
             if not self.notified.exists():
                 return Exit.Success
             last_accessed = self.notified.stat().st_atime
-            if NOW - DateTime.fromtimestamp(last_accessed) < self.cut_off:
+            if NOW - DateTime.fromtimestamp(last_accessed) < self.stablized:
                 # too soon to notify, maybe next time
                 return Exit.Success
             # get names from file and notify each one that problem is resolved
@@ -74,16 +91,29 @@ class Notify(object):
         else:
             # errors happened; check if notified needs (re)creating
             create_error_file = False
+            renotify = False
+            print(NOW)
             if not self.notified.exists():
                 create_error_file = True
             else:
                 last_accessed = self.notified.stat().st_atime
-                if NOW - DateTime.fromtimestamp(last_accessed) > self.cut_off:
-                    # file should have been deleted; create fresh now
-                    create_error_file = True
-            if create_error_file:
+                print(DateTime.fromtimestamp(last_accessed))
+                if NOW - DateTime.fromtimestamp(last_accessed) > self.renotify:
+                    # time to remind
+                    renotify = True
+            print('create is', create_error_file)
+            print('renotify is', renotify)
+            print('self.grace_period is', self.grace_period)
+            if create_error_file or renotify:
+                print('creating file')
                 with open(self.notified, 'w') as fh:
                     fh.write("time contacted      address\n")
+            if self.grace_period and not renotify:
+                print('checking grace period')
+                last_accessed = DateTime.fromtimestamp(self.notified.stat().st_atime)
+                if NOW - last_accessed < self.grace_period:
+                    print('inside grace period, exiting')
+                    return Exit.UnknownError
             self.notified.touch((time_stamp(NOW), None))
             all_addresses = self.get_recipients()
             addresses = self.filter_recipients(all_addresses)

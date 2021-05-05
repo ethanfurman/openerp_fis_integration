@@ -37,48 +37,52 @@ def process_openerp_orders():
     # order files to process
     new_order_list = get_files_to_process(ORDERS)
     errors = []
-    for order_file in new_order_list:
-        print('processing %s' % (order_file, ))
-        try:
-            order_no = int(order_file.stem)
-            seq = BASE_SEQ + order_no % 10000
-            with open(order_file) as in_file:
-                order_lines = in_file.read().strip().split('\n')
-            # order_lines looks like 
-            #   ['LUCKY-407B-900002',
-            #    'RSD-041920',
-            #    'PON-8172943',
-            #    '002080 - 1 - 25 lb',
-            #    '001045 - 1 - 25 lb', '']
-            # customer login may have dashes, but transmitter numbers never will
-            # so split on the right-most dash
-            cust, trans = order_lines[0].strip().rsplit("-", 1)
-            [rsd] = [xx for xx in order_lines if xx.startswith('RSD')] or ['dflt-%s' % TOMORROW]
-            [pon] = [xx for xx in order_lines if xx.startswith('PON')] or ['dflt-0000000037']
-            PON = pon.split('-')[-1]
-            RSD = rsd.split('-')[-1]
-            hdr = "C%s+P%s+D%s+" % (trans, PON, RSD)
-            rec = hdr
-            for line in order_lines[1:]:
-                if line.startswith(('RSD','PON')):
+    if new_order_list:
+        if not EOE_PATH.exists():
+            msg = "directory does not exist: '%s\n%d order(s) pending'" % (EOE_PATH, len(new_order_list))
+            error(msg)
+            errors.append(msg)
+        else:
+            for order_file in new_order_list:
+                print('processing %s' % (order_file, ))
+                try:
+                    order_no = int(order_file.stem)
+                    seq = BASE_SEQ + order_no % 10000
+                    with open(order_file) as in_file:
+                        order_lines = in_file.read().strip().split('\n')
+                    # order_lines looks like 
+                    #   ['LUCKY-407B-900002',
+                    #    'RSD-041920',
+                    #    'PON-8172943',
+                    #    '002080 - 1 - 25 lb',
+                    #    '001045 - 1 - 25 lb', '']
+                    # customer login may have dashes, but transmitter numbers never will
+                    # so split on the right-most dash
+                    cust, trans = order_lines[0].strip().rsplit("-", 1)
+                    [rsd] = [xx for xx in order_lines if xx.startswith('RSD')] or ['dflt-%s' % TOMORROW]
+                    [pon] = [xx for xx in order_lines if xx.startswith('PON')] or ['dflt-0000000037']
+                    PON = pon.split('-')[-1]
+                    RSD = rsd.split('-')[-1]
+                    hdr = "C%s+P%s+D%s+" % (trans, PON, RSD)
+                    rec = hdr
+                    for line in order_lines[1:]:
+                        if line.startswith(('RSD','PON')):
+                            continue
+                        item, qty = [val.strip() for val in line.strip().split('-')][:2]
+                        if qty != "0":
+                            rec += "I%s+Q%s+" % (item, qty)
+                    extfile = EOE_PATH / "%s.ext" % seq
+                    with open(extfile, 'w') as out_file:
+                        out_file.write(rec)
+                    order_file.move(ARCHIVE)
+                except Exception:
+                    exc_type, exc, _ = sys.exc_info()
+                    error_lines = format_exception_only(exc_type, exc)
+                    error_lines[0] = ("[%s]  " % order_file.filename) + error_lines[0]
+                    error(''.join(error_lines))
+                    errors.extend(error_lines)
                     continue
-                item, qty = [val.strip() for val in line.strip().split('-')][:2]
-                if qty != "0":
-                    rec += "I%s+Q%s+" % (item, qty)
-            if not EOE_PATH.exists():
-                raise OSError(errno.ENOENT, 'directory does not exist', EOE_PATH)
-            extfile = EOE_PATH / "%s.ext" % seq
-            with open(extfile, 'w') as out_file:
-                out_file.write(rec)
-            order_file.move(ARCHIVE)
-        except Exception:
-            exc_type, exc, _ = sys.exc_info()
-            error_lines = format_exception_only(exc_type, exc)
-            error_lines[0] = ("[%s]  " % order_file.filename) + error_lines[0]
-            error(''.join(error_lines))
-            errors.extend(error_lines)
-            continue
-    notify = Notify(script_name, schedule=RECIPIENT_FILE, notified=ERROR_FILE, cut_off=CUT_OFF)
+    notify = Notify(script_name)
     return notify(errors)
 
 
