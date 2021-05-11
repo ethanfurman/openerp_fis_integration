@@ -1,5 +1,7 @@
 #!/usr/local/bin/suid-python --virtualenv
 # -*- coding: utf-8
+
+# imports
 from __future__ import print_function
 
 import unittest
@@ -13,11 +15,17 @@ scription
 from aenum import NamedTuple
 from antipathy import Path
 from datetime import date, datetime, timedelta
-from dbf import DateTime
-from openerplib.stoneleaf import AttrDict, XidRec
-from scription import Exit, raise_with_traceback
+from dbf import DateTime, Date, Time
+from openerplib import AttrDict, XidRec, local_to_utc
+from scription import Exit, NameSpace, OrmFile, OrmSection, raise_with_traceback
 from testily import import_script, Ersatz, Patch
 from textwrap import dedent
+from tools import XmlLinkField
+from VSS.utils import fix_date
+
+# globals
+
+_saved = []
 
 TEMPDIR = Path(tempfile.mkdtemp())
 TEMPDIR.rmtree(ignore_errors=True)
@@ -26,20 +34,24 @@ CUT_OFF = timedelta(seconds=600)
 
 process_orders = import_script('process_openerp_orders')
 process_orders.script_fullname = 'process_openerp_orders'
+_saved.append(sys.modules.pop('scription'))
 
 with Patch(tools, odoo_erp=tools.OE7):
     fis_integration_oe7 = fi_oe7 = import_script('updates_fis_integration')
     fis_integration_oe7.script_fullname = 'updates_fis_integration'
-del sys.modules['scription']
+_saved.append(sys.modules.pop('scription'))
 del sys.modules['updates_fis_integration']
 
 with Patch(tools, odoo_erp=tools.Odoo13):
     fis_integration_odoo13 = fi_odoo13 = import_script('updates_fis_integration')
     fis_integration_odoo13.script_fullname = 'updates_fis_integration'
-del sys.modules['scription']
+from updates_fis_integration import CustomerAging
+_saved.append(sys.modules.pop('scription'))
 del sys.modules['updates_fis_integration']
 
 assert fi_oe7.XmlLink is fi_odoo13.XmlLink
+
+# tests
 
 class TestScriptSupport(unittest.TestCase):
 
@@ -80,7 +92,7 @@ class TestScriptSupport(unittest.TestCase):
 
                     [available.test_script_support]
                     """))
-            
+
     def test_filter_recipients(self):
         """
         return recipients that have not been contacted for current situation
@@ -463,7 +475,7 @@ class TestScriptSupport(unittest.TestCase):
                 ))
 
 
-    
+
 class TestProcessOpenerpOrders(unittest.TestCase):
 
     assert process_orders.BASE_SEQ == 10000
@@ -944,9 +956,21 @@ class TestFisIntegrationConversion(unittest.TestCase):
                 else:
                     return Ersatz()
         self.connect = Connect()
-        self.config = None
+        TEMPDIR.rmtree(ignore_errors=True)
+        TEMPDIR.mkdir()
+        self.config = cfg = OrmFile(TEMPDIR/'config.ini')
+        cfg.network = OrmSection()
+        cfg.network.fis_data_local_path = TEMPDIR
+        # NOTE: the below is not currently being used
+        with open(TEMPDIR/'customer_aging.txt', 'w') as fh:
+            fh.write(
+                    "  GELSO GELSON'S MARKETS                     0   COL     21562.18             3724.24   61508.92   20457.27   64128.25-\n"
+                    "  RAING RAINBOW GROCERY - SAN FRAN           0   NPB      3078.72             2567.14     511.58        .00        .00\n"
+                    "  HE492 HEB 492 HEALTHY LIVING               0   ARM      3876.88             3876.88        .00        .00        .00\n"
+                    "  HE714 HEB 714 HEALTHY LIVING               0   ARM      3990.03             6085.17        .00        .00    2095.14-\n"
+                    )
 
-    def validate_record_conversion(self, class_name, oe_model, odoo_model, data, cls_fields=None, *address, **attrs):
+    def validate_record_conversion(self, class_name, oe_model, odoo_model, data, *address, **attrs):
         # f_class: ARCI, CSMS, etc.
         # oe_model: e.g. fis_integration.customer_product_cross_reference
         # odoo_model: e.g. customer_product_xref
@@ -954,72 +978,93 @@ class TestFisIntegrationConversion(unittest.TestCase):
         # address is the state and country records for tables using addresses
         # attrs are patches to apply to f_instance once instantiated
 
+        global script
         odoo_model = odoo_model or oe_model
+        model_overrides = {}
+        for m in attrs.pop('model_overrides', ()):
+            m_name = m.__name__
+            model_overrides[m_name] = m
         for script, model in (
                 (fis_integration_oe7, oe_model),
                 (fis_integration_odoo13, odoo_model),
             ):
-            erp = script.odoo_erp
-            f_class = getattr(script, class_name)
-            if not cls_fields:
-                cls_fields = f_class.OE_FIELDS
-            # fields = cls_fields
-            with Patch(f_class, **attrs):
-                f_instance = f_class(self.connect, self.config, *address)
-                for i, data_set in enumerate(data(script)):
-                    try:
-                        for ignore in (False, True):
-                            converted_records = f_instance.convert_fis_rec(data_set.on_disk, use_ignore=ignore)
-                            if data_set.ignore and ignore:
-                                if not converted_records:
-                                    continue
-                                else:
-                                    raise AssertionError("failed ignore: erp %r, model %s, data_set %d"
-                                            % (erp, f_instance, i)
+            for name, cls in model_overrides.items():
+                cls.wrapped = getattr(script, name)
+            with Patch(script, **model_overrides):
+                erp = script.odoo_erp
+                f_class = getattr(script, class_name)
+                with Patch(
+                        f_class,
+                        get_xid_records=get_xid_records,
+                        get_records=get_oe_only_records,
+                        odoo_erp=erp,
+                        **attrs
+                    ):
+                    f_instance = f_class(self.connect, self.config, *address)
+                    for method, field_selection in (
+                            ('full', 'OE_FIELDS_LONG'),
+                            ('quick', 'OE_FIELDS_QUICK'),
+                        ):
+                        f_instance.method = method
+                        fields = getattr(f_class, field_selection)
+                        if method == 'quick' and f_class.OE_FIELDS_QUICK == f_class.OE_FIELDS_LONG:
+                            # no need to run the same test twice
+                            continue
+                        f_instance.OE_FIELDS = fields
+                        for i, data_set in enumerate(data(script)):
+                            try:
+                                for ignore in (False, True):
+                                    converted_records = f_instance.convert_fis_rec(data_set.on_disk, use_ignore=ignore)
+                                    if data_set.ignore and ignore:
+                                        if not converted_records:
+                                            continue
+                                        else:
+                                            raise AssertionError("failed ignore: erp %r, model %s, method %s, data_set %d"
+                                                    % (erp, f_instance, method, i)
+                                                    )
+                                    self.assertEqual(
+                                            len(converted_records), len(data_set.fis_rec),
+                                            "len(records) mismatch: erp %r, model %s, method %s, use_ignore %r, "
+                                            "data set %d, lengths %r vs %r"
+                                                % (erp, f_instance, method, ignore, i, len(converted_records), len(data_set.fis_rec))
                                             )
-                            self.assertEqual(
-                                    len(converted_records), len(data_set.fis_rec),
-                                    "len(records) mismatch: erp %r, model %s, use_ignore %r, "
-                                    "data set %d, lengths %r vs %r"
-                                        % (erp, f_instance, ignore, i, len(converted_records), len(data_set.fis_rec))
-                                    )
-                            for j, converted_rec in enumerate(converted_records):
-                                target_rec = data_set.fis_rec[j]
-                                target_rec._imd.model = model
-                                extra_fields = data_set[erp+2][j]  # the +2 becase DataSet[2] is where the erp specific data starts
-                                self.assertEqual(
-                                        len(converted_rec), len(target_rec) + len(extra_fields),
-                                        "len(fields) mismatch: erp %r, model %s, data set %d, %r vs %r + %r\n%r\n%r\n%r"
-                                            % (
-                                                erp, f_instance, i, len(converted_rec), len(target_rec), len(extra_fields),
-                                                converted_rec.keys(), target_rec.keys(), extra_fields.keys(),
-                                                ))
-                                self.assertEqual(
-                                        converted_rec._imd, target_rec._imd,
-                                        "imds don't match: erp %r, model %s, data set %d\n%r\n vs.\n%r"
-                                            % (erp, f_instance, i, converted_rec._imd, target_rec._imd),
+                                    for j, converted_rec in enumerate(converted_records):
+                                        target_rec = data_set.fis_rec[j]
+                                        target_rec._imd.model = model
+                                        extra_fields = data_set[erp+2][j]  # the +2 becase DataSet[2] is where the erp specific data starts
+                                        minus_fields = len(data_set.full_only_fields) if method == 'quick' else 0
+                                        self.assertEqual(
+                                                len(converted_rec), len(target_rec) + len(extra_fields) - minus_fields,
+                                                "len(fields) mismatch: erp %r, model %s, method %s, data set #%d, %r vs (%r + %r - %r)\n\n%r\n\n%r\n\n%r"
+                                                    % (
+                                                        erp, f_instance, method, i, len(converted_rec), len(target_rec), len(extra_fields), minus_fields,
+                                                        sorted(converted_rec.keys()), sorted(target_rec.keys()), sorted(extra_fields.keys()),
+                                                        ))
+                                        self.assertEqual(
+                                                converted_rec._imd, target_rec._imd,
+                                                "imds don't match: erp %r, model %s, method %s, data set %d\n%r\n vs.\n%r"
+                                                    % (erp, f_instance, method, i, converted_rec._imd, target_rec._imd),
+                                                )
+                                        mismatched = []
+                                        for field, target_value in (target_rec.items() + extra_fields.items()):
+                                            if method == 'quick' and field in data_set.full_only_fields:
+                                                continue
+                                            if converted_rec[field] != target_value:
+                                                mismatched.append('%r -> %r vs %r' % (field, converted_rec[field], target_value))
+                                        if mismatched:
+                                            raise AssertionError(
+                                                    "field mismatch:\n    erp %r, model %s, method %s, data set %d\n    %s"
+                                                    % (erp, f_instance, method, i, '\n    '.join(mismatched))
+                                                    )
+                            except AssertionError:
+                                raise
+                            except Exception:
+                                exc_type, exc, tb = sys.exc_info()
+                                raise_with_traceback(
+                                        exc_type("erp %r, model %s, method %s with data set %d -> %s"
+                                            % (erp, f_instance, method, i, '; '.join(repr(a) for a in exc.args))),
+                                        tb,
                                         )
-                                for field, target_value in target_rec.items():
-                                    self.assertEqual(
-                                            converted_rec[field], target_value,
-                                            "field mismatch: erp %r, model %s, data set %d, field %r -> %r vs %r"
-                                                % (erp, f_instance, i, field, converted_rec[field], target_value)
-                                                )
-                                for field, target_value in extra_fields.items():
-                                    self.assertEqual(
-                                            converted_rec[field], target_value,
-                                            "field mismatch: erp %r, model %s, data set %d, field %r"
-                                                % (erp, f_instance, i, field)
-                                                )
-                    except AssertionError:
-                        raise
-                    except Exception:
-                        exc_type, exc, tb = sys.exc_info()
-                        raise_with_traceback(
-                                exc_type("erp %r, model %s with data set %d -> %s" 
-                                    % (erp, f_instance, i, '; '.join(exc.args))),
-                                tb,
-                                )
 
     def test_all_tables_tested(self):
         """
@@ -1055,14 +1100,11 @@ class TestFisIntegrationConversion(unittest.TestCase):
                 )
 
     def test_cnvzaa_convert(self):
-        oe_fields = 'id', 'module', 'xml_id', 'name', 'available'
-        odoo_fields = 'id', 'fis_module', 'fis_id', 'name', 'saleable'
         self.validate_record_conversion(
                 'CNVZaa',
                 'product.available_at',
                 'product.availability',
                 cnvzaa_data,
-                (oe_fields, odoo_fields),
                 )
 
     def test_cnvzas_convert(self):
@@ -1082,14 +1124,11 @@ class TestFisIntegrationConversion(unittest.TestCase):
                 )
 
     def test_cnvzf_convert(self):
-        oe_fields = 'id', 'module', 'xml_id', 'desc'
-        odoo_fields = 'id', 'fis_module', 'fis_id', 'description'
         self.validate_record_conversion(
                 'CNVZf',
                 'fis_integration.production_line',
                 'fis.production.line',
                 cnvzf_data,
-                (oe_fields, odoo_fields),
                 )
 
 
@@ -1102,162 +1141,242 @@ class TestFisIntegrationConversion(unittest.TestCase):
                 )
 
     def test_cnvzsv_convert(self):
-        oe_fields = [
-                'id', 'module', 'xml_id', 'is_carrier', 'is_company', 'use_parent_address',
-                'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
-                'phone', 'fuel_surcharge', 'fis_updated_by_user',
-                ]
-        odoo_fields = [
-                'id', 'fis_module', 'fis_id', 'is_carrier', 'is_company', 'use_parent_address',
-                'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
-                'phone', 'fuel_surcharge', 'fis_updated_by_user',
-                ]
         self.validate_record_conversion(
                 'CNVZSV',
                 'res.partner',
                 'res.partner',
                 cnvzsv_data,
-                (oe_fields, odoo_fields),
                 state_recs,
                 country_recs,
                 )
 
     def test_cnvzz_convert(self):
-        oe_fields = 'id', 'module', 'xml_id', 'fis_name', 'user_id'
-        odoo_fields = 'id', 'fis_module', 'fis_id', 'fis_name', 'user_id'
         self.validate_record_conversion(
                 'CNVZz',
                 'fis.account.salesperson',
                 'fis.account.salesperson',
                 cnvzz_data,
-                (oe_fields, odoo_fields),
-                get_xid_records=get_xid_records,
+                )
+
+    def test_csms_convert(self):
+        aging_data = {}
+        for line in (
+                "GELSO 0   COL     21562.18             3724.24   61508.92   20457.27   64128.25-",
+                "RAING 0   NPB      3078.72             2567.14     511.58        .00        .00",
+                "HE492 0   ARM      3876.88             3876.88        .00        .00        .00",
+                "HE714 0   ARM      3990.03             6085.17        .00        .00    2095.14-",
+            ):
+            key, limit, salesrep, total, d0, d10, d20, d30 = line.split()
+            aging_data[key] = CustomerAging(key, limit, d0, d10, d20, d30, total)
+        self.validate_record_conversion(
+                'CSMS',
+                'res.partner',
+                'res.partner',
+                csms_data,
+                state_recs,
+                country_recs,
+                aging_data=aging_data
+                )
+
+    def test_csmss_convert(self):
+        self.validate_record_conversion(
+                'CSMSS',
+                'res.partner',
+                'res.partner',
+                csmss_data,
+                state_recs,
+                country_recs,
+                )
+
+    def test_emp1_convert(self):
+        self.validate_record_conversion(
+                'EMP1',
+                'hr.employee',
+                'hr.employee',
+                emp1_data,
+                state_recs,
+                country_recs,
+                )
+
+    def test_ifms_convert(self):
+        self.validate_record_conversion(
+                'IFMS',
+                'fnx.pd.product.formula',
+                'fis.product.formula',
+                ifms_data,
                 )
 
 
+    def test_ifdt_convert(self):
+        def __init__(self, *args):
+            pass
+        self.validate_record_conversion(
+                'IFDT',
+                'fnx.pd.product.ingredient',
+                'fis.product.formula.ingredient',
+                ifdt_data,
+                __init__=__init__,
+                )
+
+
+    def test_ifpp0_convert(self):
+        class IFMS(PassThrough):
+            def __init__(self, oe, config):
+                pass
+            def reify(*args):
+                pass
+        self.validate_record_conversion(
+                'IFPP0',
+                'fnx.pd.order',
+                'fis.production.order',
+                ifpp0_data,
+                model_overrides=(IFMS, ),
+                )
+
+    def test_ifpp1_convert(self):
+        class IFMS(PassThrough):
+            def __init__(self, oe, config):
+                pass
+            def reify(*args, **kwds):
+                pass
+        class IFPP0(PassThrough):
+            def __init__(self, oe, config):
+                pass
+            def reify(*args, **kwds):
+                pass
+        self.validate_record_conversion(
+                'IFPP1',
+                'fnx.pd.ingredient',
+                'fis.production.ingredient',
+                ifpp1_data,
+                model_overrides=(IFMS, IFPP0),
+                )
+
+
+    def test_nvty_convert(self):
+        class IFMS(PassThrough):
+            def __init__(self, oe, config):
+                pass
+            def reify(*args, **kwds):
+                pass
+        class IFPP0(PassThrough):
+            def __init__(self, oe, config):
+                pass
+            def reify(*args, **kwds):
+                pass
+        self.validate_record_conversion(
+                'NVTY',
+                'product.product',
+                'product.product',
+                nvty_data,
+                )
+
+
+    def test_posm_vnms_convert(self):
+        self.validate_record_conversion(
+                'POSM_VNMS',
+                'res.partner',
+                'res.partner',
+                posm_vnms_data,
+                state_recs,
+                country_recs,
+                )
+
 # fixtures
+
+class PassThroughType(type):
+    def __getattr__(self, name):
+        return getattr(self.wrapped, name)
+PassThrough = PassThroughType('PassThrough', (object, ), {})
 
 Many2One = fi_odoo13.Many2One
 
-INVALID_CATEGORY_XMLID = 'fis_product_category_invalid' 
-SALEABLE_CATEGORY_XMLID = 'product_category_1'
+INVALID_CATEGORY_XML_ID = 'fis_invalid_product_category'
+SALEABLE_CATEGORY_XML_ID = 'product_category_1'
 SALEABLE_CATEGORY_ID = 7
-ETC_CATEGORY_XMLID = '9'
+ETC_CATEGORY_XML_ID = '9'
 ETC_CATEGORY_ID = 11
 USER_MARK_DEVENCENZI = 'F074_917_res_users'
 USER_GREGG_ARMSTRONG = 'F074_109_res_users'
 USER_MARY_MICHELLE = 'F074_770_res_users'
 USER_MORTY_COHEN = 'F074_1_res_users'
 USER_RONALD_COLEMAN = 'F074_125_res_users'
+PRODUCTION_LINE_24 = 'F341_24_production_line'
+PRODUCTION_LINE_11 = 'F341_11_production_line'
+PRODUCTION_LINE_06 = 'F341_06_production_line'
+PRODUCTION_ORDER_261323 = 'F328_261323_production_order'
+PRODUCTION_ORDER_279900 = 'F328_279900_production_order'
+PRODUCTION_ORDER_273597 = 'F328_273597_production_order'
+PRODUCTION_ORDER_293379 = 'F328_293379_production_order'
+PRODUCTION_ORDER_288278 = 'F328_288278_production_order'
+PRODUCTION_ORDER_285961 = 'F328_285961_production_order'
 
 object_references = {
-        ('product', SALEABLE_CATEGORY_XMLID): ('product.category', SALEABLE_CATEGORY_ID),
-        ('product', ETC_CATEGORY_XMLID): ('product.category', ETC_CATEGORY_ID),
-        ('fis', INVALID_CATEGORY_XMLID): ('product.category', 13),
-        ('fis_integration', INVALID_CATEGORY_XMLID): ('product.category', 13),
+        ('product', SALEABLE_CATEGORY_XML_ID): ('product.category', SALEABLE_CATEGORY_ID),
+        ('fis', ETC_CATEGORY_XML_ID): ('product.category', ETC_CATEGORY_ID),
+        ('fis', INVALID_CATEGORY_XML_ID): ('product.category', 13),
         ('fis', USER_MARK_DEVENCENZI): ('res.users', 128),
         ('fis', USER_GREGG_ARMSTRONG): ('res.users', 138),
         ('fis', USER_MARY_MICHELLE): ('res.users', 143),
         ('fis', USER_MORTY_COHEN): ('res.users', 185),
         ('fis', USER_RONALD_COLEMAN): ('res.users', 125),
+        ('fis', PRODUCTION_LINE_06): (),
         }
 
-# F074_res_users
-F074_res_users = [
-        (
-            AttrDict(
-                id=128,
-                login='mdevencenzi',
-                name='Mark Devencenzi',
-                ),
-            AttrDict(
-                id=214262,
-                module='fis',
-                name=USER_MARK_DEVENCENZI,
-                model='res.users',
-                res_id=128,
-                ),
-            ),
-        (
-            AttrDict(
-                id=138,
-                login='garmstrong',
-                name='Gregg R. Armstrong',
-                ),
-            AttrDict(
-                id=214271,
-                module='fis',
-                name=USER_GREGG_ARMSTRONG,
-                model='res.users',
-                res_id=138,
-                ),
-            ),
-        (
-            AttrDict(
-                id=143,
-                login='mdemay',
-                name='Mary Michelle Demay',
-                ),
-            AttrDict(
-                id=214275,
-                module='fis',
-                name=USER_MARY_MICHELLE,
-                model='res.users',
-                res_id=143,
-                ),
-            ),
-        (
-            AttrDict(
-                id=185,
-                login='mcohen',
-                name='Morty Cohen',
-                ),
-            AttrDict(
-                id=214315,
-                module='fis',
-                name=USER_MORTY_COHEN,
-                model='res.users',
-                res_id=185,
-                ),
-            ),
-        ]
+class OE_Data(NamedTuple):
+    """
+    id, etc.
+    """
+    oe_id = 0
+    oe7_model = 1, "model name in OE 7"
+    o13_model = 2, "model name in Odoo 13"
+    #
+    def __new__(cls, _oe7, _o13=None, **fields):
+        global _oed_id
+        _oed_id += 1
+        next_id = _oed_id
+        _o13 = _o13 or _oe7
+        data = (next_id, _oe7, _o13) + tuple(x for i in fields.items() for x in i)
+        return tuple.__new__(cls, data)
 
-# F328_production_order
-# F328_production_order = [
-#         XidRec.fromdict(
-#             AttrDict(
-#                 ),
-#             AttrDict(
-#                 id=,
-#                 module='fis',
-#                 name=,
-#                 model=,
-#                 res_id=,
-#                 ),
-#             ),
-#         ]
+_oed_id = 10000
 
-# F341_production_line
-# F341_production_line = [
-#         (
-#             AttrDict(
-#                 id=,
-#                 xml_id=,
-#                 fis_id=,
-#                 module='F341',
-#                 fis_module='F341',
-#                 desc=,
-#                 description=,
-#                 ),
-#             AttrDict(
-#                 id=,
-#                 module='fis',
-#                 name='F341_?_production_line',
-#                 model=('fis_integration.production_line','fis.production.line'),
-#                 res_id=,
-#                 ),
-#             ),
-#         ]
+class OE_FIS_Data(NamedTuple):
+    """
+    module, name, oe7, o13, *extra
+    """
+    imd_id = 0
+    imd_module = 1, 'e.g. fis or product or ...'
+    imd_name = 2, "name in ir.model.data"
+    imd_oe7_model = 3, "model name on OE 7"
+    imd_o13_model = 4, "model name in Odoo 13"
+    id = 5, "id in model, res_id in ir.model.data", 0
+    #
+    def __new__(cls, _module, _name, _oe7=None, _o13=None, **fields):
+        global _oed_fis_id
+        _oed_fis_id += 1
+        next_id = _oed_fis_id
+        ref_name = fields.pop('ref', None)
+        if _oe7 is None:
+            # name and oe7 supplied
+            _o13, _oe7, _name, _module = _name, _name, _module, 'fis'
+        elif _o13 is None:
+            # could be module and name and oe7 or name and oe7 and o13
+            # we can differentiate by the presence of a dot
+            if '.' in _name:
+                # we have the latter
+                _o13, _oe7, _name, _module = _oe7, _name, _module, 'fis'
+        data = (
+                (next_id, _module, _name, _oe7, _o13, 1000000-(next_id-100000))
+                + tuple(x for i in fields.items() for x in i)
+                )
+        result = tuple.__new__(cls, data)
+        if ref_name is not None:
+            ref[ref_name] = result
+        return result
+
+_oed_fis_id = 100000
+ref = NameSpace()
 
 def get_xid_records(self, erp, domain, fields, context):
     # self is part of the real get_xid_records, but needed as this function
@@ -1269,24 +1388,90 @@ def get_xid_records(self, erp, domain, fields, context):
     # - F328_%_production_order  XXX
     # - F341_%_production_line   XXX
     result = []
-    if ('name','=like','F074_%_res_users') in domain:
-        source = F074_res_users
-        model = 'res.users'
-
-    # elif ('name','=like','F341_%_production_line') in domain:
-    #     source = F341_production_line
-    #     model = fis_integr
+    if ('module','=','fis') not in domain:
+        raise ValueError("('module','=','fis') not found in %r" % (domain, ))
+    for field, op, target in domain:
+        if field == 'name':
+            break
     else:
-        raise ValueError('unprepped domain: %r' % (domain, ))
-    for rec, imd in source:
-        new_rec = dict(
-                (f, v)
-                for f, v in rec.items()
-                if f in fields
-                )
-        imd.model = model
-        result.append(XidRec.fromdict(new_rec, imd))
+        raise ValueError("'name' criteria not found in %r" % (domain, ))
+    #
+    begin, _, end = target.partition('%')
+    for rec in oe_fis_data:
+        name = rec.imd_name
+        if rec.imd_module == 'fis' and name.startswith(begin) and name.endswith(end):
+            imd = AttrDict(
+                    id=rec.imd_id,
+                    module=rec.imd_module,
+                    name=name,
+                    model=(rec.imd_oe7_model, rec.imd_o13_model)[self.odoo_erp],
+                    res_id=rec.id,
+                    )
+            model_data = AttrDict(
+                    (k, v)
+                    for k, v in zip(rec[6::2], rec[7::2])
+                    if k in fields
+                    )
+            model_data['id'] = rec.id
+            result.append(XidRec.fromdict(model_data, imd))
     return result
+
+oe_fis_data = (
+        # data in openerp that references data in fis
+        OE_FIS_Data('product', SALEABLE_CATEGORY_XML_ID, 'product.category'),
+        OE_FIS_Data(ETC_CATEGORY_XML_ID, 'product.category'),
+        OE_FIS_Data(INVALID_CATEGORY_XML_ID, 'product.category'),
+
+        OE_FIS_Data('F074_917_res_users', 'res.users', login='mdevencenzi', name='Mark Devencenzi', ref='mdevencenzi'),
+        OE_FIS_Data('F074_109_res_users', 'res.users', login='garmstrong', name='Gregg R. Armstrong', ref='garmstrong'),
+        OE_FIS_Data('F074_770_res_users', 'res.users', login='mdemay', name='Mary Michelle Demay', ref='mdemay'),
+        OE_FIS_Data('F074_1_res_users', 'res.users', login='mcohen', name='Morty Cohen', ref='mcohen'),
+        OE_FIS_Data('F074_125_res_users', 'res.users', login='rcoleman', name='Ronald Coleman', ref='rcoleman'),
+
+        OE_FIS_Data('F341_06_production_line', 'fis_integration.production_line', 'fis.production.line', xml_id='06', fis_id='06', ref='line_06'),
+        OE_FIS_Data('F341_11_production_line', 'fis_integration.production_line', 'fis.production.line', xml_id='11', fis_id='11', ref='line_11'),
+        OE_FIS_Data('F341_24_production_line', 'fis_integration.production_line', 'fis.production.line', xml_id='24', fis_id='24', ref='line_24'),
+        OE_FIS_Data('F328_261323_production_order', 'fnx.pd.order', 'fis.production.ordor', order_no='261323', batches=7),
+        OE_FIS_Data('F328_262323_production_order', 'fnx.pd.order', 'fis.production.ordor', order_no='262323', batches=3),
+        OE_FIS_Data('F328_257991_production_order', 'fnx.pd.order', 'fis.production.ordor', order_no='257991', batches=5),
+        OE_FIS_Data('F328_277813_1_2_production_order', 'fnx.pd.order', 'fis.production.ordor', order_no='277813-1_2', batches=9),
+        OE_FIS_Data('F328_277813_2_2_production_order', 'fnx.pd.order', 'fis.production.ordor', order_no='277813-2_2', batches=9),
+        )
+
+oe_data = (
+        # data that is unique to openerp
+        OE_Data('fnx.pd.multiline', 'fis.production.multiline', key='BZ', line_ids=[
+            Many2One(id=ref.line_06.id, name=u'06', model=None),
+            Many2One(id=ref.line_11.id, name=u'11', model=None),
+            ]),
+        OE_Data('fnx.pd.multiline', 'fis.production.multiline', key='OF', line_ids=[
+            Many2One(id=ref.line_06.id, name=u'06', model=None),
+            Many2One(id=ref.line_24.id, name=u'24', model=None),
+            ]),
+        OE_Data('fnx.pd.multiline', 'fis.production.multiline', key='GB', line_ids=[
+            Many2One(id=ref.line_11.id, name=u'11', model=None),
+            Many2One(id=ref.line_24.id, name=u'24', model=None),
+            ]),
+        )
+
+def get_oe_only_records(self, erp, table_name, fields):
+    if table_name not in ('fnx.pd.multiline','fis.production.multiline'):
+        raise ValueError('table %r not supported' % (table_name, ))
+    fields = fields + ['id']
+    result = []
+    for rec in oe_data:
+        if table_name in rec[1:3]:
+            datum = AttrDict()
+            for key, value in zip(rec[3::2], rec[4::2]):
+                if key not in fields:
+                    continue
+                if isinstance(value, list) and value and isinstance(value[0], Many2One):
+                    for i, m2o in enumerate(value):
+                        value[i] = script.CNVZf.ProductionLine(m2o.name, id=m2o.id)
+                datum[key] = value
+            result.append(datum)
+    return result
+
 
 # state & country records
 class StateCountry(NamedTuple):
@@ -1650,7 +1835,7 @@ for line in state_records_raw.strip().split('\n'):
     state_recs[abbr] = state_country
 
 # data sets
-# 
+#
 # each set consists of a sequence of two- or four-tuples: the first item is the FIS disk data as a dictionary of schema ids
 # to data elements, while the second set is a dictionary of oe/odoo fields to converted record data; the third and fourth
 # tuple items, if present, are the oe7/odoo specific field names to data
@@ -1662,22 +1847,27 @@ class DataSet(NamedTuple):
     defaults for all fields is an empty dictionary
     """
     #
-    def __new__(cls, on_disk, fis_rec, OE7=None, Odoo13=None, ignore=False):
+    def __new__(cls, on_disk, fis_rec, OE7=None, Odoo13=None, ignore=False, full_only_fields=0):
         if not isinstance(fis_rec, tuple):
             fis_rec = (fis_rec, )
         if not isinstance(OE7, tuple):
             OE7 = (OE7, )
         OE7 = tuple([(oe or {}).copy() for oe in OE7])
+        if len(fis_rec) == 2 and len(OE7) == 1:
+            OE7 = OE7 + OE7
         if not isinstance(Odoo13, tuple):
             Odoo13 = (Odoo13, )
         Odoo13 = tuple([(odoo or {}).copy() for odoo in Odoo13])
-        return super(DataSet, cls).__new__(cls, on_disk, fis_rec, OE7, Odoo13, ignore)
+        if len(fis_rec) == 2 and len(Odoo13) == 1:
+            Odoo13 = Odoo13 + Odoo13
+        return super(DataSet, cls).__new__(cls, on_disk, fis_rec, OE7, Odoo13, ignore, full_only_fields)
     #
     on_disk = 0, "simulated disk data"
     fis_rec = 1, "converted data (common fields)"
     OE7 = 2, "OpenERP only fields"
     Odoo13 = 3, "Odoo only fields"
     ignore = 4, "record should be ignored"
+    full_only_fields = 5, "number of fields only found when doing a full sync"
 
 def imd(name, id=0, res_id=0, module='fis', model=None):
     return AttrDict(name=name, id=id, res_id=res_id, module=module, model=model)
@@ -1823,7 +2013,7 @@ def cnvzas_data(script):
                         xml_id='9',
                         module='F11',
                         fis_shelf_life=12,
-                        parent_id=script.CNVZas.ProductCategory(SALEABLE_CATEGORY_XMLID),
+                        parent_id=script.CNVZas.ProductCategory(SALEABLE_CATEGORY_XML_ID),
                         name='9 - Displays/Etc',
                         ),
                     imd(name='F011_9_product_category'),
@@ -1857,7 +2047,7 @@ def cnvzas_data(script):
                         xml_id='0',
                         module='F11',
                         fis_shelf_life=0,
-                        parent_id=script.CNVZas.ProductCategory(SALEABLE_CATEGORY_XMLID),
+                        parent_id=script.CNVZas.ProductCategory(SALEABLE_CATEGORY_XML_ID),
                         name='0 - Grocery',
                         ),
                     imd(name='F011_0_product_category'),
@@ -1874,7 +2064,7 @@ def cnvzas_data(script):
                         xml_id= '3',
                         module='F11',
                         fis_shelf_life=12,
-                        parent_id=script.CNVZas.ProductCategory(SALEABLE_CATEGORY_XMLID),
+                        parent_id=script.CNVZas.ProductCategory(SALEABLE_CATEGORY_XML_ID),
                         name='3 - Bulk',
                         ),
                     imd(name='F011_3_product_category'),
@@ -2247,7 +2437,7 @@ def cnvzsv_data(script):
                 fis_rec=XidRec.fromdict(
                     AttrDict(
                         name="Don's Transport",
-                        street='Transfac Capital, Inc',
+                        street='Transfac Capital Inc',
                         street2='PO Box 3238',
                         city='Salt Lake City',
                         state_id=state_recs['UT'].state,
@@ -2361,7 +2551,7 @@ def cnvzz_data(script):
                 fis_rec=XidRec.fromdict(
                     AttrDict(
                         fis_name='MARK DEVENCENZI',
-                        user_id=128,
+                        user_id=ref.mdevencenzi.id
                         ),
                     imd(name='F047_DEV_account_salesperson')
                     ),
@@ -2384,7 +2574,7 @@ def cnvzz_data(script):
                 fis_rec=XidRec.fromdict(
                     AttrDict(
                         fis_name='GREGG ARMSTRONG',
-                        user_id=138,
+                        user_id=ref.garmstrong.id,
                         ),
                     imd(name='F047_ARM_account_salesperson')
                     ),
@@ -2407,7 +2597,7 @@ def cnvzz_data(script):
                 fis_rec=XidRec.fromdict(
                     AttrDict(
                         fis_name='MORTY',
-                        user_id=185,
+                        user_id=ref.mcohen.id,
                         ),
                     imd(name='F047_MLC_account_salesperson')
                     ),
@@ -2430,7 +2620,7 @@ def cnvzz_data(script):
                 fis_rec=XidRec.fromdict(
                     AttrDict(
                         fis_name='MARY MICHELLE',
-                        user_id=143,
+                        user_id=ref.mdemay.id,
                         ),
                     imd(name='F047_MAR_account_salesperson')
                     ),
@@ -2453,7 +2643,7 @@ def cnvzz_data(script):
                 fis_rec=XidRec.fromdict(
                     AttrDict(
                         fis_name='GREGG ARMSTRONG',
-                        user_id=138,
+                        user_id=ref.garmstrong.id,
                         ),
                     imd(name='F047_GGG_account_salesperson')
                     ),
@@ -2469,245 +2659,3025 @@ def cnvzz_data(script):
             )
 
 # CSMS
-# from fis_schema import F33
-# def csms_data(script):
-#     # GELSO
-#     # RAING
-#     # HE492
-#     # HE714
-#     return (
-#             DataSet(
-#                 ondisk={
-#                     F33.code: 'GELSO',
-#                     F33.name: "GELSON'S MARKETS",
-#                     F33.addr1: "ATTN: ACCOUNTS PAYABLE",
-#                     F33.addr2: "P.O. BOX 512256",
-#                     F33.addr3: "LOS ANGELES, CA 90051-0256",
-#                     F33.price_list_id: "J",
-#                     F33.catalog_category: "N",
-#                     F33.this_year_sales: 214405.07,
-#                     F33.last_year_sales: 645515,
-#                     F33.salesrep: "COL",
-#                     F33.payment_terms_id: 'Q',
-#                     F33.tele: '3106382842',
-#                     F33.date_added: 'AC0802',
-#                     F33.contact: '',
-#                     },
-#                 fis_rec=XidRec.fromdict(
-#                     AttrDict(
-#                         name="Gelson's Markets",
-#                         street='Attn: Accounts Payable',
-#                         street2='PO Box 512256',
-#                         city='Los Angeles',
-#                         state_id=state_recs['CA'].state,
-#                         zip='90051',
-#                         country_id=state_recs['CA'].country,
-#                         fis_updated_by_user=None,
-#                         is_company=True,
-#                         customer=True,
-#                         use_parent_address=False,
-#                         fis_valid=True,
-#                         active=True,
-#                         user_id=125,
-#                         specials_notifications=,
-#                         update=,
-#                         phone=,
-#                         fis_csms_terms=,
-#                         fis_price_list=,
-#                         fis_credit_limit=,
-#                         fis_credit_current=,
-#                         fis_credit_10_days=,
-#                         fis_credit_20_days=,
-#                         fis_credit_30_days=,
-#                         fis_credit_total=,
-#                         fis_transmitter_id=,
-#
-#                         ),
-#                     imd(name='F033_?_res_partner'),
-#                     ),
-#                 OE7=AttrDict(
-#                     module='F33',
-#                     xml_id='',
-#                     ),
-#                 Odoo13=AttrDict(
-#                     fis_module='F33',
-#                     fis_id='',
-#                     ),
-#                 ),
-#             DataSet(
-#                 ondisk={
-#                     F33.code: 'RAING',
-#                     F33.name: "RAINBOW GROCOERY - SAN FRAN",
-#                     F33.addr1: "ATTN: LINDA TRUNZO",
-#                     F33.addr2: "1745 FOLSOM STREET",
-#                     F33.addr3: "SAN FRANCISCO, CA 94103-3711",
-#                     F33.price_list_id: "A",
-#                     F33.catalog_category: "N",
-#                     F33.this_year_sales: 57584.15,
-#                     F33.last_year_sales: 169682,
-#                     F33.salesrep: "ROB",
-#                     F33.payment_terms_id: '7',
-#                     F33.tele: '4158630621',
-#                     F33.date_added: '881231',
-#                     F33.contact: 'ap@rainbow.corp',
-#                     },
-#                 fis_rec=XidRec.fromdict(
-#                     AttrDict(
-#                         name=,
-#                         street=,
-#                         street2=,
-#                         city=,
-#                         state_id=,
-#                         zip=,
-#                         country_id,
-#                         fis_updated_by_user=None,
-#                         is_company=True,
-#                         customer=True,
-#                         use_parent_address=False,
-#                         fis_valid=,
-#                         active=,
-#                         user_id=,
-#                         specials_notifications=,
-#                         update=,
-#                         phone=,
-#                         fis_csms_terms=,
-#                         fis_price_list=,
-#                         fis_credit_limit=,
-#                         fis_credit_current=,
-#                         fis_credit_10_days=,
-#                         fis_credit_20_days=,
-#                         fis_credit_30_days=,
-#                         fis_credit_total=,
-#                         fis_transmitter_id=,
-#                         ),
-#                     imd(name='F033_?_res_partner'),
-#                     ),
-#                 OE7=AttrDict(
-#                     module='F33',
-#                     xml_id='',
-#                     ),
-#                 Odoo13=AttrDict(
-#                     fis_module='F33',
-#                     fis_id='',
-#                     ),
-#                 ),
-#             DataSet(
-#                 ondisk={
-#                     F33.code: 'HE492',
-#                     F33.name: "HEB 492 HEALTHY LIVING",
-#                     F33.addr1: "1550 FRY ROAD",
-#                     F33.addr2: "",
-#                     F33.addr3: "HOUSTON, TX 77084",
-#                     F33.price_list_id: "B",
-#                     F33.catalog_category: "N",
-#                     F33.this_year_sales: 21712.16,
-#                     F33.last_year_sales: 70884,
-#                     F33.salesrep: "ARM",
-#                     F33.payment_terms_id: 'E',
-#                     F33.tele: '2818290126',
-#                     F33.date_added: 'AF0303',
-#                     F33.contact: '',
-#                     },
-#                 fis_rec=XidRec.fromdict(
-#                     AttrDict(
-#                         name=,
-#                         street=,
-#                         street2=,
-#                         city=,
-#                         state_id=,
-#                         zip=,
-#                         country_id,
-#                         fis_updated_by_user=None,
-#                         is_company=True,
-#                         customer=True,
-#                         use_parent_address=False,
-#                         fis_valid=,
-#                         active=,
-#                         user_id=,
-#                         specials_notifications=,
-#                         update=,
-#                         phone=,
-#                         fis_csms_terms=,
-#                         fis_price_list=,
-#                         fis_credit_limit=,
-#                         fis_credit_current=,
-#                         fis_credit_10_days=,
-#                         fis_credit_20_days=,
-#                         fis_credit_30_days=,
-#                         fis_credit_total=,
-#                         fis_transmitter_id=,
-#                         ),
-#                     imd(name='F033_?_res_partner'),
-#                     ),
-#                 OE7=AttrDict(
-#                     module='F33',
-#                     xml_id='',
-#                     ),
-#                 Odoo13=AttrDict(
-#                     fis_module='F33',
-#                     fis_id='',
-#                     ),
-#                 ),
-#             DataSet(
-#                 ondisk={
-#                     F33.code: 'HE714',
-#                     F33.name: "HEB 714 HEALTHY LIVING",
-#                     F33.addr1: "LAKEWAY",
-#                     F33.addr2: "2000 RANCH ROAD 620 SOUTH",
-#                     F33.addr3: "LAKEWAY, TX 78734",
-#                     F33.price_list_id: "B",
-#                     F33.catalog_category: "N",
-#                     F33.this_year_sales: 48570.2,
-#                     F33.last_year_sales: 154641,
-#                     F33.salesrep: "ARM",
-#                     F33.payment_terms_id: 'E',
-#                     F33.tele: '0000000000',
-#                     F33.date_added: 'AF0914',
-#                     F33.contact: '',
-#                     },
-#                 fis_rec=XidRec.fromdict(
-#                     AttrDict(
-#                         name=,
-#                         street=,
-#                         street2=,
-#                         city=,
-#                         state_id=,
-#                         zip=,
-#                         country_id,
-#                         fis_updated_by_user=None,
-#                         is_company=True,
-#                         customer=True,
-#                         use_parent_address=False,
-#                         fis_valid=,
-#                         active=,
-#                         user_id=,
-#                         specials_notifications=,
-#                         update=,
-#                         phone=,
-#                         fis_csms_terms=,
-#                         fis_price_list=,
-#                         fis_credit_limit=,
-#                         fis_credit_current=,
-#                         fis_credit_10_days=,
-#                         fis_credit_20_days=,
-#                         fis_credit_30_days=,
-#                         fis_credit_total=,
-#                         fis_transmitter_id=,
-#                         ),
-#                     imd(name='F033_?_res_partner'),
-#                     ),
-#                 OE7=AttrDict(
-#                     module='F33',
-#                     xml_id='',
-#                     ),
-#                 Odoo13=AttrDict(
-#                     fis_module='F33',
-#                     fis_id='',
-#                     ),
-#                 ),
-#
+from fis_schema import F33
+def csms_data(script):
+    # GELSO
+    # RAING
+    # HE492
+    # HE714
+    return (
+            # 0
+            DataSet(
+                on_disk={
+                    F33.code: 'GELSO',
+                    F33.name: "GELSON'S MARKETS",
+                    F33.addr1: "ATTN: ACCOUNTS PAYABLE",
+                    F33.addr2: "P.O. BOX 512256",
+                    F33.addr3: "LOS ANGELES, CA 90051-0256",
+                    F33.price_list_id: "J",
+                    F33.catalog_category: "N",
+                    F33.this_year_sales: 214405.07,
+                    F33.last_year_sales: 645515,
+                    F33.salesrep: "COL",
+                    F33.payment_terms_id: 'Q',
+                    F33.tele: '3106382842',
+                    F33.date_added: 'AC0802',
+                    F33.contact: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name="Gelson's Markets",
+                        street='ATTN: Accounts Payable',
+                        street2='PO Box 512256',
+                        city='Los Angeles',
+                        state_id=state_recs['CA'].state,
+                        zip='90051',
+                        country_id=state_recs['CA'].country,
+                        fis_updated_by_user=None,
+                        is_company=True,
+                        customer=True,
+                        use_parent_address=False,
+                        fis_valid=True,
+                        active=True,
+                        user_id=XmlLinkField('COL', None, 'user_id'), #125,
+                        specials_notification=script.Specials.neither,
+                        phone='310.638.2842',
+                        fis_csms_terms=script.CNVZd0.CustomerTerms('Q'),
+                        fis_price_list='J',
+                        fis_credit_limit=0,
+                        fis_credit_current=3724.24,
+                        fis_credit_10_days=61508.92,
+                        fis_credit_20_days=20457.27,
+                        fis_credit_30_days=-64128.25,
+                        fis_credit_total=21562.18,
+                        fis_transmitter_id=script.CNVZO1.TransmitterCode('GELSO'),
+                        ),
+                    imd(name='F033_GELSO_res_partner'),
+                    ),
+                full_only_fields=(
+                        'fis_credit_limit','fis_credit_current','fis_credit_total',
+                        'fis_credit_10_days','fis_credit_20_days','fis_credit_30_days',
+                        ),
+                OE7=AttrDict(
+                    module='F33',
+                    xml_id='GELSO',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F33',
+                    fis_id='GELSO',
+                    ),
+                ),
+            # 1
+            DataSet(
+                on_disk={
+                    F33.code: 'RAING',
+                    F33.name: "RAINBOW GROCERY - SAN FRAN",
+                    F33.addr1: "ATTN: LINDA TRUNZO",
+                    F33.addr2: "1745 FOLSOM STREET",
+                    F33.addr3: "SAN FRANCISCO, CA 94103-3711",
+                    F33.price_list_id: "A",
+                    F33.catalog_category: "C",
+                    F33.this_year_sales: 57584.15,
+                    F33.last_year_sales: 169682,
+                    F33.salesrep: "ROB",
+                    F33.payment_terms_id: '7',
+                    F33.tele: '4158630621',
+                    F33.date_added: '881231',
+                    F33.contact: 'ap@rainbow.corp',
+                    },
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='Rainbow Grocery - San Fran',
+                            street='ATTN: Linda Trunzo',
+                            street2='1745 Folsom St',
+                            city='San Francisco',
+                            state_id=state_recs['CA'].state,
+                            zip='94103',
+                            country_id=state_recs['CA'].country,
+                            fis_updated_by_user=None,
+                            is_company=True,
+                            customer=True,
+                            use_parent_address=False,
+                            fis_valid=True,
+                            active=True,
+                            user_id=XmlLinkField('ROB', None, 'user_id'),
+                            specials_notification=script.Specials.catalog,
+                            phone='415.863.0621',
+                            fis_csms_terms=script.CNVZd0.CustomerTerms('7'),
+                            fis_price_list='A',
+                            fis_credit_limit=0,
+                            fis_credit_current=2567.14,
+                            fis_credit_10_days=511.58,
+                            fis_credit_20_days=0,
+                            fis_credit_30_days=0,
+                            fis_credit_total=3078.72,
+                            fis_transmitter_id=script.CNVZO1.TransmitterCode('RAING'),
+                            ),
+                        imd(name='F033_RAING_res_partner'),
+                        ),
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='ap@rainbow.corp',
+                            street='ATTN: Linda Trunzo',
+                            street2='1745 Folsom St',
+                            city='San Francisco',
+                            state_id=state_recs['CA'].state,
+                            zip='94103',
+                            country_id=state_recs['CA'].country,
+                            fis_updated_by_user=None,
+                            is_company=False,
+                            customer=True,
+                            use_parent_address=False,
+                            fis_valid=True,
+                            active=True,
+                            user_id=XmlLinkField('ROB', None, 'user_id'),
+                            specials_notification=script.Specials.company,
+                            phone=None,
+                            fis_csms_terms=None,
+                            fis_price_list=None,
+                            fis_credit_limit=0,
+                            fis_credit_current=0,
+                            fis_credit_10_days=0,
+                            fis_credit_20_days=0,
+                            fis_credit_30_days=0,
+                            fis_credit_total=0,
+                            fis_transmitter_id=None
+                            ),
+                        imd(name='F033_cntct_RAING_res_partner'),
+                        ),
+                    ),
+                OE7=(
+                    AttrDict(
+                        module='F33',
+                        xml_id='RAING',
+                        ),
+                    AttrDict(
+                        module='F33',
+                        xml_id='cntct_RAING',
+                        ),
+                    ),
+                Odoo13=(
+                    AttrDict(
+                        fis_module='F33',
+                        fis_id='RAING',
+                        ),
+                    AttrDict(
+                        fis_module='F33',
+                        fis_id='cntct_RAING',
+                        ),
+                    ),
+                full_only_fields=(
+                        'fis_credit_limit','fis_credit_current','fis_credit_total',
+                        'fis_credit_10_days','fis_credit_20_days','fis_credit_30_days',
+                        ),
+                ),
+
+            # 2
+            DataSet(
+                on_disk={
+                    F33.code: 'HE492',
+                    F33.name: "HEB 492 HEALTHY LIVING",
+                    F33.addr1: "1550 FRY ROAD",
+                    F33.addr2: "",
+                    F33.addr3: "HOUSTON, TX 77084",
+                    F33.price_list_id: "B",
+                    F33.catalog_category: "S",
+                    F33.this_year_sales: 21712.16,
+                    F33.last_year_sales: 70884,
+                    F33.salesrep: "ARM",
+                    F33.payment_terms_id: 'E',
+                    F33.tele: '2818290126',
+                    F33.date_added: 'AF0303',
+                    F33.contact: '',
+                    },
+                # "HE492 0   ARM      3876.88             3876.88        .00        .00        .00",
+                fis_rec= XidRec.fromdict(
+                    AttrDict(
+                        name='HEB 492 Healthy Living',
+                        street='1550 Fry Rd',
+                        street2=None,
+                        city='Houston',
+                        state_id=state_recs['TX'].state,
+                        zip='77084',
+                        country_id=state_recs['TX'].country,
+                        fis_updated_by_user=None,
+                        is_company=True,
+                        customer=True,
+                        use_parent_address=False,
+                        fis_valid=True,
+                        active=True,
+                        user_id=XmlLinkField('ARM', None, 'user_id'),
+                        specials_notification=script.Specials.specials,
+                        phone='281.829.0126',
+                        fis_csms_terms=script.CNVZd0.CustomerTerms('E'),
+                        fis_price_list='B',
+                        fis_credit_limit=0,
+                        fis_credit_current=3876.88,
+                        fis_credit_10_days=0,
+                        fis_credit_20_days=0,
+                        fis_credit_30_days=0,
+                        fis_credit_total=3876.88,
+                        fis_transmitter_id=script.CNVZO1.TransmitterCode('HE492'),
+                        ),
+                    imd(name='F033_HE492_res_partner'),
+                    ),
+                OE7=AttrDict(
+                    module='F33',
+                    xml_id='HE492',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F33',
+                    fis_id='HE492',
+                    ),
+                full_only_fields=(
+                        'fis_credit_limit','fis_credit_current','fis_credit_total',
+                        'fis_credit_10_days','fis_credit_20_days','fis_credit_30_days',
+                        ),
+                ),
+
+            # 3
+            DataSet(
+                on_disk={
+                    F33.code: 'HE714',
+                    F33.name: "HEB 714 HEALTHY LIVING",
+                    F33.addr1: "LAKEWAY",
+                    F33.addr2: "2000 RANCH ROAD 620 SOUTH",
+                    F33.addr3: "LAKEWAY, TX 78734",
+                    F33.price_list_id: "B",
+                    F33.catalog_category: "B",
+                    F33.this_year_sales: 48570.2,
+                    F33.last_year_sales: 154641,
+                    F33.salesrep: "ARM",
+                    F33.payment_terms_id: 'E',
+                    F33.tele: '0000000000',
+                    F33.date_added: 'AF0914',
+                    F33.contact: '',
+                    },
+                # "HE714 0   ARM      3990.03             6085.17        .00        .00    2095.14-",
+                fis_rec= XidRec.fromdict(
+                    AttrDict(
+                        name='HEB 714 Healthy Living',
+                        street='Lakeway',
+                        street2='2000 Ranch Rd 620 S',
+                        city='Lakeway',
+                        state_id=state_recs['TX'].state,
+                        zip='78734',
+                        country_id=state_recs['TX'].country,
+                        fis_updated_by_user=None,
+                        is_company=True,
+                        customer=True,
+                        use_parent_address=False,
+                        fis_valid=True,
+                        active=True,
+                        user_id=XmlLinkField('ARM', None, 'user_id'),
+                        specials_notification=script.Specials.both,
+                        phone=None,
+                        fis_csms_terms=script.CNVZd0.CustomerTerms('E'),
+                        fis_price_list='B',
+                        fis_credit_limit=0,
+                        fis_credit_current=6085.17,
+                        fis_credit_10_days=0,
+                        fis_credit_20_days=0,
+                        fis_credit_30_days=-2095.14,
+                        fis_credit_total=3990.03,
+                        fis_transmitter_id=script.CNVZO1.TransmitterCode('HE714'),
+                        ),
+                    imd(name='F033_HE714_res_partner'),
+                    ),
+                OE7=AttrDict(
+                    module='F33',
+                    xml_id='HE714',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F33',
+                    fis_id='HE714',
+                    ),
+                full_only_fields=(
+                        'fis_credit_limit','fis_credit_current','fis_credit_total',
+                        'fis_credit_10_days','fis_credit_20_days','fis_credit_30_days',
+                        ),
+                ),
+
+            # 4
+            DataSet(
+                on_disk={
+                    F33.code: 'HGRAC',
+                    F33.name: "HELEN GRACE CHOCOLATES INC",
+                    F33.addr1: "BUSINESS SOLD JANUARY 2015",
+                    F33.addr2: "                         ",
+                    F33.addr3: "                 ",
+                    F33.price_list_id: "A",
+                    F33.catalog_category: "",
+                    F33.this_year_sales: 0,
+                    F33.last_year_sales: 0,
+                    F33.salesrep: "",
+                    F33.payment_terms_id: 'Z',
+                    F33.tele: '3106388400',
+                    F33.date_added: 'AF0914',
+                    F33.contact: '',
+                    },
+                # "HE714 0   ARM      3990.03             6085.17        .00        .00    2095.14-",
+                fis_rec= XidRec.fromdict(
+                    AttrDict(
+                        name='Helen Grace Chocolates Inc / BUSINESS SOLD JANUARY 2015',
+                        street=None,
+                        street2=None,
+                        city=None,
+                        state_id=None,
+                        zip=None,
+                        country_id=None,
+                        fis_updated_by_user=None,
+                        is_company=True,
+                        customer=True,
+                        use_parent_address=False,
+                        fis_valid=True,
+                        active=True,
+                        user_id=XmlLinkField('', None, 'user_id'),
+                        specials_notification=script.Specials.neither,
+                        phone='310.638.8400',
+                        fis_csms_terms=script.CNVZd0.CustomerTerms('Z'),
+                        fis_price_list='A',
+                        fis_credit_limit=0,
+                        fis_credit_current=0,
+                        fis_credit_10_days=0,
+                        fis_credit_20_days=0,
+                        fis_credit_30_days=0,
+                        fis_credit_total=0,
+                        fis_transmitter_id=script.CNVZO1.TransmitterCode('HGRAC'),
+                        ),
+                    imd(name='F033_HGRAC_res_partner'),
+                    ),
+                OE7=AttrDict(
+                    module='F33',
+                    xml_id='HGRAC',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F33',
+                    fis_id='HGRAC',
+                    ),
+                full_only_fields=(
+                        'fis_credit_limit','fis_credit_current','fis_credit_total',
+                        'fis_credit_10_days','fis_credit_20_days','fis_credit_30_days',
+                        ),
+                ),
+        )
 
 
+# CSMSS
+from fis_schema import F34
+def csmss_data(script):
+    # GELSO
+    # RAING
+    # HE492
+    # HE714
+    # company            = 'An$(1,2)',     0     # COMPANY
+    # cust_no            = 'An$(3,6)',     1     # CUSTOMER NUMBER
+    # record_type_1      = 'An$(9,1)',     2     # RECORD TYPE = "1"
+    # ship_to_no         = 'An$(10,4)',    3     # SHIP TO NUMBER
+    # ship_to_name       = 'Bn$',          4     # SHIP TO NAME
+    # address_line_1     = 'Cn$',          5     # ADDRESS LINE 1
+    # address_line_2     = 'Dn$',          6     # ADDRESS LINE 2
+    # address_line_3     = 'En$',          7     # ADDRESS LINE 3
+    # telephone_no       = 'Fn$(79,10)',  39     # Telephone No
+
+    return (
+            # 0
+            DataSet(
+                on_disk={
+                    F34.code: 'GELSO',
+                    F34.name: "GELSON'S MARKET'S #114",
+                    F34.ship_to_no: 'G114',
+                    F34.addr1: "GROCERY DEPARTMENT",
+                    F34.addr2: "4738 LAUREL CANYON BLVD",
+                    F34.addr3: "VALLEY VILLAGE, CA 91607-3999",
+                    F34.tele: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name="Gelson's Market's #114",
+                        street='Grocery Department',
+                        street2='4738 Laurel Canyon Blvd',
+                        city='Valley Village',
+                        state_id=state_recs['CA'].state,
+                        zip='91607',
+                        country_id=state_recs['CA'].country,
+                        fis_ship_to_code='G114',
+                        fis_ship_to_parent_id = script.CSMS.Partner('GELSO'),
+                        is_company=False,
+                        customer=False,
+                        use_parent_address=False,
+                        active=True,
+                        phone=None,
+                        fis_transmitter_id=script.CNVZO1.TransmitterCode('GELSO-G114'),
+                        ),
+                    imd(name='F034_GELSO_G114_res_partner'),
+                    ),
+                OE7=AttrDict(
+                    module='F34',
+                    xml_id='GELSO-G114',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F34',
+                    fis_id='GELSO-G114',
+                    ),
+                ),
+
+            # 1
+            DataSet(
+                on_disk={
+                    F34.code: 'GELSO',
+                    F34.name: "GELSON'S #22",
+                    F34.ship_to_no: 'BU22',
+                    F34.addr1: "2725 HYPERION AVENUE",
+                    F34.addr2: '',
+                    F34.addr3: "SILVER LAKE, CA 90027-3001",
+                    F34.tele: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name="Gelson's #22",
+                        street='2725 Hyperion Ave',
+                        street2=None,
+                        city='Silver Lake',
+                        state_id=state_recs['CA'].state,
+                        zip='90027',
+                        country_id=state_recs['CA'].country,
+                        fis_ship_to_code='BU22',
+                        fis_ship_to_parent_id = script.CSMS.Partner('GELSO'),
+                        is_company=False,
+                        customer=False,
+                        use_parent_address=False,
+                        active=True,
+                        phone=None,
+                        fis_transmitter_id=script.CNVZO1.TransmitterCode('GELSO-BU22'),
+                        ),
+                    imd(name='F034_GELSO_BU22_res_partner'),
+                    ),
+                OE7=AttrDict(
+                    module='F34',
+                    xml_id='GELSO-BU22',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F34',
+                    fis_id='GELSO-BU22',
+                    ),
+                ),
+
+            # 2
+            DataSet(
+                on_disk={
+                    F34.code: 'RAING',
+                    F34.name: "RAINBOW GROVERY H&BEAUTY",
+                    F34.ship_to_no: "HEAL",
+                    F34.addr1: "1745 FOLSOM STREET",
+                    F34.addr2: "",
+                    F34.addr3: "SAN FRANCISCO, CA 94103-3711",
+                    F34.tele: '4158630620',
+                    },
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name="Rainbow Grovery H&Beauty",
+                            street="1745 Folsom St",
+                            street2=None,
+                            city="San Francisco",
+                            state_id=state_recs['CA'].state,
+                            zip="94103",
+                            country_id=state_recs['CA'].country,
+                            fis_ship_to_code='HEAL',
+                            fis_ship_to_parent_id=script.CSMS.Partner('RAING'),
+                            is_company=False,
+                            customer=False,
+                            use_parent_address=False,
+                            active=True,
+                            phone='415.863.0620',
+                            fis_transmitter_id=script.CNVZO1.TransmitterCode('RAING-HEAL'),
+                            ),
+                        imd(name='F034_RAING_HEAL_res_partner'),
+                        ),
+                    ),
+                OE7=(
+                    AttrDict(
+                        module='F34',
+                        xml_id='RAING-HEAL',
+                        ),
+                    ),
+                Odoo13=(
+                    AttrDict(
+                        fis_module='F34',
+                        fis_id='RAING-HEAL',
+                        ),
+                    ),
+                ),
+
+            # 3
+            DataSet(
+                on_disk={
+                    F34.code: 'RAING',
+                    F34.name: "USE ADDITIONAL SHIP TO'S",
+                    F34.ship_to_no: "",
+                    F34.addr1: "RAINBOW GROCERY",
+                    F34.addr2: "",
+                    F34.addr3: "",
+                    F34.tele: '4158630620',
+                    },
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name="Use Additional Ship To's",
+                            street='Rainbow Grocery',
+                            street2=None,
+                            city=None,
+                            state_id=None,
+                            zip=None,
+                            country_id=None,
+                            fis_ship_to_code=None,
+                            fis_ship_to_parent_id=script.CSMS.Partner('RAING'),
+                            is_company=False,
+                            customer=False,
+                            use_parent_address=False,
+                            active=True,
+                            phone='415.863.0620',
+                            fis_transmitter_id=script.CNVZO1.TransmitterCode('RAING'),
+                            ),
+                        imd(name='F034_RAING_default_res_partner'),
+                        ),
+                    ),
+                OE7=(
+                    AttrDict(
+                        module='F34',
+                        xml_id='RAING-default',
+                        ),
+                    ),
+                Odoo13=(
+                    AttrDict(
+                        fis_module='F34',
+                        fis_id='RAING-default',
+                        ),
+                    ),
+                ignore=True,
+                ),
+
+            # 4
+            DataSet(
+                on_disk={
+                    F34.code: 'HE492',
+                    F34.name: "HEB 492 HEALTHY LIVING",
+                    F34.ship_to_no: "",
+                    F34.addr1: "PDC WAREHOUSE",
+                    F34.addr2: "4710 NORTH PAN AM EXPRESSWAY",
+                    F34.addr3: "SAN ANTONIO, TX 78218",
+                    F34.ship_to_no: "",
+                    F34.tele: '2818290126',
+                    },
+                # "HE492 0   ARM      3876.88             3876.88        .00        .00        .00",
+                fis_rec = XidRec.fromdict(
+                    AttrDict(
+                        name='HEB 492 Healthy Living',
+                        street='PDC Warehouse',
+                        street2="4710 N Pan Am Expy",
+                        city='San Antonio',
+                        state_id=state_recs['TX'].state,
+                        zip='78218',
+                        country_id=state_recs['TX'].country,
+                        fis_ship_to_code=None,
+                        fis_ship_to_parent_id=script.CSMS.Partner('HE492'),
+                        is_company=False,
+                        customer=False,
+                        use_parent_address=False,
+                        active=True,
+                        phone='281.829.0126',
+                        fis_transmitter_id=script.CNVZO1.TransmitterCode('HE492'),
+                        ),
+                    imd(name='F034_HE492_default_res_partner'),
+                    ),
+                OE7=AttrDict(
+                    module='F34',
+                    xml_id='HE492-default',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F34',
+                    fis_id='HE492-default',
+                    ),
+                ),
+
+            # 5
+            DataSet(
+                on_disk={
+                    F34.code: 'HE714',
+                    F34.name: "HEB 714 HEALTHY LIVING",
+                    F34.addr1: "PDC WAREHOUSE",
+                    F34.addr2: "4710 NORTH PAN AM EXPRESSWAY",
+                    F34.addr3: "SAN ANTONIO, TX 78218",
+                    F34.ship_to_no: "",
+                    F34.tele: '',
+                    },
+                # "HE714 0   ARM      3990.03             6085.17        .00        .00    2095.14-",
+                fis_rec= XidRec.fromdict(
+                    AttrDict(
+                        name='HEB 714 Healthy Living',
+                        street='PDC Warehouse',
+                        street2='4710 N Pan Am Expy',
+                        city='San Antonio',
+                        state_id=state_recs['TX'].state,
+                        zip='78218',
+                        country_id=state_recs['TX'].country,
+                        fis_ship_to_code=None,
+                        fis_ship_to_parent_id=script.CSMS.Partner('HE714'),
+                        is_company=False,
+                        customer=False,
+                        use_parent_address=False,
+                        active=True,
+                        phone=None,
+                        fis_transmitter_id=script.CNVZO1.TransmitterCode('HE714'),
+                        ),
+                    imd(name='F034_HE714_default_res_partner'),
+                    ),
+                OE7=AttrDict(
+                    module='F34',
+                    xml_id='HE714-default',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F34',
+                    fis_id='HE714-default',
+                    ),
+                ),
+
+            # 6
+            DataSet(
+                on_disk={
+                    F34.code: 'HGRAC',
+                    F34.name: "HELEN GRACE CHOCOLATES INC",
+                    F34.addr1: "3303 MARTIN LUTHER KING JR BL",
+                    F34.addr2: "",
+                    F34.addr3: "LYNWOOD, CA 90262",
+                    F34.ship_to_no: "LYNW",
+                    F34.tele: '3106388400',
+                    },
+                # "HE714 0   ARM      3990.03             6085.17        .00        .00    2095.14-",
+                fis_rec= XidRec.fromdict(
+                    AttrDict(
+                        name='Helen Grace Chocolates Inc',
+                        street='3303 Martin Luther King Jr BL',
+                        street2=None,
+                        city='Lynwood',
+                        state_id=state_recs['CA'].state,
+                        zip='90262',
+                        country_id=state_recs['CA'].country,
+                        fis_ship_to_code='LYNW',
+                        fis_ship_to_parent_id=script.CSMS.Partner('HGRAC'),
+                        is_company=False,
+                        customer=False,
+                        use_parent_address=False,
+                        active=True,
+                        phone='310.638.8400',
+                        fis_transmitter_id=script.CNVZO1.TransmitterCode('HGRAC-LYNW'),
+                        ),
+                    imd(name='F034_HGRAC_LYNW_res_partner'),
+                    ),
+                OE7=AttrDict(
+                    module='F34',
+                    xml_id='HGRAC-LYNW',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F34',
+                    fis_id='HGRAC-LYNW',
+                    ),
+                ),
+        )
+
+
+# EMP1
+from fis_schema import F74
+def emp1_data(script):
+    return (
+            # 0
+            DataSet(
+                on_disk={
+                    F74.emp_num: '9002',
+                    F74.name: 'INVENTORY TEAM',
+                    F74.ssn: '111223333',
+                    F74.tele: '',
+                    F74.date_hired: '1028A6',
+                    F74.date_terminated: '',
+                    F74.birth_date: '',
+                    F74.last_raise: '',
+                    F74.status_flag: 'T',
+                    F74.pay_type: '',
+                    F74.marital_status: '',
+                    F74.pension_status: '',
+                    F74.gender: '',
+                    F74.emergency_contact: '',
+                    F74.emergency_phone: '',
+                    F74.exempt_fed: 0,
+                    F74.exempt_state: 0,
+                    F74.hourly_rate: 0.0,
+                    F74.salary_rate: 0.0,
+                    F74.addr1: 'FOR LOG IN PURPOSES ONLY',
+                    F74.addr2: '',
+                    F74.addr3: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='Inventory Team',
+                        employment_type='standard',
+                        ssnid='111-22-3333',
+                        birthday=None,
+                        hire_date=fix_date('1028A6'),
+                        fire_date=None,
+                        active=True,
+                        status_flag='T',
+                        pension_plan=False,
+                        pay_type='salary',
+                        hourly_rate=0.0,
+                        last_raise=None,
+                        marital='single',
+                        gender='male',
+                        identification_id='9002',
+                        emergency_contact=None,
+                        emergency_number=None,
+                        state_exemptions=0,
+                        federal_exemptions=0,
+                        ),
+                    imd(name='F074_9002_hr_employee'),
+                    ),
+                OE7=AttrDict(
+                    module='F74',
+                    xml_id='9002',
+                    home_street='For Log in Purposes Only',
+                    home_street2=None,
+                    home_city=None,
+                    home_state_id=None,
+                    home_zip=None,
+                    home_country_id=None,
+                    home_phone=None,
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F74',
+                    fis_id='9002',
+                    street='For Log in Purposes Only',
+                    street2=None,
+                    city=None,
+                    state_id=None,
+                    zip=None,
+                    country_id=None,
+                    phone=None,
+                    ),
+                ignore=True,
+                ),
+
+            # 1
+            DataSet(
+                on_disk={
+                    F74.emp_num: '1376',
+                    F74.name: 'MARK ANDREW PEZZINI',
+                    F74.ssn: '123456789',
+                    F74.tele: '8181827273',
+                    F74.date_hired: '0531B2',
+                    F74.date_terminated: '0118B3',
+                    F74.birth_date: '1102DD',
+                    F74.last_raise: '',
+                    F74.status_flag: 'T',
+                    F74.pay_type: 'S',
+                    F74.marital_status: 'S',
+                    F74.pension_status: 'Y',
+                    F74.gender: 'M',
+                    F74.emergency_contact: 'PAUL PEZZINI',
+                    F74.emergency_phone: '8182838485',
+                    F74.exempt_fed: 5,
+                    F74.exempt_state: 5,
+                    F74.hourly_rate: 0.0,
+                    F74.salary_rate: 2166.67,
+                    F74.addr1: '205 REDWOOD WAY',
+                    F74.addr2: 'CAPTCHA, CA 95003',
+                    F74.addr3: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='Mark Andrew Pezzini',
+                        employment_type='standard',
+                        ssnid='123-45-6789',
+                        birthday=Date(1961, 11, 2),
+                        hire_date=fix_date('0531B2'),
+                        fire_date=fix_date('0118B3'),
+                        active=False,
+                        status_flag='T',
+                        pension_plan=True,
+                        pay_type='salary',
+                        hourly_rate=0.0,
+                        last_raise=None,
+                        marital='single',
+                        gender='male',
+                        identification_id='1376',
+                        emergency_contact='Paul Pezzini',
+                        emergency_number='818.283.8485',
+                        state_exemptions=5,
+                        federal_exemptions=5,
+                        ),
+                    imd(name='F074_1376_hr_employee'),
+                    ),
+                OE7=AttrDict(
+                    module='F74',
+                    xml_id='1376',
+                    home_street='205 Redwood Way',
+                    home_street2=None,
+                    home_city='Captcha',
+                    home_state_id=state_recs['CA'].state,
+                    home_zip='95003',
+                    home_country_id=state_recs['CA'].country,
+                    home_phone='818.182.7273',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F74',
+                    fis_id='1376',
+                    street='205 Redwood Way',
+                    street2=None,
+                    city='Captcha',
+                    state_id=state_recs['CA'].state,
+                    zip='95003',
+                    country_id=state_recs['CA'].country,
+                    phone='818.182.7273',
+                    ),
+                ),
+
+            #2
+            DataSet(
+                on_disk={
+                    F74.emp_num: '1306',
+                    F74.name: 'CAROLINA TORRES',
+                    F74.ssn: '987654321',
+                    F74.tele: '8988878685',
+                    F74.date_hired: '0206B1',
+                    F74.date_terminated: '',
+                    F74.birth_date: '0720E3',
+                    F74.last_raise: '1201B3',
+                    F74.status_flag: 'A',
+                    F74.pay_type: 'H',
+                    F74.marital_status: 'M',
+                    F74.pension_status: 'Y',
+                    F74.gender: 'F',
+                    F74.emergency_contact: 'AMALIA TORRES',
+                    F74.emergency_phone: '8761235911',
+                    F74.exempt_fed: 2,
+                    F74.exempt_state: 2,
+                    F74.hourly_rate: 13.25,
+                    F74.salary_rate: 0.0,
+                    F74.addr1: '21 SALAZAR ST APT 7',
+                    F74.addr2: 'TRANSLUCENT BAY, CA 97123',
+                    F74.addr3: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='Carolina Torres',
+                        employment_type='standard',
+                        ssnid='987-65-4321',
+                        birthday=Date(1967, 7, 20),
+                        hire_date=fix_date('0206B1'),
+                        fire_date=None,
+                        active=True,
+                        status_flag='A',
+                        pension_plan=True,
+                        pay_type='hourly',
+                        hourly_rate=13.25,
+                        last_raise=fix_date('1201B3'),
+                        marital='married',
+                        gender='female',
+                        identification_id='1306',
+                        emergency_contact='Amalia Torres',
+                        emergency_number='876.123.5911',
+                        state_exemptions=2,
+                        federal_exemptions=2,
+                        ),
+                    imd(name='F074_1306_hr_employee'),
+                    ),
+                OE7=AttrDict(
+                    module='F74',
+                    xml_id='1306',
+                    home_street='21 Salazar St Apt 7',
+                    home_street2=None,
+                    home_city='Translucent Bay',
+                    home_state_id=state_recs['CA'].state,
+                    home_zip='97123',
+                    home_country_id=state_recs['CA'].country,
+                    home_phone='898.887.8685',
+                    ),
+                Odoo13=AttrDict(
+                    fis_module='F74',
+                    fis_id='1306',
+                    street='21 Salazar St Apt 7',
+                    street2=None,
+                    city='Translucent Bay',
+                    state_id=state_recs['CA'].state,
+                    zip='97123',
+                    country_id=state_recs['CA'].country,
+                    phone='898.887.8685',
+                    ),
+                ),
+            )
+
+
+# IFMS
+from fis_schema import F320
+def ifms_data(script):
+    return (
+            # 0
+            DataSet(
+                on_disk={
+                    F320.formula_id: '430205',
+                    F320.rev_no: '000',
+                    F320.desc: 'ORIENTAL PARTY MIX 5/5 LB. FAMILY PACK',
+                    F320.coating: '',
+                    F320.allergens: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='430205',
+                        formula='430205-000',
+                        description='ORIENTAL PARTY MIX 5/5 LB. FAMILY PACK',
+                        coating=None,
+                        allergens=None,
+                        ),
+                    imd(name='F320_430205_product_formula'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ),
+
+            # 1
+            DataSet(
+                on_disk={
+                    F320.formula_id: '022622',
+                    F320.rev_no: '000',
+                    F320.desc: 'S/R MOON ALMOND DRK CHOC MALT BALLS 10lb',
+                    F320.coating: '821012',
+                    F320.allergens: 'ABCE',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='022622',
+                        formula='022622-000',
+                        description='S/R MOON ALMOND DRK CHOC MALT BALLS 10lb',
+                        coating='821012',
+                        allergens='ABCE',
+                        ),
+                    imd(name='F320_022622_product_formula'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ),
+
+            # 2
+            DataSet(
+                on_disk={
+                    F320.formula_id: '006021',
+                    F320.rev_no: '000',
+                    F320.desc: "TRADER'S CRAN & GINGER TREK MIX 24/16 OZ",
+                    F320.coating: '',
+                    F320.allergens: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='006021',
+                        formula='006021-000',
+                        description="TRADER'S CRAN & GINGER TREK MIX 24/16 OZ",
+                        coating=None,
+                        allergens=None,
+                        ),
+                    imd(name='F320_006021_product_formula'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ),
+
+            # 3
+            DataSet(
+                on_disk={
+                    F320.formula_id: '323571',
+                    F320.rev_no: '001',
+                    F320.desc: 'TEST OF COATING',
+                    F320.coating: '895126',
+                    F320.allergens: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='323571',
+                        formula='323571-001',
+                        description='TEST OF COATING',
+                        coating='895126',
+                        allergens=None,
+                        ),
+                    imd(name='F320_323571_product_formula'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ),
+
+            # 4
+            DataSet(
+                on_disk={
+                    F320.formula_id: '192735',
+                    F320.rev_no: '003',
+                    F320.desc: 'ANOTHER TEST OF COATING MIX 24/12 OZ',
+                    F320.coating: '004161',
+                    F320.allergens: '',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='192735',
+                        formula='192735-003',
+                        description='ANOTHER TEST OF COATING MIX 24/12 OZ',
+                        coating='004161',
+                        allergens=None,
+                        ),
+                    imd(name='F320_192735_product_formula'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ),
+
+            # 5
+            DataSet(
+                on_disk={
+                    F320.formula_id: '773156',
+                    F320.rev_no: '000',
+                    F320.desc: 'FIRST TEST OF RANDOM ALLERGENS 25lb',
+                    F320.coating: '',
+                    F320.allergens: 'CEV',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='773156',
+                        formula='773156-000',
+                        description='FIRST TEST OF RANDOM ALLERGENS 25lb',
+                        coating=None,
+                        allergens='CEV',
+                        ),
+                    imd(name='F320_773156_product_formula'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ),
+
+            # 6
+            DataSet(
+                on_disk={
+                    F320.formula_id: '426812',
+                    F320.rev_no: '000',
+                    F320.desc: 'FINAL TEST OF RANDOM ALLERGENS FAMILY PACK',
+                    F320.coating: '',
+                    F320.allergens: 'ABC',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='426812',
+                        formula='426812-000',
+                        description='FINAL TEST OF RANDOM ALLERGENS FAMILY PACK',
+                        coating=None,
+                        allergens='ABC',
+                        ),
+                    imd(name='F320_426812_product_formula'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ),
+
+            # 7
+            DataSet(
+                on_disk={
+                    F320.formula_id: '54321',
+                    F320.rev_no: '000',
+                    F320.desc: 'FORMULA ID TOO SHORT FAMILY PACK',
+                    F320.coating: '',
+                    F320.allergens: 'ABC',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='54321',
+                        formula='54321-000',
+                        description='FORMULA ID TOO SHORT FAMILY PACK',
+                        coating=None,
+                        allergens='ABC',
+                        ),
+                    imd(name='F320_54321_product_formula'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ignore=True
+                ),
+            )
+
+# IFDT
+from fis_schema import F322
+def ifdt_data(script):
+    script.IFMS.ProductFormula('430205-000', id=403205)
+    script.IFMS.ProductFormula('006021-002', id=06021)
+    script.NVTY.Product('900091', id=900091)
+    script.NVTY.Product('006120', id=6120)
+    script.NVTY.Product('967001', id=967001)
+    script.NVTY.Product('900087', id=900087)
+    script.NVTY.Product('900090', id=900090)
+    script.NVTY.Product('821012', id=821012)
+    return (
+            # ORIENTAL PARTY MIX 5/5 LB. FAMILY PACK [430205]
+            #   LABELS-THERMO TRANS (4"X 4") CASE       1/1500rl [900091]
+            #   SUNRIDGE TRAIL MIX-ORIENTAL PARTY,NO MSG25    lb [006120]
+            #   FREIGHT CHARGES-PRODUCTION            1     lb [967001]
+            #   10" x 16" POLY BAG 3 MIL.               1   each [900087]
+            #   BLANK NUTRITIONAL LABELS 2-1/8"x 4"     1   each [900090]
+            #
+            # 0
+            DataSet(
+                on_disk={
+                    F322.formula_id: '430205',
+                    F322.rev_no: '000',
+                    F322.line_no: '021',
+                    F322.ingr_code_batch_1: '900091',
+                    F322.units_batch_1: 'EA',
+                    F322.desc_batch_1: 'LABELS-THERMO TRANS (4"X 4") CASE       1/1500rl',
+                    F322.qty_batch_1: 6.0,
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='430205-000:900091',
+                        sequence=21,
+                        formula_id=script.IFMS.ProductFormula('430205-000'),
+                        item_id=script.NVTY.Product('900091'),
+                        qty_needed=6,
+                        qty_desc = 'EA',
+                        ),
+                    imd(name='F322_430205_000_021_product_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ),
+
+            # 1
+            DataSet(
+                on_disk={
+                    F322.formula_id: '430205',
+                    F322.rev_no: '000',
+                    F322.line_no: '001',
+                    F322.ingr_code_batch_1: '006120',
+                    F322.units_batch_1: 'CS',
+                    F322.desc_batch_1: 'SUNRIDGE TRAIL MIX-ORIENTAL PARTY,NO MSG25    lb',
+                    F322.qty_batch_1: 1.0,
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='430205-000:006120',
+                        sequence=1,
+                        formula_id=script.IFMS.ProductFormula('430205-000'),
+                        item_id=script.NVTY.Product('006120'),
+                        qty_needed=1,
+                        qty_desc = 'CS',
+                        ),
+                    imd(name='F322_430205_000_001_product_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ),
+
+            # 2 - fails freight charge check
+            DataSet(
+                on_disk={
+                    F322.formula_id: '430205',
+                    F322.rev_no: '000',
+                    F322.line_no: '031',
+                    F322.ingr_code_batch_1: '967001',
+                    F322.units_batch_1: 'EA',
+                    F322.desc_batch_1: 'FREIGHT CHARGES-PRODUCTION            1     lb',
+                    F322.qty_batch_1: 25.0,
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='430205-000:967001',
+                        sequence=31,
+                        formula_id=script.IFMS.ProductFormula('430205-000'),
+                        item_id=script.NVTY.Product('967001'),
+                        qty_needed=25,
+                        qty_desc = 'EA',
+                        ),
+                    imd(name='F322_430205_000_031_product_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ignore=True,
+                ),
+
+            # 3
+            DataSet(
+                on_disk={
+                    F322.formula_id: '430205',
+                    F322.rev_no: '000',
+                    F322.line_no: '011',
+                    F322.ingr_code_batch_1: '900087',
+                    F322.units_batch_1: 'EA',
+                    F322.desc_batch_1: '10" x 16" POLY BAG 3 MIL.               1   each',
+                    F322.qty_batch_1: 5.0,
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='430205-000:900087',
+                        sequence=11,
+                        formula_id=script.IFMS.ProductFormula('430205-000'),
+                        item_id=script.NVTY.Product('900087'),
+                        qty_needed=5,
+                        qty_desc = 'EA',
+                        ),
+                    imd(name='F322_430205_000_011_product_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ),
+
+            # 4 - fails qty check
+            DataSet(
+                on_disk={
+                    F322.formula_id: '430205',
+                    F322.rev_no: '000',
+                    F322.line_no: '041',
+                    F322.ingr_code_batch_1: '900090',
+                    F322.units_batch_1: 'EA',
+                    F322.desc_batch_1: 'BLANK NUTRITIONAL LABELS 2-1/8"x 4"     1   each',
+                    F322.qty_batch_1: 0,
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='430205-000:900090',
+                        sequence=41,
+                        formula_id=script.IFMS.ProductFormula('430205-000'),
+                        item_id=script.NVTY.Product('900090'),
+                        qty_needed=0,
+                        qty_desc='EA',
+                        ),
+                    imd(name='F322_430205_000_041_product_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ignore=True,
+                ),
+
+            # 5 - fails missing product formula check
+            DataSet(
+                on_disk={
+                    F322.formula_id: '022622',
+                    F322.rev_no: '001',
+                    F322.line_no: '011',
+                    F322.ingr_code_batch_1: '821012',
+                    F322.units_batch_1: 'LB',
+                    F322.desc_batch_1: 'COATING-DAVIS DARK CHOC,99.5% FAIR TRADE1     lb',
+                    F322.qty_batch_1: 1640.0,
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='022622-001:821012',
+                        sequence=11,
+                        formula_id=script.IFMS.ProductFormula('022622-001'),
+                        item_id=script.NVTY.Product('821012'),
+                        qty_needed=1640,
+                        qty_desc='LB',
+                        ),
+                    imd(name='F322_022622_001_011_product_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ignore=True,
+                ),
+
+            # 5  - fails missing product item check
+            DataSet(
+                on_disk={
+                    F322.formula_id: '006021',
+                    F322.rev_no: '002',
+                    F322.line_no: '001',
+                    F322.ingr_code_batch_1: '007023',
+                    F322.units_batch_1: 'CS',
+                    F322.desc_batch_1: 'APRICOTS-DICED, SULPHURED, COMMERCIAL   28    lb',
+                    F322.qty_batch_1: 9.0,
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='006021-002:007023',
+                        sequence=1,
+                        formula_id=script.IFMS.ProductFormula('006021-002'),
+                        item_id=script.NVTY.Product('007023'),
+                        qty_needed=9,
+                        qty_desc='CS',
+                        ),
+                    imd(name='F322_006021_002_001_product_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ignore=True,
+                ),
+
+            # DataSet(
+            #     on_disk={
+            #         },
+            #     fis_rec=XidRec.fromdict(
+            #         AttrDict(
+            #             ),
+            #         imd(name='F322_x_product_ingredient'),
+            #         ),
+            #     OE7=AttrDict(
+            #         module='F322',
+            #         xml_id='',
+            #         ),
+            #     Odoo13=AttrDict(
+            #         fis_module='F322',
+            #         fis_id='',
+            #         ),
+            #     ignore=True,
+            #     ),
+            )
+
+
+
+# IFPP0
+from fis_schema import F328
+def ifpp0_data(script):
+    script.NVTY.Product('285961', id=285961)
+    script.NVTY.Product('900004', id=900004)
+    script.NVTY.Product('867125', id=867125)
+    script.NVTY.Product('001117', id=1117)
+    script.NVTY.Product('866251', id=866251)
+    script.NVTY.Product('821012', id=821012)
+    pf = script.IFMS.ProductFormula('821012', id=821012)
+    pf.coating = '800199'
+    pf.allergens = 'AB'
+    return (
+            # 0
+            DataSet(
+                on_disk={
+                    F328.order_no: '261323',
+                    F328.produced: 'Y',
+                    F328.order_confirmed: '',
+                    F328.prod_no: '821012',
+                    F328.formula_id: '821012',
+                    F328.formula_rev: '000',
+                    F328.label_name: 'SUNRIDGE PURPLE LENTIL,PLASTIC TOTE 25lb',
+                    F328.dept_id: '27',
+                    F328.prod_line: '24',
+                    F328.prod_scheduled_date: 'B10612',
+                    F328.prod_date: '0619B1',
+                    F328.units_produced: 109,
+                    F328.no_of_batches_a: 7
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        order_no = '261323',
+                        completed_fis_qty = 109,
+                        confirmed = None,
+                        item_id = script.NVTY.Product('821012'),
+                        formula_code = '[821012-000] SUNRIDGE PURPLE LENTIL,PLASTIC TOTE 25lb',
+                        line_id = script.CNVZf.ProductionLine('24'),
+                        schedule_date = fix_date('B10612', 'ymd'),
+                        finish_date = local_to_utc(DateTime.combine(fix_date('0619B1', 'mdy'), Time(17))),
+                        line_id_set = False,
+                        schedule_date_set = False,
+                        state = 'complete',
+                        allergens = 'AB',
+                        coating = '800199',
+                        batches = 7,
+                        ),
+                    imd(name='F328_261323_production_order'),
+                    ),
+                OE7=AttrDict(
+                    dept = '27',
+                    ),
+                Odoo13=AttrDict(
+                    department = '27',
+                    ),
+                ),
+
+            # 1
+            DataSet(
+                on_disk={
+                    F328.order_no: '279900',
+                    F328.produced: 'Y',
+                    F328.order_confirmed: '',
+                    F328.prod_no: '866251',
+                    F328.formula_id: '866251',
+                    F328.formula_rev: '000',
+                    F328.label_name: 'SUNRIDGE TUBS-CHOC ALMOND, MILK 8/9.5 OZ',
+                    F328.dept_id: '14',
+                    F328.prod_line: '11',
+                    F328.prod_scheduled_date: 'B30318',
+                    F328.prod_date: '0321B3',
+                    F328.units_produced: 14,
+                    F328.no_of_batches_a: 7
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        order_no = '279900',
+                        completed_fis_qty = 14,
+                        confirmed = None,
+                        item_id = script.NVTY.Product('866251'),
+                        formula_code = '[866251-000] SUNRIDGE TUBS-CHOC ALMOND, MILK 8/9.5 OZ',
+                        line_id = script.CNVZf.ProductionLine('11'),
+                        schedule_date = fix_date('B30318', 'ymd'),
+                        finish_date = local_to_utc(DateTime.combine(fix_date('0321B3', 'mdy'), Time(17))),
+                        line_id_set = False,
+                        schedule_date_set = False,
+                        state = 'complete',
+                        allergens = None,
+                        coating = None,
+                        batches = 7,
+                        ),
+                    imd(name='F328_279900_production_order'),
+                    ),
+                OE7=AttrDict(
+                    dept = '14',
+                    ),
+                Odoo13=AttrDict(
+                    department = '14',
+                    ),
+                ),
+
+            # 2
+            DataSet(
+                on_disk={
+                    F328.order_no: '273597',
+                    F328.produced: 'Y',
+                    F328.order_confirmed: '',
+                    F328.prod_no: '001117',
+                    F328.formula_id: '001117',
+                    F328.formula_rev: '000',
+                    F328.label_name: 'ORGANIC CASHEWS,DRY ROAST/NO SALT 25 LB.',
+                    F328.dept_id: '20',
+                    F328.prod_line: '06',
+                    F328.prod_scheduled_date: 'B20917',
+                    F328.prod_date: '0921B2',
+                    F328.units_produced: 149,
+                    F328.no_of_batches_a: 47
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        order_no = '273597',
+                        completed_fis_qty = 149,
+                        confirmed = None,
+                        item_id = script.NVTY.Product('001117'),
+                        formula_code = '[001117-000] ORGANIC CASHEWS,DRY ROAST/NO SALT 25 LB.',
+                        line_id = script.CNVZf.ProductionLine('06'),
+                        schedule_date = fix_date('B20917', 'ymd'),
+                        finish_date = local_to_utc(DateTime.combine(fix_date('0921B2', 'mdy'), Time(17))),
+                        line_id_set = False,
+                        schedule_date_set = False,
+                        state = 'complete',
+                        allergens = None,
+                        coating = None,
+                        batches = 47,
+                        ),
+                    imd(name='F328_273597_production_order'),
+                    ),
+                OE7=AttrDict(
+                    dept = '20',
+                    ),
+                Odoo13=AttrDict(
+                    department = '20',
+                    ),
+                ),
+
+            # 3
+            DataSet(
+                on_disk={
+                    F328.order_no: '293379',
+                    F328.produced: 'N',
+                    F328.order_confirmed: '',
+                    F328.prod_no: '867125',
+                    F328.formula_id: '867125',
+                    F328.formula_rev: '000',
+                    F328.label_name: 'SRF PLANTAIN CHIPS 12/12oz',
+                    F328.dept_id: '08',
+                    F328.prod_line: 'OF',
+                    F328.prod_scheduled_date: 'B40629',
+                    F328.prod_date: '',
+                    F328.units_produced: 0,
+                    F328.no_of_batches_a: 33
+                    },
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            order_no = '293379-1_2',
+                            completed_fis_qty = 0,
+                            confirmed = None,
+                            item_id = script.NVTY.Product('867125'),
+                            formula_code = '[867125-000] SRF PLANTAIN CHIPS 12/12oz',
+                            line_id = script.CNVZf.ProductionLine('06'),
+                            schedule_date = fix_date('B40629', 'ymd'),
+                            finish_date = None,
+                            line_id_set = False,
+                            schedule_date_set = False,
+                            state = 'draft',
+                            allergens = None,
+                            coating = None,
+                            batches = 33,
+                            ),
+                        imd(name='F328_293379_1_2_production_order'),
+                        ),
+                    XidRec.fromdict(
+                        AttrDict(
+                            order_no = '293379-2_2',
+                            completed_fis_qty = 0,
+                            confirmed = None,
+                            item_id = script.NVTY.Product('867125'),
+                            formula_code = '[867125-000] SRF PLANTAIN CHIPS 12/12oz',
+                            line_id = script.CNVZf.ProductionLine('24'),
+                            schedule_date = fix_date('B40629', 'ymd'),
+                            finish_date = None,
+                            line_id_set = False,
+                            schedule_date_set = False,
+                            state = 'draft',
+                            allergens = None,
+                            coating = None,
+                            batches = 33,
+                            ),
+                        imd(name='F328_293379_2_2_production_order'),
+                        ),
+                    ),
+                OE7=AttrDict(
+                    dept = '08',
+                    ),
+                Odoo13=AttrDict(
+                    department = '08',
+                    ),
+                ),
+
+            # 4
+            DataSet(
+                on_disk={
+                    F328.order_no: '288278',
+                    F328.produced: 'P',
+                    F328.order_confirmed: '',
+                    F328.prod_no: '900004',
+                    F328.formula_id: '900004',
+                    F328.formula_rev: '000',
+                    F328.label_name: 'QUICK CLEAN-SAME ALLERGEN CLEAN UP',
+                    F328.dept_id: '01',
+                    F328.prod_line: 'GB',
+                    F328.prod_scheduled_date: 'B31106',
+                    F328.prod_date: '1106B3',
+                    F328.units_produced: 0,
+                    F328.no_of_batches_a: 21
+                    },
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            order_no = '288278-1_2',
+                            completed_fis_qty = 0,
+                            confirmed = None,
+                            item_id = script.NVTY.Product('900004'),
+                            formula_code = '[900004-000] QUICK CLEAN-SAME ALLERGEN CLEAN UP',
+                            line_id = script.CNVZf.ProductionLine('11'),
+                            schedule_date = fix_date('B31106', 'ymd'),
+                            finish_date = local_to_utc(DateTime.combine(fix_date('1106B3', 'mdy'), Time(17))),
+                            line_id_set = False,
+                            schedule_date_set = False,
+                            state = 'draft',
+                            allergens = None,
+                            coating = None,
+                            batches = 21,
+                            ),
+                        imd(name='F328_288278_1_2_production_order'),
+                        ),
+                    XidRec.fromdict(
+                        AttrDict(
+                            order_no = '288278-2_2',
+                            completed_fis_qty = 0,
+                            confirmed = None,
+                            item_id = script.NVTY.Product('900004'),
+                            formula_code = '[900004-000] QUICK CLEAN-SAME ALLERGEN CLEAN UP',
+                            line_id = script.CNVZf.ProductionLine('24'),
+                            schedule_date = fix_date('B31106', 'ymd'),
+                            finish_date = local_to_utc(DateTime.combine(fix_date('1106B3', 'mdy'), Time(17))),
+                            line_id_set = False,
+                            schedule_date_set = False,
+                            state = 'draft',
+                            allergens = None,
+                            coating = None,
+                            batches = 21,
+                            ),
+                        imd(name='F328_288278_2_2_production_order'),
+                        ),
+                    ),
+                OE7=AttrDict(
+                    dept = '01',
+                    ),
+                Odoo13=AttrDict(
+                    department = '01',
+                    ),
+                ),
+
+            # 5
+            DataSet(
+                on_disk={
+                    F328.order_no: '285961',
+                    F328.produced: 'X',
+                    F328.order_confirmed: '',
+                    F328.prod_no: '500917',
+                    F328.formula_id: '500917',
+                    F328.formula_rev: '000',
+                    F328.label_name: 'SRF ALMONDS LEMON 10#',
+                    F328.dept_id: '18',
+                    F328.prod_line: 'BZ',
+                    F328.prod_scheduled_date: 'B40720',
+                    F328.prod_date: '',
+                    F328.units_produced: 0,
+                    F328.no_of_batches_a: 17
+                    },
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            order_no = '285961-1_2',
+                            completed_fis_qty = 0,
+                            confirmed = None,
+                            item_id = script.NVTY.Product('500917'),
+                            formula_code = '[500917-000] SRF ALMONDS LEMON 10#',
+                            line_id = script.CNVZf.ProductionLine('06'),
+                            schedule_date = fix_date('B40720', 'ymd'),
+                            finish_date = None,
+                            line_id_set = False,
+                            schedule_date_set = False,
+                            state = 'cancelled',
+                            allergens = None,
+                            coating = None,
+                            batches = 17,
+                            ),
+                        imd(name='F328_285961_1_2_production_order'),
+                        ),
+                    XidRec.fromdict(
+                        AttrDict(
+                            order_no = '285961-2_2',
+                            completed_fis_qty = 0,
+                            confirmed = None,
+                            item_id = script.NVTY.Product('500917'),
+                            formula_code = '[500917-000] SRF ALMONDS LEMON 10#',
+                            line_id = script.CNVZf.ProductionLine('11'),
+                            schedule_date = fix_date('B40720', 'ymd'),
+                            finish_date = None,
+                            line_id_set = False,
+                            schedule_date_set = False,
+                            state = 'cancelled',
+                            allergens = None,
+                            coating = None,
+                            batches = 17,
+                            ),
+                        imd(name='F328_285961_2_2_production_order'),
+                        ),
+                    ),
+                OE7=AttrDict(
+                    dept = '18',
+                    ),
+                Odoo13=AttrDict(
+                    department = '18',
+                    ),
+                ),
+            )
+
+# IFPP1
+from fis_schema import F329
+def ifpp1_data(script):
+    script.NVTY.Product('900091', id=900091)
+    script.NVTY.Product('967001', id=967001)
+    script.NVTY.Product('850615', id=850615)
+    script.NVTY.Product('850715', id=850715)
+    script.NVTY.Product('850128', id=850128)
+    script.NVTY.Product('850127', id=850127)
+    script.NVTY.Product('850134', id=850134)
+    script.NVTY.Product('002280', id=2280)
+    return (
+
+            # 0
+            DataSet(
+                on_disk={
+                    F329.order_no: '262323',            # distinct
+                    F329.formula_line_no: '071',
+                    F329.ingr_code_batch_1: '900091',
+                    F329.item_type_batch_1: 'M',        # this causes ignore
+                    F329.units_batch_1: 'EA',
+                    F329.qty_batch_1: 48,
+                    F329.desc: 'LABELS-THERMO TRANS (4"X 4") CASE',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='262323:900091',
+                        sequence=71,
+                        item_id=script.NVTY.Product('900091'),
+                        qty_needed=144,
+                        qty_desc='EA',
+                        order_ids=[script.IFPP0.ProductionOrder('262323'), ],
+                        ),
+                    imd(name='F329_262323_900091_production_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ignore=True,
+                ),
+
+            # 1
+            DataSet(
+                on_disk={
+                    F329.order_no: '262323',
+                    F329.formula_line_no: '041',
+                    F329.ingr_code_batch_1: '850615',
+                    F329.item_type_batch_1: '',
+                    F329.units_batch_1: 'EA',
+                    F329.qty_batch_1: -3,               # this causes ignore
+                    F329.desc: 'SUNRIDGE LABELS-TUB,FRNT,PUMPKN SEED,ORG',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='262323:850615',
+                        sequence=41,
+                        item_id=script.NVTY.Product('850615'),
+                        qty_needed=-9,
+                        qty_desc='EA',
+                        order_ids=[script.IFPP0.ProductionOrder('262323'), ],
+                        ),
+                    imd(name='F329_262323_850615_production_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ignore=True,
+                ),
+
+            # 2
+            DataSet(
+                on_disk={
+                    F329.order_no: '000000',            # this causes ignore
+                    F329.formula_line_no: '051',
+                    F329.ingr_code_batch_1: '850715',
+                    F329.item_type_batch_1: '',
+                    F329.units_batch_1: 'EA',
+                    F329.qty_batch_1: 385,
+                    F329.desc: 'SUNRIDGE LABELS-TUB,BCK,PUMP SEEDS ORG',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='000000:850715',
+                        sequence=51,
+                        item_id=script.NVTY.Product('850715'),
+                        qty_needed=0,
+                        qty_desc='EA',
+                        order_ids=None,
+                        ),
+                    imd(name='F329_000000_850715_production_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ignore=True,
+                ),
+
+            # 3
+            DataSet(
+                on_disk={
+                    F329.order_no: '257991',            # distinct
+                    F329.formula_line_no: '081',
+                    F329.ingr_code_batch_1: '967001',   # this causes ignore
+                    F329.item_type_batch_1: '',
+                    F329.units_batch_1: 'EA',
+                    F329.qty_batch_1: 200,
+                    F329.desc: 'FREIGHT CHARGES-PRODUCTION',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='257991:967001',
+                        sequence=81,
+                        item_id=script.NVTY.Product('967001'),
+                        qty_needed=1000,
+                        qty_desc='EA',
+                        order_ids=[script.IFPP0.ProductionOrder('257991'), ],
+                        ),
+                    imd(name='F329_257991_967001_production_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ignore=True,
+                ),
+
+            # 4
+            DataSet(
+                on_disk={
+                    F329.order_no: '257991',
+                    F329.formula_line_no: '021',
+                    F329.ingr_code_batch_1: '850128',
+                    F329.item_type_batch_1: '',
+                    F329.units_batch_1: 'EA',
+                    F329.qty_batch_1: 385,
+                    F329.desc: 'DELI TUBS-LIDS,#SD-OUTSIDE FIT, PETE',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='257991:850128',
+                        sequence=21,
+                        item_id=script.NVTY.Product('850128'),
+                        qty_needed=385 * 5,
+                        qty_desc='EA',
+                        order_ids=[script.IFPP0.ProductionOrder('257991'), ],
+                        ),
+                    imd(name='F329_257991_850128_production_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ),
+
+            # 5
+            DataSet(
+                on_disk={
+                    F329.order_no: '257991',
+                    F329.formula_line_no: '061',
+                    F329.ingr_code_batch_1: '850134',
+                    F329.item_type_batch_1: '',
+                    F329.units_batch_1: 'EA',
+                    F329.qty_batch_1: 50,
+                    F329.desc: 'BOXES-TUBS,BROWN KRAFT,PRINTED SUNRIDGE',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='257991:850134',
+                        sequence=61,
+                        item_id=script.NVTY.Product('850134'),
+                        qty_needed=250,
+                        qty_desc='EA',
+                        order_ids=[script.IFPP0.ProductionOrder('257991'), ],
+                        ),
+                    imd(name='F329_257991_850134_production_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ),
+
+            #6
+            DataSet(
+                on_disk={
+                    F329.order_no: '277813',                # distinct
+                    F329.formula_line_no: '001',
+                    F329.ingr_code_batch_1: '002280',
+                    F329.item_type_batch_1: '',
+                    F329.units_batch_1: 'CS',
+                    F329.qty_batch_1: 7,
+                    F329.desc: 'PUMPKIN SEEDS-RAW ORGANIC',
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        name='277813:002280',
+                        sequence=1,
+                        item_id=script.NVTY.Product('002280'),
+                        qty_needed=63,
+                        qty_desc='CS',
+                        order_ids=[script.IFPP0.ProductionOrder('277813-1_2'), script.IFPP0.ProductionOrder('277813-2_2')],
+                        ),
+                    imd(name='F329_277813_002280_production_ingredient'),
+                    ),
+                OE7=AttrDict(),
+                Odoo13=AttrDict(),
+                ),
+
+            )
+
+            # 8
+            # DataSet(
+            #     on_disk={
+            #         F329.order_no: '262323',
+            #         F329.formula_line_no: '032',
+            #         F329.ingr_code_batch_1: '850270',
+            #         F329.item_type_batch_1: '',
+            #         F329.units_batch_1: 'EA',
+            #         F329.qty_batch_1: 385,
+            #         F329.desc: 'SHRINK BANDS-W/PERF. FOR TUBS',
+            #         },
+            #     fis_rec=XidRec.fromdict(
+            #         AttrDict(
+            #             name=,
+            #             sequence=,
+            #             item_id=NVTY.Product(),
+            #             qty_needed=,
+            #             qty_desc=,
+            #             order_ids=[IFPP0.ProductionOrder(), ...],
+            #             ),
+            #         imd(name='F329_x_production_ingredient'),
+            #         ),
+            #     OE7=AttrDict(),
+            #     Odoo13=Attrdict(),
+            #     ),
+            #
+            # DataSet(
+            #     on_disk={
+            #         F329.order_no: '262323',
+            #         F329.formula_line_no: '031',
+            #         F329.ingr_code_batch_1: '850129',
+            #         F329.item_type_batch_1: '',
+            #         F329.units_batch_1: 'EA',
+            #         F329.qty_batch_1: 385,
+            #         F329.desc: 'FILM-TUB, PEEL-ABLE',
+            #         },
+            #     fis_rec=XidRec.fromdict(
+            #         AttrDict(
+            #             name=,
+            #             sequence=,
+            #             item_id=NVTY.Product(),
+            #             qty_needed=,
+            #             qty_desc=,
+            #             order_ids=[IFPP0.ProductionOrder(), ...],
+            #             ),
+            #         imd(name='F329_x_production_ingredient'),
+            #         ),
+            #     OE7=AttrDict(),
+            #     Odoo13=Attrdict(),
+            #     ),
+
+
+
+
+
+# NVTY
+from fis_schema import F135
+def nvty_data(script):
+    script.CNVZas.ProductCategory('3I', 123456)
+    script.CNVZas.ProductCategory('0I', 234567)
+    script.CNVZas.ProductCategory('4N', 345678)
+    return (
+
+            # 0
+            DataSet(
+                on_disk={
+                    F135.item_id: '500991',
+                    F135.wrhse_no: '1000',
+                    F135.available_key: 'Y',
+                    F135.sales_cat: '3I',
+                    F135.shelf_life_mos: '12',
+                    F135.trademarkd: 'PE',
+                    F135.desc: 'SRF JOLLY BEANS, VEGAN ORGANIC',
+                    F135.size: '10    lb',
+                    F135.catalog_location: '0000CAAA07',
+                    F135.upc_no: '086700009918',
+                    F135.primary_location: '3B39b',
+                    F135.net_un_wt: 10.0,
+                    F135.grs_un_wt: 11.0,
+                    F135.qty_on_hand: 2646.0,
+                    F135.new_retail: 8.09,
+                    F135.new_whlsl: 53.9,
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        active=True,
+                        name='SRF Jolly Beans, Vegan Organic',
+                        fis_name='SRF Jolly Beans, Vegan Organic',
+                        fis_qty_on_hand=2646.0,
+                        fis_availability_code='Y',
+                        sale_ok=True,
+                        fis_whsle_price=53.9,
+                        trademarks='PE',
+                        ean13='0867000099188',
+                        fis_location='3B39b',
+                        fis_shipping_size='10 lb',
+                        categ_id=script.CNVZas.ProductCategory('3I'),
+                        default_code='500991',
+                        weight=11,
+                        weight_net=10,
+                        list_price=8.09,
+                        fis_qty_produced=None,
+                        fis_10_day_produced=None,
+                        fis_21_day_produced=None,
+                        fis_qty_consumed=None,
+                        fis_10_day_consumed=None,
+                        fis_21_day_consumed=None,
+                        fis_qty_purchased=None,
+                        fis_10_day_purchased=None,
+                        fis_21_day_purchased=None,
+                        fis_qty_sold=None,
+                        fis_10_day_sold=None,
+                        fis_21_day_sold=None,
+                        fis_qty_available=None,
+                        fis_10_day_available=None,
+                        fis_21_day_available=None,
+                        fis_web_ingredients=None,
+                        fis_web_prep_instructions=None,
+
+                        ),
+                    imd(name='F135_500991_product_product'),
+                    ),
+                full_only_fields=(
+                    'fis_qty_produced', 'fis_10_day_produced', 'fis_21_day_produced',
+                    'fis_qty_consumed', 'fis_10_day_consumed', 'fis_21_day_consumed',
+                    'fis_qty_purchased', 'fis_10_day_purchased', 'fis_21_day_purchased',
+                    'fis_qty_sold', 'fis_10_day_sold', 'fis_21_day_sold',
+                    'fis_qty_available', 'fis_10_day_available', 'fis_21_day_available',
+                    'fis_web_ingredients', 'fis_web_prep_instructions',
+                    ),
+                OE7=AttrDict(
+                        module='F135',
+                        xml_id='500991',
+                        warranty=12,
+                        ),
+                Odoo13=AttrDict(
+                        fis_module='F135',
+                        fis_id='500991',
+                        fis_shelf_life=12,
+                        ),
+                ),
+
+            # 1
+            DataSet(
+                on_disk={
+                    F135.item_id: '500991',
+                    F135.wrhse_no: '3000',          # this causes ignore
+                    F135.available_key: 'Y',
+                    F135.sales_cat: 'OI',
+                    F135.shelf_life_mos: '',
+                    F135.trademarkd: '',
+                    F135.desc: 'SUNRIDGE JOLLY BEANS, VEGAN ORG NGMC',
+                    F135.size: '1/each',
+                    F135.catalog_location: '0000CAAT',
+                    F135.upc_no: '086700009918',
+                    F135.primary_location: 'B711a',
+                    F135.net_un_wt: 10.0,
+                    F135.grs_un_wt: 11.0,
+                    F135.qty_on_hand: 0.0,
+                    F135.new_retail: 6.29,
+                    F135.new_whlsl: 41.8,
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        active=True,
+                        name='SunRidge Jolly Beans, Vegan Org NGMC',
+                        fis_name='SunRidge Jolly Beans, Vegan Org NGMC',
+                        fis_qty_on_hand=0.0,
+                        fis_availability_code='Y',
+                        sale_ok=False,
+                        fis_whsle_price=41.8,
+                        trademarks=None,
+                        ean13='0867000099188',
+                        fis_location='B711a',
+                        fis_shipping_size='1 each',
+                        categ_id=script.CNVZas.ProductCategory('0I'),
+                        default_code='500991',
+                        weight=11.0,
+                        weight_net=10.0,
+                        list_price=6.29,
+                        fis_qty_produced=None,
+                        fis_10_day_produced=None,
+                        fis_21_day_produced=None,
+                        fis_qty_consumed=None,
+                        fis_10_day_consumed=None,
+                        fis_21_day_consumed=None,
+                        fis_qty_purchased=None,
+                        fis_10_day_purchased=None,
+                        fis_21_day_purchased=None,
+                        fis_qty_sold=None,
+                        fis_10_day_sold=None,
+                        fis_21_day_sold=None,
+                        fis_qty_available=None,
+                        fis_10_day_available=None,
+                        fis_21_day_available=None,
+                        fis_web_ingredients=None,
+                        fis_web_prep_instructions=None,
+                        ),
+                    imd(name='F135_500991_product_product'),
+                    ),
+                full_only_fields=(
+                    'fis_qty_produced', 'fis_10_day_produced', 'fis_21_day_produced',
+                    'fis_qty_consumed', 'fis_10_day_consumed', 'fis_21_day_consumed',
+                    'fis_qty_purchased', 'fis_10_day_purchased', 'fis_21_day_purchased',
+                    'fis_qty_sold', 'fis_10_day_sold', 'fis_21_day_sold',
+                    'fis_qty_available', 'fis_10_day_available', 'fis_21_day_available',
+                    'fis_web_ingredients', 'fis_web_prep_instructions',
+                    ),
+                OE7=AttrDict(
+                        module='F135',
+                        xml_id='500991',
+                        warranty=0,
+                        ),
+                Odoo13=AttrDict(
+                        fis_module='F135',
+                        fis_id='500991',
+                        fis_shelf_life=0,
+                        ),
+                ignore=True,
+                ),
+
+            # 2
+            DataSet(
+                on_disk={
+                    F135.item_id: '002280',
+                    F135.wrhse_no: '1000',
+                    F135.available_key: 'Y',
+                    F135.sales_cat: '4N',
+                    F135.shelf_life_mos: '',
+                    F135.trademarkd: '',
+                    F135.desc: 'PUMPKIN SEEDS-CHINESE GRADE A ORG NGMV',
+                    F135.size: '27.5  Z',
+                    F135.catalog_location: '0000NUTA00',
+                    F135.upc_no: '086700022801',
+                    F135.primary_location: '2C42a',
+                    F135.net_un_wt: 27.5,
+                    F135.grs_un_wt: 28.5,
+                    F135.qty_on_hand: 5276.0,
+                    F135.new_retail: 5.99,
+                    F135.new_whlsl: 109.45,
+                    },
+                fis_rec=XidRec.fromdict(
+                    AttrDict(
+                        active=True,
+                        name='Pumpkin Seeds-Chinese Grade A Org NGMV',
+                        fis_name='Pumpkin Seeds-Chinese Grade A Org NGMV',
+                        fis_qty_on_hand=5276.0,
+                        fis_availability_code='Y',
+                        sale_ok=True,
+                        fis_whsle_price=109.45,
+                        trademarks=None,
+                        ean13='0867000228014',
+                        fis_location='2C42a',
+                        fis_shipping_size='27.5 oz',
+                        categ_id=script.CNVZas.ProductCategory('4N'),
+                        default_code='002280',
+                        weight=28.5,
+                        weight_net=27.5,
+                        list_price=5.99,
+                        fis_qty_produced=None,
+                        fis_10_day_produced=None,
+                        fis_21_day_produced=None,
+                        fis_qty_consumed=None,
+                        fis_10_day_consumed=None,
+                        fis_21_day_consumed=None,
+                        fis_qty_purchased=None,
+                        fis_10_day_purchased=None,
+                        fis_21_day_purchased=None,
+                        fis_qty_sold=None,
+                        fis_10_day_sold=None,
+                        fis_21_day_sold=None,
+                        fis_qty_available=None,
+                        fis_10_day_available=None,
+                        fis_21_day_available=None,
+                        fis_web_ingredients=None,
+                        fis_web_prep_instructions=None,
+                        ),
+                    imd(name='F135_002280_product_product'),
+                    ),
+                full_only_fields=(
+                    'fis_qty_produced', 'fis_10_day_produced', 'fis_21_day_produced',
+                    'fis_qty_consumed', 'fis_10_day_consumed', 'fis_21_day_consumed',
+                    'fis_qty_purchased', 'fis_10_day_purchased', 'fis_21_day_purchased',
+                    'fis_qty_sold', 'fis_10_day_sold', 'fis_21_day_sold',
+                    'fis_qty_available', 'fis_10_day_available', 'fis_21_day_available',
+                    'fis_web_ingredients', 'fis_web_prep_instructions',
+                    ),
+                OE7=AttrDict(
+                        module='F135',
+                        xml_id='002280',
+                        warranty=0,
+                        ),
+                Odoo13=AttrDict(
+                        fis_module='F135',
+                        fis_id='002280',
+                        fis_shelf_life=0,
+                        ),
+                ),
+            )
+
+    
+# POSM/VNMS
+from fis_schema import F163, F65
+def posm_vnms_data(script):
+    return (
+
+            # 0 fails due to bad key
+            DataSet(
+                on_disk=(
+                    {
+                        F163.code: '02325,',
+                        F163.name: 'NONE',
+                        F163.addr1: '',
+                        F163.addr2: '',
+                        F163.addr3: '',
+                        F163.tele: '',
+                        F163.fax: '',
+                        F163.vendor: '02325,',
+                        F163.org_cert_file: '',
+                        F163.non_gmo: '',
+                        F163.kosher: '',
+                        F163.cert_exp: '',
+                        F163.gmo_exp: '',
+                        F163.kosher_exp: '',
+                        },
+                    None,
+                    ),
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='None',
+                            is_company=True,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street=None,
+                            street2=None,
+                            city=None,
+                            state_id=None,
+                            zip=None,
+                            country_id=None,
+                            phone=None,
+                            fax=None,
+                            use_parent_address=False,
+                            fis_valid=False,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=False,
+                            fis_non_gmo=False,
+                            fis_kosher=False,
+                            fis_org_exp=None,
+                            fis_gmo_exp=None,
+                            fis_kosher_exp=None,
+                            ),
+                        imd(name='F163_02325,_res_partner'),
+                        ),
+                    ),
+                OE7=AttrDict(
+                    xml_id='02325,',
+                    module='F163'
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='02325,',
+                    fis_module='F163',
+                    ),
+                ignore=True,
+                ),
+
+            # 1 fails due to no name
+            DataSet(
+                on_disk=(
+                    {
+                        F163.code: '013001',
+                        F163.name: '',
+                        F163.addr1: '123 Mane Blvd',
+                        F163.addr2: '',
+                        F163.addr3: '',
+                        F163.tele: '',
+                        F163.fax: '',
+                        F163.vendor: '013001',
+                        F163.org_cert_file: '',
+                        F163.non_gmo: '',
+                        F163.kosher: '',
+                        F163.cert_exp: '',
+                        F163.gmo_exp: '',
+                        F163.kosher_exp: '',
+                        },
+                    None,
+                    ),
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='',
+                            is_company=True,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street='123 Mane Blvd',
+                            street2=None,
+                            city=None,
+                            state_id=None,
+                            zip=None,
+                            country_id=None,
+                            phone=None,
+                            fax=None,
+                            use_parent_address=False,
+                            fis_valid=True,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=False,
+                            fis_non_gmo=False,
+                            fis_kosher=False,
+                            fis_org_exp=None,
+                            fis_gmo_exp=None,
+                            fis_kosher_exp=None,
+                            ),
+                        imd(name='F163_013001_res_partner'),
+                        ),
+                    ),
+                OE7=AttrDict(
+                    xml_id='013001',
+                    module='F163'
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='013001',
+                    fis_module='F163',
+                    ),
+                ignore=True,
+                ),
+
+
+            # 2 fails due to NO LONGER HERE
+            DataSet(
+                on_disk=(
+                    {
+                        F163.code: '000963',
+                        F163.name: 'JULIE NOLAN',
+                        F163.addr1: '**NO LONGER HERE**',
+                        F163.addr2: '',
+                        F163.addr3: '',
+                        F163.tele: '',
+                        F163.fax: '',
+                        F163.vendor: '000963',
+                        F163.org_cert_file: '',
+                        F163.non_gmo: '',
+                        F163.kosher: '',
+                        F163.cert_exp: '',
+                        F163.gmo_exp: '',
+                        F163.kosher_exp: '',
+                        },
+                    {
+                        F65.code: '000963',
+                        F65.name: 'JULIE NOLAN',
+                        F65.addr1: '**NO LONGER HERE**',
+                        F65.addr2: '',
+                        F65.addr3: '',
+                        F65.tele: '',
+                        F65.fax: '',
+                        F65.contact: '',
+                        F65.org_cert_file: '',
+                        F65.cert_exp: '',
+                        },
+                    ),
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='Julie Nolan / **NO LONGER HERE**',
+                            is_company=True,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street=None,
+                            street2=None,
+                            city=None,
+                            state_id=None,
+                            zip=None,
+                            country_id=None,
+                            phone=None,
+                            fax=None,
+                            use_parent_address=False,
+                            fis_valid=True,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=False,
+                            fis_non_gmo=False,
+                            fis_kosher=False,
+                            fis_org_exp=None,
+                            fis_gmo_exp=None,
+                            fis_kosher_exp=None,
+                            ),
+                        imd(name='F163_000963_res_partner'),
+                        ),
+                    ),
+                OE7=AttrDict(
+                    xml_id='000963',
+                    module='F163'
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='000963',
+                    fis_module='F163',
+                    ),
+                ignore=True,
+                ),
+
+
+            # 3 fails due to OLDER/N.L.H. EMPLOYEE
+            DataSet(
+                on_disk=(
+                    {
+                        F163.code: '002138',
+                        F163.name: 'PHILLIPS, JENNIFER',
+                        F163.addr1: '**OLDER/N.L.H. EMPLOYEE**',
+                        F163.addr2: '',
+                        F163.addr3: '',
+                        F163.tele: '',
+                        F163.fax: '',
+                        F163.vendor: '002138',
+                        F163.org_cert_file: '',
+                        F163.non_gmo: '',
+                        F163.kosher: '',
+                        F163.cert_exp: '',
+                        F163.gmo_exp: '',
+                        F163.kosher_exp: '',
+                        },
+                    {
+                        F65.code: '002138',
+                        F65.name: 'PHILLIPS, JENNIFER',
+                        F65.addr1: '**OLDER/N.L.H. EMPLOYEE**',
+                        F65.addr2: '',
+                        F65.addr3: '',
+                        F65.tele: '',
+                        F65.fax: '0000000000',
+                        F65.contact: '',
+                        F65.org_cert_file: 'N',
+                        F65.cert_exp: '',
+                        },
+                    ),
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='Phillips, Jennifer / **OLDER/N.L.H. EMPLOYEE**',
+                            is_company=True,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street=None,
+                            street2=None,
+                            city=None,
+                            state_id=None,
+                            zip=None,
+                            country_id=None,
+                            phone=None,
+                            fax=None,
+                            use_parent_address=False,
+                            fis_valid=True,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=False,
+                            fis_non_gmo=False,
+                            fis_kosher=False,
+                            fis_org_exp=None,
+                            fis_gmo_exp=None,
+                            fis_kosher_exp=None,
+                            ),
+                        imd(name='F163_002138_res_partner'),
+                        ),
+                    ),
+                OE7=AttrDict(
+                    xml_id='002138',
+                    module='F163'
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='002138',
+                    fis_module='F163',
+                    ),
+                ignore=True,
+                ),
+
+
+            # 4 fails due to DISCO
+            DataSet(
+                on_disk=(
+                    {
+                        F163.code: '002425',
+                        F163.name: 'EASTLAND OF CANADA/SUN WING LEE',
+                        F163.addr1: "**DISCO'D AS OF 8/22/13**",
+                        F163.addr2: '15 WERTHEIM CT STE 511',
+                        F163.addr3: 'RICHMOND HILL, ONTARIO L4B3H7 CANAD',
+                        F163.tele: '9057641323',
+                        F163.fax: '6503420138',
+                        F163.vendor: '002425',
+                        F163.org_cert_file: 'N',
+                        F163.non_gmo: '',
+                        F163.kosher: 'N',
+                        F163.cert_exp: '',
+                        F163.gmo_exp: '',
+                        F163.kosher_exp: '',
+                        },
+                    {
+                        F65.code: '002425',
+                        F65.name: 'EASTLAND OF CANADA/SUN WING LEE',
+                        F65.addr1: "**DISCO'D AS OF 8/22/13**",
+                        F65.addr2: '15 WERTHEIM CT STE 511',
+                        F65.addr3: 'RICHMOND HILL, ONTARIO L4B3H7 CANAD',
+                        F65.tele: '9057641323',
+                        F65.fax: '9057641344',
+                        F65.contact: '',
+                        F65.org_cert_file: 'N',
+                        F65.cert_exp: '',
+                        },
+                    ),
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name="Eastland of Canada/Sun Wing Lee / **DISCO'D AS OF 8/22/13**",
+                            is_company=True,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street='15 Wertheim Ct Ste 511',
+                            street2=None,
+                            city='Richmond Hill Canad',
+                            state_id=state_recs['ON'].state,
+                            zip='L4B 3H7',
+                            country_id=state_recs['ON'].country,
+                            phone='905.764.1323',
+                            fax='650.342.0138',
+                            use_parent_address=False,
+                            fis_valid=True,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=False,
+                            fis_non_gmo=False,
+                            fis_kosher=False,
+                            fis_org_exp=None,
+                            fis_gmo_exp=None,
+                            fis_kosher_exp=None,
+                            ),
+                        imd(name='F163_002425_res_partner'),
+                        ),
+                    ),
+                OE7=AttrDict(
+                    xml_id='002425',
+                    module='F163'
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='002425',
+                    fis_module='F163',
+                    ),
+                ignore=True,
+                ),
+
+
+            # 5 fails due to code
+            DataSet(
+                on_disk=(
+                    None,
+                    {
+                        F65.code: '00F999',
+                        F65.name: 'FALCON OUTSIDE WAREHOUSE',
+                        F65.addr1: '1342 A WEST BEACH',
+                        F65.addr2: 'WATSONVILLE, CA 95076',
+                        F65.addr3: '',
+                        F65.tele: '',
+                        F65.fax: '',
+                        F65.contact: '',
+                        F65.org_cert_file: 'O',
+                        F65.cert_exp: '1023B2',
+                        },
+                    ),
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='Falcon Outside Warehouse',
+                            is_company=True,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street='1342 A West Bch',
+                            street2=None,
+                            city='Watsonville',
+                            state_id=state_recs['CA'].state,
+                            zip='95076',
+                            country_id=state_recs['CA'].country,
+                            phone=None,
+                            fax=None,
+                            use_parent_address=False,
+                            fis_valid=False,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=True,
+                            fis_non_gmo=False,
+                            fis_kosher=False,
+                            fis_org_exp=Date(2018, 10, 23),
+                            fis_gmo_exp=None,
+                            fis_kosher_exp=None,
+                            ),
+                        imd(name='F163_00F999_res_partner'),
+                        ),
+                    ),
+                OE7=AttrDict(
+                    xml_id='00F999',
+                    module='F163'
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='00F999',
+                    fis_module='F163',
+                    ),
+                ignore=True,
+                ),
+
+
+            # 6 only in 163
+            DataSet(
+                on_disk=(
+                    {
+                        F163.code: '001060',
+                        F163.name: 'SACRAMENTO MEDICAL GROUP',
+                        F163.addr1: '2708 MERCANTILE DR',
+                        F163.addr2: 'RANGO CORDOVA, CA 95742',
+                        F163.addr3: '',
+                        F163.tele: '9163879791',
+                        F163.fax: '',
+                        F163.vendor: '001060',
+                        F163.org_cert_file: 'Y',
+                        F163.non_gmo: 'Y',
+                        F163.kosher: 'Y',
+                        F163.cert_exp: '0709B5',
+                        F163.gmo_exp: '0101B4',
+                        F163.kosher_exp: '1201B3',
+                        },
+                    None,
+                    ),
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='Sacramento Medical Group',
+                            is_company=True,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street='2708 Mercantile Dr',
+                            street2=None,
+                            city='Rango Cordova',
+                            state_id=state_recs['CA'].state,
+                            zip='95742',
+                            country_id=state_recs['CA'].country,
+                            phone='916.387.9791',
+                            fax=None,
+                            use_parent_address=False,
+                            fis_valid=True,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=True,
+                            fis_non_gmo=True,
+                            fis_kosher=True,
+                            fis_org_exp=Date(2021, 7, 9),
+                            fis_gmo_exp=Date(2020, 1, 1),
+                            fis_kosher_exp=Date(2019, 12, 1),
+                            ),
+                        imd(name='F163_001060_res_partner'),
+                        ),
+                    ),
+                OE7=AttrDict(
+                    xml_id='001060',
+                    module='F163'
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='001060',
+                    fis_module='F163',
+                    ),
+                ),
+
+
+            # 7 only in 65, with contact
+            DataSet(
+                on_disk=(
+                    None,
+                    {
+                        F65.code: '001255',
+                        F65.name: 'DEPT. OF HEALTH & HUMAN SERVICES',
+                        F65.addr1: 'DFM, ACCOUNTING BRANCH, HFA-120',
+                        F65.addr2: '5600 FISHERS LANE, ROOM 11-92',
+                        F65.addr3: 'ROCKVILLE, MD 20857',
+                        F65.tele: '',
+                        F65.fax: '0000000000',
+                        F65.contact: 'WANDA',
+                        F65.org_cert_file: 'Y',
+                        F65.cert_exp: '1113B6',
+                        },
+                    ),
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='Dept. of Health & Human Services',
+                            is_company=True,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street='DFM Accounting Br HFA-120',
+                            street2='5600 Fishers Ln Rm 11-92',
+                            city='Rockville',
+                            state_id=state_recs['MD'].state,
+                            zip='20857',
+                            country_id=state_recs['MD'].country,
+                            phone=None,
+                            fax=None,
+                            use_parent_address=False,
+                            fis_valid=True,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=True,
+                            fis_non_gmo=False,
+                            fis_kosher=False,
+                            fis_org_exp=Date(2022, 11, 13),
+                            fis_gmo_exp=None,
+                            fis_kosher_exp=None,
+                            ),
+                        imd(name='F163_001255_res_partner'),
+                        ),
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='Wanda',
+                            is_company=False,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street='DFM Accounting Br HFA-120',
+                            street2='5600 Fishers Ln Rm 11-92',
+                            city='Rockville',
+                            state_id=state_recs['MD'].state,
+                            zip='20857',
+                            country_id=state_recs['MD'].country,
+                            phone=None,
+                            fax=None,
+                            use_parent_address=False,
+                            fis_valid=True,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=False,
+                            fis_non_gmo=False,
+                            fis_kosher=False,
+                            fis_org_exp=None,
+                            fis_gmo_exp=None,
+                            fis_kosher_exp=None,
+                            ),
+                        imd(name='F163_cntct_001255_res_partner'),
+                        ),
+                    ),
+                OE7=(
+                    AttrDict(
+                        xml_id='001255',
+                        module='F163'
+                        ),
+                    AttrDict(
+                        xml_id='cntct_001255',
+                        module='F163'
+                        ),
+                    ),
+                Odoo13=(
+                    AttrDict(
+                        fis_id='001255',
+                        fis_module='F163',
+                        ),
+                    AttrDict(
+                        fis_id='cntct_001255',
+                        fis_module='F163',
+                        ),
+                    ),
+                ),
+
+            # 8 only in 65, no contact
+            DataSet(
+                on_disk=(
+                    None,
+                    {
+                        F65.code: '001255',
+                        F65.name: 'DEPT. OF HEALTH & HUMAN SERVICES',
+                        F65.addr1: 'DFM, ACCOUNTING BRANCH, HFA-120',
+                        F65.addr2: '5600 FISHERS LANE, ROOM 11-92',
+                        F65.addr3: 'ROCKVILLE, MD 20857',
+                        F65.tele: '',
+                        F65.fax: '0000000000',
+                        F65.contact: '',
+                        F65.org_cert_file: '',
+                        F65.cert_exp: '',
+                        },
+                    ),
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='Dept. of Health & Human Services',
+                            is_company=True,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street='DFM Accounting Br HFA-120',
+                            street2='5600 Fishers Ln Rm 11-92',
+                            city='Rockville',
+                            state_id=state_recs['MD'].state,
+                            zip='20857',
+                            country_id=state_recs['MD'].country,
+                            phone=None,
+                            fax=None,
+                            use_parent_address=False,
+                            fis_valid=True,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=False,
+                            fis_non_gmo=False,
+                            fis_kosher=False,
+                            fis_org_exp=None,
+                            fis_gmo_exp=None,
+                            fis_kosher_exp=None,
+                            ),
+                        imd(name='F163_001255_res_partner'),
+                        ),
+                    ),
+                OE7=AttrDict(
+                    xml_id='001255',
+                    module='F163'
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='001255',
+                    fis_module='F163',
+                    ),
+                ),
+
+
+            # 9
+            DataSet(
+                on_disk=(
+                    {
+                        F163.code: '000444',
+                        F163.name: 'CARRIER TRANSCOLD',
+                        F163.addr1: 'OF NORTHERN CALIFORNIA',
+                        F163.addr2: 'P.O. BOX 11845',
+                        F163.addr3: 'FRESNO, CA 93775-1845',
+                        F163.tele: '5107830180',
+                        F163.fax: '',
+                        F163.vendor: '000444',
+                        F163.org_cert_file: '',
+                        F163.non_gmo: '',
+                        F163.kosher: '',
+                        F163.cert_exp: '',
+                        F163.gmo_exp: '',
+                        F163.kosher_exp: '',
+                        },
+                    {
+                        F65.code: '000444',
+                        F65.name: 'CARRIER TRANSCOLD',
+                        F65.addr1: 'OF NORTHERN CALIFORNIA',
+                        F65.addr2: 'P.O. BOX 11845',
+                        F65.addr3: 'FRESNO, CA 93775-1845',
+                        F65.tele: '5107830180',
+                        F65.fax: '0000000000',
+                        F65.contact: 'ALEX X14566',
+                        F65.org_cert_file: 'N',
+                        F65.cert_exp: '',
+                        },
+                    ),
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='Carrier Transcold of Northern California',
+                            is_company=True,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street='PO Box 11845',
+                            street2=None,
+                            city='Fresno',
+                            state_id=state_recs['CA'].state,
+                            zip='93775',
+                            country_id=state_recs['CA'].country,
+                            phone='510.783.0180',
+                            fax=None,
+                            use_parent_address=False,
+                            fis_valid=True,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=False,
+                            fis_non_gmo=False,
+                            fis_kosher=False,
+                            fis_org_exp=None,
+                            fis_gmo_exp=None,
+                            fis_kosher_exp=None,
+                            ),
+                        imd(name='F163_000444_res_partner'),
+                        ),
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='Alex',
+                            is_company=False,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street='PO Box 11845',
+                            street2=None,
+                            city='Fresno',
+                            state_id=state_recs['CA'].state,
+                            zip='93775',
+                            country_id=state_recs['CA'].country,
+                            phone='510.783.0180 x14566',
+                            fax=None,
+                            use_parent_address=False,
+                            fis_valid=True,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=False,
+                            fis_non_gmo=False,
+                            fis_kosher=False,
+                            fis_org_exp=None,
+                            fis_gmo_exp=None,
+                            fis_kosher_exp=None,
+                            ),
+                        imd(name='F163_cntct_000444_res_partner'),
+                        ),
+                    ),
+                OE7=(
+                    AttrDict(
+                        xml_id='000444',
+                        module='F163'
+                        ),
+                    AttrDict(
+                        xml_id='cntct_000444',
+                        module='F163'
+                        ),
+                    ),
+                Odoo13=(
+                    AttrDict(
+                        fis_id='000444',
+                        fis_module='F163'
+                        ),
+                    AttrDict(
+                        fis_id='cntct_000444',
+                        fis_module='F163'
+                        ),
+                    ),
+                ),
+
+
+            # 10
+            DataSet(
+                on_disk=(
+                    {
+                        F163.code: '000490',
+                        F163.name: 'COAST TO COAST',
+                        F163.addr1: '285 LOMBARDY ST.',
+                        F163.addr2: 'BROOKLYN, NY 11222',
+                        F163.addr3: '',
+                        F163.tele: '7189630755',
+                        F163.fax: '',
+                        F163.vendor: '000490',
+                        F163.org_cert_file: '',
+                        F163.non_gmo: '',
+                        F163.kosher: '',
+                        F163.cert_exp: '',
+                        F163.gmo_exp: '',
+                        F163.kosher_exp: '',
+                        },
+                    {
+                        F65.code: '000490',
+                        F65.name: 'COAST TO COAST',
+                        F65.addr1: '285 LOMBARDY ST.',
+                        F65.addr2: 'BROOKLYN, NY 11222',
+                        F65.addr3: '',
+                        F65.tele: '7189630755',
+                        F65.fax: '0000000000',
+                        F65.contact: 'KEN-X207',
+                        F65.org_cert_file: 'N',
+                        F65.cert_exp: '',
+                        },
+                    ),
+                fis_rec=(
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='Coast to Coast',
+                            is_company=True,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street='285 Lombardy St',
+                            street2=None,
+                            city='Brooklyn',
+                            state_id=state_recs['NY'].state,
+                            zip='11222',
+                            country_id=state_recs['NY'].country,
+                            phone='718.963.0755',
+                            fax=None,
+                            use_parent_address=False,
+                            fis_valid=True,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=False,
+                            fis_non_gmo=False,
+                            fis_kosher=False,
+                            fis_org_exp=None,
+                            fis_gmo_exp=None,
+                            fis_kosher_exp=None,
+                            ),
+                        imd(name='F163_000490_res_partner'),
+                        ),
+                    XidRec.fromdict(
+                        AttrDict(
+                            name='Ken',
+                            is_company=False,
+                            customer=False,
+                            supplier=True,
+                            active=True,
+                            street='285 Lombardy St',
+                            street2=None,
+                            city='Brooklyn',
+                            state_id=state_recs['NY'].state,
+                            zip='11222',
+                            country_id=state_recs['NY'].country,
+                            phone='718.963.0755 x207',
+                            fax=None,
+                            use_parent_address=False,
+                            fis_valid=True,
+                            fis_updated_by_user='',
+                            fis_org_cert_file=False,
+                            fis_non_gmo=False,
+                            fis_kosher=False,
+                            fis_org_exp=None,
+                            fis_gmo_exp=None,
+                            fis_kosher_exp=None,
+                            ),
+                        imd(name='F163_cntct_000490_res_partner'),
+                        ),
+                    ),
+                OE7=(
+                    AttrDict(
+                        xml_id='000490',
+                        module='F163'
+                        ),
+                    AttrDict(
+                        xml_id='cntct_000490',
+                        module='F163'
+                        ),
+                    ),
+                Odoo13=(
+                    AttrDict(
+                        fis_id='000490',
+                        fis_module='F163'
+                        ),
+                    AttrDict(
+                        fis_id='cntct_000490',
+                        fis_module='F163'
+                        ),
+                    ),
+                ),
+
+
+            )
 
 
 # main

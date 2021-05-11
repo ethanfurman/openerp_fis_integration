@@ -8,7 +8,7 @@ import re
 import warnings
 
 from abc import ABCMeta, abstractmethod
-from aenum import Enum
+from aenum import Enum, Flag, NamedConstant, NamedTuple, AutoValue
 from antipathy import Path
 from dbf import Date, DateTime, Time, Table, READ_WRITE
 from dbf import NoneType, NullType, Char, Logical
@@ -17,16 +17,33 @@ from openerplib import DEFAULT_SERVER_DATE_FORMAT, get_records, get_xid_records,
 from openerplib import Fault, PropertyNames, IDEquality, Many2One, SetOnce
 from scription import print, echo, error, ViewProgress, script_verbosity, abort
 from traceback import format_exception
-from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, PostalCode
+from VSS.address import cszk, Rise, Sift, AddrCase, BsnsCase, NameCase, PostalCode
 from VSS.BBxXlate.fisData import fisData
-from VSS.utils import LazyClassAttr
+from VSS.utils import all_equal, LazyClassAttr
 
 virtualenv = os.environ['VIRTUAL_ENV']
-odoo_erp = 1 if 'odoo' in virtualenv else 0
+
+class K(NamedConstant):
+    OE7 = 0
+    Odoo13 = 1
+
+OE7 = K.OE7
+Odoo13 = K.Odoo13
+odoo_erp = Odoo13 if 'odoo' in virtualenv else OE7
 
  # keep pyflakes happy
 script_verbosity
 abort
+
+    # class ParentField(object):
+    #     """
+    #     redirects access to same-named attribute on parent
+    #     """
+    #     def __get__(self, instance, owner_class=None):
+    #         if owner_class is not None:
+    #             return self
+    #         return getattr(instance.parent, self.name)
+
 
 @PropertyNames
 class XmlLink(IDEquality):
@@ -37,19 +54,60 @@ class XmlLink(IDEquality):
     xml_id = SetOnce()
     id = SetOnce()
     _cache = {}
+    _other_fields = {}
     # "host" is set by SynchronizeType
 
-    def __new__(cls, xml_id, id=None):
+    def __new__(cls, xml_id, id=None, **kwds):
+        if isinstance(id, str):
+            raise Exception('oops -> %r %r' % (xml_id, id))
         if xml_id not in cls._cache.setdefault(cls, {}):
-            obj = super(XmlLink, cls).__new__(cls)
-            obj.xml_id = xml_id
+            link = super(XmlLink, cls).__new__(cls)
+            link.xml_id = xml_id
             if id is not None:
-                obj.id = id
-            cls._cache[cls][xml_id] = obj
-        return cls._cache[cls][xml_id]
+                link.id = id
+            cls._cache[cls][xml_id] = link
+        link = cls._cache[cls][xml_id]
+        for k, v in kwds.items():
+            setattr(link, k, v)
+        return link
 
     def __repr__(self):
-        return "%s(id=%r, xml_id=%r)" % (self.__class__.__name__, self.id, self.xml_id)
+        return "%s(xml_id=%r, id=%r)" % (self.__class__.__name__, self.xml_id, self.id)
+
+    def __getattr__(self, name):
+        if name not in self.host.OE_FIELDS_LONG:
+            "%r not in %s.OE_FIELDS_LONG" % (name, self.host.__class__.__name__)
+        return XmlLinkField(self.xml_id, self.id, name)
+
+
+@PropertyNames
+class XmlLinkField(XmlLink):
+    """
+    soft reference to a record's field
+    """
+
+    value = SetOnce()
+    _cache = {}
+
+    def __new__(cls, parent_xml_id, parent_id, field):
+        parent = XmlLink(parent_xml_id, parent_id)
+        if (parent_xml_id, parent_id, field) not in cls._cache:
+            obj = object.__new__(cls)
+            obj.parent_id = parent_id
+            obj.parent_xml_id = parent_xml_id
+            obj.name = field
+            obj._other_fields.setdefault(parent, set()).add(field)
+            cls._cache[parent_xml_id, parent_id, field] = obj
+        obj = cls._cache[parent_xml_id, parent_id, field]
+        return obj
+
+    def __repr__(self):
+        return ("<%s: xml_id=%r, id=%r, field=%r, value=%r>"
+                % (
+                    self.__class__.__name__,
+                    self.parent_xml_id, self.parent_id,
+                    self.name, self.value,
+                    ))
 
 
 Synchronize = None
@@ -109,7 +167,14 @@ class SynchronizeType(ABCMeta):
                     break
         return cls
 
-SynchronizeABC = SynchronizeType('SynchronizeABC', (object, ), {})
+SynchronizeABC = SynchronizeType(
+        'SynchronizeABC',
+        (object, ),
+        {
+            '__repr__':lambda s: "%s(%r, %r)" % (s.__class__.__name__, s.erp, s.config),
+            '__str__': lambda s: "%s" % (s.__class__.__name__, ),
+            },
+        )
 
 class Synchronize(SynchronizeABC):
 
@@ -121,11 +186,13 @@ class Synchronize(SynchronizeABC):
         if self.extra.get('key_filter') is not None:
             if self.extra['key_filter'] == rec[self.FIS_KEY]:
                 return False
-            return True
+            else:
+                return True
         return False
 
     get_fis_table = staticmethod(fisData)
     get_xid_records = staticmethod(get_xid_records)
+    get_records = staticmethod(get_records)
 
     def __init__(self, connect, config, extra=None):
         """
@@ -317,7 +384,7 @@ class Synchronize(SynchronizeABC):
                             % (len(unique), 1+(len(dupes)))
                             )
         # normalize FIS records
-        self.normalize_fis()
+        self.normalize_fis('full')
         # compare FIS records to OpenERP records
         all_keys = sorted(set(list(fis_records.keys()) + list(oe_records.keys())))
         for key in ViewProgress(
@@ -462,8 +529,7 @@ class Synchronize(SynchronizeABC):
 
     def fis_long_load(self):
         """
-        when complete, all needed FIS and OE records are ready for processing
-        (loads entire FIS table and all possible OE records)
+        load entire FIS table
         """
         self.open_fis_tables()
         print(self.fis_table.filename, verbose=2)
@@ -481,8 +547,7 @@ class Synchronize(SynchronizeABC):
 
     def fis_quick_load(self):
         """
-        when complete, all needed FIS and OE records are ready for processing
-        (looks for changes between current and most recent FIS files)
+        load all FIS records that have changes
         """
         self.open_fis_tables()
         print(self.fis_table.filename, verbose=2)
@@ -668,15 +733,21 @@ class Synchronize(SynchronizeABC):
         values.update(record)
         self.log('failed', *(values, ))
 
-    def normalize_fis(self):
+    def normalize_fis(self, method):
         """
-        override this method if fis records need extra work
+        fills in the target id of each link
+
+        method can be 'quick' or 'full', which subclasses may make use of
         """
         print('normalizing...')
         if not(self.fis_records):
             return
         fields = []
+        sub_fields = {}
         check_fields = self.fis_records.values()[0].keys()
+        #
+        # gather the fields that are links
+        #
         for rec in self.fis_records.values():
             for field_name in check_fields:
                 value = rec[field_name]
@@ -684,12 +755,17 @@ class Synchronize(SynchronizeABC):
                     check_fields.remove(field_name)
                     if isinstance(value, XmlLink):
                         fields.append((field_name, value.host))
+                    if isinstance(value, XmlLinkField):
+                        sub_fields.setdefault(field_name, set).update(value.fields)
             if not check_fields:
                 break
         if not fields:
             return
         else:
             print('  ', ', '.join([f[0] for f in fields]), verbose=2)
+        #
+        # gather the fis (xml) ids needed
+        #
         for field_name, host in ViewProgress(
                 fields,
                 message='updating $total field(s)',
@@ -700,34 +776,48 @@ class Synchronize(SynchronizeABC):
             # host.OE_KEY_MODULE = 'F33'
             needed = {}
             for rec in self.fis_records.values():
-                value = rec[field_name]
-                if value is None or value.id:
+                link = rec[field_name]
+                if link is None or link.id:
                     continue
-                # value.xml_id = 'HE477'
-                # value.id = None
-                needed[value.xml_id] = value
+                # link.xml_id = 'HE477'
+                # link.id = None
+                needed[link.xml_id] = link
             print('  needed:', sorted(needed.keys()[:10]), verbose=2)
             model = host.OE
             key = host.OE_KEY
             print('  model: %r\n  key: %r' % (model, key), verbose=2)
+            #
+            # get the needed records from OpenERP
+            #
             oe_records = dict(
-                    (r[key], r.id)
+                    (r[key], r)
                     for r in get_records(
                         self.erp, model,
                         ids=self.ids_from_fis_ids(
                             host.calc_xid,
                             [p.xml_id for p in needed.values()],
                             ),
-                        fields=['id', key],
+                        fields=['id', key] + sub_fields[field_name],
                         context=self.context,
                         ))
             print('  found:', sorted(oe_records.items()[:10]), verbose=2)
             for xml_id, link in needed.items():
-                link.id = oe_records.get(xml_id, None)
-                if link.id is None:
-                    self.need_normalized[xml_id] = link
+                # link is the pointer to the foriegn record
+                # value is the foreign record
+                value = oe_records.get(xml_id, None)
+                if isinstance(link, XmlLinkField):
+                    link.value = value and getattr(value, link.name)
+                else:
+                    link.id = value and value.id
+                if host is self.__class__:
+                    # this part only works for self-referencial fields
+                    if link.id is None:
+                        self.need_normalized[xml_id] = link
 
     def normalize_records(self, fis_rec, oe_rec):
+        """
+        copy appropriate data from oe records to matching fis records
+        """
         fis_rec.id = oe_rec.id
         fis_rec._imd = oe_rec._imd
 
@@ -929,6 +1019,7 @@ class Synchronize(SynchronizeABC):
         # - full -> current OpenERP data
         #
         print('=' * 80)
+        self.method = method
         self.create_dbf_log()
         try:
             print('processing %s...' % self.FN)
@@ -950,7 +1041,7 @@ class Synchronize(SynchronizeABC):
                 raise ValueError('unknown METHOD: %r' % (method, ))
             names = self.load_fis_data()    # load fis data
             self.oe_load_data(names)        # load oe data
-            self.normalize_fis()            # adjust fis data as needed
+            self.normalize_fis(method)      # adjust fis data as needed
             self.categorize()               # split into changed, added, deleted groups
             self.record_deletions()         # deletions first, in case imd changed
             self.record_additions()
@@ -1036,7 +1127,6 @@ class Synchronize(SynchronizeABC):
 class SynchronizeAddress(Synchronize):
 
     def __init__(self, connect, config, state_recs, country_recs, *args, **kwds):
-
         self.state_recs = state_recs
         self.country_recs = country_recs
         super(SynchronizeAddress, self).__init__(connect, config, *args, **kwds)
@@ -1065,26 +1155,15 @@ class SynchronizeAddress(Synchronize):
                 error(oe_rec, fis_rec, sep='\n---\n', border='box')
                 raise
 
-    def process_address(self, schema, fis_rec, home=False):
-        result = {}
-        address_lines = (fis_rec[schema.addr1], fis_rec[schema.addr2], fis_rec[schema.addr3])
-        print('\naddress lines:\n1: %r\n2: %r\n3: %r\r' % address_lines, sep='\n', border='overline', verbose=4)
-        addr1, addr2, addr3 = Sift(*address_lines)
-        addr2, city, state, postal, country = cszk(addr2, addr3)
-        addr3 = None
-        addr1 = normalize_address(addr1)
-        addr2 = normalize_address(addr2)
-        addr1, addr2 = AddrCase(Rise(addr1, addr2))
-        city = NameCase(city)
-        state, country = NameCase(state), NameCase(country)
-        print('   -----\n1: %r\n2: %r\nc: %r   s: %r   z: %r\nk: %r' % (addr1, addr2, city, state, postal, country), verbose=4)
-        valid_address = True
-        if not (addr1 or addr2) or not (city or state or country):
-            # just use the FIS data without processing
-            addr1, addr2, city = Rise(*address_lines)
-            state = country = ''
-            postal = PostalCode('', '')
-            valid_address = False
+    def process_name_address(self, schema, fis_rec, home=False):
+        address = {}
+        address_lines = (
+                fis_rec[schema.name],
+                fis_rec[schema.addr1],
+                fis_rec[schema.addr2],
+                fis_rec[schema.addr3],
+                )
+        name, do_not_use, addr1, addr2, city, state, postal, country = process_name_address(address_lines)
         if home:
             sf = 'home_street'
             s2f = 'home_street2'
@@ -1099,31 +1178,605 @@ class SynchronizeAddress(Synchronize):
             sidf = 'state_id'
             zf = 'zip'
             kidf = 'country_id'
-        result[sf] = addr1 or None
-        result[s2f] = addr2 or None
-        result[cf] = city or None
-        result[zf] = postal or None
-        result[sidf] = None
-        result[kidf] = None
-        if valid_address:
-            if state:
-                result[sidf] = self.state_recs[state][0]
-                result[kidf] = country = self.state_recs[state][1]
-            elif country:
-                country_id = self.country_recs.get(country, None)
-                if country_id:
-                    result[kidf] = country_id
-                elif city:
-                    city += ', ' + country
-                    result[cf] = city
+        address[sf] = addr1 or None
+        address[s2f] = addr2 or None
+        address[cf] = city or None
+        address[zf] = postal or None
+        address[sidf] = None
+        address[kidf] = None
+        if state:
+            address[sidf] = self.state_recs[state][0]
+            address[kidf] = country = self.state_recs[state][1]
+        elif country:
+            country_id = self.country_recs.get(country, None)
+            if country_id:
+                address[kidf] = country_id
+            elif city:
+                city += ', ' + country
+                address[cf] = city
+            else:
+                city = country
+                address[cf] = city
+        # zip_code = address[zf]
+        # if isinstance(zip_code, dict) or isinstance(zip_code, (str, unicode)) and 'code' in zip_code:
+        #     raise TypeError('invalid zip code in:\n%s' % fis_rec)
+        # echo('returning', name, address, do_not_use)
+        return name, address, do_not_use
+
+
+# helpers
+
+class DocFlag(Flag):
+    _settings_ = AutoValue
+    _init_ = 'value __doc__'
+    def __repr__(self):
+        return '%s.%s' % (self.__class__.__name__, self._name_)
+    def __str__(self):
+        return self._name_
+
+
+class AddressSegment(DocFlag):
+    #
+    _order_ = 'UNKNOWN PO PO_TYPE NUMBER PREORD NAME STREET POSTORD SECONDARY_TYPE SECONDARY_NUMBER AND'
+    #
+    UNKNOWN = "unable to determine address element type"
+    PO = "post office delivery"
+    PO_TYPE = "box or drawer"
+    NUMBER = "main unit designator"
+    PREORD = "N S E W etc"
+    NAME = "street name"
+    STREET = "st ave blvd etc"
+    POSTORD = "N S E W etc"
+    SECONDARY_TYPE = "apt bldg floor etc"
+    SECONDARY_NUMBER = "secondary unit designator"
+    AND = "& indicates a corner address"
+    #
+    def has_any(self, flags):
+        return (False, True)[any(f in self for f in flags)]
+
+AS = AddressSegment
+UNKNOWN, PO, PO_TYPE, NUMBER, PREORD, NAME, STREET, POSTORD, SECONDARY_TYPE, SECONDARY_NUMBER, AND = AddressSegment
+SECONDARY = SECONDARY_TYPE | SECONDARY_NUMBER
+
+after_name = NUMBER | NAME | STREET | POSTORD | SECONDARY
+
+# possible address layouts
+# PO PO_TYPE NUMBER
+# NUMBER [PREORD] NAME [STREET] [POSTORD] [SECONDARY_TYPE] [SECONDARY_NUMBER]
+# [SECONDARY_TYPE] SECONDARY_NUMBER
+
+def tokenize_address_line(line):
+    # o_line = line
+    # o_words = o_line.split()
+    u_line = line.upper()
+    u_words = u_line.replace(',',' ').split()
+    if 'ST RT' in u_line and 'ST' in u_words and 'RT' in u_words and u_words.index('ST') + 1 == u_words.index('RT'):
+        index = u_words.index('ST')
+        u_words[index:index+2] = ['ST RT']
+    o_u_words = u_words[:]
+    o_u_words
+    if len(u_words) < 2:
+        return False, u_words, [UNKNOWN]
+    po = False
+    final = []
+    tokens = []
+    # check for po box
+    po_line = u_line.replace('.',' ').split()
+    if po_line[0] in ('POB', 'POBOX'):
+        po = True
+        po_line.pop(0)
+        final.extend(['PO', 'BOX'])
+        tokens.extend([PO, PO_TYPE])
+    elif po_line[0] == 'PO' and po_line[1] in ('BOX', 'DRAWER'):
+        po = True
+        final.extend(po_line[:2])
+        po_line = po_line[2:]
+        tokens.extend([PO, PO_TYPE])
+    elif len(po_line) >= 3 and po_line[0] == 'P' and po_line[1] == 'O' and po_line[2] in ('BOX', 'DRAWER'):
+        po = True
+        final.append('PO')
+        tokens.extend([PO, PO_TYPE])
+        final.append(po_line[2])
+        po_line = po_line[3:]
+    if po:
+        # only a designator should remain
+        if len(po_line):
+            final.append(po_line.pop(0))
+            tokens.append(NUMBER)
+        while po_line:
+            final.append(po_line.pop(0))
+            tokens.append(UNKNOWN)
+        valid = UNKNOWN not in tokens
+        return valid, final, tokens
+    elif u_words == ['GENERAL', 'DELIVERY']:
+        final.extend(u_words)
+        u_words = []
+        tokens.extend([PO, PO_TYPE])
+        return True, final, tokens
+    # look for common addresses
+    expected = NUMBER | NAME | SECONDARY
+    valid = None
+    token = AS(0)
+    while u_words:
+        last_token = token
+        test_word = u_words.pop(0)
+        if test_word in ('&', 'AND'):
+            token = AND
+            new_expected = PREORD | NAME
+            tokens.append(token)
+            final.append(test_word)
+            continue
+        elif test_word == '/':
+            token = UNKNOWN
+            new_expected = UNKNOWN
+            tokens.append(token)
+        elif test_word == '#' and u_words:
+            # merge with next word
+            u_words[0] = '#' + u_words[0]
+            continue
+        elif (
+                any(w == test_word for w in ('ONE','TWO','THREE','FOUR','FIVE','SIX','SEVEN','EIGHT','NINE','TEN'))
+                or (
+                    any(n in '0123456789' for n in test_word) and
+                    not test_word.endswith(('ST','ND','RD','TH'))
+            )):
+            if last_token is NUMBER and u_words: # and u_words[0] in ('ST','ND','RD','TH'):
+                # possible error with a split street name, e.g. '24', 'TH'
+                # classify this as a NAME instead, but do not combine as ST could be street
+                # and RD could be road (instead of 1st or 3rd)
+                token = NAME
+                new_expected = after_name
+            # either a number or a secondary
+            elif last_token & SECONDARY_TYPE:
+                tokens[-1] = SECONDARY_TYPE
+                token = SECONDARY_NUMBER
+                new_expected = SECONDARY_TYPE
+            elif last_token is NAME | STREET:
+                # previous was a street, this is a name
+                tokens[-1] = STREET
+                token = NAME
+                new_expected = after_name
+            elif last_token & PREORD:
+                token = NAME
+                new_expected = after_name
+            elif test_word.isdigit() or test_word.isalpha():
+                token = NUMBER
+                new_expected = PREORD | NAME
+                if tokens[-1:] == [PREORD | NAME] and tokens[-2:-1] == [NUMBER]:
+                    tokens[-1] = NAME
+            else:
+                # if test_word[0].isdigit():
+                #     # echo(1.3)
+                #     token = NUMBER | SECONDARY_NUMBER
+                #     new_expected = PREORD | NAME | SECONDARY_TYPE
+                # else:
+                #     # echo(1.4)
+                token = NUMBER | SECONDARY
+                new_expected = PREORD | NAME | SECONDARY_TYPE
+            tokens.append(token)
+            # followed by a fraction?
+            if u_words and u_words[0].count('/') == 1:
+                num, den = u_words[0].split('/')
+                if num.isdigit() and den.isdigit():
+                    test_word = '%s %s' % (test_word, u_words.pop(0))
+        elif (
+                any(n in '0123456789' for n in test_word) and
+                test_word.endswith(('ST','ND','RD','TH'))
+            ):
+            if last_token & NUMBER:
+                tokens[-1] = NUMBER
+                token = NAME
+                new_expected = after_name
+            elif last_token & (STREET | POSTORD | SECONDARY):
+                token = SECONDARY_NUMBER
+                new_expected = SECONDARY_TYPE
+            else:
+                token = NAME
+                new_expected = after_name
+            tokens.append(token)
+        elif test_word.replace('.','') in ('NW','NE','SW','SE') or test_word in ('N.','S.','E.','W.'):
+            # an ordinal, either pre- or post-
+            if last_token & NUMBER:
+                tokens[-1] = NUMBER
+                token = PREORD
+                new_expected = NAME
+            elif last_token & (NAME | STREET):
+                token = POSTORD
+                new_expected = SECONDARY
+            elif not tokens or last_token is AND:
+                # maybe it's a corner address: NW 16th & NW Havanah
+                token = PREORD
+                new_expected = NAME
+            else:
+                # not sure what happened, save for diagnostics
+                token = UNKNOWN
+                new_expected = UNKNOWN
+            tokens.append(token)
+            test_word = test_word.replace('.','')
+        elif test_word in ('N','S','E','W','NORTH','SOUTH','EAST','WEST'):
+            # either a pre- or post-ordinal or a name or a secondary number
+            if last_token & NUMBER:
+                token = PREORD | NAME
+                new_expected = NUMBER | NAME | STREET | SECONDARY_TYPE
+            elif last_token & PREORD:
+                tokens[-1] = PREORD
+                token = NAME
+                new_expected = after_name
+            elif last_token & (STREET | NAME):
+                token = NAME | POSTORD
+                new_expected = after_name
+            elif last_token & SECONDARY_TYPE:
+                token = SECONDARY_NUMBER
+                new_expected = SECONDARY
+            elif not last_token or last_token is AND:
+                # maybe it's a corner address: N 16th & W Havanah
+                token = NUMBER | PREORD | NAME
+                new_expected = after_name
+            else:
+                # not sure what happened, save for diagnostics
+                token = UNKNOWN
+                new_expected = UNKNOWN
+            tokens.append(token)
+        elif test_word in usps_street_suffix_common:
+            if not last_token:
+                token = NAME
+                new_expected = after_name
+            else:
+                # not sure what happened, save for diagnostics
+                token = NAME | STREET
+                new_expected = after_name
+            tokens.append(token)
+        elif test_word in usps_secondary:
+            # a name or a secondary type (apt, bldg, etc.)
+            if not last_token:
+                # beginning of line
+                token = SECONDARY_TYPE
+                new_expected = SECONDARY_NUMBER
+            elif last_token & (NUMBER | PREORD):
+                token = NAME | SECONDARY_TYPE
+                new_expected = after_name
+            elif last_token & (STREET | POSTORD | SECONDARY_NUMBER):
+                # 121 main blvd APT
+                # 121 main ne SUITE
+                # bldg 5, FLOOR 4
+                token = SECONDARY_TYPE
+                new_expected = SECONDARY_NUMBER
+            elif last_token & NAME:
+                if last_token & SECONDARY_TYPE:
+                    tokens[-1] = NAME
+                token = NAME | SECONDARY_TYPE
+                new_expected = after_name
+            else:
+                # not sure what happened, save for diagnostics
+                token = UNKNOWN
+                new_expected = UNKNOWN
+            tokens.append(token)
+        else:
+            # doesn't match anything else, could be a name or some kind of secondary
+            # or even part of the first number
+            if test_word[0] == '#' and any(ch.isalnum() for ch in test_word):
+                if tokens == [NUMBER]:
+                    final[-1] = '%s %s' % (final[-1], test_word)
+                    continue
                 else:
-                    city = country
-                    result[cf] = city
-        zip_code = result[zf]
-        if isinstance(zip_code, dict) or isinstance(zip_code, (str, unicode)) and 'code' in zip_code:
-            print('invalid zip code in:\n%s' % fis_rec)
-            raise SystemExit(1)
-        return result
+                    token = SECONDARY
+                    new_expected = SECONDARY
+            elif last_token is SECONDARY_TYPE:
+                # unless the last thing seen was a secondary
+                token = SECONDARY_NUMBER
+                new_expected = SECONDARY
+            elif last_token & SECONDARY_TYPE:
+                token = NAME | SECONDARY_NUMBER
+                new_expected = after_name
+            elif last_token is SECONDARY_NUMBER:
+                # continue secondaries
+                token = SECONDARY
+                new_expected = SECONDARY
+            else:
+                token = NAME
+                new_expected = after_name
+                for i, earlier in reversed(list(enumerate(tokens))):
+                    if earlier is NAME:
+                        break
+                    elif earlier & NAME:
+                        continue
+                else:
+                    i = -1
+                if i != -1:
+                    while i < len(tokens):
+                        tokens[i] = NAME
+                        i += 1
+            tokens.append(token)
+        if valid is None:
+            if token & expected:
+                valid = True
+        elif token is UNKNOWN or not token & expected:
+            # echo(line, tokens)
+            # echo('%r & %r -> False' % (token, expected))
+            valid = False
+        final.append(test_word)
+        expected = new_expected
+    else:
+        # no break above, so always runs
+        # put loop cleanup code here
+        # adjust tokens from back to front
+        #
+        # NUMBER, PREORD, NAME, STREET, POSTORD, SECONDARY_TYPE, SECONDARY_NUMBER
+        orig_tokens = tokens[:]
+        orig_tokens
+        preord = name = street = postord = secondary = False
+        for i in reversed(range(len(tokens))):
+            token = tokens[i]
+            before = i and tokens[i-1] or None
+            if not secondary and SECONDARY_TYPE & token:
+                if token is not SECONDARY:
+                    tokens[i] = SECONDARY_TYPE
+                secondary = True
+            elif not postord and POSTORD & token:
+                tokens[i] = POSTORD
+                postord = secondary = True
+            elif not street and STREET & token:
+                tokens[i] = STREET
+                street = postord = secondary = True
+            elif not name and NAME & token:
+                tokens[i] = NAME
+                name = postord = secondary = True
+            elif not preord and PREORD & token and before and not NAME & before:
+                tokens[i] = PREORD
+                preord = True
+            elif NAME & token:
+                tokens[i] = NAME
+            elif NUMBER & token:
+                tokens[i] = NUMBER
+        if 'JR' in final:
+            # it should be 'Jr' if last item on line, or succeeds another NAME element
+            ind = final.index('JR')
+            if ind == len(final) - 1 or tokens[ind-1] is NAME:
+                final[ind] = 'Jr'
+    # final sanity check
+    if valid:
+        if len(tokens) == 1:
+            valid = False
+        elif all_equal(tokens):
+            valid = False
+        elif len(tokens) == 2 and tokens not in (
+                [PO, PO_TYPE],
+                [NUMBER, STREET],
+                [SECONDARY_TYPE, SECONDARY_NUMBER],
+                [SECONDARY_NUMBER, SECONDARY_TYPE],
+            ):
+            valid = False
+        elif len(tokens) > 2 and set(tokens[:-1]) == set([NAME]):
+            valid = False
+    return valid, final, tokens
+
+def process_name_address(address):
+    # echo('on entry', address)
+    name, do_not_use, address_lines = split_name_address(address)
+    # move STORE lines from address to name
+    for line in address_lines[:]:
+        if line.startswith('STORE '):
+            name.append(line.replace('-',' '))
+            address_lines.remove(line)
+    name = BsnsCase(name)
+    if len(address_lines) < 2:
+        # ensure we have at least two address lines
+        address_lines = (address_lines + ['', ''])[:2]
+    address_lines = Sift(address_lines)
+    if ' / ' in address_lines[-2]:
+        # could be two street address lines in one
+        # could be a street address and part of the cszk
+        # could be garbage
+        #
+        # just split 'em and be done
+        pieces = address_lines[-2].split(' / ')
+        address_lines[-2:-1] = [p.strip('/ ') for p in pieces if p.strip()]
+    if ' / ' in address_lines[-1]:
+        # might be a street and then a cszk
+        pieces = address_lines[-1].split(' / ')
+        address_lines[-1:] = [p.strip('/ ') for p in pieces if p.strip()]
+    # echo('after slashes', address_lines)
+    # test if last address line is a valid address
+    valid, final, tokens = tokenize_address_line(address_lines[-1])
+    # echo('initial valid ->', valid)
+    if tokens == [NUMBER, NAME, STREET]:
+        # echo('%r is valid, skipping cszk()  %r' % (final, tokens))
+        # no city, state, zip
+        city = state = postal = country = ''
+    else:
+        street2, city, state, postal, country = cszk(address_lines[-2], address_lines[-1])
+        if city and not (street2 or state or postal or country):
+            # totally bogus address
+            street2, city = city, street2
+        # echo([street2, city, state, postal, country])
+        address_lines = address_lines[:-2]
+        if street2.strip():
+            address_lines.append(street2)
+        city = NameCase(city)
+        state = NameCase(state)
+        postal = str(postal)
+        # echo('cszk ->', city, state, postal, country)
+    if country not in ('CANADA', 'UNITED STATES'):
+        # echo('s0', address_lines)
+        if len(address_lines) == 3:
+            # combine second and third lines
+            address_lines[1:] = [('%s, %s' % (address_lines[1], address_lines[2])).strip(', ')]
+            # echo('s3', address_lines)
+        elif len(address_lines) >= 4:
+            # combine first and second, and third +
+            address_lines[0] = ', '.join(address_lines[:2])
+            # echo('s1', address_lines)
+            address_lines[1] = ', '.join(address_lines[1:])
+            # echo('s2', address_lines)
+        address_lines = BsnsCase(address_lines)
+    else:
+        # echo('US address', address_lines)
+        lines = []
+        valid_lines = []
+        secondary_lines = []
+        invalid_lines = []
+        for line in address_lines:
+            valid, line, tokens = tokenize_address_line(line)
+            # echo(valid, line, tokens)
+            new_line = []
+            if not valid:
+                # echo(7, line)
+                line = BsnsCase(' '.join(line))
+                # echo(11, line)
+                lines.append(line)
+                invalid_lines.append(line)
+                # echo(13, lines)
+            else:
+                for word, token in zip(line, tokens):
+                    # echo(14, word, token)
+                    if token & (PREORD | POSTORD) and len(word) > 2:
+                        word = word[0]
+                    elif token & STREET:
+                        word = usps_street_suffix(word).title()
+                    elif token & SECONDARY:
+                        word = usps_secondary.get(word, word).title()
+                    new_line.append(word)
+                    # echo(15, new_line)
+                line = AddrCase(' '.join(new_line))
+                if tokens and tokens[0] & SECONDARY:
+                    secondary_lines.append(line)
+                # echo(16, line)
+                lines.append(line)
+                valid_lines.append(line)
+            # echo(17, lines)
+        lines = [l for l in lines if l.strip()]
+        # echo('33', lines)
+        if len(lines) > 2:
+            # echo('invalid', invalid_lines)
+            # echo('secondary', secondary_lines)
+            # need to combine
+            if invalid_lines and len(invalid_lines) > 1:
+                # first do invalid
+                lines = [', '.join(invalid_lines)] + valid_lines
+            if len(lines) > 2:
+                # then do secondary
+                if secondary_lines:
+                    new_lines = []
+                    secondary = []
+                    for line in lines:
+                        # echo('line', line)
+                        if line in secondary_lines:
+                            # echo('is secondary')
+                            secondary.append(line)
+                        else:
+                            # echo('is primary')
+                            new_lines.append(line)
+                        if new_lines:
+                            while secondary:
+                                # echo('adding', secondary[0])
+                                new_lines[-1] = '%s, %s' % (new_lines[-1], secondary.pop(0))
+                    lines = new_lines
+            if len(lines) > 2:
+                # echo('mashing', lines)
+                # mash 'em together
+                lines[1:] = [', '.join(lines[1:])]
+        address_lines = lines
+    address_lines = [a for a in address_lines if a.strip()]
+    # echo('after strip()', address_lines)
+    if len(address_lines) < 2:
+        # need to have two address lines
+        address_lines = (address_lines + ['', ''])[:2]
+    # echo('after addition', address_lines)
+    try:
+        addr1, addr2 = address_lines
+    except ValueError:
+        raise ValueError("need two address_lines, but received %r" % (address_lines, ))
+    # echo('returning %r %r %r %r %r %r' % (addr1, addr2, city, state, postal, country))
+    return name, do_not_use, addr1, addr2, city, state, postal, country
+
+def split_name_address(lines):
+    """
+    if possible, combine first two lines into a name, next two lines into an address;
+    return name and remaining lines
+    """
+    # first line is always a name, but may have a second name as well
+    # second line could be a name, or the last part of a second name,
+    #   or a second and third name
+    #   (or an address)
+    #   (or a ** line to be ignored)
+    if not lines[0].strip():
+        return [], [], [l.strip() for l in lines[1:]]
+    lines = [smart_upper(l) for l in Rise(lines) if l.strip()]
+    ignore = []
+    lines_to_check = []
+    for line in lines:
+        if line.strip().startswith((
+                '*',
+                'ACCOUNT CLOSED',
+                'BUSINESS CLOSED',
+                'BUSINESS SOLD',
+                'BANKRUPT',
+                'CLOSED AS OF',
+                'STORE CLOSED',
+            )):
+            ignore.append(line)
+        else:
+            lines_to_check.append(line)
+    lines = lines_to_check
+    if len(lines) > 1 and not lines[1].startswith(('LOCKBOX', 'DEPT', 'ATTN', 'PO', 'ADDITION')):
+        # look for three lines in two
+        test = ' '.join(lines[:2])
+        if test.count(' / ') == 2:
+            lines[:2] = test.split(' / ')
+        # handle Mother's Market & Kitchen
+        elif lines[0].startswith('MOTHER') and lines[1].startswith('& KITCHEN'):
+            line, extra = lines[0], ''
+            if '-' in line:
+                line, extra = line.split('-', 1)
+                extra = ' - %s' % extra
+            line.replace(' MKT', ' MARKET')
+            line = '%s %s%s' % (line, lines[1], extra)
+            lines[:2] = [line]
+        # look for trailing/leading ampersand
+        elif lines[0].endswith(' &') or lines[1].startswith('& '):
+            try:
+                line = ' '.join(lines[:2]) + ' '
+                line = line.replace(' MKT ', ' MARKET ').strip()
+                lines[:2] = [line]
+            except:
+                error(lines, border='lined')
+                raise
+        # look for trailing/leading OF
+        elif lines[0].endswith(' OF') and not lines[0].endswith('TOWN OF') or lines[1].startswith('OF '):
+            if lines[1].startswith('CANADA,'):
+                lines.insert(1, 'CANADA')
+                lines[2] = lines[2][8:]
+            line = ' '.join(lines[:2])
+            lines[:2] = [line]
+    name = lines[0:1]
+    lines = lines[1:]
+    # now check if first two of the remaining lines can be combined
+    if len(lines) > 1 and (lines[0].endswith(' &') or lines[1].startswith('& ')):
+        lines[0] = '%s %s' % (lines[0], lines.pop(1))
+    # lines = (lines + ['', '', ''])[:3]
+    return name, ignore, lines
+
+def smart_upper(string):
+    words = string.split()
+    string = ' '.join(words)
+    if string.isupper() or string.islower() or string == string.title():
+        return string.upper()
+    # mixed case
+    final = []
+    # mixed = False
+    for word in words:
+        if word.isupper() or word.islower() or word == word.title() or word.startswith('Mc'):
+            final.append(word.upper())
+        else:
+            final.append(word)
+            # mixed = True
+    return ' '.join(final)
+
+class TokenAddress(NamedTuple):
+    address = 0, "address tuple"
+    input = 1, "original line"
+    tokens = 2, "tokens tuple"
+    valid = 3, "address matches a valid token sequence"
 
 
 def pfm(values):
@@ -1293,9 +1946,10 @@ class FISenum(str, Enum):
     _init_ = 'value sequence'
     _order_ = lambda m: m.sequence
 
-    FIS_names = LazyClassAttr(set, name='FIS_names')
+    FIS_names = LazyClassAttr(set)
+    FIS_sequence = LazyClassAttr(dict)
 
-    def __new__(cls, value, *args):
+    def __new__(cls, value, sequence):
         enum = str.__new__(cls, value)
 	enum._value_ = value
         if '(' in value:
@@ -1304,13 +1958,23 @@ class FISenum(str, Enum):
         else:
             fis_name = value
             segment = None
+        enum._value_ = value
         enum.fis_name = fis_name
         enum.segment = segment
-        enum.__class__.FIS_names.add(fis_name)
+        enum.sequence = sequence
+        cls.FIS_names.add(fis_name)
+        cls.FIS_sequence[sequence] = enum
         return enum
 
     def __repr__(self):
         return "<%s.%s>" % (self.__class__.__name__, self._name_)
+
+    @classmethod
+    def _missing_name_(cls, sequence):
+        try:
+            return cls.FIS_sequence[sequence]
+        except KeyError:
+            raise AttributeError('unable to find sequence %r in %r' % (sequence, cls.FIS_sequence))
 
 
 class allow_exception(object):
@@ -1439,4 +2103,794 @@ new_line_sentinels = (
         '\d\d?%',
         
         )
+def usps_street_suffix(word):
+    return usps_street_suffix_abbr[usps_street_suffix_common[word]]
+
+usps_street_suffix_common = {
+    'ALLEE'      :  'ALLEY',
+    'ALLEY'      :  'ALLEY',
+    'ALLY'       :  'ALLEY',
+    'ALY'        :  'ALLEY',
+    'ANEX'       :  'ANNEX',
+    'ANNEX'      :  'ANNEX',
+    'ANNEX'      :  'ANNEX',
+    'ANX'        :  'ANNEX',
+    'ARC'        :  'ARCADE',
+    'ARCADE'     :  'ARCADE',
+    'AV'         :  'AVENUE',
+    'AVE'        :  'AVENUE',
+    'AVEN'       :  'AVENUE',
+    'AVENU'      :  'AVENUE',
+    'AVENUE'     :  'AVENUE',
+    'AVN'        :  'AVENUE',
+    'AVNUE'      :  'AVENUE',
+    'BAYOO'      :  'BAYOO',
+    'BAYOU'      :  'BAYOO',
+    'BCH'        :  'BEACH',
+    'BEACH'      :  'BEACH',
+    'BEND'       :  'BEND',
+    'BND'        :  'BEND',
+    'BLF'        :  'BLUFF',
+    'BLUF'       :  'BLUFF',
+    'BLUFF'      :  'BLUFF',
+    'BLUFFS'     :  'BLUFFS',
+    'BOT'        :  'BOTTOM',
+    'BOTTM'      :  'BOTTOM',
+    'BOTTOM'     :  'BOTTOM',
+    'BTM'        :  'BOTTOM',
+    'BLVD'       :  'BOULEVARD',
+    'BOUL'       :  'BOULEVARD',
+    'BOULEVARD'  :  'BOULEVARD',
+    'BOULV'      :  'BOULEVARD',
+    'BR'         :  'BRANCH',
+    'BRANCH'     :  'BRANCH',
+    'BRNCH'      :  'BRANCH',
+    'BRDGE'      :  'BRIDGE',
+    'BRG'        :  'BRIDGE',
+    'BRIDGE'     :  'BRIDGE',
+    'BRK'        :  'BROOK',
+    'BROOK'      :  'BROOK',
+    'BROOKS'     :  'BROOKS',
+    'BURG'       :  'BURG',
+    'BURGS'      :  'BURGS',
+    'BYP'        :  'BYPASS',
+    'BYPA'       :  'BYPASS',
+    'BYPAS'      :  'BYPASS',
+    'BYPASS'     :  'BYPASS',
+    'BYPS'       :  'BYPASS',
+    'CAMP'       :  'CAMP',
+    'CMP'        :  'CAMP',
+    'CP'         :  'CAMP',
+    'CANYN'      :  'CANYON',
+    'CANYON'     :  'CANYON',
+    'CNYN'       :  'CANYON',
+    'CYN'        :  'CANYON',
+    'CAPE'       :  'CAPE',
+    'CPE'        :  'CAPE',
+    'CAUSEWAY'   :  'CAUSEWAY',
+    'CAUSWAY'    :  'CAUSEWAY',
+    'CSWY'       :  'CAUSEWAY',
+    'CEN'        :  'CENTER',
+    'CENT'       :  'CENTER',
+    'CENTER'     :  'CENTER',
+    'CENTR'      :  'CENTER',
+    'CENTRE'     :  'CENTER',
+    'CNTER'      :  'CENTER',
+    'CNTR'       :  'CENTER',
+    'CTR'        :  'CENTER',
+    'CENTERS'    :  'CENTERS',
+    'CIR'        :  'CIRCLE',
+    'CIRC'       :  'CIRCLE',
+    'CIRCL'      :  'CIRCLE',
+    'CIRCLE'     :  'CIRCLE',
+    'CRCL'       :  'CIRCLE',
+    'CRCLE'      :  'CIRCLE',
+    'CIRCLES'    :  'CIRCLES',
+    'CLF'        :  'CLIFF',
+    'CLIFF'      :  'CLIFF',
+    'CLFS'       :  'CLIFFS',
+    'CLIFFS'     :  'CLIFFS',
+    'CLB'        :  'CLUB',
+    'CLUB'       :  'CLUB',
+    'COMMON'     :  'COMMON',
+    'COR'        :  'CORNER',
+    'CORNER'     :  'CORNER',
+    'CORNERS'    :  'CORNERS',
+    'CORS'       :  'CORNERS',
+    'COURSE'     :  'COURSE',
+    'CRSE'       :  'COURSE',
+    'COURT'      :  'COURT',
+    'CRT'        :  'COURT',
+    'CT'         :  'COURT',
+    'COURTS'     :  'COURTS',
+    'CTS'        :  'COURTS',
+    'COVE'       :  'COVE',
+    'CV'         :  'COVE',
+    'COVES'      :  'COVES',
+    'CK'         :  'CREEK',
+    'CR'         :  'CREEK',
+    'CREEK'      :  'CREEK',
+    'CRK'        :  'CREEK',
+    'CRECENT'    :  'CRESCENT',
+    'CRES'       :  'CRESCENT',
+    'CRESCENT'   :  'CRESCENT',
+    'CRESENT'    :  'CRESCENT',
+    'CRSCNT'     :  'CRESCENT',
+    'CRSENT'     :  'CRESCENT',
+    'CRSNT'      :  'CRESCENT',
+    'CREST'      :  'CREST',
+    'CROSSING'   :  'CROSSING',
+    'CRSSING'    :  'CROSSING',
+    'CRSSNG'     :  'CROSSING',
+    'XING'       :  'CROSSING',
+    'CROSSROAD'  :  'CROSSROAD',
+    'CURVE'      :  'CURVE',
+    'DALE'       :  'DALE',
+    'DL'         :  'DALE',
+    'DAM'        :  'DAM',
+    'DM'         :  'DAM',
+    'DIV'        :  'DIVIDE',
+    'DIVIDE'     :  'DIVIDE',
+    'DV'         :  'DIVIDE',
+    'DVD'        :  'DIVIDE',
+    'DR'         :  'DRIVE',
+    'DRIV'       :  'DRIVE',
+    'DRIVE'      :  'DRIVE',
+    'DRV'        :  'DRIVE',
+    'DRIVES'     :  'DRIVES',
+    'EST'        :  'ESTATE',
+    'ESTATE'     :  'ESTATE',
+    'ESTATES'    :  'ESTATES',
+    'ESTS'       :  'ESTATES',
+    'EXP'        :  'EXPRESSWAY',
+    'EXPR'       :  'EXPRESSWAY',
+    'EXPRESS'    :  'EXPRESSWAY',
+    'EXPRESSWAY' :  'EXPRESSWAY',
+    'EXPW'       :  'EXPRESSWAY',
+    'EXPY'       :  'EXPRESSWAY',
+    'EXT'        :  'EXTENSION',
+    'EXTENSION'  :  'EXTENSION',
+    'EXTN'       :  'EXTENSION',
+    'EXTNSN'     :  'EXTENSION',
+    'EXTENSIONS' :  'EXTENSIONS',
+    'EXTS'       :  'EXTENSIONS',
+    'FALL'       :  'FALL',
+    'FALLS'      :  'FALLS',
+    'FLS'        :  'FALLS',
+    'FERRY'      :  'FERRY',
+    'FRRY'       :  'FERRY',
+    'FRY'        :  'FERRY',
+    'FIELD'      :  'FIELD',
+    'FLD'        :  'FIELD',
+    'FIELDS'     :  'FIELDS',
+    'FLDS'       :  'FIELDS',
+    'FLAT'       :  'FLAT',
+    'FLT'        :  'FLAT',
+    'FLATS'      :  'FLATS',
+    'FLTS'       :  'FLATS',
+    'FORD'       :  'FORD',
+    'FRD'        :  'FORD',
+    'FORDS'      :  'FORDS',
+    'FOREST'     :  'FOREST',
+    'FORESTS'    :  'FOREST',
+    'FRST'       :  'FOREST',
+    'FORG'       :  'FORGE',
+    'FORGE'      :  'FORGE',
+    'FRG'        :  'FORGE',
+    'FORGES'     :  'FORGES',
+    'FORK'       :  'FORK',
+    'FRK'        :  'FORK',
+    'FORKS'      :  'FORKS',
+    'FRKS'       :  'FORKS',
+    'FORT'       :  'FORT',
+    'FRT'        :  'FORT',
+    'FT'         :  'FORT',
+    'FREEWAY'    :  'FREEWAY',
+    'FREEWY'     :  'FREEWAY',
+    'FRWAY'      :  'FREEWAY',
+    'FRWY'       :  'FREEWAY',
+    'FWY'        :  'FREEWAY',
+    'GARDEN'     :  'GARDEN',
+    'GARDN'      :  'GARDEN',
+    'GDN'        :  'GARDEN',
+    'GRDEN'      :  'GARDEN',
+    'GRDN'       :  'GARDEN',
+    'GARDENS'    :  'GARDENS',
+    'GDNS'       :  'GARDENS',
+    'GRDNS'      :  'GARDENS',
+    'GATEWAY'    :  'GATEWAY',
+    'GATEWY'     :  'GATEWAY',
+    'GATWAY'     :  'GATEWAY',
+    'GTWAY'      :  'GATEWAY',
+    'GTWY'       :  'GATEWAY',
+    'GLEN'       :  'GLEN',
+    'GLN'        :  'GLEN',
+    'GLENS'      :  'GLENS',
+    'GREEN'      :  'GREEN',
+    'GRN'        :  'GREEN',
+    'GREENS'     :  'GREENS',
+    'GROV'       :  'GROVE',
+    'GROVE'      :  'GROVE',
+    'GRV'        :  'GROVE',
+    'GROVES'     :  'GROVES',
+    'HARB'       :  'HARBOR',
+    'HARBOR'     :  'HARBOR',
+    'HARBR'      :  'HARBOR',
+    'HBR'        :  'HARBOR',
+    'HRBOR'      :  'HARBOR',
+    'HARBORS'    :  'HARBORS',
+    'HAVEN'      :  'HAVEN',
+    'HAVN'       :  'HAVEN',
+    'HVN'        :  'HAVEN',
+    'HEIGHT'     :  'HEIGHTS',
+    'HEIGHTS'    :  'HEIGHTS',
+    'HGTS'       :  'HEIGHTS',
+    'HT'         :  'HEIGHTS',
+    'HTS'        :  'HEIGHTS',
+    'HIGHWAY'    :  'HIGHWAY',
+    'HIGHWY'     :  'HIGHWAY',
+    'HIWAY'      :  'HIGHWAY',
+    'HIWY'       :  'HIGHWAY',
+    'HWAY'       :  'HIGHWAY',
+    'HWY'        :  'HIGHWAY',
+    'HILL'       :  'HILL',
+    'HL'         :  'HILL',
+    'HILLS'      :  'HILLS',
+    'HLS'        :  'HILLS',
+    'HLLW'       :  'HOLLOW',
+    'HOLLOW'     :  'HOLLOW',
+    'HOLLOWS'    :  'HOLLOW',
+    'HOLW'       :  'HOLLOW',
+    'HOLWS'      :  'HOLLOW',
+    'INLET'      :  'INLET',
+    'INLT'       :  'INLET',
+    'IS'         :  'ISLAND',
+    'ISLAND'     :  'ISLAND',
+    'ISLND'      :  'ISLAND',
+    'ISLANDS'    :  'ISLANDS',
+    'ISLNDS'     :  'ISLANDS',
+    'ISS'        :  'ISLANDS',
+    'ISLE'       :  'ISLE',
+    'ISLES'      :  'ISLE',
+    'JCT'        :  'JUNCTION',
+    'JCTION'     :  'JUNCTION',
+    'JCTN'       :  'JUNCTION',
+    'JUNCTION'   :  'JUNCTION',
+    'JUNCTN'     :  'JUNCTION',
+    'JUNCTON'    :  'JUNCTION',
+    'JCTNS'      :  'JUNCTIONS',
+    'JCTS'       :  'JUNCTIONS',
+    'JUNCTIONS'  :  'JUNCTIONS',
+    'KEY'        :  'KEY',
+    'KY'         :  'KEY',
+    'KEYS'       :  'KEYS',
+    'KYS'        :  'KEYS',
+    'KNL'        :  'KNOLL',
+    'KNOL'       :  'KNOLL',
+    'KNOLL'      :  'KNOLL',
+    'KNLS'       :  'KNOLLS',
+    'KNOLLS'     :  'KNOLLS',
+    'LAKE'       :  'LAKE',
+    'LK'         :  'LAKE',
+    'LAKES'      :  'LAKES',
+    'LKS'        :  'LAKES',
+    'LAND'       :  'LAND',
+    'LANDING'    :  'LANDING',
+    'LNDG'       :  'LANDING',
+    'LNDNG'      :  'LANDING',
+    'LA'         :  'LANE',
+    'LANE'       :  'LANE',
+    'LANES'      :  'LANE',
+    'LN'         :  'LANE',
+    'LGT'        :  'LIGHT',
+    'LIGHT'      :  'LIGHT',
+    'LIGHTS'     :  'LIGHTS',
+    'LF'         :  'LOAF',
+    'LOAF'       :  'LOAF',
+    'LCK'        :  'LOCK',
+    'LOCK'       :  'LOCK',
+    'LCKS'       :  'LOCKS',
+    'LOCKS'      :  'LOCKS',
+    'LDG'        :  'LODGE',
+    'LDGE'       :  'LODGE',
+    'LODG'       :  'LODGE',
+    'LODGE'      :  'LODGE',
+    'LOOP'       :  'LOOP',
+    'LOOPS'      :  'LOOP',
+    'MALL'       :  'MALL',
+    'MANOR'      :  'MANOR',
+    'MNR'        :  'MANOR',
+    'MANORS'     :  'MANORS',
+    'MNRS'       :  'MANORS',
+    'MDW'        :  'MEADOW',
+    'MEADOW'     :  'MEADOW',
+    'MDWS'       :  'MEADOWS',
+    'MEADOWS'    :  'MEADOWS',
+    'MEDOWS'     :  'MEADOWS',
+    'MEWS'       :  'MEWS',
+    'MILL'       :  'MILL',
+    'ML'         :  'MILL',
+    'MILLS'      :  'MILLS',
+    'MLS'        :  'MILLS',
+    'MISSION'    :  'MISSION',
+    'MISSN'      :  'MISSION',
+    'MSN'        :  'MISSION',
+    'MSSN'       :  'MISSION',
+    'MOTORWAY'   :  'MOTORWAY',
+    'MNT'        :  'MOUNT',
+    'MOUNT'      :  'MOUNT',
+    'MT'         :  'MOUNT',
+    'MNTAIN'     :  'MOUNTAIN',
+    'MNTN'       :  'MOUNTAIN',
+    'MOUNTAIN'   :  'MOUNTAIN',
+    'MOUNTIN'    :  'MOUNTAIN',
+    'MTIN'       :  'MOUNTAIN',
+    'MTN'        :  'MOUNTAIN',
+    'MNTNS'      :  'MOUNTAINS',
+    'MOUNTAINS'  :  'MOUNTAINS',
+    'NCK'        :  'NECK',
+    'NECK'       :  'NECK',
+    'ORCH'       :  'ORCHARD',
+    'ORCHARD'    :  'ORCHARD',
+    'ORCHRD'     :  'ORCHARD',
+    'OVAL'       :  'OVAL',
+    'OVL'        :  'OVAL',
+    'OVERPASS'   :  'OVERPASS',
+    'PARK'       :  'PARK',
+    'PK'         :  'PARK',
+    'PRK'        :  'PARK',
+    'PARKS'      :  'PARKS',
+    'PARKWAY'    :  'PARKWAY',
+    'PARKWY'     :  'PARKWAY',
+    'PKWAY'      :  'PARKWAY',
+    'PKWY'       :  'PARKWAY',
+    'PKY'        :  'PARKWAY',
+    'PARKWAYS'   :  'PARKWAYS',
+    'PKWYS'      :  'PARKWAYS',
+    'PASS'       :  'PASS',
+    'PASSAGE'    :  'PASSAGE',
+    'PATH'       :  'PATH',
+    'PATHS'      :  'PATH',
+    'PIKE'       :  'PIKE',
+    'PIKES'      :  'PIKE',
+    'PINE'       :  'PINE',
+    'PINES'      :  'PINES',
+    'PNES'       :  'PINES',
+    'PL'         :  'PLACE',
+    'PLACE'      :  'PLACE',
+    'PLAIN'      :  'PLAIN',
+    'PLN'        :  'PLAIN',
+    'PLAINES'    :  'PLAINS',
+    'PLAINS'     :  'PLAINS',
+    'PLNS'       :  'PLAINS',
+    'PLAZA'      :  'PLAZA',
+    'PLZ'        :  'PLAZA',
+    'PLZA'       :  'PLAZA',
+    'POINT'      :  'POINT',
+    'PT'         :  'POINT',
+    'POINTS'     :  'POINTS',
+    'PTS'        :  'POINTS',
+    'PORT'       :  'PORT',
+    'PRT'        :  'PORT',
+    'PORTS'      :  'PORTS',
+    'PRTS'       :  'PORTS',
+    'PR'         :  'PRAIRIE',
+    'PRAIRIE'    :  'PRAIRIE',
+    'PRARIE'     :  'PRAIRIE',
+    'PRR'        :  'PRAIRIE',
+    'RAD'        :  'RADIAL',
+    'RADIAL'     :  'RADIAL',
+    'RADIEL'     :  'RADIAL',
+    'RADL'       :  'RADIAL',
+    'RAMP'       :  'RAMP',
+    'RANCH'      :  'RANCH',
+    'RANCHES'    :  'RANCH',
+    'RNCH'       :  'RANCH',
+    'RNCHS'      :  'RANCH',
+    'RAPID'      :  'RAPID',
+    'RPD'        :  'RAPID',
+    'RAPIDS'     :  'RAPIDS',
+    'RPDS'       :  'RAPIDS',
+    'REST'       :  'REST',
+    'RST'        :  'REST',
+    'RDG'        :  'RIDGE',
+    'RDGE'       :  'RIDGE',
+    'RIDGE'      :  'RIDGE',
+    'RDGS'       :  'RIDGES',
+    'RIDGES'     :  'RIDGES',
+    'RIV'        :  'RIVER',
+    'RIVER'      :  'RIVER',
+    'RIVR'       :  'RIVER',
+    'RVR'        :  'RIVER',
+    'RD'         :  'ROAD',
+    'ROAD'       :  'ROAD',
+    'RDS'        :  'ROADS',
+    'ROADS'      :  'ROADS',
+    'RT'         :  'ROUTE',
+    'RTE'        :  'ROUTE',
+    'ROUTE'      :  'ROUTE',
+    'ROW'        :  'ROW',
+    'RUE'        :  'RUE',
+    'RUN'        :  'RUN',
+    'SHL'        :  'SHOAL',
+    'SHOAL'      :  'SHOAL',
+    'SHLS'       :  'SHOALS',
+    'SHOALS'     :  'SHOALS',
+    'SHOAR'      :  'SHORE',
+    'SHORE'      :  'SHORE',
+    'SHR'        :  'SHORE',
+    'SHOARS'     :  'SHORES',
+    'SHORES'     :  'SHORES',
+    'SHRS'       :  'SHORES',
+    'SKYWAY'     :  'SKYWAY',
+    'SPG'        :  'SPRING',
+    'SPNG'       :  'SPRING',
+    'SPRING'     :  'SPRING',
+    'SPRNG'      :  'SPRING',
+    'SPGS'       :  'SPRINGS',
+    'SPNGS'      :  'SPRINGS',
+    'SPRINGS'    :  'SPRINGS',
+    'SPRNGS'     :  'SPRINGS',
+    'SPUR'       :  'SPUR',
+    'SPURS'      :  'SPURS',
+    'SR'         :  'STATE ROUTE',
+    'SQ'         :  'SQUARE',
+    'SQR'        :  'SQUARE',
+    'SQRE'       :  'SQUARE',
+    'SQU'        :  'SQUARE',
+    'SQUARE'     :  'SQUARE',
+    'SQRS'       :  'SQUARES',
+    'SQUARES'    :  'SQUARES',
+    'ST RT'      :  'STATE ROUTE',
+    'STA'        :  'STATION',
+    'STATION'    :  'STATION',
+    'STATN'      :  'STATION',
+    'STN'        :  'STATION',
+    'STRA'       :  'STRAVENUE',
+    'STRAV'      :  'STRAVENUE',
+    'STRAVE'     :  'STRAVENUE',
+    'STRAVEN'    :  'STRAVENUE',
+    'STRAVENUE'  :  'STRAVENUE',
+    'STRAVN'     :  'STRAVENUE',
+    'STRVN'      :  'STRAVENUE',
+    'STRVNUE'    :  'STRAVENUE',
+    'STREAM'     :  'STREAM',
+    'STREME'     :  'STREAM',
+    'STRM'       :  'STREAM',
+    'ST'         :  'STREET',
+    'STR'        :  'STREET',
+    'STREET'     :  'STREET',
+    'STRT'       :  'STREET',
+    'STREETS'    :  'STREETS',
+    'SMT'        :  'SUMMIT',
+    'SUMIT'      :  'SUMMIT',
+    'SUMITT'     :  'SUMMIT',
+    'SUMMIT'     :  'SUMMIT',
+    'TER'        :  'TERRACE',
+    'TERR'       :  'TERRACE',
+    'TERRACE'    :  'TERRACE',
+    'THROUGHWAY' :  'THROUGHWAY',
+    'TRACE'      :  'TRACE',
+    'TRACES'     :  'TRACE',
+    'TRCE'       :  'TRACE',
+    'TRACK'      :  'TRACK',
+    'TRACKS'     :  'TRACK',
+    'TRAK'       :  'TRACK',
+    'TRK'        :  'TRACK',
+    'TRKS'       :  'TRACK',
+    'TRAFFICWAY' :  'TRAFFICWAY',
+    'TRFY'       :  'TRAFFICWAY',
+    'TR'         :  'TRAIL',
+    'TRAIL'      :  'TRAIL',
+    'TRAILS'     :  'TRAIL',
+    'TRL'        :  'TRAIL',
+    'TRLS'       :  'TRAIL',
+    'TUNEL'      :  'TUNNEL',
+    'TUNL'       :  'TUNNEL',
+    'TUNLS'      :  'TUNNEL',
+    'TUNNEL'     :  'TUNNEL',
+    'TUNNELS'    :  'TUNNEL',
+    'TUNNL'      :  'TUNNEL',
+    'TPK'        :  'TURNPIKE',
+    'TPKE'       :  'TURNPIKE',
+    'TRNPK'      :  'TURNPIKE',
+    'TRPK'       :  'TURNPIKE',
+    'TURNPIKE'   :  'TURNPIKE',
+    'TURNPK'     :  'TURNPIKE',
+    'UNDERPASS'  :  'UNDERPASS',
+    'UN'         :  'UNION',
+    'UNION'      :  'UNION',
+    'UNIONS'     :  'UNIONS',
+    'VALLEY'     :  'VALLEY',
+    'VALLY'      :  'VALLEY',
+    'VLLY'       :  'VALLEY',
+    'VLY'        :  'VALLEY',
+    'VALLEYS'    :  'VALLEYS',
+    'VLYS'       :  'VALLEYS',
+    'VDCT'       :  'VIADUCT',
+    'VIA'        :  'VIADUCT',
+    'VIADCT'     :  'VIADUCT',
+    'VIADUCT'    :  'VIADUCT',
+    'VIEW'       :  'VIEW',
+    'VW'         :  'VIEW',
+    'VIEWS'      :  'VIEWS',
+    'VWS'        :  'VIEWS',
+    'VILL'       :  'VILLAGE',
+    'VILLAG'     :  'VILLAGE',
+    'VILLAGE'    :  'VILLAGE',
+    'VILLG'      :  'VILLAGE',
+    'VILLIAGE'   :  'VILLAGE',
+    'VLG'        :  'VILLAGE',
+    'VILLAGES'   :  'VILLAGES',
+    'VLGS'       :  'VILLAGES',
+    'VILLE'      :  'VILLE',
+    'VL'         :  'VILLE',
+    'VIS'        :  'VISTA',
+    'VIST'       :  'VISTA',
+    'VISTA'      :  'VISTA',
+    'VST'        :  'VISTA',
+    'VSTA'       :  'VISTA',
+    'WALK'       :  'WALK',
+    'WALKS'      :  'WALKS',
+    'WALL'       :  'WALL',
+    'WAY'        :  'WAY',
+    'WY'         :  'WAY',
+    'WAYS'       :  'WAYS',
+    'WELL'       :  'WELL',
+    'WELLS'      :  'WELLS',
+    'WLS'        :  'WELLS',
+    }
+
+usps_street_suffix_abbr = {
+    'ALLEY'      :  'ALY',
+    'ANNEX'      :  'ANX',
+    'ARCADE'     :  'ARC',
+    'AVENUE'     :  'AVE',
+    'BAYOO'      :  'BYU',
+    'BEACH'      :  'BCH',
+    'BEND'       :  'BND',
+    'BLUFF'      :  'BLF',
+    'BLUFFS'     :  'BLFS',
+    'BOTTOM'     :  'BTM',
+    'BOULEVARD'  :  'BLVD',
+    'BRANCH'     :  'BR',
+    'BRIDGE'     :  'BRG',
+    'BROOK'      :  'BRK',
+    'BROOKS'     :  'BRKS',
+    'BURG'       :  'BG',
+    'BURGS'      :  'BGS',
+    'BYPASS'     :  'BYP',
+    'CAMP'       :  'CP',
+    'CANYON'     :  'CYN',
+    'CAPE'       :  'CPE',
+    'CAUSEWAY'   :  'CSWY',
+    'CENTER'     :  'CTR',
+    'CENTERS'    :  'CTRS',
+    'CIRCLE'     :  'CIR',
+    'CIRCLES'    :  'CIRS',
+    'CLIFF'      :  'CLF',
+    'CLIFFS'     :  'CLFS',
+    'CLUB'       :  'CLB',
+    'COMMON'     :  'CMN',
+    'CORNER'     :  'COR',
+    'CORNERS'    :  'CORS',
+    'COURSE'     :  'CRSE',
+    'COURT'      :  'CT',
+    'COURTS'     :  'CTS',
+    'COVE'       :  'CV',
+    'COVES'      :  'CVS',
+    'CREEK'      :  'CRK',
+    'CRESCENT'   :  'CRES',
+    'CREST'      :  'CRST',
+    'CROSSING'   :  'XING',
+    'CROSSROAD'  :  'XRD',
+    'CURVE'      :  'CURV',
+    'DALE'       :  'DL',
+    'DAM'        :  'DM',
+    'DIVIDE'     :  'DV',
+    'DRIVE'      :  'DR',
+    'DRIVES'     :  'DRS',
+    'ESTATE'     :  'EST',
+    'ESTATES'    :  'ESTS',
+    'EXPRESSWAY' :  'EXPY',
+    'EXTENSION'  :  'EXT',
+    'EXTENSIONS' :  'EXTS',
+    'FALL'       :  'FALL',
+    'FALLS'      :  'FLS',
+    'FERRY'      :  'FRY',
+    'FIELD'      :  'FLD',
+    'FIELDS'     :  'FLDS',
+    'FLAT'       :  'FLT',
+    'FLATS'      :  'FLTS',
+    'FORD'       :  'FRD',
+    'FORDS'      :  'FRDS',
+    'FOREST'     :  'FRST',
+    'FORGE'      :  'FRG',
+    'FORGES'     :  'FRGS',
+    'FORK'       :  'FRK',
+    'FORKS'      :  'FRKS',
+    'FORT'       :  'FT',
+    'FREEWAY'    :  'FWY',
+    'GARDEN'     :  'GDN',
+    'GARDENS'    :  'GDNS',
+    'GATEWAY'    :  'GTWY',
+    'GLEN'       :  'GLN',
+    'GLENS'      :  'GLNS',
+    'GREEN'      :  'GRN',
+    'GREENS'     :  'GRNS',
+    'GROVE'      :  'GRV',
+    'GROVES'     :  'GRVS',
+    'HARBOR'     :  'HBR',
+    'HARBORS'    :  'HBRS',
+    'HAVEN'      :  'HVN',
+    'HEIGHTS'    :  'HTS',
+    'HIGHWAY'    :  'HWY',
+    'HILL'       :  'HL',
+    'HILLS'      :  'HLS',
+    'HOLLOW'     :  'HOLW',
+    'INLET'      :  'INLT',
+    'ISLAND'     :  'IS',
+    'ISLANDS'    :  'ISS',
+    'ISLE'       :  'ISLE',
+    'JUNCTION'   :  'JCT',
+    'JUNCTIONS'  :  'JCTS',
+    'KEY'        :  'KY',
+    'KEYS'       :  'KYS',
+    'KNOLL'      :  'KNL',
+    'KNOLLS'     :  'KNLS',
+    'LAKE'       :  'LK',
+    'LAKES'      :  'LKS',
+    'LAND'       :  'LAND',
+    'LANDING'    :  'LNDG',
+    'LANE'       :  'LN',
+    'LIGHT'      :  'LGT',
+    'LIGHTS'     :  'LGTS',
+    'LOAF'       :  'LF',
+    'LOCK'       :  'LCK',
+    'LOCKS'      :  'LCKS',
+    'LODGE'      :  'LDG',
+    'LOOP'       :  'LOOP',
+    'MALL'       :  'MALL',
+    'MANOR'      :  'MNR',
+    'MANORS'     :  'MNRS',
+    'MEADOW'     :  'MDW',
+    'MEADOWS'    :  'MDWS',
+    'MEWS'       :  'MEWS',
+    'MILL'       :  'ML',
+    'MILLS'      :  'MLS',
+    'MISSION'    :  'MSN',
+    'MOTORWAY'   :  'MTWY',
+    'MOUNT'      :  'MT',
+    'MOUNTAIN'   :  'MTN',
+    'MOUNTAINS'  :  'MTNS',
+    'NECK'       :  'NCK',
+    'ORCHARD'    :  'ORCH',
+    'OVAL'       :  'OVAL',
+    'OVERPASS'   :  'OPAS',
+    'PARK'       :  'PARK',
+    'PARKS'      :  'PRKS',
+    'PARKWAY'    :  'PKWY',
+    'PASS'       :  'PASS',
+    'PASSAGE'    :  'PSGE',
+    'PATH'       :  'PATH',
+    'PIKE'       :  'PIKE',
+    'PINE'       :  'PNE',
+    'PINES'      :  'PNES',
+    'PLACE'      :  'PL',
+    'PLAIN'      :  'PLN',
+    'PLAINS'     :  'PLNS',
+    'PLAZA'      :  'PLZ',
+    'POINT'      :  'PT',
+    'POINTS'     :  'PTS',
+    'PORT'       :  'PRT',
+    'PORTS'      :  'PRTS',
+    'PRAIRIE'    :  'PR',
+    'RADIAL'     :  'RADL',
+    'RAMP'       :  'RAMP',
+    'RANCH'      :  'RNCH',
+    'RAPID'      :  'RPD',
+    'RAPIDS'     :  'RPDS',
+    'REST'       :  'RST',
+    'RIDGE'      :  'RDG',
+    'RIDGES'     :  'RDGS',
+    'RIVER'      :  'RIV',
+    'ROAD'       :  'RD',
+    'ROADS'      :  'RDS',
+    'ROUTE'      :  'RTE',
+    'ROW'        :  'ROW',
+    'RUE'        :  'RUE',
+    'RUN'        :  'RUN',
+    'SHOAL'      :  'SHL',
+    'SHOALS'     :  'SHLS',
+    'SHORE'      :  'SHR',
+    'SHORES'     :  'SHRS',
+    'SKYWAY'     :  'SKWY',
+    'SPRING'     :  'SPG',
+    'SPRINGS'    :  'SPGS',
+    'SPUR'       :  'SPUR',
+    'SQUARE'     :  'SQ',
+    'SQUARES'    :  'SQS',
+    'STATE ROUTE':  'STATE ROUTE',
+    'STATION'    :  'STA',
+    'STRAVENUE'  :  'STRA',
+    'STREAM'     :  'STRM',
+    'STREET'     :  'ST',
+    'STREETS'    :  'STS',
+    'SUMMIT'     :  'SMT',
+    'TERRACE'    :  'TER',
+    'THROUGHWAY' :  'TRWY',
+    'TRACE'      :  'TRCE',
+    'TRACK'      :  'TRAK',
+    'TRAFFICWAY' :  'TRFY',
+    'TRAIL'      :  'TRL',
+    'TUNNEL'     :  'TUNL',
+    'TURNPIKE'   :  'TPKE',
+    'UNDERPASS'  :  'UPAS',
+    'UNION'      :  'UN',
+    'UNIONS'     :  'UNS',
+    'VALLEY'     :  'VLY',
+    'VALLEYS'    :  'VLYS',
+    'VIADUCT'    :  'VIA',
+    'VIEW'       :  'VW',
+    'VIEWS'      :  'VWS',
+    'VILLAGE'    :  'VLG',
+    'VILLAGES'   :  'VLGS',
+    'VILLE'      :  'VL',
+    'VISTA'      :  'VIS',
+    'WALK'       :  'WALK',
+    'WALKS'      :  'WALKS',
+    'WALL'       :  'WALL',
+    'WAY'        :  'WAY',
+    'WAYS'       :  'WAYS',
+    'WELL'       :  'WL',
+    'WELLS'      :  'WLS',
+    }
+
+usps_secondary = {
+    'APARTMENT'  :  'APT',
+    'APT'        :  'APT',
+    'BASEMENT'   :  'BSMT',
+    'BSMT'       :  'BSMT',
+    'BOX'        :  'BOX',
+    'BUILDING'   :  'BLDG',
+    'BLDG'       :  'BLDG',
+    'DEPARTMENT' :  'DEPT',
+    'DEPT'       :  'DEPT',
+    'FLOOR'      :  'FLOOR',
+    'FLR'        :  'FLOOR',
+    'FL'         :  'FLOOR',
+    'FRONT'      :  'FRONT',
+    'FRNT'       :  'FRONT',
+    'HANGER'     :  'HNGR',
+    'HNGR'       :  'HNGR',
+    'KEY'        :  'KEY',
+    'KEY'        :  'KEY',
+    'LOBBY'      :  'LOBBY',
+    'LBBY'       :  'LOBBY',
+    'LOT'        :  'LOT',
+    'LOWER'      :  'LOWER',
+    'LOWR'       :  'LOWER',
+    'OFFICE'     :  'OFC',
+    'OFC'        :  'OFC',
+    'PENTHOUSE'  :  'PH',
+    'PH'         :  'PH',
+    'PIER'       :  'PIER',
+    'REAR'       :  'REAR',
+    'ROOM'       :  'RM',
+    'RM'         :  'RM',
+    'SIDE'       :  'SIDE',
+    'SLIP'       :  'SLIP',
+    'SLIP'       :  'SLIP',
+    'SPACE'      :  'SPC',
+    'SPC'        :  'SPC',
+    'STOP'       :  'STOP',
+    'SUITE'      :  'STE',
+    'STE'        :  'STE',
+    'TRAILER'    :  'TRLR',
+    'TRLR'       :  'TRLR',
+    'UNIT'       :  'UNIT',
+    'UPPER'      :  'UPPER',
+    'UPPR'       :  'UPPER',
+    '#'          :  '#',
+    }
 

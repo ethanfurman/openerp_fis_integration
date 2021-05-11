@@ -5,6 +5,7 @@ from scription import *
 from collections import defaultdict
 from itertools import cycle
 from openerplib import get_connection, get_records
+from updates import fis_schema
 from updates.tools import FISenum, ProductLabelDescription
 from VSS.BBxXlate import fisData as fd
 from VSS.BBxXlate.bbxfile import TableError
@@ -392,8 +393,9 @@ def query(table, code, fields):
         filenum=Spec('file abbreviation or number to operate on', ),
         which=Spec('which record to display', choices=['random', 'last', 'key', 'offset'], default='random'),
         id=Spec('key or offset if WHICH is key or offset', default=None),
+        fields=Spec('specific fields to display [default: all]', MULTI, type=int),
         )
-def record(filenum, which, id):
+def record(filenum, which, id, fields):
     if filenum.isdigit():
         filenum = int(filenum)
     if id and which not in ('key', 'offset'):
@@ -411,7 +413,7 @@ def record(filenum, which, id):
     else:
         abort('unknown selection for WHICH: %r' % (which, ))
     print(record.rec)
-    for line in format_record(record):
+    for line in format_record(record, fields):
         echo(line)
 
 
@@ -423,9 +425,10 @@ def record(filenum, which, id):
         dbf_name=Spec('dbf to create with data', OPTION),
         tabular=Spec('show output in tabular mode', FLAG,),
         rematch=Spec('template is a re match', FLAG, abbrev=('r', 're')),
+        test=Spec('output in format usable by test_scripts', FLAG, abbrev=None),
         check_old=Spec('use older version of data files', FLAG, None),
         )
-def records(filenum, template, code, fields, dbf_name, tabular, rematch, check_old):
+def records(filenum, template, code, fields, dbf_name, tabular, rematch, test, check_old):
     print('fields requested: %s' % (fields, ))
     print('code given: %r' % (code, ))
     if filenum.isdigit():
@@ -446,6 +449,11 @@ def records(filenum, template, code, fields, dbf_name, tabular, rematch, check_o
         fis_table = fd.fisData(filenum, subset=template, data_path=target_path)
         print('using subset and file', fis_table.filename, 'in', target_path or config.network.fis_data_local_path)
         records = [v for k, v in fis_table.get_subset(code)]
+    if test:
+        try:
+            enum = getattr(fis_schema, 'F%d' % fis_table.number)
+        except AttributeError:
+            abort('Table %r has no file number, unable to generate test output' % fis_table.filename)
     print('  found %d records' % (len(records), ))
     used_fields = []
     tabular_names = []
@@ -458,28 +466,31 @@ def records(filenum, template, code, fields, dbf_name, tabular, rematch, check_o
         field_widths = []
         dbf_types = []
         dbf_names = []
-        fis_fields = record.fieldlist
-        for i, row in enumerate(fis_fields):
-            j = i + 1
-            print('checking for %d' % (j, ), end='... ', verbose=2)
-            if not fields or j in fields:
-                print('keeping', end='', verbose=2)
-                name, spec = row[1:4:2]
-                if not name.strip() or name.strip().lower() == '(open)':
-                    continue
-                tabular_names.append(name)
-                max_spec_width = max(max_spec_width, len(spec.strip()))
-                width = fis_table.field_widths[i]
-                field_widths.append(width)
-                field_name = convert_name(name, 10, dbf_names)
-                dbf_names.append(field_name)
-                name = convert_name(name, 50)
-                if '$' in spec:
-                    dbf_types.append('%s C(%d)' % (field_name, width))
-                    used_fields.append((i, str))
-                else:
-                    dbf_types.append('%s N(17,5)' % field_name)
-                    used_fields.append((i, float))
+        if fields:
+            fis_fields = [(i, record.fieldlist[i]) for i in fields]
+        else:
+            fis_fields = list(enumerate(record.fieldlist))
+        for i, row in fis_fields:
+            # j = i + 1
+            print('checking for %d' % (i, ), end='... ', verbose=2)
+            # if not fields or i in fields:
+            print('keeping', end='', verbose=2)
+            name, spec = row[1:4:2]
+            if not name.strip() or name.strip().lower() == '(open)':
+                continue
+            tabular_names.append(name)
+            max_spec_width = max(max_spec_width, len(spec.strip()))
+            width = fis_table.field_widths[i]
+            field_widths.append(width)
+            field_name = convert_name(name, 10, dbf_names)
+            dbf_names.append(field_name)
+            name = convert_name(name, 50)
+            if '$' in spec:
+                dbf_types.append('%s C(%d)' % (field_name, width))
+                used_fields.append((i, str))
+            else:
+                dbf_types.append('%s N(17,5)' % field_name)
+                used_fields.append((i, float))
             print(verbose=2)
         if dbf_name:
             print('dbf fields:\n  ', '\n   '.join(dbf_types))
@@ -493,17 +504,20 @@ def records(filenum, template, code, fields, dbf_name, tabular, rematch, check_o
             output.append(field_data)
             # for i, row in enumerate(fis_fields):
             lines = format_record(record, fields)
-            if not dbf_name and not tabular and lines:
+            if test:
+                for i, datum in zip(fields, field_data):
+                    echo('%s: %s,' % (enum[i], repr(datum).strip('u')))
+            elif not dbf_name and not tabular and not test and lines:
                 echo('\n'.join(lines))
                 try:
-                    ans = raw_input('... [q to quit]')
-                    if ans.lower() == 'q':
+                    ans = input('[Continue|Quit]', default='continue')
+                    if ans == 'quit':
                         raise KeyboardInterrupt
                 except KeyboardInterrupt:
                     raise SystemExit(1)
-            if dbf_name:
+            elif dbf_name:
                 data = []
-                for i, item in enumerate(used_fields):
+                for i, item in used_fields:
                     print(i, item, verbose=3)
                     cnv = item[1]
                     data.append(cnv(field_data[i]))
@@ -1268,6 +1282,8 @@ def update_products(table, item_map, default_product_codes):
             item_map[key] = product.create(values, context=context)
 
 def format_record(record, fields=None):
+    # record: the fis record to format
+    # fields: list of ints, or list of (int, record)s
     lines = []
     name_width = 11
     value_width = 40
@@ -1275,35 +1291,39 @@ def format_record(record, fields=None):
     fieldlist = record.fieldlist
     if not fields:
         fields = range(len(record.fieldlist))
-    for i, row in enumerate(record.fieldlist):
-        if i in fields:
-            name_width = max(len(row[3]), name_width)
-            value_width = max(len(str(record[row[3]]).rstrip()), value_width)
-            mask_width = max(len(str(fieldlist[i][4])), mask_width)
-            print(
-                    'field %d -> name width: %d   value width: %d   mask wdith: %d'
-                        % (i, name_width, value_width, mask_width),
-                    verbose=3,
-                    )
+    # for i, row in enumerate(record.fieldlist):
+    #     if i in fields:
+    for i in fields:
+        row = fieldlist[i]
+        name_width = max(len(row[3]), name_width)
+        value_width = max(len(str(record[row[3]]).rstrip()), value_width)
+        mask_width = max(len(str(fieldlist[i][4])), mask_width)
+        print(
+                'field %d -> name width: %d   value width: %d   mask wdith: %d'
+                    % (i, name_width, value_width, mask_width),
+                verbose=3,
+                )
     print(verbose=3)
-    for i, row in enumerate(record.fieldlist):
-        if i in fields:
-            value = record[row[3]]
-            if isinstance(value, basestring):
-                value = value.replace('\0', u'\u2400')
-                leading_spaces = 0
-                for ch in value:
-                    if ch != ' ':
-                        break
-                    leading_spaces += 1
-                value = leading_spaces * u'\u2422' + value.lstrip()
-                if u'\u2422' in value or u'\u2400' in value:
-                    echo('value is:', value)
-            print('field %d -> %r' % (i, value), verbose=3)
-            if '$' in row[3] and not fieldlist[i][4]:
-                lines.append('%5d | %*s | %*s | %*s | %s' % (i+1, -name_width, row[3], mask_width, fieldlist[i][4], -value_width, value, row[1]))
-            else:
-                lines.append('%5d | %*s | %*s | %*s | %s' % (i+1, -name_width, row[3], mask_width, fieldlist[i][4], value_width, value, row[1]))
+    # for i, row in enumerate(record.fieldlist):
+    #     if i in fields:
+    for i in fields:
+        row = fieldlist[i]
+        value = record[row[3]]
+        if isinstance(value, basestring):
+            value = value.replace('\0', u'\u2400')
+            leading_spaces = 0
+            for ch in value:
+                if ch != ' ':
+                    break
+                leading_spaces += 1
+            value = leading_spaces * u'\u2422' + value.lstrip()
+            if u'\u2422' in value or u'\u2400' in value:
+                echo('value is:', value)
+        print('field %d -> %r' % (i, value), verbose=3)
+        if '$' in row[3] and not fieldlist[i][4]:
+            lines.append('%5d | %*s | %*s | %*s | %s' % (i+1, -name_width, row[3], mask_width, fieldlist[i][4], -value_width, value, row[1]))
+        else:
+            lines.append('%5d | %*s | %*s | %*s | %s' % (i+1, -name_width, row[3], mask_width, fieldlist[i][4], value_width, value, row[1]))
     return lines
 
 def convert_name(name, max_len, existing_names=()):

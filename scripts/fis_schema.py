@@ -736,6 +736,25 @@ class F220(FISenum):
     promo_eff_date       = 'Mn$(7,6)',    29     # Promo Eff Date
 
 
+class F257(FISenum):
+    """
+    CNVZk - Ordered By Master File
+    """
+    #
+    _init_ = "value sequence"
+    _order_ = lambda m: m.sequence
+    #
+    key_type             = 'An$(1,1)',   0     # Key Type = 'k'
+    company_id           = 'An$(2,2)',   1     # Company Code
+    ordered_by_id        = 'An$(4,2)',   2     # Ordered By Code
+    ordered_by_name      = 'Bn$',        3     # Ordered by Name
+    rep_fax              = 'Cn$',        4     # Rep FAX
+    add_l_fax            = 'Dn$',        5     # Add'l FAX
+    prc_lists            = 'Dn$',        6     # Price Lists
+    email_address        = 'En$',        7     # Email Address
+    changes_only_or_full = 'Fn$',        8     # Changes only or Full (C/F)
+
+
 class F262(FISenum):
     """
     ARCI - Customer Item Code File
