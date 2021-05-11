@@ -74,7 +74,12 @@ def process_openerp_orders():
                     extfile = EOE_PATH / "%s.ext" % seq
                     with open(extfile, 'w') as out_file:
                         out_file.write(rec)
-                    order_file.move(ARCHIVE)
+                    # file has been transferred to FIS
+                    # it now MUST be removed
+                    try:
+                        order_file.copy(ARCHIVE)
+                    finally:
+                        order_file.unlink()
                 except Exception:
                     exc_type, exc, _ = sys.exc_info()
                     error_lines = format_exception_only(exc_type, exc)
