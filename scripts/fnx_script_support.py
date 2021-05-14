@@ -1,6 +1,7 @@
 """
 support for short-running scripts
 """
+from __future__ import print_function
 
 __all__ = [
         'Notify', 'send_mail', 'grouped', 'grouped_by_column',
@@ -16,7 +17,7 @@ except ImportError:
 from antipathy import Path
 from datetime import timedelta
 from dbf import DateTime
-from scription import Exit, error, Job, OrmFile
+from scription import Exit, error, Job, OrmFile, print
 import time
 
 NOW = DateTime.now()
@@ -31,7 +32,7 @@ SCRIPT_NAME = None
 
 class Notify(object):
 
-    def __init__(self, name, schedule=SCHEDULE, notified=NOTIFIED, cut_off=0, grace=13, stable=5, renotify=67):
+    def __init__(self, name, schedule=None, notified=None, cut_off=0, grace=13, stable=5, renotify=67):
         # name: name of script (used for notified file name)
         # schedule: file that holds user name, email, text, and availability
         # notified: file that rememebers who has been notified
@@ -41,8 +42,8 @@ class Notify(object):
         # cut_off: how long to wait, in minutes, before resending errors or
         #          sending all clear
         self.name = name
-        self.schedule = Path(schedule)
-        notified = Path(notified)
+        self.schedule = Path(schedule or SCHEDULE)
+        notified = Path(notified or NOTIFIED)
         if notified == NOTIFIED:
             notified += name
         self.notified = notified
@@ -98,7 +99,7 @@ class Notify(object):
             else:
                 last_accessed = self.notified.stat().st_atime
                 print(DateTime.fromtimestamp(last_accessed))
-                if NOW - DateTime.fromtimestamp(last_accessed) > self.renotify:
+                if self.renotify and NOW - DateTime.fromtimestamp(last_accessed) > self.renotify:
                     # time to remind
                     renotify = True
             print('create is', create_error_file)

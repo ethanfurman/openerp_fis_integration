@@ -9,7 +9,7 @@ from antipathy import Path
 # from collections import defaultdict
 from dbf import Date, DateTime, Time
 from fis_schema import F8, F11, F27, F33, F34, F47, F65, F74, F97, F135
-from fis_schema import F163, F192, F262, F320, F322, F328, F329, F341
+from fis_schema import F163, F192, F257, F262, F320, F322, F328, F329, F341
 from logging import INFO, getLogger, Formatter, handlers
 from openerplib import get_connection, get_records, local_to_utc
 from openerplib import AttrDict, Many2One, XidRec
@@ -66,7 +66,7 @@ ETC_CATEGORY_XML_ID = '9'
 #       - CSMS
 #       - NVTY          --> done
 #       - CNVZd0
-#       - CNVZz
+#       - CNVZ_Z_K
 #       - CNVZSV
 #       - CNVZas
 #       - CNVZaa
@@ -612,27 +612,30 @@ class CNVZSV(SynchronizeAddress):
         return (XidRec.fromdict(company, imd), )
 
 
-class CNVZz(Synchronize):
+class CNVZ_Z_K(Synchronize):
     """
-    customer sales reps, 47
+    customer sales reps, 47; ordered by, 257
     """
     TN = 47
+    TN_2ND = 257
     FN = 'cnvzz'
+    FN_2ND = 'cnvzk'
     F = 'F047'
     OE = 'fis.account.salesperson'
     IMD = 'account_salesperson'
     RE = r"Z..."
+    RE_2ND = r"K...."
     OE_KEY = 'xml_id'
     OE_KEY_MODULE = 'F47'
     OE_FIELDS = (
-            ('id', 'module', 'xml_id', 'fis_name', 'user_id'),
-            ('id', 'fis_module', 'fis_id', 'fis_name', 'user_id'),
+            ('id', 'module', 'xml_id', 'fis_name', 'user_id', 'ordered_by_no'),
+            ('id', 'fis_module', 'fis_id', 'fis_name', 'user_id', 'ordered_by_no'),
             )[odoo_erp]
     #
     SalesRep = XmlLink
 
     def __init__(self, *args, **kwds):
-        super(CNVZz, self).__init__(*args, **kwds)
+        super(CNVZ_Z_K, self).__init__(*args, **kwds)
         users = self.get_xid_records(
                 self.erp,
                 domain=[('module','=','fis'),('name','=like','F074_%_res_users')],
@@ -645,9 +648,8 @@ class CNVZz(Synchronize):
             self.users[key] = u
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
-            return ()
-        key = fis_rec[F47.salesperson_id]
+        sales_rec, orderedby_rec = fis_rec
+        key = sales_rec[F47.salesperson_id]
         imd = AttrDict(
                 id=0,
                 model=self.OE,
@@ -664,66 +666,65 @@ class CNVZz(Synchronize):
         salesrep = AttrDict.fromkeys(self.OE_FIELDS, None)
         salesrep[fis_id] = key
         salesrep[fis_module] = self.OE_KEY_MODULE
-        salesrep.fis_name = fis_name = fis_rec[F47.salesperson_name].split('-')[0] or None
-        if fis_name is None:
-            salesrep.user_id = None
-        else:
-            # try to find a match in res.users
-            salesrep.user_id = self.match(fis_name)
-            if salesrep.user_id is not None:
-                salesrep.user_id = Many2One(salesrep.user_id, key, 'res.users')
+        salesrep.ordered_by_no = False
+        if orderedby_rec is not None:
+            salesrep.ordered_by_no = orderedby_rec[F257.ordered_by_id]
+        name = sales_rec[F47.salesperson_name]
+        if '-' in name:
+            name, unk = name.split('-')
+            if not unk.isdigit():
+                name = '%s [%s]' % (name, unk)
+        salesrep.fis_name = name
+        # try to find a match in res.users
+        salesrep.user_id = self.users.get(sales_rec[F47.employee_no], False)
+        if salesrep.user_id:
+            salesrep.user_id = Many2One(salesrep.user_id.id, key, 'res.users')
         return (XidRec.fromdict(salesrep, imd), )
 
-    def match(self, name):
-        # try to match names, looping several times if necessary
-        # - perfect match
-        # - first and last match
-        # - contained first, and last match
-        # - all of given is in target
-        # - first match
-        # - last match
-        name = name.upper()
-        # perfect match?
-        for user in self.users:
-            user_name = user.name.upper()
-            if name == user_name:
-                return user.id
-        # first/last match
-        names = name.split()
-        first = names[0]
-        last = names[-1]
-        for user in self.users:
-            user_names = user.name.upper().split()
-            user_first = user_names[0]
-            user_last = user_names[-1]
-            if first == user_first and last == user_last:
-                return user.id
-        # contained first, and last match
-        for user in self.users:
-            user_names = user.name.upper().split()
-            user_first = user_names[0]
-            user_last = user_names[-1]
-            if user_first.startswith(first) and last == user_last:
-                return user.id
-        # name is fully contained in user name
-        for user in self.users:
-            user_name = user.name.upper()
-            if name in user_name:
-                return user.id
-        # first match
-        for user in self.users:
-            user_names = user.name.upper().split()
-            user_first = user_names[0]
-            if first == user_first:
-                return user.id
-        # last match
-        for user in self.users:
-            user_names = user.name.upper().split()
-            user_last = user_names[-1]
-            if last == user_last:
-                return user.id
-        # no match
-        return None
+    def open_fis_tables(self):
+        cnvzz_table = self.get_fis_table(self.TN, rematch=self.RE)
+        cnvzk_table = self.get_fis_table(self.TN_2ND, rematch=self.RE_2ND)
+        old_cnvzz_table = self.get_fis_table(
+                self.TN,
+                rematch=self.RE,
+                data_path=self.config.network.fis_data_local_old_path,
+                )
+        old_cnvzk_table = self.get_fis_table(
+                self.TN_2ND,
+                rematch=self.RE_2ND,
+                data_path=self.config.network.fis_data_local_old_path,
+                )
+        print('cnvzz: %d\ncnvzk: %d\nold cnvzz: %d\nold cnvzk: %d' %
+                (len(cnvzz_table), len(cnvzk_table),
+                    len(old_cnvzz_table), len(old_cnvzk_table))
+                )
+        class PsuedoFisTable(object):
+            __slots__ = 'filename', 'data'
+            def __init__(self, filename):
+                self.filename = filename
+                self.data = {}
+            def __getattr__(self, name):
+                return getattr(self.data, name)
+            def __getitem__(self, name):
+                return self.data[name]
+            def __setitem__(self, name, value):
+                self.data[name] = value
+        self.fis_table = PsuedoFisTable('combined cnvzz/cnvzk table')
+        self.old_fis_table = PsuedoFisTable('old combined cnvzz/cnvzk table')
+        current_names = {}
+        for rec in cnvzk_table.values():
+            current_names[rec[F257.ordered_by_name].split('-')[0].upper()] = rec
+        for rec in cnvzz_table.values:
+            key = rec[F47.salesperson_id]
+            name = rec[F47.salesperson_name].split('-')[0].upper()
+            self.fis_table[key] = rec, current_names.get(name)
+        old_names = {}
+        for rec in old_cnvzk_table.values():
+            old_names[rec[F257.ordered_by_name].split('-')[0].upper()] = rec
+        for rec in old_cnvzz_table.values():
+            key = rec[F47.salesperson_id]
+            name = rec[F47.salesperson_name].split('-')[0].upper()
+            self.old_fis_table[key] = rec, old_names.get(name)
 
 
 class CSMS(SynchronizeAddress):
@@ -766,7 +767,7 @@ class CSMS(SynchronizeAddress):
 
     def __init__(self, oe, config, *args, **kwds):
         super(CSMS, self).__init__(oe, config, *args, **kwds)
-        # CNVZz(oe, config).reify(fields=['user_id'])
+        # CNVZ_Z_K(oe, config).reify(fields=['user_id'])
 
     def run(self, method):
         if method == 'full':
@@ -856,8 +857,8 @@ class CSMS(SynchronizeAddress):
         else:
             # TODO check for open orders
             pass
-        # company.user_id = getattr(CNVZz.SalesRep(fis_rec[F33.salesrep]), 'user_id', None)
-        company.user_id = CNVZz.SalesRep(fis_rec[F33.salesrep]).user_id
+        # company.user_id = getattr(CNVZ_Z_K.SalesRep(fis_rec[F33.salesrep]), 'user_id', None)
+        company.user_id = CNVZ_Z_K.SalesRep(fis_rec[F33.salesrep]).user_id
         # sr = sales_person_recs.get(salesrep, False)
         # if not sr or not sr.user_id:
         #     company.user_id = False
@@ -2666,7 +2667,7 @@ class POSM_VNMS(SynchronizeAddress):
     IMD = 'res_partner'
     RE = r"10(......)"
     OE_KEY = 'xml_id'
-    OE_KEY_MODULE = 'F%s' % TN
+    OE_KEY_MODULE = 'F163'
     OE_FIELDS = [
             'id', 'active', 'phone', 'fax',
             'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
@@ -3384,26 +3385,6 @@ class Specials(str, Enum):
                 return default
         raise LookupError('%r not found in %s' % (text, cls.__name__))
 
-# def is_invalid_posm_record(rec):
-#     if rec is None:
-#         return True
-#     xml_id = rec[F163.code]
-#     name = rec[F163.name]
-#     vendor_xml_id = rec[F163.vendor]
-#     vendor_rec = vnms.get(vendor_xml_id)
-#     if (
-#             len(xml_id) == 6
-#             and xml_id.isdigit()
-#             and name
-#             and len(vendor_xml_id) == 6
-#             and vendor_xml_id.isdigit()
-#             and vendor_rec is not None
-#         ):
-#         # valid record, record vendor mapping
-#         ven2sup[vendor_xml_id] = xml_id
-#         return False
-#     # invalid record
-#     return True
 
 def is_contact(obj):
     "obj must be either a string or have an xml_id key"
@@ -3536,96 +3517,6 @@ def update_ir_model_data(model, table_number, oe_records):
             error('error with name %r:\n  oe record id: %d\n  ir.model.data res_id: %r\n  ir.model.data name: %r'
                     % (imd_name, id, by_id, by_name))
 
-# old code
-# def handle_sales_reps():
-#     context = {'fis-updates': True}
-#     res = AttrDict()
-#     res.partner = oe.get_model('res.partner')
-#     cnvzz = fisData(47)
-#     if method == 'quick':
-#         cnvz_old = fisData(47, data_path=config.network.fis_data_local_old_path)
-#     failed_match = set()
-#     def is_invalid_cnvz(sales_rec):
-#         sales_id = rec[F47.salesperson_id].upper()
-#         sales_name = rec[F47.salesperson_name]
-#         company_id = rec[F47.company_id]
-#         if company_id != '10':
-#             return True
-#         if '-' in sales_name:
-#             sales_name, extra = sales_name.split('-')
-#             if not extra.strip().isdigit() and sales_id != 'BAD':
-#                 return True
-#         return False
-#     #
-#     # saving below for later
-#     #
-#         sales_full_name = sales_name.lower()
-#         names = sales_full_name.split()
-#         if len(names) > 1:
-#             sales_name = ' '.join([names[0], names[-1]])
-#         else:
-#             sales_name = sales_name.lower()
-#         if sales_name in failed_match:
-#             # this name already failed to match
-#             continue
-#         if var(potential_sales_people.get(sales_name)) is not None and len(var()) == 1:
-#             # full-name match
-#             sales_people[sales_id] = var()[0]
-#         # elif len(names) == 1:
-#         #     # if it didn't match before, it's not going to match now
-#         #     pass
-#         #     # potential_sales_people[sales_id] = None
-#         #     # failed_match.add(sales_name)
-#         elif var(potential_sales_people.get(names[-1])) and len(var()) == 1:
-#             # last name match
-#             sales_people[sales_id] = var()[0]
-#         elif var(potential_sales_people.get(names[0])) and len(var()) == 1:
-#             # first name match
-#             sales_people[sales_id] = var()[0]
-#         else:
-#             # no match at all
-#             # look for user matches and previously created dummy user accounts
-#             all_users = res_users.browse(cr, uid, context=inactive_too)
-#             all_users.sort(key=lambda r: not r.active)
-#             if len(names) > 1:
-#                 # try to match sales name with beginning of user name
-#                 # e.g. "billy bob" with "billy bob joe"
-#                 user = [u for u in all_users if u.name.lower().startswith(sales_name)]
-#                 if user:
-#                     if len(user) == 1:
-#                         sales_people[sales_id] = user[0].id
-#                         continue
-#                     else:
-#                         _logger.warning('unable to match %s (%s): too many possibles', sales_name, sales_id)
-#                         failed_match.add(sales_name)
-#                         continue
-#
-#                 login = names[0][0] + names[1]
-#             else:
-#                 login = names[0]
-#             # try to match against login
-#             # e.g. "billy bob" with "bbob"
-#             for user in all_users:
-#                 if login == user.login:
-#                     sales_people[sales_id] = user.id
-#                     break
-#             else:
-#                 # if we make it this far, no matches -- so let's create a new (inactive)
-#                 # user so we can properly categorize customers
-#                 _logger.warning('unable to match %s: creating dummy user', sales_name)
-#                 id = res_users.create(
-#                         cr, uid,
-#                         {
-#                             'name': NameCase(sales_name),
-#                             'login': login,
-#                             'active': False,
-#                             'tz': 'America/Los_Angeles',
-#                             },
-#                         context=context)
-#                 sales_people[sales_id] = id
-#                 all_users.append(res_users.browse(cr, uid, id, context=inactive_too))
-#             # continue
-#             # failed_match.add(sales_name)
 
 # main
 Main()

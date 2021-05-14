@@ -87,6 +87,9 @@ class TestScriptSupport(unittest.TestCase):
                     emile = True
                     tony = True
                     ron = True
+                    grace = 0
+                    stable = 0
+                    renotify = 0
 
                     [available.process_openerp_orders]
 
@@ -524,6 +527,9 @@ class TestProcessOpenerpOrders(unittest.TestCase):
                     emile = True
                     tony = True
                     ron = True
+                    grace = 13
+                    stable = 5
+                    renotify = 67
 
                     [available.process_openerp_orders]
 
@@ -629,9 +635,14 @@ class TestProcessOpenerpOrders(unittest.TestCase):
         #     ):
         #     process_orders.ORDERS.touch('%s.txt' % file, (None, datetime(2020, 5, 20, 9, 51).timestamp()))
         #
-        with Patch(fnx_script_support, 'error', 'send_mail') as s:
+        with Patch(
+                fnx_script_support,
+                'error', 'send_mail',
+                SCHEDULE=process_orders.RECIPIENT_FILE,
+                NOTIFIED=process_orders.ERROR_FILE,
+            ) as s:
             s.send_mail._return_ = [], []
-            with Patch(process_orders, 'error', 'send_mail') as p:
+            with Patch(process_orders, 'error', 'send_mail', script_name='process_openerp_orders') as p:
                 process_orders.TOMORROW = '091518'
                 process_orders.process_openerp_orders()
                 error_args = p.error._called_args_
@@ -1150,12 +1161,12 @@ class TestFisIntegrationConversion(unittest.TestCase):
                 country_recs,
                 )
 
-    def test_cnvzz_convert(self):
+    def test_cnvz_z_k_convert(self):
         self.validate_record_conversion(
-                'CNVZz',
+                'CNVZ_Z_K',
                 'fis.account.salesperson',
                 'fis.account.salesperson',
-                cnvzz_data,
+                cnvz_z_k_data,
                 )
 
     def test_csms_convert(self):
@@ -2537,21 +2548,29 @@ def cnvzsv_data(script):
                 ),
             )
 
-# CNVZz
-from fis_schema import F47
-def cnvzz_data(script):
+# CNVZ_Z_K
+from fis_schema import F47, F257
+def cnvz_z_k_data(script):
     return (
+
             DataSet(
                 # on disk
-                on_disk={
-                    F47.salesperson_id: 'DEV',
-                    F47.salesperson_name: 'MARK DEVENCENZI',
-                    },
+                on_disk=(
+                    {
+                        F47.salesperson_id: 'DEV',
+                        F47.salesperson_name: 'MARK DEVENCENZI',
+                        F47.employee_no: 917.0,
+                        },
+                    {
+                        F257.ordered_by_id: '12',
+                        },
+                    ),
                 # converted record
                 fis_rec=XidRec.fromdict(
                     AttrDict(
                         fis_name='MARK DEVENCENZI',
-                        user_id=ref.mdevencenzi.id
+                        user_id=ref.mdevencenzi.id,
+                        ordered_by_no='12',
                         ),
                     imd(name='F047_DEV_account_salesperson')
                     ),
@@ -2564,17 +2583,25 @@ def cnvzz_data(script):
                     fis_id='DEV',
                     ),
                 ),
+
             DataSet(
                 # on disk
-                on_disk={
-                    F47.salesperson_id: 'ARM',
-                    F47.salesperson_name: 'GREGG ARMSTRONG-HEALTHY LIVING',
-                    },
+                on_disk=(
+                    {
+                        F47.salesperson_id: 'ARM',
+                        F47.salesperson_name: 'GREGG ARMSTRONG-HEALTHY LIVING',
+                        F47.employee_no: 109.0,
+                        },
+                    {
+                        F257.ordered_by_id: '27',
+                        },
+                    ),
                 # converted record
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        fis_name='GREGG ARMSTRONG',
+                        fis_name='GREGG ARMSTRONG [HEALTHY LIVING]',
                         user_id=ref.garmstrong.id,
+                        ordered_by_no='27',
                         ),
                     imd(name='F047_ARM_account_salesperson')
                     ),
@@ -2587,17 +2614,25 @@ def cnvzz_data(script):
                     fis_id='ARM',
                     ),
                 ),
+
             DataSet(
                 # on disk
-                on_disk={
-                    F47.salesperson_id: 'MLC',
-                    F47.salesperson_name: 'MORTY',
-                    },
+                on_disk=(
+                    {
+                        F47.salesperson_id: 'MLC',
+                        F47.salesperson_name: 'MORTY',
+                        F47.employee_no: 1.0,
+                        },
+                    {
+                        F257.ordered_by_id: '32',
+                        },
+                    ),
                 # converted record
                 fis_rec=XidRec.fromdict(
                     AttrDict(
                         fis_name='MORTY',
                         user_id=ref.mcohen.id,
+                        ordered_by_no='32',
                         ),
                     imd(name='F047_MLC_account_salesperson')
                     ),
@@ -2610,17 +2645,25 @@ def cnvzz_data(script):
                     fis_id='MLC',
                     ),
                 ),
+
             DataSet(
                 # on disk
-                on_disk={
-                    F47.salesperson_id: 'MAR',
-                    F47.salesperson_name: 'MARY MICHELLE-999189',
-                    },
+                on_disk=(
+                    {
+                        F47.salesperson_id: 'MAR',
+                        F47.salesperson_name: 'MARY MICHELLE-999189',
+                        F47.employee_no: 770.0,
+                        },
+                    {
+                        F257.ordered_by_id: '23',
+                        },
+                    ),
                 # converted record
                 fis_rec=XidRec.fromdict(
                     AttrDict(
                         fis_name='MARY MICHELLE',
                         user_id=ref.mdemay.id,
+                        ordered_by_no='23',
                         ),
                     imd(name='F047_MAR_account_salesperson')
                     ),
@@ -2633,16 +2676,22 @@ def cnvzz_data(script):
                     fis_id='MAR',
                     ),
                 ),
+
             DataSet(
                 # on disk
-                on_disk={
-                    F47.salesperson_id: 'GGG',
-                    F47.salesperson_name: 'GREGG ARMSTRONG-999170',
-                    },
+                on_disk=(
+                    {
+                        F47.salesperson_id: 'GGG',
+                        F47.salesperson_name: 'GREGG ARMSTRONG-999170',
+                        F47.employee_no: 109.0,
+                        },
+                    None,
+                    ),
                 # converted record
                 fis_rec=XidRec.fromdict(
                     AttrDict(
                         fis_name='GREGG ARMSTRONG',
+                        ordered_by_no=False,
                         user_id=ref.garmstrong.id,
                         ),
                     imd(name='F047_GGG_account_salesperson')
@@ -2656,6 +2705,7 @@ def cnvzz_data(script):
                     fis_id='GGG',
                     ),
                 ),
+
             )
 
 # CSMS
