@@ -30,6 +30,7 @@ class fis_account_salesperson(xmlid, osv.Model):
         'xml_id': fields.char('FIS Code', size=3, readonly=True),
         'module': fields.char('FIS Module', size=4, readonly=True),
         'fis_name': fields.char('FIS Name', size=128, readonly=True),
+        'ordered_by_no': fields.char('FIS Ordered By #', size=2, readonly=True),
         'user_id': fields.many2one(
                 'res.users',
                 'Salesperson',

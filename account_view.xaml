@@ -10,6 +10,7 @@
                     @user_id
                     @xml_id
                     @fis_name
+                    @ordered_by_no
 
         ~record model='ir.actions.act_window' #fis_account_salesperson_action
             @name: Salespersons

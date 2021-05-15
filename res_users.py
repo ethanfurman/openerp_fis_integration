@@ -41,6 +41,10 @@ class res_users(osv.Model):
                 ),
         'fis_online_order_show_req_ship_date': fields.boolean('Show Requested Ship Date'),
         'fis_online_order_show_po_number': fields.boolean('Show PO Number'),
+        'fis_salesperson_ids': fields.one2many(
+            'fis.account.salesperson', 'user_id',
+            "Salesperson Info",
+            ),
         }
 
 
