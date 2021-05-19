@@ -312,20 +312,54 @@ def sql_describe(command, separator, wrap):
     else:
         sort = lambda t: t[0]
     seleccion = sorted(model.fields_get().items(), key=sort)
-    table = [('Field','Display','Type','Help'), None]
+    table = [('Field','Display','Type','Detail','Help'), None]
     for field, desc in seleccion:
         if 'field' in wrap:
             field = html2text(field, wrap['field'])
         display = desc['string']
         if 'display' in wrap:
             display = html2text(display, wrap['display'])
-        type = desc['type']
-        if 'type' in wrap:
-            type = html2text(type, wrap['type'])
         help = desc.get('help') or ''
         if 'help' in wrap:
             help = html2text(help, wrap['help'])
-        table.append((field, display, type, help))
+        type = desc['type']
+        details = []
+        if 'function' in desc:
+            details.append('function: %s' % desc['function'])
+        if type in ('one2many', 'many2one', 'many2many'):
+            relation = desc.get('relation')
+            if relation:
+                if type == 'one2many':
+                    reverse = desc.get('relation_field')
+                    if reverse:
+                        relation = '%s, %s' % (relation, reverse)
+                details.append('relation: %s' % relation)
+            domain = desc.get('domain')
+            if domain:
+                if isinstance(domain, (bytes, str)):
+                    domain = literal_eval(domain)
+                details.append('domain: %s' % '\n        '.join([str(d) for d in domain]))
+            context = desc.get('context')
+            if context:
+                if isinstance(context, (bytes, str)):
+                    context = literal_eval(context)
+                details.append('context: %s' % '\n         '.join(['%s=%r' % (k, v) for k, v in context.items()]))
+        for info in ('digits', 'selection', 'size', 'states'):
+            data = desc.get(info)
+            if data:
+                if isinstance(data, list):
+                    data = '|'.join([t[1] for t in data if t[1]])
+                if info in wrap:
+                    data = html2text(data, wrap[info])
+                else:
+                    try:
+                        if len(data) > 40:
+                            data = data[:37] + '...'
+                    except TypeError:
+                        pass
+                details.append('%s: %s' % (info, data))
+        details = '\n'.join(details)
+        table.append((field, display, type, details, help))
     echo(table, border='table')
 
 def sql_select(command, separator, wrap, _internal=''):
