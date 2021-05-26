@@ -8,7 +8,7 @@ import re
 import warnings
 
 from abc import ABCMeta, abstractmethod
-from aenum import Enum, Flag, NamedConstant, NamedTuple, AutoValue
+from aenum import Enum, Flag, NamedConstant, NamedTuple
 from antipathy import Path
 from dbf import Date, DateTime, Time, Table, READ_WRITE
 from dbf import NoneType, NullType, Char, Logical
@@ -1207,7 +1207,6 @@ class SynchronizeAddress(Synchronize):
 # helpers
 
 class DocFlag(Flag):
-    _settings_ = AutoValue
     _init_ = 'value __doc__'
     def __repr__(self):
         return '%s.%s' % (self.__class__.__name__, self._name_)
