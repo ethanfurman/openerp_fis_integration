@@ -56,7 +56,7 @@ newv = C.Normal | C.FG_Green
 ONE_YEAR_AGO = Date.today().replace(delta_year=-1)
 
 SALEABLE_CATEGORY_XML_ID = 'product_category_1'
-INVALID_CATEGORY_XML_ID = 'fis_invalid_product_category'
+INVALID_CATEGORY_XML_ID = 'fis_product_category_invalid'
 ETC_CATEGORY_XML_ID = '9'
 
 
@@ -148,7 +148,7 @@ def fis_integration(method, delete, *files, **extra):
                     CNVZd0,      # customer terms, 8
                     CNVZf,       # production lines, 341
                     CNVZO1,      # transmitter numbers, 192
-                    CNVZz,       # sales reps, 47
+                    CNVZ_Z_K,    # sales reps, 47
                     ):
                     handler(oe, config, extra=extra).run(method)
                 # shipping carriers, 27
@@ -249,6 +249,9 @@ class ARCI(Synchronize):
             'partner_id','fis_product_id','customer_product_code',
             'source',
             )
+    FIS_SCHEMA = (
+            F262.cust_item_id,
+            )
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
@@ -320,6 +323,9 @@ class CNVZaa(Synchronize):
             ('id', 'module', 'xml_id', 'name', 'available'),
             ('id', 'fis_module', 'fis_id', 'name', 'saleable'),
             )[odoo_erp]
+    FIS_SCHEMA = (
+            F97.desc, F97.availability,
+            )
     #
     ProductLocation = XmlLink
 
@@ -363,6 +369,9 @@ class CNVZas(Synchronize):
     OE_KEY = 'xml_id'
     OE_KEY_MODULE = 'F11'
     OE_FIELDS = ('id', 'module', 'xml_id', 'name', 'parent_id', 'fis_shelf_life')
+    FIS_SCHEMA = (
+            F11.desc, F11.shelf_life,
+            )
     #
     ProductCategory = XmlLink
 
@@ -426,6 +435,9 @@ class CNVZd0(Synchronize):
     OE_FIELDS = (
             'id', 'module', 'xml_id', 'description',
             )
+    FIS_SCHEMA = (
+            F8.description,
+            )
     #
     CustomerTerms = XmlLink
 
@@ -466,6 +478,9 @@ class CNVZf(Synchronize):
             ('id', 'xml_id', 'module', 'desc'),
             ('id', 'fis_id', 'fis_module', 'description'),
             )[odoo_erp]
+    FIS_SCHEMA = (
+            F341.desc,
+            )
     #
     ProductionLine = XmlLink
 
@@ -522,6 +537,9 @@ class CNVZO1(Synchronize):
             rec[F192.transmitter_no].strip().isdigit()
             and rec[F192.status][0:1] == 'A'
             and rec[F192.cust_no].strip()
+            )
+    FIS_SCHEMA = (
+            F192.transmitter_name, F192.cust_no, F192.ship_to_id, F192.status,
             )
     #
     TransmitterCode = XmlLink
@@ -631,6 +649,7 @@ class CNVZ_Z_K(Synchronize):
             ('id', 'module', 'xml_id', 'fis_name', 'user_id', 'ordered_by_no'),
             ('id', 'fis_module', 'fis_id', 'fis_name', 'user_id', 'ordered_by_no'),
             )[odoo_erp]
+    FIS_SCHEMA = ()
     #
     SalesRep = XmlLink
 
@@ -643,9 +662,9 @@ class CNVZ_Z_K(Synchronize):
                 context=self.context,
                 )
         self.users = {}
-        for u in users:
-            key = int(u._imd.name.split('_')[1])
-            self.users[key] = u
+        for user in users:
+            key = int(user._imd.name.split('_')[1])
+            self.users[key] = user
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         sales_rec, orderedby_rec = fis_rec
@@ -726,6 +745,7 @@ class CNVZ_Z_K(Synchronize):
             name = rec[F47.salesperson_name].split('-')[0].upper()
             self.old_fis_table[key] = rec, old_names.get(name)
 
+    fis_quick_load = SynchronizeAddress.fis_long_load
 
 class CSMS(SynchronizeAddress):
     """
@@ -954,6 +974,10 @@ class CSMSS(SynchronizeAddress):
             'fis_transmitter_id', 'fis_ship_to_code', 'active',
             ]
     OE_FIELDS[1:1] = (['module','xml_id'],['fis_module','fis_id'])[odoo_erp]
+    FIS_SCHEMA = (
+            F34.name, F34.addr1, F34.addr2, F34.addr3, F34.postal,
+            F34.tele, F34.sales_contact,
+            )
     FIS_IGNORE_RECORD = lambda self, rec: (
                 not rec[F34.name]
                 or re.search('.*additional.*ship.*to.*', rec[F34.name], re.I)
@@ -1414,299 +1438,6 @@ class IFPP0(Synchronize):
             fis_rec.schedule_date_set = True
             fis_rec.schedule_date = oe_rec.schedule_date
 
-    def handle_production_order(method):
-        #
-        # to fix wrong names format
-        #   update fnx_pd_order set order_no = regexp_replace(order_no, '(\d*)_(\d_\d)', '\1-\2');
-        #
-        global ifms
-        cutoff_date = cutoff.strftime('%Y-%m-%d')
-        print('processing production orders (IFPP0 - 328)', border=('flag', '#'))
-        print('EXTRA ->', EXTRA)
-        context = {'fis-updates': True, 'active_test': False}
-        fnx_pd_order = Model(oe.get_model('fnx.pd.order'), 'ifpp0', 'F328', context, RAISE_ON_EXCEPTION)
-        all_oe_records = {}
-        all_fis_records = {}
-        # these are for tracking original old/new records
-        new_order_records = {}
-        old_order_records = {}
-        # these  are for tracking old/new versions of changed records
-        old_changed_order_records = {}
-        new_changed_order_records = {}
-        # these are for added/deleted records
-        added_order_records = {}
-        deleted_records = {}
-        # the counts
-        changed_count = 0
-        added_count = 0
-        deleted_count = 0
-        #
-        # get the "old" data from:
-        # - quick -> old fis file
-        # - full -> current OpenERP data
-        #
-        print('gathering data')
-        ifpp0 = fisData(328, rematch=r'10(......)000010000')
-        ifms = fisData(320, rematch=r'10(..........)..(...)0')
-        print('  ', ifpp0.filename, len(ifpp0), verbose=2)
-        print('  ', ifms.filename, len(ifms), verbose=2)
-        #
-        target_order = EXTRA.get('order')
-        def ignore_order(order):
-            return target_order and target_order != order[F328.order_no]
-        #
-        if method == 'quick':
-            #
-            # for a quick compare we can use the fis records as-is when looking for changes
-            #
-            ifpp_old = fisData(328, rematch=r'10(......)000010000', data_path=config.network.fis_data_local_old_path)
-            print(ifpp_old.filename, verbose=2)
-            print('collecting changed records')
-            changes, added, deleted = get_changed_fis_records(
-                    ifpp_old.values(),
-                    ifpp0.values(),
-                    enum_schema=[
-                        F328.order_no, F328.produced, F328.order_confirmed, F328.prod_no,
-                        F328.formula_id, F328.formula_rev, F328.dept_id, F328.prod_line,
-                        F328.prod_scheduled_date, F328.prod_date, F328.units_produced,
-                        ],
-                    address_fields=[],
-                    ignore=ignore_order,
-                    )
-            #
-            # and convert the new and deleted records
-            #
-            print('sorting %d new and %d deleted records' % (len(added), len(deleted)))
-            for fis_rec in added:
-                for rec in split_steps(convert_ifpp0_rec(fis_rec)).values():
-                    added_order_records[rec.order_no] = add_ac(fis_rec, rec)
-            for fis_rec in deleted:
-                for rec in split_steps(convert_ifpp0_rec(fis_rec)).values():
-                    deleted_records[rec.order_no] = rec
-            for old, new, diffs in ProgressView(
-                    iterable=changes,
-                    message='sorting $total changed records',
-                    view_type=VIEW_TYPE,
-                ):
-                order_no = old[F328.order_no]
-                old_order = convert_ifpp0_rec(old)
-                old_order_records[order_no] = old_order
-                new_order = convert_ifpp0_rec(new)
-                new_order_records[order_no] = new_order
-                # changes at the FIS level don't always translate to changes at the OpenERP level
-                if old_order != new_order:
-                    # split orders up
-                    old_orders = split_steps(old_order)
-                    new_orders = split_steps(new_order)
-                    for order_no in set(old_orders.keys() + new_orders.keys()):
-                        old_order = old_orders.get(order_no)
-                        new_order = new_orders.get(order_no)
-                        if old_order is None:
-                            added_order_records[order_no] = new_order
-                        elif new_order is None:
-                            if old_order.state not in ('complete', 'cancelled'):
-                                deleted_records[order_no] = old_order
-                        else:
-                            old_changed_order_records[order_no] = old_order
-                            new_changed_order_records[order_no] = new_order
-                assert set(old_changed_order_records.keys()) == set(new_changed_order_records.keys()),\
-                        "old and new order records mismatch"
-            all_oe_records = dict([
-                (r.order_no, r)
-                for r in fnx_pd_order.read(
-                    domain=[
-                        ('order_no','in',
-                            added_order_records.keys()
-                            + deleted_records.keys()
-                            + old_changed_order_records.keys()
-                            ),
-                        ],
-                    fields=[
-                        'id', 'order_no', 'completed_fis_qty', 'confirmed', 'item_id',
-                        'formula_code', 'dept', 'line_id', 'schedule_date', 'finish_date',
-                        'line_id_set', 'schedule_date_set', 'state',
-                        ],
-                    )])
-        elif method == 'full':
-            #
-            # for a full compare we fully convert the fis records, the compare against all open
-            # orders and closed/cancelled orders referenced by the fis records
-            #
-            # fis first
-            #
-            print('getting fis records')
-            order_numbers = []
-            for fis_rec in ifpp0.values():
-                for rec in split_steps(convert_ifpp0_rec(fis_rec)).values():
-                    if target_order and not rec.order_no.startswith(target_order):
-                        continue
-                    order_numbers.append(rec.order_no)
-                    all_fis_records[rec.order_no] = rec
-            #
-            # and then openerp
-            #
-            print('getting openerp records')
-            all_oe_records = dict([
-                (r.order_no, r)
-                for r in fnx_pd_order.read(
-                    domain=[
-                        '|',
-                        ('order_no','in',order_numbers),
-                        ('state','in',['draft','sequenced','released','running','stopped']),
-                        ],
-                    fields=[
-                        'id', 'order_no', 'completed_fis_qty', 'confirmed', 'item_id',
-                        'formula_code', 'dept', 'line_id', 'schedule_date', 'finish_date',
-                        'line_id_set', 'schedule_date_set', 'state',
-                        ],
-                    )])
-            #
-            # and then we compare
-            #
-            print('sorting changed, new, and deleted records')
-            for order_no in set(all_oe_records.keys() + all_fis_records.keys()):
-                old_order = all_oe_records.get(order_no)
-                new_order = all_fis_records.get(order_no)
-                if old_order is None:
-                    added_order_records[order_no] = new_order
-                    continue
-                elif new_order is None:
-                    if old_order.state not in ('complete', 'cancelled'):
-                        deleted_records[order_no] = old_order
-                    continue
-                # save for later comparison
-                old_changed_order_records[order_no] = old_order
-                new_changed_order_records[order_no] = new_order
-            assert set(old_changed_order_records.keys()) == set(new_changed_order_records.keys()),\
-                    "old and new order records mismatch"
-        else:
-            abort('unknown METHOD: %r' % (method, ))
-        #
-        # at this point all records are in AttrDict format and divided by
-        # new, deleted, and changed
-        #
-        # process changes
-        #
-        print('%d potentially changed records' % len(old_changed_order_records), verbose=2)
-        for order_no, new_order in ProgressView(
-                iterable=new_changed_order_records.items(),
-                message='double-checking $total changes',
-                view_type=VIEW_TYPE
-            ):
-            # is order out of range?
-            if new_order.schedule_date > cutoff_date:
-                deleted_records[order_no] = new_order
-                del old_changed_order_records[order_no]
-                del new_changed_order_records[order_no]
-                continue
-            old_order = all_oe_records.get(order_no)
-            if old_order is None:
-                added_order_records[order_no] = new_order
-                del old_changed_order_records[order_no]
-                del new_changed_order_records[order_no]
-                continue
-            # now normalize records for good comparison
-            new_order.id = old_order.id
-            new_order.state = new_order.state or old_order.state
-            # if old_order already has a finish date, remove it
-            # TODO: figure out why a changed finish_date isn't updated on OpenERP
-            if old_order.finish_date:
-                del old_order.finish_date
-                del new_order.finish_date
-            if old_order.line_id_set:
-                new_order.line_id_set = True
-                new_order.line_id = old_order.line_id
-            if old_order.schedule_date_set:
-                new_order.schedule_date_set = True
-                new_order.schedule_date = old_order.schedule_date
-            # and check for actionable changes
-            if new_order == old_order:
-                del old_changed_order_records[order_no]
-                del new_changed_order_records[order_no]
-                continue
-            else:
-                # update old_changed_order_records in case method is 'quick'
-                old_changed_order_records[order_no] = old_order
-        #
-        changed_map = combine_by_value(old_changed_order_records, new_changed_order_records)
-        print('%d groups in changed_map' % len(changed_map), verbose=2)
-        print('%d records in those groups' % sum([len(r) for r in changed_map.values()]), verbose=2)
-        for changes, records in ProgressView(
-                iterable=sorted(changed_map.items()),
-                message='processing changed records',
-                view_type=VIEW_TYPE,
-            ):
-            values = dict(changes)
-            order_nos = [r.order_no for r in records]
-            print('values: ', values, verbose=2)
-            print('order numbers: ', order_nos, verbose=2)
-            oe_ids = dict([
-                (r.order_no, r)
-                for r in
-                    fnx_pd_order.read(domain=[('order_no','in',order_nos)], fields=['id','order_no'])
-                    ])
-            changed_count += len(oe_ids)
-            logger.info(
-                    'F328: changing -- %s  -->  %s',
-                    order_nos,
-                    ', '.join("%s=%r" % (k, v) for k, v in sorted(changes))
-                    )
-            if LIST_RECORDS:
-                body = []
-                for rec in records:
-                    body.append(('  F328:%s' % (rec.order_no, )))
-                if script_verbosity > 1:
-                    body.append('---')
-                    body.append(str(AttrDict(changes)))
-                echo('\n'.join(body), border='box' if script_verbosity > 1 else None)
-            if not DRYRUN:
-                for order_no in order_nos:
-                    fnx_pd_order.write(order_no, oe_ids[order_no].id, values, context={})
-        # process additions, checking first for already existing orders
-        print('adding records')
-        order_nos = added_order_records.keys()
-        existing_order_nos = [o.order_no for o in all_oe_records.values()]
-        for order_no, order in added_order_records.items():
-            if order_no in existing_order_nos:
-                fnx_pd_order.error('FIS Order F328:%s already exists in OpenERP' % (order_no, ))
-                continue
-            if cutoff < order.schedule_date:
-                continue
-            added_count += 1
-            logger.info(
-                    'F328:%s -- adding -- %s',
-                    order_no,
-                    (', '.join(['%s=%r' % (k, v) for k, v in order.items()]))
-                    )
-            if LIST_RECORDS:
-                echo('  F328:%s' % order_no, end='  ')
-                print(','.join(['%s=%r' % (k, v) for k, v in order.items()]), end='', verbose=2)
-                echo('\n', '- -' * 25)
-            if not DRYRUN:
-                fnx_pd_order.create(order_no, order)
-        #
-        # process deletions, but only for orders that still exist
-        #
-        print('removing records')
-        order_nos = deleted_records.keys()
-        orders = dict([(o.id, o) for o in all_oe_records.values() if o.order_no in deleted_records])
-        if orders:
-            deleted_count = len(orders)
-            logger.info(
-                    'F328 -- removing -- %s',
-                    ', '.join(order_nos)
-                    )
-            if LIST_RECORDS:
-                echo('\n'.join(['  F328:%s' % o.order_no for o in orders.values()]))
-            if not DRYRUN:
-                fnx_pd_order.unlink(orders.keys())
-        #
-        print('%d orders changed\n%d orders added\n%d orders deleted'
-                % (changed_count, added_count, deleted_count, ),
-                border='box',
-                )
-
-
 class IFPP1(Synchronize):
     """
     production order ingredient, 329
@@ -1821,308 +1552,6 @@ class IFPP1(Synchronize):
             echo(production_order, production_order.batches)
             raise
         return (XidRec.fromdict(ingredient, imd), )
-
-    def handle_production_detail(method):
-        global ifpp0, oe_orders
-        print('processing product ingredients (IFPP1 - 329)', border=('flag', '#'))
-        print('EXTRA ->', EXTRA)
-        context = {'fis-updates': True, 'active_test': False}
-        fnx_pd_ingredient = Model(oe.get_model('fnx.pd.ingredient'), 'ifpp1', 'F329', context, RAISE_ON_EXCEPTION)
-        all_oe_records = {}
-        all_fis_records = {}
-        # all old and new records
-        old_ingredient_records = {}
-        new_ingredient_records = {}
-        # these are for tracking old/new versions of changed records
-        old_changed_ingredient_records = {}
-        new_changed_ingredient_records = {}
-        # these are for added/deleted records
-        added_ingredient_records = {}
-        deleted_records = {}
-        # the counts
-        changed_count = 0
-        added_count = 0
-        deleted_count = 0
-        #
-        # get the "old" data from:
-        # - quick -> old fis file
-        # - full -> current OpenERP data
-        #
-        print('gathering data')
-        oe_orders = {}
-        oe_static_orders = set()
-        for order in get_records(oe, 'fnx.pd.order', fields=['id','order_no','state']):
-            order.id = Many2One(order.id, order.order_no)
-            if order.state in ('complete', 'cancelled'):
-                oe_static_orders.add(order.order_no[:6])
-            else:
-                oe_orders.setdefault(order.order_no[:6], []).append(order)
-        for static_order in oe_static_orders:
-            oe_orders.pop(static_order, None)
-        print('%d orders' % len(oe_orders))
-        oe_items = dict([
-            (i.xml_id, Many2One(i.id, i.xml_id))
-            for i in get_records(oe, 'product.product', fields=['id','xml_id'], domain=[('module','=','F135')])
-            ])
-        print('%d items found' % len(oe_items), verbose=2)
-        ifpp0 = fisData(328, rematch=r"10(......)000010000")
-        ifpp1 = fisData(329, rematch=r"10(......)000011...")
-        print('%s:  %d records' % (ifpp1.filename, len(ifpp1)), verbose=2)
-        #
-        target_order = EXTRA.get('order')
-        def ignore_order_detail(rec):
-            if target_order and rec[F329.order_no] != target_order:
-                return True
-            if rec[F329.item_type_batch_1] == 'M':
-                return True
-            elif rec[F329.ingr_code_batch_1] in ignored_ingredients:
-                return True
-            elif rec[F329.qty_batch_1] <= 0:
-                return True
-            order_no = rec[F329.order_no]
-            if order_no not in oe_orders:
-                return True
-            if all([order.state in ['complete','cancelled'] for order in oe_orders[order_no]]):
-                return True
-            return False
-        #
-        if method == 'quick':
-            #
-            # for a quick compare we can use the fis records as-is when looking for changes
-            #
-            ifpp1_old = fisData(329, rematch=r"10(......)000011...", data_path=config.network.fis_data_local_old_path)
-            print('%s:  %d records' % (ifpp1_old.filename, len(ifpp1_old)), verbose=2)
-            print('collecting changed records')
-            changes, added, deleted = get_changed_fis_records(
-                    ifpp1_old.values(),
-                    ifpp1.values(),
-                    enum_schema=[
-                        F329.order_no, F329.ingr_code_batch_1, F329.units_batch_1, F329.qty_batch_1, F329.formula_line_no
-                        ],
-                    address_fields=[],
-                    ignore=ignore_order_detail,
-                    key=(F329.company_id, F329.order_no, F329.ingr_code_batch_1),
-                    )
-            #
-            # and convert the new and deleted records
-            #
-            print('sorting new and deleted records')
-            for fis_rec in added:
-                new_ingredient = convert_ifpp1_rec(fis_rec)
-                order_no = new_ingredient.order_id
-                if order_no in oe_orders:
-                    if any(o.state not in ('complete','cancelled') for o in oe_orders[order_no]):
-                        new_ingredient.order_ids = [o.id for o in oe_orders[order_no]]
-                        del new_ingredient.order_id
-                else:
-                    fnx_pd_ingredient.error('F329:%s: unable to find in OpenERP' % order_no)
-                new_ingredient.item_id = oe_items[new_ingredient.item_id]
-                added_ingredient_records[new_ingredient.name] = new_ingredient
-                new_ingredient_records[new_ingredient.name] = new_ingredient
-            for fis_rec in deleted:
-                old_ingredient = convert_ifpp1_rec(fis_rec)
-                order_no = old_ingredient.order_id
-                if order_no in oe_orders:
-                    if all(o.state not in ('complete','cancelled') for o in oe_orders[order_no]):
-                        deleted_records[old_ingredient.name] = old_ingredient
-                        old_ingredient_records[old_ingredient.name] = old_ingredient
-                else:
-                    fnx_pd_ingredient.error('F329:%s: unable to find in OpenERP' % order_no)
-            for old, new, diffs in ProgressView(
-                    iterable=changes,
-                    message='sorting changed records',
-                    view_type=VIEW_TYPE,
-                ):
-                new_ingredient = convert_ifpp1_rec(new)
-                old_ingredient = convert_ifpp1_rec(old)
-                # changes at the FIS level don't always translate to changes at the OpenERP level
-                if old_ingredient == new_ingredient:
-                    continue
-                order_no = new_ingredient.order_id
-                if order_no in oe_orders:
-                    order_ids = [o.id for o in oe_orders[order_no]]
-                    if any(o.state not in ('complete','cancelled') for o in oe_orders[order_no]):
-                        old_ingredient.order_ids = order_ids
-                        new_ingredient.order_ids = order_ids
-                        del old_ingredient.order_id
-                        del new_ingredient.order_id
-                        old_ingredient.item_id = oe_items[old_ingredient.item_id]
-                        new_ingredient.item_id = oe_items[new_ingredient.item_id]
-                        old_changed_ingredient_records[old_ingredient.name] = old_ingredient
-                        old_ingredient_records[old_ingredient.name] = old_ingredient
-                        new_changed_ingredient_records[new_ingredient.name] = new_ingredient
-                        new_ingredient_records[new_ingredient.name] = new_ingredient
-                else:
-                    fnx_pd_ingredient.error('F329:%s: unable to find in OpenERP' % order_no)
-            assert set(old_changed_ingredient_records.keys()) == set(new_changed_ingredient_records.keys()),\
-                    "old and new ingredient records mismatch\n%r\%r" % (
-                            sorted(old_changed_ingredient_records),
-                            sorted(new_changed_ingredient_records),
-                            )
-            all_oe_records = dict([
-                (r.name, r)
-                for r in fnx_pd_ingredient.read(
-                    domain=[('name','in',
-                            added_ingredient_records.keys()
-                            +deleted_records.keys()
-                            +old_changed_ingredient_records.keys()
-                            )],
-                    fields=[
-                        'id', 'name', 'order_ids', 'item_id', 'qty_needed', 'qty_desc',
-                        ],
-                    )])
-            # update old records to OpenERP version;
-            # possibly move records to added category
-            for name, old_ingredient in old_changed_ingredient_records.items():
-                if name in all_oe_records:
-                    old_changed_ingredient_records[name] = all_oe_records[name]
-                    new_changed_ingredient_records[name].id = all_oe_records[name].id
-                    continue
-                elif name in new_ingredient_records:
-                    # record doesn't exist - add to added_ingredient_records and remove
-                    # from [old|new]_changed_ingredient_records
-                    added_ingredient_records[name] = new_ingredient_records[name]
-                else:
-                    fnx_pd_ingredient('%s not found in OpenERP' % name)
-                del old_changed_ingredient_records[name]
-                del new_changed_ingredient_records[name]
-        elif method == 'full':
-            #
-            # for a full compare we fully convert the fis records, then compare against all
-            # ingredients
-            #
-            # fis first
-            #
-            print('getting fis records')
-            for fis_rec in ifpp1.values():
-                if ignore_order_detail(fis_rec):
-                    continue
-                ingredient = convert_ifpp1_rec(fis_rec)
-                all_fis_records[ingredient.name] = ingredient
-            #
-            # and then openerp
-            #
-            print('\ngetting openerp records')
-            all_oe_records = dict([
-                (r.name, r)
-                for r in fnx_pd_ingredient.read(
-                    domain=[('name','in',all_fis_records.keys())],
-                    fields=[
-                        'id', 'name', 'sequence', 'order_ids', 'item_id', 'qty_needed', 'qty_desc',
-                        ],
-                    )])
-            #
-            # and then we compare
-            #
-            print('sorting changed, new, and deleted records')
-            for name in set(all_oe_records.keys() + all_fis_records.keys()):
-                old_ingredient = all_oe_records.get(name)
-                new_ingredient = all_fis_records.get(name)
-                if new_ingredient is None:
-                    deleted_records[name] = old_ingredient
-                    continue
-                order_ids = oe_orders.get(new_ingredient.order_id)
-                if order_ids is None:
-                    continue
-                order_ids = [o.id for o in order_ids]
-                new_ingredient.order_ids = order_ids
-                del new_ingredient.order_id
-                item_id = oe_items.get(new_ingredient.item_id)
-                if item_id is None:
-                    continue
-                new_ingredient.item_id = item_id
-                if old_ingredient is None:
-                    added_ingredient_records[name] = new_ingredient
-                    continue
-                old_ingredient.pop('order_id', None)
-                # now normalize records for good comparison
-                new_ingredient.id = old_ingredient.id
-                if old_ingredient != new_ingredient:
-                    old_changed_ingredient_records[name] = old_ingredient
-                    new_changed_ingredient_records[name] = new_ingredient
-            assert set(old_changed_ingredient_records.keys()) == set(new_changed_ingredient_records.keys()),\
-                    "old and new ingredient records mismatch"
-        else:
-            abort('unknown METHOD: %r' % (method, ))
-        #
-        # at this point all records are in AttrDict format and divided by
-        # new, deleted, and changed
-        #
-        # process additions, checking first for already existing ingredients
-        print('adding records')
-        for name, ingredient in added_ingredient_records.items():
-            if name in all_oe_records:
-                fnx_pd_ingredient.error('FIS Order F329:%s already exists in OpenERP' % (name, ))
-                continue
-            added_count += 1
-            ingredient.order_ids = [(6, 0, ingredient.order_ids)]
-            logger.info(
-                    'F329:%s -- adding -- %s',
-                    name,
-                    (', '.join(['%s=%r' % (k, v) for k, v in ingredient.items()]))
-                    )
-            if LIST_RECORDS:
-                echo('  F329:%s' % name, end='  ')
-                print(','.join(['%s=%r' % (k, v) for k, v in ingredient.items()]), end='', verbose=2)
-                echo()
-            if not DRYRUN:
-                fnx_pd_ingredient.create(name, ingredient)
-        #
-        # process deletions, but only for ingredients that still exist
-        #
-        print('removing records')
-        missing_ingredients = dict([
-            (i.name, i)
-            for i in all_oe_records.values()
-            if i.name in deleted_records
-            ])
-        if missing_ingredients:
-            deleted_count = len(missing_ingredients)
-            logger.info(
-                    'F329 -- removing -- %s',
-                    ', '.join(missing_ingredients.keys())
-                    )
-            if LIST_RECORDS:
-                echo('\n'.join(['  F329:%s' % i.name for i in missing_ingredients.values()]))
-            if not DRYRUN:
-                fnx_pd_ingredient.unlink(missing_ingredients.keys())
-        #
-        # process changes
-        #
-        changed_map = combine_by_value(old_changed_ingredient_records, new_changed_ingredient_records)
-        for changes, records in ProgressView(
-                iterable=sorted(changed_map.items()),
-                message='processing changed records',
-                view_type=VIEW_TYPE,
-            ):
-            values = AttrDict(changes)
-            if 'order_ids' in values:
-                values.order_ids = [(6, 0, values.order_ids)]
-            records = list(records)
-            oe_ids = [o.id for o in records]
-            names = [o.name for o in records]
-            assert len(oe_ids)
-            changed_count += len(oe_ids)
-            logger.info(
-                    'F329: changing -- %s  -->  %s',
-                    names,
-                    ', '.join("%s=%r" % (k, v) for k, v in sorted(changes))
-                    )
-            if LIST_RECORDS:
-                body = []
-                for i in records:
-                    body.append(('  F329:%s' % (i.name, )))
-                if script_verbosity > 1:
-                    body.append('---')
-                    body.append(str(values))
-                echo('\n'.join(body), border='box' if script_verbosity > 1 else None)
-            if not DRYRUN:
-                fnx_pd_ingredient.write(', '.join(names), oe_ids, values, context={})
-        #
-        print('%d ingredients changed\n%d ingredients added\n%d ingredients deleted'
-                % (changed_count, added_count, deleted_count, ),
-                border='box',
-                )
 
 class NVTY(Synchronize):
     """
@@ -2256,19 +1685,19 @@ class NVTY(Synchronize):
             forecast_data = {}
         print('getting description data')
         description_data = get_product_descriptions()
-        for (module, xml_id), rec in self.fis_records.items():
+        for (fis_module, fis_id), rec in self.fis_records.items():
             #
-            label_data = ProductLabelDescription(xml_id)
+            label_data = ProductLabelDescription(fis_id)
             rec.fis_web_ingredients = label_data.ingredients_text or None
             rec.fis_web_prep_instructions = label_data.recipe_text or None
             #
-            desc = description_data.get(xml_id)
+            desc = description_data.get(fis_id)
             rec.name = desc or rec.fis_name or None
             #
             if not rec.categ_id:
                 rec.categ_id = self.INVALID_CATEGORY
             #
-            forecast = forecast_data.get(xml_id)
+            forecast = forecast_data.get(fis_id)
             rec.fis_qty_produced = 0
             rec.fis_qty_consumed = 0
             rec.fis_qty_purchased = 0
@@ -2305,349 +1734,6 @@ class NVTY(Synchronize):
             fis_rec.name = oe_rec.name
 
 
-    def _handle_nvty(method):
-        global product_available_at, product_sales_category, product
-        print('processing NVTY', border=('flag', '#'))
-        examine = EXTRA.get('NVTY')
-        context = {'fis-updates': True, 'active_test': False}
-        product = Model(oe.get_model('product.product'), 'nvty', 'F135', context, RAISE_ON_EXCEPTION)
-        all_oe_records = {}
-        # these are for tracking original old/new records
-        new_item_records = {}
-        old_item_records = {}
-        # these  are for tracking old/new versions of changed records
-        old_changed_item_records = {}
-        new_changed_item_records = {}
-        # these are for added/deleted records
-        added_item_records = {}
-        deleted_records = {}
-        # the counts
-        changed_count = 0
-        added_count = 0
-        deleted_count = 0
-        # get dependent data
-        #
-        # get the "old" data from:
-        # - quick -> old fis file
-        # - full -> current OpenERP data
-        #
-        nvty = fisData(135, rematch=r"......101000    101\*\*")
-        print(nvty.filename, verbose=2)
-        print('gathering data')
-        if method == 'quick':
-            #
-            # for a quick compare we can use the fis records as-is when looking for changes
-            #
-            nvty_old = fisData(135, rematch=r"......101000    101\*\*", data_path=config.network.fis_data_local_old_path)
-            print(nvty_old.filename, verbose=2)
-            print('collecting changed records')
-            changes, added, deleted = get_changed_fis_records(
-                    nvty_old.values(),
-                    nvty.values(),
-                    enum_schema=[
-                        F135.item_id,
-                        F135.available_key, F135.sales_cat, F135.trademarkd,
-                        F135.catalog_location, F135.desc, F135.size, F135.upc_no, F135.primary_location,
-                        F135.supplier_id, F135.new_retail, F135.new_whlsl,
-                        F135.net_un_wt, F135.grs_un_wt,
-                        ],
-                    address_fields=[],
-                    )
-            #
-            # we now have the subset of records that have changed, now fetch the OpenERP records
-            # to see if any meaningful changes
-            #
-            all_xml_ids = [t[0][F135.item_id] for t in changes]
-            all_xml_ids.extend([f[F135.item_id] for f in added])
-            all_xml_ids.extend([f[F135.item_id] for f in deleted])
-            all_oe_records = dict([
-                (r.xml_id, r)
-                for r in product.read(
-                    domain=[('module','=','F135'),('xml_id','in',all_xml_ids)],
-                    fields=[
-                        'id', 'module', 'xml_id', 'active', 'name', 'fis_name', 'fis_qty_on_hand',
-                        'fis_availability_code', 'sale_ok', 'list_price', 'trademarks', 'ean13',
-                        'fis_location', 'fis_shipping_size', 'categ_id', 'warranty',
-                        'default_code', 'weight', 'weight_net', 'list_price',
-                        ],
-                    )
-                ])
-            for old, new, diffs in ProgressView(
-                    iterable=changes,
-                    message='sorting changed records',
-                    view_type=VIEW_TYPE,
-                ):
-                xml_id = old[F135.item_id]
-                old_item = all_oe_records[xml_id]
-                old_item_records[xml_id] = old_item
-                new_item = self.convert_fis_rec(new)
-                # normalize fields
-                new_item.id = old_item.id
-                new_item_records[new_item.xml_id] = new_item
-                # changes at the FIS level don't always translate to changes at the OpenERP level
-                if old_item != new_item:
-                    old_changed_item_records[old_item.xml_id] = old_item
-                    new_changed_item_records[new_item.xml_id] = new_item
-                assert set(old_changed_item_records.keys()) == set(new_changed_item_records.keys()),\
-                        "old and new item records mismatch"
-            #
-            # and convert the new and deleted records
-            #
-            for fis_rec in added:
-                rec = self.convert_fis_rec(fis_rec)
-                rec.name = rec.fis_name
-                added_item_records[rec.xml_id] = rec
-            # XXX: disable for now in hopes of removing false inactive designations
-            # for fis_rec in deleted:
-            #     rec = convert_nvty_rec(fis_rec)
-            #     deleted_records[rec.xml_id] = rec
-        elif method == 'full':
-            #
-            # get the forecast and description data -- only used in "full"
-            #
-            print('getting forecast data')
-            forecast_data = get_product_forecast()
-            print('getting description data')
-            description_data = get_product_descriptions()
-            #
-            # when doing a full compare, we have to convert every single fis record before we can
-            # check for changes
-            #
-            all_fis_records = dict([
-                (r.xml_id, r)
-                for r in
-                    [self.convert_fis_rec(f) for f in nvty.values()]
-                ])
-            if examine:
-                echo(examine, all_fis_records.get(examine), sep='\n---\n', border='box')
-            # and update with forecasts and descriptions
-            for xml_id, rec in all_fis_records.items():
-                #
-                label_data = ProductLabelDescription(xml_id)
-                rec.fis_web_ingredients = label_data.ingredients_text
-                rec.fis_web_prep_instructions = label_data.recipe_text
-                #
-                desc = description_data.get(xml_id)
-                rec.name = desc or rec.fis_name or None
-                if rec.name is False:
-                    del rec.name
-                #
-                forecast = forecast_data.get(xml_id)
-                if xml_id == examine:
-                    echo('forecast', forecast, sep='\n---\n', border='box')
-                rec.fis_qty_produced = 0
-                rec.fis_qty_consumed = 0
-                rec.fis_qty_purchased = 0
-                rec.fis_qty_sold = 0
-                rec.fis_qty_available = 0
-                rec.fis_10_day_produced = 0
-                rec.fis_10_day_consumed = 0
-                rec.fis_10_day_purchased = 0
-                rec.fis_10_day_sold = 0
-                rec.fis_10_day_available = 0
-                rec.fis_21_day_produced = 0
-                rec.fis_21_day_consumed = 0
-                rec.fis_21_day_purchased = 0
-                rec.fis_21_day_sold = 0
-                rec.fis_21_day_available = 0
-                if forecast is not None:
-                    # the first four of the above values do not change
-                    _, _10_day, _21_day = forecast
-                    rec.fis_qty_available = rec.fis_qty_on_hand
-                    rec.fis_10_day_produced = _10_day.produced
-                    rec.fis_10_day_consumed = _10_day.consumed
-                    rec.fis_10_day_purchased = _10_day.purchased
-                    rec.fis_10_day_sold = _10_day.sold
-                    rec.fis_10_day_available = rec.fis_qty_on_hand + sum(_10_day)
-                    rec.fis_21_day_produced = _21_day.produced
-                    rec.fis_21_day_consumed = _21_day.consumed
-                    rec.fis_21_day_purchased = _21_day.purchased
-                    rec.fis_21_day_sold = _21_day.sold
-                    rec.fis_21_day_available = rec.fis_qty_on_hand + sum(_21_day)
-            #
-            # retrieve the OpenERP records that match the NVTY module
-            #
-            print('retrieving OpenERP records')
-            all_oe_records = dict([
-                    (r.xml_id, r)
-                    for r in get_records(
-                        oe, 'product.product',
-                        domain=[('module','=','F135')],
-                        fields=[
-                            'id', 'module', 'xml_id', 'active', 'name', 'fis_name', 'fis_qty_on_hand',
-                            'fis_availability_code', 'sale_ok', 'list_price', 'trademarks', 'ean13',
-                            'fis_location', 'fis_shipping_size', 'categ_id', 'warranty',
-                            'fis_qty_produced', 'fis_10_day_produced', 'fis_21_day_produced',
-                            'fis_qty_consumed', 'fis_10_day_consumed', 'fis_21_day_consumed',
-                            'fis_qty_purchased', 'fis_10_day_purchased', 'fis_21_day_purchased',
-                            'fis_qty_sold', 'fis_10_day_sold', 'fis_21_day_sold',
-                            'fis_qty_available', 'fis_10_day_available', 'fis_21_day_available',
-                            'default_code', 'weight', 'weight_net',
-                            'fis_web_ingredients', 'fis_web_prep_instructions',
-                            ],
-                        context=context,
-                        )
-                    ])
-            if examine:
-                echo(examine, all_oe_records.get(examine), sep='\n---\n', border='box')
-            # print('sorting changed, new, and deleted product records')
-            all_keys = set(all_fis_records.keys() + all_oe_records.keys())
-            for key in ProgressView(
-                    iterable=sorted(all_keys),
-                    message='sorting product records',
-                    view_type=VIEW_TYPE,
-                ):
-                old_rec = all_oe_records.get(key)
-                new_rec = all_fis_records.get(key)
-                if old_rec is new_rec is None:
-                    continue
-                if old_rec is None:
-                    added_item_records[key] = new_rec
-                    continue
-                if new_rec is None:
-                    deleted_records[key] = old_rec
-                    continue
-                # copy missing fields for proper equality testing
-                new_rec.id = old_rec.id
-                for field in old_rec.keys():
-                    if field not in new_rec:
-                        new_rec[field] = old_rec[field]
-                        product.error(
-                                "%s: field %r missing from new record; using old value of %r"
-                                    % (key, field, old_rec[field])
-                                )
-                if old_rec == new_rec or close_enough(old_rec, new_rec):
-                    continue
-                #
-                # we have changes, save the records for later comparison
-                #
-                old_changed_item_records[key] = old_rec
-                new_changed_item_records[key] = new_rec
-                if key == examine:
-                    echo(key, old_rec, new_rec, sep='\n---\n', box='border')
-            assert set(old_changed_item_records.keys()) == set(new_changed_item_records.keys()),\
-                    "old and new item records mismatch"
-        else:
-            abort('unknown METHOD: %r' % (method, ))
-        #
-        # at this point, all records are in AttrDict format, divided by deleted, added, and changed
-        # new records are from FIS files, old records are from OpenERP
-        #
-        # add new products
-        #
-        for xml_id, item in ProgressView(
-                iterable=sorted(added_item_records.items()),
-                message='adding new records',
-                view_type=VIEW_TYPE,
-            ):
-            name = item.fis_name
-            if xml_id in all_oe_records:
-                product.error('FIS ID F135:%s (%s) already exists in OpenERP' % (xml_id, name))
-                continue
-            added_count += 1
-            logger.info(
-                    'F135:%s -- adding -- %s',
-                    xml_id,
-                    (', '.join(['%s=%r' % (k, v) for k, v in item.items()]))
-                    )
-            if LIST_RECORDS:
-                echo('  F135:%s  %s' % (item.xml_id, name), end='  ')
-                print('||', '||'.join('%s -> %r' % (k, v) for k, v in item.items()), '||', end='')
-                echo()
-            if not DRYRUN:
-                product_id = product.create(xml_id, item)
-                if product_id:
-                    item.id = product_id
-                    all_oe_records[xml_id] = item
-        #
-        # process changes
-        #
-        changed_map = combine_by_value(old_changed_item_records, new_changed_item_records)
-        echo('%d items' % len(old_changed_item_records))
-        for changes, records in ProgressView(
-                iterable=sorted(changed_map.items()),
-                message='processing changed records',
-                view_type=VIEW_TYPE,
-            ):
-            values = dict(changes)
-            xml_ids = [r.xml_id for r in records]
-            oe_ids = product.search([('module','=','F135'),('xml_id','in',xml_ids)])
-            changed_count += len(oe_ids)
-            logger.info(
-                    'F135: changing -- %s  -->  %s',
-                    xml_ids,
-                    ', '.join("%s=%r" % (k, v) for k, v in sorted(changes))
-                    )
-            if LIST_RECORDS:
-                body = []
-                for rec in records:
-                    body.append(('  F135:%s  %s' % (rec.xml_id, rec.fis_name)))
-                if script_verbosity > 1:
-                    body.append('---')
-                    body.append(str(AttrDict(changes)))
-                echo('\n'.join(body), border='box' if script_verbosity > 1 else None)
-            if examine in xml_ids:
-                echo(
-                        'changing %s to' % examine,
-                        '\n'.join(['%s = %r' % (k, v) for k, v in sorted(values.items())]),
-                        sep='\n---\n',
-                        border='box',
-                        )
-            if not DRYRUN:
-                product.write('|'.join(xml_ids), oe_ids, values, context={})
-        #
-        # deleted/deactivate products
-        #
-        if not DELETE:
-            delete_message = 'deactivating old records'
-        else:
-            delete_message = 'deleting old records'
-        for _ in ProgressView(
-                iterable=(True, ),
-                message=delete_message,
-                view_type=VIEW_TYPE,
-            ):
-            # get the ids of actually existing records
-            xml_ids = deleted_records.keys()
-            if examine in xml_ids:
-                echo('deleting', examine, border='box')
-            if DELETE:
-                ids = [rec.id for key, rec in all_oe_records.items() if key in xml_ids]
-            else:
-                ids = [rec.id for key, rec in all_oe_records.items() if key in xml_ids and rec.active]
-            if ids:
-                deleted_count = len(ids)
-                if deleted_count:
-                    logger.info(
-                            'F135 -- removing -- %s',
-                            ', '.join(sorted(deleted_records.keys()))
-                            )
-                    if LIST_RECORDS:
-                        for xml_id, rec in sorted(deleted_records.items()):
-                            echo('  F135:%s  %s' % (rec.xml_id, rec.fis_name))
-                    if not DRYRUN:
-                        if DELETE:
-                            product.delete(ids, context=context)
-                        else:
-                            product.write('...', ids, {'active': False})
-        #
-        # update ir.model.data mappings
-        #
-        oe_records = dict(
-                (r.id, r.xml_id)
-                for r in get_records(
-                    oe,
-                    'product.product',
-                    domain=[('module','=','F135')],
-                    fields=['xml_id'],
-                    ))
-        update_ir_model_data('product.product', 135, oe_records)
-        #
-        print('%d products changed\n%d products added\n%d products %s'
-                % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
-                border='box',
-                )
-
 class POSM_VNMS(SynchronizeAddress):
     """
     vendors & suppliers, 163 & 65
@@ -2677,6 +1763,7 @@ class POSM_VNMS(SynchronizeAddress):
             'fis_gmo_exp', 'fis_kosher_exp',
             ]
     OE_FIELDS[1:1] = (['module','xml_id'],['fis_module','fis_id'])[odoo_erp]
+    FIS_SCHEMA = ()
     FIELDS_CHECK_IGNORE = ('active', 'name')
 
     def FIS_IGNORE_RECORD(self, rec):
@@ -2898,408 +1985,6 @@ class POSM_VNMS(SynchronizeAddress):
             self.fis_table[key] = posm_table.get(key), vnms_table.get(key)
         for key in all_old_keys:
             self.old_fis_table[key] = old_posm_table.get(key), old_vnms_table.get(key)
-
-    def _handle_supplier(method):
-        #
-        # combine the posm and vnms tables to create supplier records;
-        # majority of data comes from the posm table, with contact name,
-        # phone, and fax numbers coming from vnms
-        #
-        # always use "full" method
-        #
-        global posm, vnms
-        print('processing POSM/VNMS', border=('box','#'))
-        vnms = fisData(65, rematch=r"10(......)")
-        posm = fisData(163, rematch=r"10(......)")
-        print(posm.filename, verbose=2)
-        print(vnms.filename, verbose=2)
-        context = {'fis-updates': True, 'active_test': False}
-        # on the OpenERP side, supplier records use F163 as the FIS module
-        res_partner = Model(oe.get_model('res.partner'), 'posm/vnms', 'F163/F65', context, RAISE_ON_EXCEPTION)
-        # these are for tracking original old/new records
-        new_company_records = {}
-        old_company_records = {}
-        new_contact_records = {}
-        old_contact_records = {}
-        # these  are for tracking old/new versions of changed records
-        old_changed_company_records = {}
-        new_changed_company_records = {}
-        old_changed_contact_records = {}
-        new_changed_contact_records = {}
-        # these are for added/deleted records
-        added_company_records = {}
-        added_contact_records = {}
-        deleted_records = {}
-        # and the counts
-        changed_count = 0
-        added_count = 0
-        deleted_count = 0
-        ids = {}
-        #
-        # get the "old" data from:
-        # - full -> current OpenERP data
-        #
-        print('gathering data', border='flag')
-        #
-        # when doing a full compare, we have to convert every single fis record before we can
-        # check for changes
-        #
-        print('retrieving and converting FIS records')
-        all_keys = set(posm.keys() + vnms.keys())
-        all_fis_records = AttrDict()
-        for code in sorted(posm.keys()):
-            key = code[2:]
-            company, contact = self.convert_fis_rec(key)
-            if company is None:
-                continue
-            # if company/contact are invalid, just put them in the deleted category
-            all_fis_records[company.xml_id] = company
-            if '**NO LONGER HERE**' in company.name or '**OLDER/N.L.H. EMPLOYEE**' in company.name:
-                deleted_records[company.xml_id] = company
-            else:
-                new_company_records[company.xml_id] = company
-            if contact is not None:
-                all_fis_records[contact.xml_id] = contact
-                if '**NO LONGER HERE**' in contact.name or '**OLDER/N.L.H. EMPLOYEE**' in contact.name:
-                    deleted_records[contact.xml_id] = contact
-                else:
-                    new_contact_records[contact.xml_id] = contact
-        for code in sorted(vnms.keys()):
-            key = code[2:]
-            if key in vendor_codes:
-                continue
-            company, contact = self.convert_fis_rec(key)
-            if company is None:
-                continue
-            # if company/contact are invalid, just put them in the deleted category
-            all_fis_records[company.xml_id] = company
-            if '**NO LONGER HERE**' in company.name or '**OLDER/N.L.H. EMPLOYEE**' in company.name:
-                deleted_records[company.xml_id] = company
-            else:
-                new_company_records[company.xml_id] = company
-            if contact is not None:
-                all_fis_records[contact.xml_id] = contact
-                if '**NO LONGER HERE**' in contact.name or '**OLDER/N.L.H. EMPLOYEE**' in contact.name:
-                    deleted_records[contact.xml_id] = contact
-                else:
-                    new_contact_records[contact.xml_id] = contact
-        #
-        # retrieve the OpenERP records that match the POSM/VNMS module, and divvy them up into company
-        # and contact records
-        #
-        print('retrieving OpenERP records')
-        all_oe_records = dict([
-                (r.xml_id, r)
-                for r in get_records(
-                    oe, 'res.partner',
-                    domain=[('module','=','F163')],
-                    fields=[
-                        'id', 'module', 'xml_id', 'active', 'phone', 'fax',
-                        'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
-                        'fis_valid', 'is_company', 'customer', 'supplier',
-                        'fis_updated_by_user', 'use_parent_address',
-                        'fis_org_cert_file', 'fis_non_gmo', 'fis_kosher', 'fis_org_exp',
-                        'fis_gmo_exp', 'fis_kosher_exp',
-                        ],
-                    context=context,
-                    )
-                ])
-        print('sorting company and contact records')
-        for xml_id, datom in all_oe_records.items():
-            ids[xml_id] = datom.id
-            if xml_id.startswith('cntct_'):
-                # do not update address from here -- it's either the default of "use parent's"
-                # or it's been changed by the user (same with specials_notification)
-                del datom.use_parent_address
-                del datom.street, datom.street2
-                del datom.city, datom.state_id, datom.zip, datom.country_id
-                del datom.fis_org_cert_file, datom.fis_non_gmo, datom.fis_kosher
-                del datom.fis_org_exp, datom.fis_gmo_exp, datom.fis_kosher_exp
-                old_contact_records[xml_id] = datom
-            else:
-                old_company_records[xml_id] = datom
-        #
-        # now we can separate into new, changed, and deleted buckets
-        #
-        print('sorting company records into changed, new, and deleted')
-        all_keys = set(new_company_records.keys() + old_company_records.keys())
-        for key in all_keys:
-            old_rec = all_oe_records.get(key)
-            new_rec = all_fis_records.get(key)
-            if old_rec is new_rec is None:
-                assert False, "a key is missing from both old and new records???"
-            if old_rec is None:
-                if new_rec.active:
-                    added_company_records[key] = new_rec
-                continue
-            if new_rec is None:
-                deleted_records[key] = old_rec
-                continue
-            if not new_rec.active:
-                deleted_records[key] = old_rec
-                continue
-            # copy missing fields for proper equality testing / remove unused-for-comparison fields
-            new_rec.id = old_rec.id
-            new_rec.fis_updated_by_user = old_rec.fis_updated_by_user
-            # for now, we don't want the FIS active status overwriting the OpenERP active status
-            del new_rec.active, old_rec.active
-            if set(new_rec.keys()) != set(old_rec.keys()):
-                error('old_rec: %r  -- new_rec: %r' % (type(old_rec), type(new_rec)))
-                error('old_rec._values.keys() --> %r\nnew_rec._values.keys() --> %r' % (
-                    old_rec._values.keys(), new_rec._values.keys()))
-                raise AssertionError('old_rec/new_rec keys mismatch')
-            if new_rec == old_rec:
-                continue
-            #
-            # we have changes, save the records for later comparison
-            #
-            old_changed_company_records[key] = old_rec
-            new_changed_company_records[key] = new_rec
-        if set(old_changed_company_records.keys()) != set(new_changed_company_records.keys()):
-            error('old_rec: %r  -- new_rec: %r' % (type(old_changed_company_records), type(new_changed_company_records)))
-            raise AssertionError('old_changed_company_records/new_changed_company_records keys mismatch')
-        #
-        print('sorting contact records into changed, new, and deleted')
-        all_keys = set(new_contact_records.keys() + old_contact_records.keys())
-        for key in all_keys:
-            parent_key = key[6:]
-            old_rec = all_oe_records.get(key)
-            new_rec = all_fis_records.get(key)
-            if old_rec is new_rec is None:
-                assert False, "a key is missing from both old and new records???"
-            if old_rec is None:
-                if new_rec.active:
-                    added_contact_records[key] = new_rec
-                continue
-            if new_rec is None:
-                deleted_records[key] = old_rec
-                continue
-            if not new_rec.active:
-                deleted_records[key] = old_rec
-                continue
-            if parent_key in deleted_records:
-                deleted_records[key] = old_rec
-                continue
-            # copy missing fields for proper equality testing / remove unused-for-comparison fields
-            new_rec.id = old_rec.id
-            new_rec.fis_updated_by_user = old_rec.fis_updated_by_user
-            del new_rec.use_parent_address
-            # for now, we don't want the FIS active status overwriting the OpenERP active status
-            del new_rec.active, old_rec.active
-            assert set(new_rec.keys()) == set(old_rec.keys()), '\n'+box(
-                    "keys mismatch\n---\nold record:\n%s\n---\nnew record:\n%s"
-                    % ('\n'.join(old_rec.keys()), '\n'.join(new_rec.keys()))
-                    )
-            if new_rec == old_rec:
-                continue
-            #
-            # we have changes, save the records for later comparison
-            #
-            old_changed_contact_records[key] = old_rec
-            new_changed_contact_records[key] = new_rec
-        assert set(old_changed_contact_records.keys()) == set(new_changed_contact_records.keys()),\
-                "old and new contact records mismatch"
-        #
-        # at this point, all records are in AttrDict format, divided by deleted, added, changed
-        #
-        # process company changes
-        #
-        if old_changed_company_records:
-            print('processing company changes', border='flag')
-        assert set(old_changed_company_records.keys()) == set(new_changed_company_records.keys()),\
-                "old/new company records mismatch"
-        changed_company_xml_ids = sorted(old_changed_company_records.keys())
-        relevant_changes = False
-        for xml_id in changed_company_xml_ids:
-            #
-            # TODO: check actual values in OpenERP and remove "changes" that are already set
-            #
-            # figure out the changes
-            #
-            old_record = old_changed_company_records[xml_id]
-            new_record = new_changed_company_records[xml_id]
-            assert set(old_record.keys()) == set(new_record.keys()),\
-                    ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
-                        ('|'.join(sorted(old_record.keys())), box(str(old_record)),
-                         '|'.join(sorted(new_record.keys())), box(str(new_record))))
-            # check for user-updated-address and specials
-            user_updates = old_record.fis_updated_by_user or ''
-            if 'A' in user_updates:
-                # drop all the address fields
-                del old_record.use_parent_address
-                del old_record.street, old_record.street2
-                del old_record.city, old_record.state_id, old_record.zip, old_record.country_id
-                del new_record.use_parent_address
-                del new_record.street, new_record.street2
-                del new_record.city, new_record.state_id, new_record.zip, new_record.country_id
-            if 'N' in user_updates:
-                del old_record.name
-                del new_record.name
-            changes = get_updated_values(old_record, new_record)
-            if changes:
-                relevant_changes = True
-                changed_count += 1
-                logger.info(
-                        'F163: changing -- %s  -->  %s',
-                        xml_id,
-                        ', '.join("%s=%r" % (k, v) for k, v in changes.items())
-                        )
-                if LIST_RECORDS:
-                    echo('  F163:%s  %s' % (xml_id, new_record.name), end='  ')
-                    print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
-                    echo()
-                if not DRYRUN:
-                    res_partner.write(xml_id, new_record.id, changes)
-        if not relevant_changes:
-            print('...no relevant changes...')
-        #
-        # add new companies
-        #
-        if added_company_records:
-            print('adding company records', border='flag')
-        for key, company in added_company_records.items():
-            if not DRYRUN:
-                # double-check that record doesn't already exist
-                company_id = res_partner.search(domain=[('xml_id','=',key),('module','=','F163')])
-                if company_id:
-                    [company_id] = company_id
-                    ids[key] = company_id
-                    res_partner.error('FIS ID F163:%s (%s) already exists in OpenERP' % (key, company.name))
-                    continue
-            added_count += 1
-            logger.info(
-                    'F163:%s -- adding -- %s',
-                    key,
-                    (', '.join(['%s=%r' % (k, v) for k, v in company.items()]))
-                    )
-            if LIST_RECORDS:
-                echo('  F163:%s  %s' % (key, company.name), end='  ')
-                print('||', '||'.join('%s -> %r' % (k, v) for k, v in company.items()), '||', end='')
-                echo()
-            if not DRYRUN:
-                company_id = res_partner.create(key, company)
-                if company_id:
-                    company.id = company_id
-                    ids[key] = company_id
-        #
-        # process contact changes
-        #
-        if old_changed_contact_records:
-            print('processing contact changes', border='flag')
-        assert set(old_changed_contact_records.keys()) == set(new_changed_contact_records.keys()),\
-                "old/new contact records mismatch"
-        changed_contact_xml_ids = sorted(old_changed_contact_records.keys())
-        relevant_changes = False
-        for xml_id in changed_contact_xml_ids:
-            #
-            # TODO: check actual values in OpenERP and remove "changes" that are already set
-            #
-            # figure out the changes
-            #
-            old_record = old_changed_contact_records[xml_id]
-            new_record = new_changed_contact_records[xml_id]
-            assert set(old_record.keys()) == set(new_record.keys()),\
-                    ('old/new keys mismatch\nold:%s\n%s\nnew:%s\n%s' %
-                        ('|'.join(sorted(old_record.keys())), box(str(old_record)),
-                         '|'.join(sorted(new_record.keys())), box(str(new_record))))
-            # check for user-updated-address and specials
-            user_updates = old_record.fis_updated_by_user or ''
-            if 'A' in user_updates:
-                # drop all the address fields
-                del old_record.use_parent_address
-                del old_record.street, old_record.street2
-                del old_record.city, old_record.state_id, old_record.zip, old_record.country_id
-                del new_record.use_parent_address
-                del new_record.street, new_record.street2
-                del new_record.city, new_record.state_id, new_record.zip, new_record.country_id
-            if 'N' in user_updates:
-                del old_record.name
-                del new_record.name
-            changes = get_updated_values(old_record, new_record)
-            if changes:
-                relevant_changes = True
-                changed_count += 1
-                if LIST_RECORDS:
-                    echo('  F163:%s  %s' % (xml_id, new_record.name), end='  ')
-                    print('||', '||'.join('%s -> %r' % (k, v) for k, v in changes.items()), '||', end='')
-                    echo()
-                if not DRYRUN:
-                    res_partner.write(xml_id, new_record.id, changes)
-        if not relevant_changes:
-            print('...no relevant changes...')
-        #
-        # add new contacts
-        #
-        if added_contact_records:
-            print('adding contact records', border='flag')
-        for key, contact in added_contact_records.items():
-            if not DRYRUN:
-                # double-check that record doesn't already exist
-                contact_id = res_partner.search(domain=[('xml_id','=',key),('module','=','F163')])
-                if contact_id:
-                    [contact_id] = contact_id
-                    ids[key] = contact_id
-                    res_partner.error('FIS ID F163:%s (%s) already exists in OpenERP' % (key, contact.name))
-                    continue
-            added_count += 1
-            logger.info(
-                    'F163:%s -- adding -- %s',
-                    contact.name,
-                    (', '.join(['%s=%r' % (k, v) for k, v in contact.items()]))
-                    )
-            if LIST_RECORDS:
-                echo('  F163:%s  %s' % (key, contact.name), end='  ')
-                print('||', '||'.join('%s -> %r' % (k, v) for k, v in contact.items()), '||', end='')
-                echo()
-            if not DRYRUN:
-                contact_id = res_partner.create(key, contact)
-                if contact_id:
-                    contact.id = contact_id
-                    ids[key] = contact_id
-        #
-        # deleted/deactivate suppliers
-        #
-        if deleted_records:
-            # toss any records that don't already exist in OpenERP
-            for key, rec in sorted(deleted_records.items()):
-                if key not in ids:
-                    deleted_records.pop(key)
-                elif not all_oe_records[key].active:
-                    deleted_records.pop(key)
-                elif LIST_RECORDS:
-                    echo('  F163:%s  %s' % (key, rec.name))
-            deleted_count = len(deleted_records)
-            if deleted_count:
-                verb = 'deleting' if DELETE else 'deactivating'
-                print('%s records' % verb, border='flag')
-                logger.info(
-                        'F163 -- %s -- %s',
-                        verb,
-                        ', '.join(sorted(deleted_records.keys()))
-                        )
-                if not DRYRUN:
-                    oe_ids = res_partner.search(domain=[('xml_id','in',deleted_records.keys())])
-                    if DELETE:
-                        res_partner.delete(oe_ids, context=context)
-                    else:
-                        res_partner.write('...', oe_ids, {'active': False}, context=context)
-        #
-        # update ir.model.data mappings
-        #
-        oe_records = dict(
-                (r.id, r.xml_id)
-                for r in get_records(
-                    oe, 'res.partner',
-                    domain=[('module','=','F163')],
-                    fields=['xml_id'],
-                    context=context,
-                    ))
-        update_ir_model_data('res.partner', 163, oe_records)
-        #
-        print('%d suppliers changed\n%d suppliers added\n%d suppliers %s'
-                % (changed_count, added_count, deleted_count, ('deactivated','deleted')[DELETE]),
-                border='box',
-                )
 
 def get_customer_aging(aging_file):
     aging_data = {}

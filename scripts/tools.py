@@ -133,7 +133,7 @@ class SynchronizeType(ABCMeta):
             missing = []
             for setting in (
                     'TN', 'FN', 'RE', 'OE', 'F', 'IMD',
-                    'OE_KEY', 'FIS_IGNORE_RECORD',
+                    'OE_KEY', 'FIS_IGNORE_RECORD', 'FIS_SCHEMA',
                 ):
                 if getattr(cls, setting, None) is None:
                     missing.append(setting)
@@ -178,7 +178,7 @@ SynchronizeABC = SynchronizeType(
 
 class Synchronize(SynchronizeABC):
 
-    FIS_SCHEMA = ()
+    FIS_ADDRESS_FIELDS = ()
     FIS_IGNORE_RECORD = lambda self, rec: False
     OE_KEY_MODULE = None
     FIELDS_CHECK_IGNORE = ()
@@ -206,10 +206,10 @@ class Synchronize(SynchronizeABC):
             IMD -> (Odoo) table name, used as suffix for imd name
             OE_KEY              -> key field in OE tables
             OE_FIELDS_LONG      -> OE fields to fetch for long comparisons
+            FIS_SCHEMA          -> FIS fields to use for quick comparisons
 
         If needed:
 
-            FIS_SCHEMA          -> FIS fields to use for quick comparisons
             FIS_IGNORE_RECORD   -> function to determine if FIS record should be skipped
             OE_FIELDS_QUICK     -> OE fields to fetch for quick comparisons
             OE_KEY_MODULE       -> module field value or field and value, if any
@@ -557,7 +557,7 @@ class Synchronize(SynchronizeABC):
         print('%d and %d records loaded' % (len(self.fis_table), len(self.old_fis_table)))
         imd_names = set()
         oe_module = self.OE_KEY_MODULE
-        for old, new, diffs in self.changes:
+        for old, new, diffs in changes:
             old_entries = self.convert_fis_rec(old)
             new_entries = self.convert_fis_rec(new)
             for old_rec, new_rec in zip(old_entries, new_entries):
@@ -593,17 +593,17 @@ class Synchronize(SynchronizeABC):
         # get changed records as list of
         # (old_record, new_record, [(enum_schema_member, old_value, new_value), (...), ...]) tuples
         try:
-            if issubclass(self.fis_schema, Enum):
-                enum = self.fis_schema
+            if issubclass(self.FIS_SCHEMA, Enum):
+                enum = self.FIS_SCHEMA
         except TypeError:
-                enum = type(self.fis_schema[0])
+                enum = type(self.FIS_SCHEMA[0])
         if key is None:
             key_fields_name = list(enum)[0].fis_name
             key_fields = [m for m in enum if m.fis_name == key_fields_name]
         else:
             key_fields = key
         address_fields = self.FIS_ADDRESS_FIELDS
-        enum_schema = [m for m in self.fis_schema if m not in address_fields]
+        enum_schema = [m for m in self.FIS_SCHEMA if m not in address_fields]
         changes = []
         added = []
         deleted = []
