@@ -104,7 +104,8 @@ def fis_update(method, skip_copy, skip_update, files, dryrun, list_records, bw_l
                 files = ['%s/%s%s' % (path, pre, f) for f in active_files]
         # and grab the files
         system('rsync --bwlimit=%d %s:%s %s/' % (bw_limit, master, ' :'.join(files), new))
-        system('chown -R openerp: /FIS')
+        system('chown -R openerp: %s/' % config.network.fis_data_local_path)
+        system('chown -R openerp: %s/' % config.network.fis_data_local_old_path)
         config.network.fis_data_local_path.chmod(0o440, '*')
     #
     # step 2: determine which files changed (only if quick, does not check extra_files)
@@ -213,8 +214,9 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
     files.sort()
     print('\n'.join(files), verbose=2)
     if today or date:
-        target = (today and Date.today() or date).strftime('-%Y-%m-%d.')
-        files[:] = [pf for pf in files if target in pf]
+        old_target = (today and Date.today() or date).strftime('-%Y-%m-%d.')
+        new_target = (today and Date.today() or date).strftime('-%Y_%m_%d-')
+        files[:] = [pf for pf in files if old_target in pf or new_target in pf]
     elif all:
         # already have all files
         pass
@@ -283,9 +285,7 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
             field_names.remove('action_')
             field_names.remove('failure_')
             widths, types = calc_widths_types(field_names, table)
-            last_list = None
             table.top()
-            echo(table.current, table.current_record)
             if not type or type == 'delete':
                 # one big table with all fields from all deletes
                 def process_deletes():
@@ -321,7 +321,6 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
                             yield([rec[fn] for fn in field_names])
                 echo(table_display(process_deletes(), widths=widths, types=types, header=False))
             if not type or type == 'add':
-                echo(table.current, table.current_record)
                 # one big table with all fields from all adds
                 def process_adds():
                     first = True
@@ -362,7 +361,6 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
                             yield([rec[fn] for fn in field_names])
                 echo(table_display(process_adds(), widths=widths, types=types, header=False))
             if not type or type == 'change':
-                echo(table.current, table.current_record)
                 # many little tables, one per change set
                 def process_changes():
                     "process one table at a time"
