@@ -6,7 +6,7 @@ from __future__ import print_function
 from scription import *
 from aenum import Enum, NamedTuple
 from antipathy import Path
-# from collections import defaultdict
+from collections import defaultdict
 from dbf import Date, DateTime, Time
 from fis_schema import F8, F11, F27, F33, F34, F47, F65, F74, F97, F135
 from fis_schema import F163, F192, F257, F262, F320, F322, F328, F329, F341
@@ -56,7 +56,7 @@ newv = C.Normal | C.FG_Green
 ONE_YEAR_AGO = Date.today().replace(delta_year=-1)
 
 SALEABLE_CATEGORY_XML_ID = 'product_category_1'
-INVALID_CATEGORY_XML_ID = 'fis_product_category_invalid'
+INVALID_CATEGORY_XML_ID = 'fis_invalid_product_category'
 ETC_CATEGORY_XML_ID = '9'
 
 
@@ -78,22 +78,22 @@ ETC_CATEGORY_XML_ID = '9'
         raise_on_exception=Spec('do not ignore exceptions', FLAG, abbrev=('raise', )),
         )
 def main(dryrun, list_records, raise_on_exception):
-    global config, oe, ir_model_data        #, errors
-    # global DRYRUN, LIST_RECORDS, RAISE_ON_EXCEPTION, VIEW_TYPE, BORDER, script_verbosity
-    # DRYRUN = LIST_RECORDS = False
+    global config, oe, ir_model_data, errors
+    global DRYRUN, LIST_RECORDS, RAISE_ON_EXCEPTION, VIEW_TYPE, BORDER, script_verbosity
+    DRYRUN = LIST_RECORDS = False
     config = OrmFile(virtualenv / 'config/fnx.ini', types={'_path': Path})
     oe = config.openerp
     oe = get_connection(hostname=oe.host, database=oe.db, login=oe.user, password=oe.pw)
     ir_model_data = oe.get_model('ir.model.data')
-    # errors = defaultdict(list)
-    # if dryrun:
-    #     DRYRUN = True
-    #     if not script_verbosity:
-    #         script_verbosity = 1
-    # LIST_RECORDS = list_records
-    # RAISE_ON_EXCEPTION = raise_on_exception
-    # VIEW_TYPE = 'none' if LIST_RECORDS else 'percent'
-    # BORDER = 'box' if LIST_RECORDS and script_verbosity > 1 else None
+    errors = defaultdict(list)
+    if dryrun:
+        DRYRUN = True
+        if not script_verbosity:
+            script_verbosity = 1
+    LIST_RECORDS = list_records
+    RAISE_ON_EXCEPTION = raise_on_exception
+    VIEW_TYPE = 'none' if LIST_RECORDS else 'percent'
+    BORDER = 'box' if LIST_RECORDS and script_verbosity > 1 else None
     global logger
     logger = getLogger('orders')
 
@@ -120,11 +120,6 @@ def fis_integration(method, delete, *files, **extra):
     try:
         # make sure we are the only one running
         with PidLockFile(virtualenv / 'var/run/fis_update.pid'):
-            # update users first
-
-
-
-            # then update from FIS
             ven2sup = {}
             state_recs = dict([
                 (r.name, (Many2One(r.id, r.name, 'res.country.state'), r.country_id))
@@ -186,6 +181,32 @@ def fis_integration(method, delete, *files, **extra):
             for p in problems:
                 error('  ', p)
             error()
+
+    # dependencies:
+    #
+    # ARCI -> CSMS, NVTY
+    #
+    # CNVZaa, CNVZas, CNVZd0, CNVZf, CNVZO1, CNVZSV, CNVZ_Z_K -> None
+    #
+    # CSMS -> CNVZd0, CNVZO1, CNVZ_Z_K
+    #
+    # CSMSS -> CSMS, CNVZO1
+    #
+    # EMP1 -> None
+    #
+    # IFMS -> None
+    #
+    # IFDT -> IFMS, NVTY
+    #
+    # IFPP0 -> CNVZf, IFMS, NVTY
+    #
+    # IFPP1 ->IFPP0, NVTY
+    #
+    # NVTY -> CNVZas
+    #
+    # POSM/VNMS -> None
+
+
 
 @Command()
 def aging():
@@ -624,7 +645,6 @@ class CNVZSV(SynchronizeAddress):
         company.use_parent_address = False
         if key == '99':
             company.name = '____________'
-        # company.update(self.process_address(F27, fis_rec))
         company.phone = fix_phone(fis_rec[F27.tele].strip()) or None
         company.fuel_surcharge = fis_rec[F27.fuel_surcharge].upper() == 'Y'
         return (XidRec.fromdict(company, imd), )
@@ -685,9 +705,7 @@ class CNVZ_Z_K(Synchronize):
         salesrep = AttrDict.fromkeys(self.OE_FIELDS, None)
         salesrep[fis_id] = key
         salesrep[fis_module] = self.OE_KEY_MODULE
-        salesrep.ordered_by_no = False
-        if orderedby_rec is not None:
-            salesrep.ordered_by_no = orderedby_rec[F257.ordered_by_id]
+        salesrep.ordered_by_no = orderedby_rec and orderedby_rec[F257.ordered_by_id] or None
         name = sales_rec[F47.salesperson_name]
         if '-' in name:
             name, unk = name.split('-')
@@ -695,7 +713,7 @@ class CNVZ_Z_K(Synchronize):
                 name = '%s [%s]' % (name, unk)
         salesrep.fis_name = name
         # try to find a match in res.users
-        salesrep.user_id = self.users.get(sales_rec[F47.employee_no], False)
+        salesrep.user_id = self.users.get(sales_rec[F47.employee_no])
         if salesrep.user_id:
             salesrep.user_id = Many2One(salesrep.user_id.id, key, 'res.users')
         return (XidRec.fromdict(salesrep, imd), )
@@ -733,7 +751,7 @@ class CNVZ_Z_K(Synchronize):
         current_names = {}
         for rec in cnvzk_table.values():
             current_names[rec[F257.ordered_by_name].split('-')[0].upper()] = rec
-        for rec in cnvzz_table.values:
+        for rec in cnvzz_table.values():
             key = rec[F47.salesperson_id]
             name = rec[F47.salesperson_name].split('-')[0].upper()
             self.fis_table[key] = rec, current_names.get(name)
@@ -745,7 +763,7 @@ class CNVZ_Z_K(Synchronize):
             name = rec[F47.salesperson_name].split('-')[0].upper()
             self.old_fis_table[key] = rec, old_names.get(name)
 
-    fis_quick_load = SynchronizeAddress.fis_long_load
+    fis_quick_load = Synchronize.fis_long_load
 
 class CSMS(SynchronizeAddress):
     """
@@ -787,7 +805,7 @@ class CSMS(SynchronizeAddress):
 
     def __init__(self, oe, config, *args, **kwds):
         super(CSMS, self).__init__(oe, config, *args, **kwds)
-        # CNVZ_Z_K(oe, config).reify(fields=['user_id'])
+        CNVZ_Z_K(oe, config).reify(fields=['user_id'])
 
     def run(self, method):
         if method == 'full':
@@ -838,7 +856,7 @@ class CSMS(SynchronizeAddress):
             fis_module = 'module'
         names, address, do_not_use = self.process_name_address(F33, fis_rec)
         pname = names and names[0] or ''
-        pname = re.sub('sunridge', 'SunRidge', BsnsCase(pname), flags=re.I) or None
+        pname = re.sub('sunridge', 'SunRidge', BsnsCase(pname), flags=re.I) or ''
         if re.match('HE\d\d\d$', key) and pname.startswith('Heb '):
             pname = 'HEB ' + pname[4:]
         names[0:1] = [pname]
@@ -848,9 +866,6 @@ class CSMS(SynchronizeAddress):
         company = AttrDict.fromkeys(self.OE_FIELDS, None)
         company.name = name
         company.update(address)
-        # TODO: get salesrep working
-        # rep = cus_rec[F33.salesrep]
-        # rep = sales_people.get(rep, False)
         company[fis_module] = self.OE_KEY_MODULE
         company[fis_id] = key
         company.fis_updated_by_user = None
@@ -859,7 +874,7 @@ class CSMS(SynchronizeAddress):
         company.use_parent_address = False
         # valid customer code? active account?
         company.fis_valid = len(key) == 5
-        company.active = bool(do_not_use)
+        company.active = not bool(do_not_use)
         added = fis_rec[F33.date_added] or Date()
         if added:
             year, month, day = added[:2], int(added[2:4]), int(added[4:])
@@ -877,16 +892,9 @@ class CSMS(SynchronizeAddress):
         else:
             # TODO check for open orders
             pass
-        # company.user_id = getattr(CNVZ_Z_K.SalesRep(fis_rec[F33.salesrep]), 'user_id', None)
+        if fis_rec[F33.salesrep] == 'INA':
+            company.active = False
         company.user_id = CNVZ_Z_K.SalesRep(fis_rec[F33.salesrep]).user_id
-        # sr = sales_person_recs.get(salesrep, False)
-        # if not sr or not sr.user_id:
-        #     company.user_id = False
-        #     if salesrep not in _missing_reps:
-        #         _missing_reps.add(salesrep)
-        #         error('no salesrep match found for %r' % (salesrep, ))
-        # else:
-        #     company.user_id = sr.user_id.id
         notify_by = Specials.get_member(fis_rec[F33.catalog_category].upper(), Specials.neither)
         company.specials_notification = notify_by   #.value
         company.phone = fix_phone(fis_rec[F33.tele]) or None
@@ -957,7 +965,7 @@ class CSMS(SynchronizeAddress):
 
 class CSMSS(SynchronizeAddress):
     """
-    ship-to addresses, 33
+    ship-to addresses, 34
     """
     TN = 34
     FN = 'csmss'
@@ -1040,7 +1048,7 @@ class CSMSS(SynchronizeAddress):
         ship_to.update(address)
         ship_to[fis_module] = self.OE_KEY_MODULE
         ship_to[fis_id] = key
-        ship_to.active = True
+        ship_to.active = fis_rec[F34.salesrep_id] != 'INA'
         ship_to.fis_ship_to_code = ship_to_code
         ship_to.is_company = False
         ship_to.customer = False
@@ -1115,11 +1123,6 @@ class EMP1(SynchronizeAddress):
         employee.update(address)
         employee[fis_id] = employee.identification_id = emp_num
         employee[fis_module] = self.OE_KEY_MODULE
-        # try:
-        #     int(emp_num) >= 9000:
-        #         return ()
-        # except (ValueError, TypeError):
-        #     return ()
         employee.employment_type = 'standard'
         if odoo_erp:
             employee.phone = fix_phone(fis_rec[F74.tele]) or None
@@ -1258,7 +1261,6 @@ class IFDT(Synchronize):
         if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
             return ()
         oe_key = '%s-%s' % (fis_rec[F322.formula_id], fis_rec[F322.rev_no])
-        # fis_key = fis_rec[F322.formula_id], fis_rec[F322.rev_no]
         item = fis_rec[F322.ingr_code_batch_1]
         imd_name = '%s-%s' % (oe_key, fis_rec[F322.line_no])
         imd = AttrDict(
@@ -1314,7 +1316,6 @@ class IFPP0(Synchronize):
         # get current production lines from OE as there may be user
         # specified multi-lines
         #
-        # line_table = ('fis_integration.production_line','fis.production.line')[odoo_erp]
         multiline_table = ('fnx.pd.multiline','fis.production.multiline')[odoo_erp]
         cnvzf_name = '%s_%%_%s' % (CNVZf.F, CNVZf.IMD)
         self.production_lines = dict(
@@ -1348,8 +1349,6 @@ class IFPP0(Synchronize):
         # F328.order_no, F328.produced, F328.order_confirmed, F328.prod_no,
         # F328.formula_id, F328.formula_rev, F328.dept_id, F328.prod_line,
         # F328.prod_scheduled_date, F328.prod_date, F328.units_produced,
-        #
-        # multiple lines ARE NOT split
         #
         if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
             return ()
@@ -1468,23 +1467,12 @@ class IFPP1(Synchronize):
         order_no = rec[F329.order_no]
         if order_no not in self.oe_orders:
             return True
-        # if all([order.state in ['complete','cancelled'] for order in oe_orders[order_no]]):
-        #     return True
         return False
 
     def __init__(self, oe, config, *args, **kwds):
         super(IFPP1, self).__init__(oe, config, *args, **kwds)
         #
-        # get batch quantity from order
-        #
-        # self.ifpp0 = IFPP0(oe, config)
-        # self.ifpp0.reify(fields=['batches'])
-        #
-        # add coating and allergens from product formula
-        #
-        IFMS(oe, config).reify(fields=['coating','allergens'])
-        #
-        # get all valid order numbers from OE
+        # get all valid order numbers from OE, along with batch qty
         #
         ifpp0_name = '%s_%%_%s' % (IFPP0.F, IFPP0.IMD)
         orders = self.get_xid_records(
@@ -1502,10 +1490,6 @@ class IFPP1(Synchronize):
                     ).append(
                     IFPP0.ProductionOrder(order.order_no, order.id, batches=order.batches)
                     )
-        # convert single order tuples to individual item
-        # for order_no, orders in self.oe_orders.items():
-        #     if len(orders) == 1:
-        #         self.oe_orders[order_no] = orders[0]
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         "order ingredient"
@@ -1536,9 +1520,6 @@ class IFPP1(Synchronize):
         ingredient.sequence = int(fis_rec[F329.formula_line_no] or 0)
         ingredient.qty_desc = fis_rec[F329.units_batch_1] or None
         production_order = ingredient.order_ids and ingredient.order_ids[0] or None
-        # if product_formula:
-        #     ingredient.coating = product_formula.coating
-        #     ingredient.allergens = product_formula.allergens
         if production_order:
             batches_needed = production_order.batches
         else:
@@ -1599,7 +1580,6 @@ class NVTY(Synchronize):
 
     def __init__(self, *args, **kwds):
         super(NVTY, self).__init__(*args, **kwds)
-        # module = 'fis' if odoo_erp == 1 else 'fis_integration'
         self.INVALID_CATEGORY = CNVZas.ProductCategory(INVALID_CATEGORY_XML_ID)
         _, self.INVALID_CATEGORY.id = self.ir_model_data.get_object_reference(
                 'fis', INVALID_CATEGORY_XML_ID,
@@ -1687,46 +1667,47 @@ class NVTY(Synchronize):
         description_data = get_product_descriptions()
         for (fis_module, fis_id), rec in self.fis_records.items():
             #
-            label_data = ProductLabelDescription(fis_id)
-            rec.fis_web_ingredients = label_data.ingredients_text or None
-            rec.fis_web_prep_instructions = label_data.recipe_text or None
-            #
             desc = description_data.get(fis_id)
             rec.name = desc or rec.fis_name or None
             #
             if not rec.categ_id:
                 rec.categ_id = self.INVALID_CATEGORY
             #
-            forecast = forecast_data.get(fis_id)
-            rec.fis_qty_produced = 0
-            rec.fis_qty_consumed = 0
-            rec.fis_qty_purchased = 0
-            rec.fis_qty_sold = 0
-            rec.fis_qty_available = 0
-            rec.fis_10_day_produced = 0
-            rec.fis_10_day_consumed = 0
-            rec.fis_10_day_purchased = 0
-            rec.fis_10_day_sold = 0
-            rec.fis_10_day_available = 0
-            rec.fis_21_day_produced = 0
-            rec.fis_21_day_consumed = 0
-            rec.fis_21_day_purchased = 0
-            rec.fis_21_day_sold = 0
-            rec.fis_21_day_available = 0
-            if forecast is not None:
-                # the first four of the above values do not change
-                _, _10_day, _21_day = forecast
-                rec.fis_qty_available = rec.fis_qty_on_hand
-                rec.fis_10_day_produced = _10_day.produced
-                rec.fis_10_day_consumed = _10_day.consumed
-                rec.fis_10_day_purchased = _10_day.purchased
-                rec.fis_10_day_sold = _10_day.sold
-                rec.fis_10_day_available = rec.fis_qty_on_hand + sum(_10_day)
-                rec.fis_21_day_produced = _21_day.produced
-                rec.fis_21_day_consumed = _21_day.consumed
-                rec.fis_21_day_purchased = _21_day.purchased
-                rec.fis_21_day_sold = _21_day.sold
-                rec.fis_21_day_available = rec.fis_qty_on_hand + sum(_21_day)
+            if method == 'full':
+                label_data = ProductLabelDescription(fis_id)
+                rec.fis_web_ingredients = label_data.ingredients_text or None
+                rec.fis_web_prep_instructions = label_data.recipe_text or None
+                #
+                forecast = forecast_data.get(fis_id)
+                rec.fis_qty_produced = 0
+                rec.fis_qty_consumed = 0
+                rec.fis_qty_purchased = 0
+                rec.fis_qty_sold = 0
+                rec.fis_qty_available = 0
+                rec.fis_10_day_produced = 0
+                rec.fis_10_day_consumed = 0
+                rec.fis_10_day_purchased = 0
+                rec.fis_10_day_sold = 0
+                rec.fis_10_day_available = 0
+                rec.fis_21_day_produced = 0
+                rec.fis_21_day_consumed = 0
+                rec.fis_21_day_purchased = 0
+                rec.fis_21_day_sold = 0
+                rec.fis_21_day_available = 0
+                if forecast is not None:
+                    # the first four of the above values do not change
+                    _, _10_day, _21_day = forecast
+                    rec.fis_qty_available = rec.fis_qty_on_hand
+                    rec.fis_10_day_produced = _10_day.produced
+                    rec.fis_10_day_consumed = _10_day.consumed
+                    rec.fis_10_day_purchased = _10_day.purchased
+                    rec.fis_10_day_sold = _10_day.sold
+                    rec.fis_10_day_available = rec.fis_qty_on_hand + sum(_10_day)
+                    rec.fis_21_day_produced = _21_day.produced
+                    rec.fis_21_day_consumed = _21_day.consumed
+                    rec.fis_21_day_purchased = _21_day.purchased
+                    rec.fis_21_day_sold = _21_day.sold
+                    rec.fis_21_day_available = rec.fis_qty_on_hand + sum(_21_day)
 
     def normalize_records(self, fis_rec, oe_rec):
         super(NVTY, self).normalize_records(fis_rec, oe_rec)
@@ -1801,7 +1782,6 @@ class POSM_VNMS(SynchronizeAddress):
             vnms_rec = None
         if posm_rec is vnms_rec is None:
             return ()
-        # vendor_codes.add(key)
         if posm_rec is not None:
             contact_key = posm_rec[F163.vendor]
             if not contact_key:
@@ -2027,14 +2007,12 @@ def get_product_forecast():
         try:
             text = line.split(' - ')[1]
         except IndexError:
-            # product.error('problem with forecast line #%d: %r' % (i, line))
             continue
         if 'ERROR' in text:
             continue
         try:
             item_code, _10_day, _21_day = text.split(':')
         except ValueError:
-            # product.error('problem with forecast line #%d: %r' % (i, line))
             continue
         prod_in, purch, prod_out, sold = _10_day.split()[2:6]
         prod_in = float(prod_in)
@@ -2204,4 +2182,7 @@ def update_ir_model_data(model, table_number, oe_records):
 
 
 # main
-Main()
+import cProfile
+file_name = DateTime.now().strftime("updates_%Y-%m-%d_%H:%M:%S.stats")
+cProfile.run('Main()', '/opt/openerp/var/log/sync-updates/%s' % file_name)
+# Main()

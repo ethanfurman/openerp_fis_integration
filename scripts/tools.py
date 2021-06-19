@@ -35,15 +35,6 @@ odoo_erp = Odoo13 if 'odoo' in virtualenv else OE7
 script_verbosity
 abort
 
-    # class ParentField(object):
-    #     """
-    #     redirects access to same-named attribute on parent
-    #     """
-    #     def __get__(self, instance, owner_class=None):
-    #         if owner_class is not None:
-    #             return self
-    #         return getattr(instance.parent, self.name)
-
 
 @PropertyNames
 class XmlLink(IDEquality):
@@ -54,7 +45,7 @@ class XmlLink(IDEquality):
     xml_id = SetOnce()
     id = SetOnce()
     _cache = {}
-    _other_fields = {}
+    _other_fields = set()
     # "host" is set by SynchronizeType
 
     def __new__(cls, xml_id, id=None, **kwds):
@@ -75,13 +66,15 @@ class XmlLink(IDEquality):
         return "%s(xml_id=%r, id=%r)" % (self.__class__.__name__, self.xml_id, self.id)
 
     def __getattr__(self, name):
+        if not hasattr(self, 'host'):
+            raise TypeError("%s missing 'host' field" % (self, ))
         if name not in self.host.OE_FIELDS_LONG:
             "%r not in %s.OE_FIELDS_LONG" % (name, self.host.__class__.__name__)
-        return XmlLinkField(self.xml_id, self.id, name)
+        return XmlLinkField(self, name)
 
 
 @PropertyNames
-class XmlLinkField(XmlLink):
+class XmlLinkField(object):
     """
     soft reference to a record's field
     """
@@ -89,23 +82,25 @@ class XmlLinkField(XmlLink):
     value = SetOnce()
     _cache = {}
 
-    def __new__(cls, parent_xml_id, parent_id, field):
-        parent = XmlLink(parent_xml_id, parent_id)
-        if (parent_xml_id, parent_id, field) not in cls._cache:
+    def __new__(cls, link, field_name):
+        if (link, field_name) not in cls._cache:
             obj = object.__new__(cls)
-            obj.parent_id = parent_id
-            obj.parent_xml_id = parent_xml_id
-            obj.name = field
-            obj._other_fields.setdefault(parent, set()).add(field)
-            cls._cache[parent_xml_id, parent_id, field] = obj
-        obj = cls._cache[parent_xml_id, parent_id, field]
+            obj.link = link
+            obj.name = field_name
+            cls._cache[link, field_name] = obj
+        obj = cls._cache[link, field_name]
+        obj.link.__class__._other_fields.add(field_name)
         return obj
 
+    @property
+    def names(self):
+        return self.link.__class__._other_fields
+
     def __repr__(self):
-        return ("<%s: xml_id=%r, id=%r, field=%r, value=%r>"
+        return ("<%s: link=%r, field_name=%r, value=%r>"
                 % (
                     self.__class__.__name__,
-                    self.parent_xml_id, self.parent_id,
+                    self.link,
                     self.name, self.value,
                     ))
 
@@ -277,6 +272,8 @@ class Synchronize(SynchronizeABC):
                 for field in self.OE_FIELDS:
                     if old[field] != new[field]:
                         if not old[field] and not new[field]:
+                            echo('old', old)
+                            echo('new', new)
                             echo('[%s] %r:  %r != %r' % (key, field, old[field], new[field]), border='flag')
                         new_value = new[field]
                         if isinstance(new_value, list):
@@ -511,9 +508,9 @@ class Synchronize(SynchronizeABC):
                 if name in self.OE_FIELDS_LONG
                 )
         self.record_log = Table(
-                filename=get_next_filename(
+                filename=(
                     '%s/%03d_%s-%s.dbf'
-                    % (path, self.TN, self.FN, Date.today().strftime('%Y-%m-%d'))
+                    % (path, self.TN, self.FN, DateTime.now().strftime('%Y_%m_%d-%H_%M_%S'))
                     ),
                 field_specs=specs,
                 codepage='utf8',
@@ -581,7 +578,7 @@ class Synchronize(SynchronizeABC):
                     key = oe_module, key
                 self.fis_records[key] = rec
                 imd_names.add(rec._imd.name)
-        return imd_names
+        return tuple(imd_names)
 
     def get_fis_changes(self, key=None):
         """
@@ -651,12 +648,6 @@ class Synchronize(SynchronizeABC):
             if changed_values:
                 changes.append((old_rec, new_rec, changed_values))
         return changes, added, deleted
-
-    # @abstractmethod
-    # def get_oe_keys(self):
-    #     """
-    #     method to extract all needed keys to match records with OE
-    #     """
 
     def ids_from_fis_ids(self, convert, fis_ids):
         xid_names = [convert(fid) for fid in fis_ids]
@@ -756,7 +747,7 @@ class Synchronize(SynchronizeABC):
                     if isinstance(value, XmlLink):
                         fields.append((field_name, value.host))
                     if isinstance(value, XmlLinkField):
-                        sub_fields.setdefault(field_name, set).update(value.fields)
+                        sub_fields.setdefault(field_name, set()).update(value.names)
             if not check_fields:
                 break
         if not fields:
@@ -797,7 +788,7 @@ class Synchronize(SynchronizeABC):
                             host.calc_xid,
                             [p.xml_id for p in needed.values()],
                             ),
-                        fields=['id', key] + sub_fields[field_name],
+                        fields=['id', key] + list(sub_fields.get(field_name, ())),
                         context=self.context,
                         ))
             print('  found:', sorted(oe_records.items()[:10]), verbose=2)
@@ -952,14 +943,14 @@ class Synchronize(SynchronizeABC):
         """
         # try the fast method first
         try:
-            print('attempting quick delete/deactivate of %d records' % len(self.remove_records))
+            action = ('deactivate','delete')['active' in self.OE_FIELDS]
+            actioning = action[:-1] + 'ing'
+            print('%s %d records' % (actioning, len(self.remove_records)))
             ids = [r.id for r in self.remove_records.values()]
-            if 'active' in self.OE_FIELDS:
-                action = 'deactivate'
-                self.model.write(ids, {'active': False})
-            else:
-                action = 'delete'
+            if action == 'delete':
                 self.model.unlink(ids)
+            else:
+                self.model.write(ids, {'active': False})
             oe_records = self.oe_records.copy()
             self.oe_records.clear()
             self.oe_records.update(dict(
@@ -973,7 +964,7 @@ class Synchronize(SynchronizeABC):
             # that didn't work, do it the slow way
             for key, rec in ViewProgress(
                     self.remove_records.items(),
-                    message='recording $total deletions',
+                    message='recording $total %s' % (('deletes','deactivations')[action=='deactivate']),
                     view_type='percent',
                 ):
                 self.log(action, rec)
@@ -1022,7 +1013,7 @@ class Synchronize(SynchronizeABC):
         self.method = method
         self.create_dbf_log()
         try:
-            print('processing %s...' % self.FN)
+            print('processing %s...' % self.__class__.__name__)
             if method == 'quick':
                 self.load_fis_data = self.fis_quick_load
                 self.OE_FIELDS = self.OE_FIELDS_QUICK
@@ -1040,9 +1031,12 @@ class Synchronize(SynchronizeABC):
             else:
                 raise ValueError('unknown METHOD: %r' % (method, ))
             names = self.load_fis_data()    # load fis data
-            self.oe_load_data(names)        # load oe data
-            self.normalize_fis(method)      # adjust fis data as needed
-            self.categorize()               # split into changed, added, deleted groups
+            # an empty tuple is possible with method=QUICK and no changes/additions/deletions
+            # in which case we don't want to do anything else
+            if names != ():
+                self.oe_load_data(names)        # load oe data
+                self.normalize_fis(method)      # adjust fis data as needed
+                self.categorize()               # split into changed, added, deleted groups
             self.record_deletions()         # deletions first, in case imd changed
             self.record_additions()
             self.record_changes()
@@ -1197,10 +1191,6 @@ class SynchronizeAddress(Synchronize):
             else:
                 city = country
                 address[cf] = city
-        # zip_code = address[zf]
-        # if isinstance(zip_code, dict) or isinstance(zip_code, (str, unicode)) and 'code' in zip_code:
-        #     raise TypeError('invalid zip code in:\n%s' % fis_rec)
-        # echo('returning', name, address, do_not_use)
         return name, address, do_not_use
 
 
@@ -1245,8 +1235,6 @@ after_name = NUMBER | NAME | STREET | POSTORD | SECONDARY
 # [SECONDARY_TYPE] SECONDARY_NUMBER
 
 def tokenize_address_line(line):
-    # o_line = line
-    # o_words = o_line.split()
     u_line = line.upper()
     u_words = u_line.replace(',',' ').split()
     if 'ST RT' in u_line and 'ST' in u_words and 'RT' in u_words and u_words.index('ST') + 1 == u_words.index('RT'):
@@ -1344,12 +1332,6 @@ def tokenize_address_line(line):
                 if tokens[-1:] == [PREORD | NAME] and tokens[-2:-1] == [NUMBER]:
                     tokens[-1] = NAME
             else:
-                # if test_word[0].isdigit():
-                #     # echo(1.3)
-                #     token = NUMBER | SECONDARY_NUMBER
-                #     new_expected = PREORD | NAME | SECONDARY_TYPE
-                # else:
-                #     # echo(1.4)
                 token = NUMBER | SECONDARY
                 new_expected = PREORD | NAME | SECONDARY_TYPE
             tokens.append(token)
@@ -1490,8 +1472,6 @@ def tokenize_address_line(line):
             if token & expected:
                 valid = True
         elif token is UNKNOWN or not token & expected:
-            # echo(line, tokens)
-            # echo('%r & %r -> False' % (token, expected))
             valid = False
         final.append(test_word)
         expected = new_expected
@@ -1550,7 +1530,6 @@ def tokenize_address_line(line):
     return valid, final, tokens
 
 def process_name_address(address):
-    # echo('on entry', address)
     name, do_not_use, address_lines = split_name_address(address)
     # move STORE lines from address to name
     for line in address_lines[:]:
@@ -1574,12 +1553,9 @@ def process_name_address(address):
         # might be a street and then a cszk
         pieces = address_lines[-1].split(' / ')
         address_lines[-1:] = [p.strip('/ ') for p in pieces if p.strip()]
-    # echo('after slashes', address_lines)
     # test if last address line is a valid address
     valid, final, tokens = tokenize_address_line(address_lines[-1])
-    # echo('initial valid ->', valid)
     if tokens == [NUMBER, NAME, STREET]:
-        # echo('%r is valid, skipping cszk()  %r' % (final, tokens))
         # no city, state, zip
         city = state = postal = country = ''
     else:
@@ -1587,47 +1563,35 @@ def process_name_address(address):
         if city and not (street2 or state or postal or country):
             # totally bogus address
             street2, city = city, street2
-        # echo([street2, city, state, postal, country])
         address_lines = address_lines[:-2]
         if street2.strip():
             address_lines.append(street2)
         city = NameCase(city)
         state = NameCase(state)
         postal = str(postal)
-        # echo('cszk ->', city, state, postal, country)
     if country not in ('CANADA', 'UNITED STATES'):
-        # echo('s0', address_lines)
         if len(address_lines) == 3:
             # combine second and third lines
             address_lines[1:] = [('%s, %s' % (address_lines[1], address_lines[2])).strip(', ')]
-            # echo('s3', address_lines)
         elif len(address_lines) >= 4:
             # combine first and second, and third +
             address_lines[0] = ', '.join(address_lines[:2])
-            # echo('s1', address_lines)
             address_lines[1] = ', '.join(address_lines[1:])
-            # echo('s2', address_lines)
         address_lines = BsnsCase(address_lines)
     else:
-        # echo('US address', address_lines)
         lines = []
         valid_lines = []
         secondary_lines = []
         invalid_lines = []
         for line in address_lines:
             valid, line, tokens = tokenize_address_line(line)
-            # echo(valid, line, tokens)
             new_line = []
             if not valid:
-                # echo(7, line)
                 line = BsnsCase(' '.join(line))
-                # echo(11, line)
                 lines.append(line)
                 invalid_lines.append(line)
-                # echo(13, lines)
             else:
                 for word, token in zip(line, tokens):
-                    # echo(14, word, token)
                     if token & (PREORD | POSTORD) and len(word) > 2:
                         word = word[0]
                     elif token & STREET:
@@ -1635,19 +1599,13 @@ def process_name_address(address):
                     elif token & SECONDARY:
                         word = usps_secondary.get(word, word).title()
                     new_line.append(word)
-                    # echo(15, new_line)
                 line = AddrCase(' '.join(new_line))
                 if tokens and tokens[0] & SECONDARY:
                     secondary_lines.append(line)
-                # echo(16, line)
                 lines.append(line)
                 valid_lines.append(line)
-            # echo(17, lines)
         lines = [l for l in lines if l.strip()]
-        # echo('33', lines)
         if len(lines) > 2:
-            # echo('invalid', invalid_lines)
-            # echo('secondary', secondary_lines)
             # need to combine
             if invalid_lines and len(invalid_lines) > 1:
                 # first do invalid
@@ -1658,34 +1616,26 @@ def process_name_address(address):
                     new_lines = []
                     secondary = []
                     for line in lines:
-                        # echo('line', line)
                         if line in secondary_lines:
-                            # echo('is secondary')
                             secondary.append(line)
                         else:
-                            # echo('is primary')
                             new_lines.append(line)
                         if new_lines:
                             while secondary:
-                                # echo('adding', secondary[0])
                                 new_lines[-1] = '%s, %s' % (new_lines[-1], secondary.pop(0))
                     lines = new_lines
             if len(lines) > 2:
-                # echo('mashing', lines)
                 # mash 'em together
                 lines[1:] = [', '.join(lines[1:])]
         address_lines = lines
     address_lines = [a for a in address_lines if a.strip()]
-    # echo('after strip()', address_lines)
     if len(address_lines) < 2:
         # need to have two address lines
         address_lines = (address_lines + ['', ''])[:2]
-    # echo('after addition', address_lines)
     try:
         addr1, addr2 = address_lines
     except ValueError:
         raise ValueError("need two address_lines, but received %r" % (address_lines, ))
-    # echo('returning %r %r %r %r %r %r' % (addr1, addr2, city, state, postal, country))
     return name, do_not_use, addr1, addr2, city, state, postal, country
 
 def split_name_address(lines):
@@ -1752,7 +1702,6 @@ def split_name_address(lines):
     # now check if first two of the remaining lines can be combined
     if len(lines) > 1 and (lines[0].endswith(' &') or lines[1].startswith('& ')):
         lines[0] = '%s %s' % (lines[0], lines.pop(1))
-    # lines = (lines + ['', '', ''])[:3]
     return name, ignore, lines
 
 def smart_upper(string):
@@ -1762,13 +1711,11 @@ def smart_upper(string):
         return string.upper()
     # mixed case
     final = []
-    # mixed = False
     for word in words:
         if word.isupper() or word.islower() or word == word.title() or word.startswith('Mc'):
             final.append(word.upper())
         else:
             final.append(word)
-            # mixed = True
     return ' '.join(final)
 
 class TokenAddress(NamedTuple):
