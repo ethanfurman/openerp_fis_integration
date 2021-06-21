@@ -33,7 +33,7 @@ def check_labeltime_connection(test):
             errors.append('testing notifications')
         else:
             with PidLockFile(PID_FILE, timeout=1):
-                cat = Execute('cat %s' % LLC_FILE, timeout=10)
+                cat = Execute('cat %s' % LLC_FILE)
                 print(cat.stdout)
     except AlreadyLocked:
         errors.append('cat of LabelLinkCtl has stalled')
