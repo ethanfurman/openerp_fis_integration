@@ -699,6 +699,8 @@ class Synchronize(SynchronizeABC):
                     v = v.name if v.id else None
                 elif isinstance(v, XmlLink):
                     v = v.xml_id if v.id else None
+                elif isinstance(v, XmlLinkField):
+                    v = v.value if v else None
                 elif isinstance(v, basestring):
                     if not v: v = None
                 elif isinstance(v, (bool, int, long, float)):
