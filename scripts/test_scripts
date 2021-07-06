@@ -20,7 +20,6 @@ from openerplib import AttrDict, XidRec, local_to_utc
 from scription import Exit, NameSpace, OrmFile, OrmSection, raise_with_traceback
 from testily import import_script, Ersatz, Patch
 from textwrap import dedent
-from tools import XmlLinkField
 from VSS.utils import fix_date
 
 # globals
@@ -1060,6 +1059,8 @@ class TestFisIntegrationConversion(unittest.TestCase):
                                         for field, target_value in (target_rec.items() + extra_fields.items()):
                                             if method == 'quick' and field in data_set.full_only_fields:
                                                 continue
+                                            if field not in converted_rec:
+                                                raise AssertionError('field %r not in %r' % (field, converted_rec.keys()))
                                             if converted_rec[field] != target_value:
                                                 mismatched.append('%r -> %r vs %r' % (field, converted_rec[field], target_value))
                                         if mismatched:
@@ -1179,6 +1180,11 @@ class TestFisIntegrationConversion(unittest.TestCase):
             ):
             key, limit, salesrep, total, d0, d10, d20, d30 = line.split()
             aging_data[key] = CustomerAging(key, limit, d0, d10, d20, d30, total)
+        class CNVZ_Z_K(PassThrough):
+            def __init__(self, oe, config):
+                pass
+            def reify(*args, **kwds):
+                pass
         self.validate_record_conversion(
                 'CSMS',
                 'res.partner',
@@ -1186,6 +1192,7 @@ class TestFisIntegrationConversion(unittest.TestCase):
                 csms_data,
                 state_recs,
                 country_recs,
+                model_overrides=(CNVZ_Z_K, ),
                 aging_data=aging_data
                 )
 
@@ -1987,14 +1994,20 @@ def cnvzas_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='0Y',
-                        module='F11',
                         fis_shelf_life=12,
                         parent_id=script.CNVZas.ProductCategory('0'),
                         name='Shippers/Displays',
                         ),
                     imd(name='F011_0Y_product_category'),
-                    )
+                    ),
+                OE7=AttrDict(
+                    xml_id='0Y',
+                    module='F11',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='0Y',
+                    fis_module='F11',
+                    ),
                 ),
             DataSet(
                 on_disk={
@@ -2004,14 +2017,20 @@ def cnvzas_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='0L',
-                        module='F11',
                         fis_shelf_life=12,
                         parent_id=script.CNVZas.ProductCategory('0'),
                         name='Open',
                         ),
                     imd(name='F011_0L_product_category'),
-                    )
+                    ),
+                OE7=AttrDict(
+                    xml_id='0L',
+                    module='F11',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='0L',
+                    fis_module='F11',
+                    ),
                 ),
             DataSet(
                 on_disk={
@@ -2021,14 +2040,20 @@ def cnvzas_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='9',
-                        module='F11',
                         fis_shelf_life=12,
                         parent_id=script.CNVZas.ProductCategory(SALEABLE_CATEGORY_XML_ID),
                         name='9 - Displays/Etc',
                         ),
                     imd(name='F011_9_product_category'),
-                    )
+                    ),
+                OE7=AttrDict(
+                    xml_id='9',
+                    module='F11',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='9',
+                    fis_module='F11',
+                    ),
                 ),
             DataSet(
                 on_disk={
@@ -2038,14 +2063,20 @@ def cnvzas_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='9H',
-                        module='F11',
                         fis_shelf_life=12,
                         parent_id=script.CNVZas.ProductCategory('9'),
                         name='Supply-Sanitation',
                         ),
                     imd(name='F011_9H_product_category'),
-                    )
+                    ),
+                OE7=AttrDict(
+                    xml_id='9H',
+                    module='F11',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='9H',
+                    fis_module='F11',
+                    ),
                 ),
             DataSet(
                 on_disk={
@@ -2055,14 +2086,20 @@ def cnvzas_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='0',
-                        module='F11',
                         fis_shelf_life=0,
                         parent_id=script.CNVZas.ProductCategory(SALEABLE_CATEGORY_XML_ID),
                         name='0 - Grocery',
                         ),
                     imd(name='F011_0_product_category'),
-                    )
+                    ),
+                OE7=AttrDict(
+                    xml_id='0',
+                    module='F11',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='0',
+                    fis_module='F11',
+                    ),
                 ),
             DataSet(
                 on_disk={
@@ -2072,14 +2109,20 @@ def cnvzas_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id= '3',
-                        module='F11',
                         fis_shelf_life=12,
                         parent_id=script.CNVZas.ProductCategory(SALEABLE_CATEGORY_XML_ID),
                         name='3 - Bulk',
                         ),
                     imd(name='F011_3_product_category'),
-                    )
+                    ),
+                OE7=AttrDict(
+                    xml_id= '3',
+                    module='F11',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id= '3',
+                    fis_module='F11',
+                    ),
                 ),
             DataSet(
                 on_disk={
@@ -2089,14 +2132,20 @@ def cnvzas_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id= '3G',
-                        module='F11',
                         fis_shelf_life=18,
                         parent_id=script.CNVZas.ProductCategory('3'),
                         name='Candy Chocolate Bulk',
                         ),
                     imd(name='F011_3G_product_category'),
-                    )
+                    ),
+                OE7=AttrDict(
+                    xml_id= '3G',
+                    module='F11',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id= '3G',
+                    fis_module='F11',
+                    ),
                 ),
             )
 
@@ -2111,11 +2160,17 @@ def cnvzd0_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='b',
-                        module='F8',
                         description='2% 15 / Net 30',
                         ),
                     imd(name='F008_b_account_customer_terms'),
+                    ),
+                OE7=AttrDict(
+                    xml_id='b',
+                    module='F8',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='b',
+                    fis_module='F8',
                     ),
                 ),
             DataSet(
@@ -2125,11 +2180,17 @@ def cnvzd0_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='B',
-                        module='F8',
                         description='1% 10 / NET 14',
                         ),
                     imd(name='F008_B_account_customer_terms'),
+                    ),
+                OE7=AttrDict(
+                    xml_id='B',
+                    module='F8',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='B',
+                    fis_module='F8',
                     ),
                 ),
             DataSet(
@@ -2139,11 +2200,17 @@ def cnvzd0_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='8',
-                        module='F8',
                         description='CASHIER CHECK / CASH ONLY',
                         ),
                     imd(name='F008_8_account_customer_terms'),
+                    ),
+                OE7=AttrDict(
+                    xml_id='8',
+                    module='F8',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='8',
+                    fis_module='F8',
                     ),
                 ),
             )
@@ -2225,13 +2292,19 @@ def cnvzo1_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='RUSTB',
                         transmitter_no='',
                         transmitter_name='RUSTIC BAKERY',
-                        partner_xml_id='RUSTB',
                         ship_to_code=None,
                         ),
                     imd(name='F192_RUSTB_account_transmitter_code'),
+                    ),
+                OE7=AttrDict(
+                    xml_id='RUSTB',
+                    partner_xml_id='RUSTB',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='RUSTB',
+                    partner_fis_id='RUSTB',
                     ),
                 ignore=True,
                 ),
@@ -2245,13 +2318,19 @@ def cnvzo1_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='None-BULK',
                         transmitter_no='700007',
                         transmitter_name='USE NATURAL ABIL - 701015',
-                        partner_xml_id=None,
                         ship_to_code='BULK',
                         ),
                     imd(name='F192_None_BULK_account_transmitter_code'),
+                    ),
+                OE7=AttrDict(
+                    xml_id='None-BULK',
+                    partner_xml_id=None,
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='None-BULK',
+                    partner_fis_id=None,
                     ),
                 ignore=True,
                 ),
@@ -2265,13 +2344,19 @@ def cnvzo1_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='CORNT-GEOR',
                         transmitter_no='500110',
                         transmitter_name=None,
-                        partner_xml_id='CORNT',
                         ship_to_code='GEOR',
                         ),
                     imd(name='F192_CORNT_GEOR_account_transmitter_code'),
+                    ),
+                OE7=AttrDict(
+                    xml_id='CORNT-GEOR',
+                    partner_xml_id='CORNT',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='CORNT-GEOR',
+                    partner_fis_id='CORNT',
                     ),
                 ignore=True,
                 ),
@@ -2285,13 +2370,19 @@ def cnvzo1_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='GELSO-GR29',
                         transmitter_no='900215',
                         transmitter_name="GELSON'S MARKET",
-                        partner_xml_id='GELSO',
                         ship_to_code='GR29',
                         ),
                     imd(name='F192_GELSO_GR29_account_transmitter_code'),
+                    ),
+                OE7=AttrDict(
+                    xml_id='GELSO-GR29',
+                    partner_xml_id='GELSO',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='GELSO-GR29',
+                    partner_fis_id='GELSO',
                     ),
                 ignore=False,
                 ),
@@ -2305,13 +2396,19 @@ def cnvzo1_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='RAING-HEAL',
                         transmitter_no='900000',
                         transmitter_name='RAINBOW GROCERY',
-                        partner_xml_id='RAING',
                         ship_to_code='HEAL',
                         ),
                     imd(name='F192_RAING_HEAL_account_transmitter_code'),
+                    ),
+                OE7=AttrDict(
+                    xml_id='RAING-HEAL',
+                    partner_xml_id='RAING',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='RAING-HEAL',
+                    partner_fis_id='RAING',
                     ),
                 ignore=False,
                 ),
@@ -2325,13 +2422,19 @@ def cnvzo1_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='HE492',
                         transmitter_no='150492',
                         transmitter_name='HEB 492 HEALTHY LIVING',
-                        partner_xml_id='HE492',
                         ship_to_code=None,
                         ),
                     imd(name='F192_HE492_account_transmitter_code'),
+                    ),
+                OE7=AttrDict(
+                    xml_id='HE492',
+                    partner_xml_id='HE492',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='HE492',
+                    partner_fis_id='HE492',
                     ),
                 ignore=False,
                 ),
@@ -2345,13 +2448,19 @@ def cnvzo1_data(script):
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
-                        xml_id='HE714',
                         transmitter_no='150714',
                         transmitter_name='HEB 714 HEALTHY LIVING',
-                        partner_xml_id='HE714',
                         ship_to_code=None,
                         ),
                     imd(name='F192_HE714_account_transmitter_code'),
+                    ),
+                OE7=AttrDict(
+                    xml_id='HE714',
+                    partner_xml_id='HE714',
+                    ),
+                Odoo13=AttrDict(
+                    fis_id='HE714',
+                    partner_fis_id='HE714',
                     ),
                 ignore=False,
                 ),
@@ -2553,6 +2662,7 @@ from fis_schema import F47, F257
 def cnvz_z_k_data(script):
     return (
 
+            # 0
             DataSet(
                 # on disk
                 on_disk=(
@@ -2584,6 +2694,7 @@ def cnvz_z_k_data(script):
                     ),
                 ),
 
+            # 1
             DataSet(
                 # on disk
                 on_disk=(
@@ -2615,6 +2726,7 @@ def cnvz_z_k_data(script):
                     ),
                 ),
 
+            # 2
             DataSet(
                 # on disk
                 on_disk=(
@@ -2646,6 +2758,7 @@ def cnvz_z_k_data(script):
                     ),
                 ),
 
+            # 3
             DataSet(
                 # on disk
                 on_disk=(
@@ -2677,6 +2790,7 @@ def cnvz_z_k_data(script):
                     ),
                 ),
 
+            # 4
             DataSet(
                 # on disk
                 on_disk=(
@@ -2691,7 +2805,7 @@ def cnvz_z_k_data(script):
                 fis_rec=XidRec.fromdict(
                     AttrDict(
                         fis_name='GREGG ARMSTRONG',
-                        ordered_by_no=False,
+                        ordered_by_no=None,
                         user_id=ref.garmstrong.id,
                         ),
                     imd(name='F047_GGG_account_salesperson')
@@ -2749,7 +2863,7 @@ def csms_data(script):
                         use_parent_address=False,
                         fis_valid=True,
                         active=True,
-                        user_id=XmlLinkField('COL', None, 'user_id'), #125,
+                        user_id=script.CNVZ_Z_K.SalesRep('COL').user_id, #125,
                         specials_notification=script.Specials.neither,
                         phone='310.638.2842',
                         fis_csms_terms=script.CNVZd0.CustomerTerms('Q'),
@@ -2811,7 +2925,7 @@ def csms_data(script):
                             use_parent_address=False,
                             fis_valid=True,
                             active=True,
-                            user_id=XmlLinkField('ROB', None, 'user_id'),
+                            user_id=script.CNVZ_Z_K.SalesRep('ROB').user_id,
                             specials_notification=script.Specials.catalog,
                             phone='415.863.0621',
                             fis_csms_terms=script.CNVZd0.CustomerTerms('7'),
@@ -2841,7 +2955,7 @@ def csms_data(script):
                             use_parent_address=False,
                             fis_valid=True,
                             active=True,
-                            user_id=XmlLinkField('ROB', None, 'user_id'),
+                            user_id=script.CNVZ_Z_K.SalesRep('ROB').user_id,
                             specials_notification=script.Specials.company,
                             phone=None,
                             fis_csms_terms=None,
@@ -2917,7 +3031,7 @@ def csms_data(script):
                         use_parent_address=False,
                         fis_valid=True,
                         active=True,
-                        user_id=XmlLinkField('ARM', None, 'user_id'),
+                        user_id=script.CNVZ_Z_K.SalesRep('ARM').user_id,
                         specials_notification=script.Specials.specials,
                         phone='281.829.0126',
                         fis_csms_terms=script.CNVZd0.CustomerTerms('E'),
@@ -2980,7 +3094,7 @@ def csms_data(script):
                         use_parent_address=False,
                         fis_valid=True,
                         active=True,
-                        user_id=XmlLinkField('ARM', None, 'user_id'),
+                        user_id=script.CNVZ_Z_K.SalesRep('ARM').user_id,
                         specials_notification=script.Specials.both,
                         phone=None,
                         fis_csms_terms=script.CNVZd0.CustomerTerms('E'),
@@ -3042,8 +3156,8 @@ def csms_data(script):
                         customer=True,
                         use_parent_address=False,
                         fis_valid=True,
-                        active=True,
-                        user_id=XmlLinkField('', None, 'user_id'),
+                        active=False,  # due to being sold
+                        user_id=script.CNVZ_Z_K.SalesRep('').user_id,
                         specials_notification=script.Specials.neither,
                         phone='310.638.8400',
                         fis_csms_terms=script.CNVZd0.CustomerTerms('Z'),
@@ -3098,6 +3212,7 @@ def csmss_data(script):
                     F34.code: 'GELSO',
                     F34.name: "GELSON'S MARKET'S #114",
                     F34.ship_to_no: 'G114',
+                    F34.salesrep_id: 'INA',
                     F34.addr1: "GROCERY DEPARTMENT",
                     F34.addr2: "4738 LAUREL CANYON BLVD",
                     F34.addr3: "VALLEY VILLAGE, CA 91607-3999",
@@ -3117,7 +3232,7 @@ def csmss_data(script):
                         is_company=False,
                         customer=False,
                         use_parent_address=False,
-                        active=True,
+                        active=False,
                         phone=None,
                         fis_transmitter_id=script.CNVZO1.TransmitterCode('GELSO-G114'),
                         ),
@@ -3139,6 +3254,7 @@ def csmss_data(script):
                     F34.code: 'GELSO',
                     F34.name: "GELSON'S #22",
                     F34.ship_to_no: 'BU22',
+                    F34.salesrep_id: 'ARM',
                     F34.addr1: "2725 HYPERION AVENUE",
                     F34.addr2: '',
                     F34.addr3: "SILVER LAKE, CA 90027-3001",
@@ -3180,6 +3296,7 @@ def csmss_data(script):
                     F34.code: 'RAING',
                     F34.name: "RAINBOW GROVERY H&BEAUTY",
                     F34.ship_to_no: "HEAL",
+                    F34.salesrep_id: 'GGG',
                     F34.addr1: "1745 FOLSOM STREET",
                     F34.addr2: "",
                     F34.addr3: "SAN FRANCISCO, CA 94103-3711",
@@ -3227,6 +3344,7 @@ def csmss_data(script):
                     F34.code: 'RAING',
                     F34.name: "USE ADDITIONAL SHIP TO'S",
                     F34.ship_to_no: "",
+                    F34.salesrep_id: 'INA',
                     F34.addr1: "RAINBOW GROCERY",
                     F34.addr2: "",
                     F34.addr3: "",
@@ -3247,7 +3365,7 @@ def csmss_data(script):
                             is_company=False,
                             customer=False,
                             use_parent_address=False,
-                            active=True,
+                            active=False,
                             phone='415.863.0620',
                             fis_transmitter_id=script.CNVZO1.TransmitterCode('RAING'),
                             ),
@@ -3275,10 +3393,10 @@ def csmss_data(script):
                     F34.code: 'HE492',
                     F34.name: "HEB 492 HEALTHY LIVING",
                     F34.ship_to_no: "",
+                    F34.salesrep_id: 'TIA',
                     F34.addr1: "PDC WAREHOUSE",
                     F34.addr2: "4710 NORTH PAN AM EXPRESSWAY",
                     F34.addr3: "SAN ANTONIO, TX 78218",
-                    F34.ship_to_no: "",
                     F34.tele: '2818290126',
                     },
                 # "HE492 0   ARM      3876.88             3876.88        .00        .00        .00",
@@ -3317,10 +3435,11 @@ def csmss_data(script):
                 on_disk={
                     F34.code: 'HE714',
                     F34.name: "HEB 714 HEALTHY LIVING",
+                    F34.ship_to_no: "",
+                    F34.salesrep_id: 'ROB',
                     F34.addr1: "PDC WAREHOUSE",
                     F34.addr2: "4710 NORTH PAN AM EXPRESSWAY",
                     F34.addr3: "SAN ANTONIO, TX 78218",
-                    F34.ship_to_no: "",
                     F34.tele: '',
                     },
                 # "HE714 0   ARM      3990.03             6085.17        .00        .00    2095.14-",
@@ -3359,10 +3478,11 @@ def csmss_data(script):
                 on_disk={
                     F34.code: 'HGRAC',
                     F34.name: "HELEN GRACE CHOCOLATES INC",
+                    F34.ship_to_no: "LYNW",
+                    F34.salesrep_id: 'CAT',
                     F34.addr1: "3303 MARTIN LUTHER KING JR BL",
                     F34.addr2: "",
                     F34.addr3: "LYNWOOD, CA 90262",
-                    F34.ship_to_no: "LYNW",
                     F34.tele: '3106388400',
                     },
                 # "HE714 0   ARM      3990.03             6085.17        .00        .00    2095.14-",

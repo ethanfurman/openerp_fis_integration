@@ -444,7 +444,7 @@ class Synchronize(SynchronizeABC):
             for key, values in sorted(errors.items()):
                 i += 1
                 if not i % 50:
-                    table.extend([None, ('xml_id', 'FIS', 'OpenERP'), None])
+                    table.extend([None, ('fis_id', 'FIS', 'OpenERP'), None])
                 table.append((
                     repr(key).replace(' ','\\s').replace('\t','\\t')[2:-1] or '<empty key>',
                     errors[key].get('fis', ''),

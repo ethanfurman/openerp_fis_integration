@@ -18,7 +18,7 @@ from pandaemonium import PidLockFile
 from recipe import ignored_ingredients
 from tools import Model
 # from tools import combine_by_value
-from tools import Synchronize, SynchronizeAddress, XmlLink, ProductLabelDescription, odoo_erp
+from tools import Synchronize, SynchronizeAddress, XmlLink, ProductLabelDescription, odoo_erp, Odoo13, OE7
 from VSS.address import NameCase, BsnsCase
 # from VSS.BBxXlate.fisData import fisData
 from VSS.utils import fix_phone, fix_date
@@ -32,17 +32,6 @@ import traceback
 
 
 virtualenv = Path(os.environ['VIRTUAL_ENV'])
-logger = getLogger()
-logger.setLevel(INFO)
-_handler = handlers.TimedRotatingFileHandler(
-        virtualenv / 'var/log/openerp/continuous_sync_records.log',
-        when='midnight',
-        backupCount=30,
-        )
-_formatter = Formatter('%(asctime)s %(funcName)-25s %(message)s')
-_handler.setFormatter(_formatter)
-logger.addHandler(_handler)
-del _handler, _formatter
 
 # Constants
 
@@ -58,7 +47,12 @@ ONE_YEAR_AGO = Date.today().replace(delta_year=-1)
 SALEABLE_CATEGORY_XML_ID = 'product_category_1'
 INVALID_CATEGORY_XML_ID = 'fis_invalid_product_category'
 ETC_CATEGORY_XML_ID = '9'
-
+if odoo_erp is Odoo13:
+    FIS_ID = 'fis_id'
+    FIS_MODULE = 'fis_module'
+else:
+    FIS_ID = 'xml_id'
+    FIS_MODULE = 'module'
 
 # TODO: implement EXTRA handling for
 #       - EMP1
@@ -213,11 +207,11 @@ def aging():
     aging_data = get_customer_aging('%s/customer_aging.txt' % config.network.fis_data_local_path)
     res_partner = oe.get_model('res.partner')
     customers = dict([
-            (r.xml_id, r.id)
+            (r[FIS_ID], r.id)
             for r in get_records(
                 oe, 'res.partner',
-                domain=[('customer','=',True),('xml_id','!=',False)],
-                fields=['id','xml_id'],
+                domain=[('customer','=',True),(FIS_ID,'!=',False)],
+                fields=['id',FIS_ID],
                 )])
     not_found = []
     for xml_id, aging in aging_data.items():
@@ -338,7 +332,7 @@ class CNVZaa(Synchronize):
             )[odoo_erp]
     IMD = 'product_availability'
     RE = r"aa10."
-    OE_KEY = 'xml_id'
+    OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F97'
     OE_FIELDS = (
             ('id', 'module', 'xml_id', 'name', 'available'),
@@ -362,11 +356,10 @@ class CNVZaa(Synchronize):
                 name=self.calc_xid(key),
                 )
         fis_module = ('module', 'fis_module')[odoo_erp]
-        fis_id = ('xml_id', 'fis_id')[odoo_erp]
         saleable = ('available', 'saleable')[odoo_erp]
         location = AttrDict.fromkeys(self.OE_FIELDS, None)
         location.name = re.sub('sunridge', 'SunRidge', fis_rec[F97.desc].title(), flags=re.I) or None
-        location[fis_id] = key
+        location[FIS_ID] = key
         location[fis_module] = self.OE_KEY_MODULE
         avail = fis_rec[F97.availability].upper()
         if avail not in 'YN':
@@ -387,9 +380,9 @@ class CNVZas(Synchronize):
     OE = 'product.category'
     IMD = 'product_category'
     RE = r"as10.."
-    OE_KEY = 'xml_id'
+    OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F11'
-    OE_FIELDS = ('id', 'module', 'xml_id', 'name', 'parent_id', 'fis_shelf_life')
+    OE_FIELDS = ('id', FIS_MODULE, FIS_ID, 'name', 'parent_id', 'fis_shelf_life')
     FIS_SCHEMA = (
             F11.desc, F11.shelf_life,
             )
@@ -423,8 +416,8 @@ class CNVZas(Synchronize):
                 name=self.calc_xid(key),
                 )
         category = AttrDict.fromkeys(self.OE_FIELDS, None)
-        category.xml_id = key
-        category.module = self.OE_KEY_MODULE
+        category[FIS_ID] = key
+        category[FIS_MODULE] = self.OE_KEY_MODULE
         category.fis_shelf_life = fis_rec[F11.shelf_life]
         name = re.sub('sunridge', 'SunRidge', fis_rec[F11.desc].title(), flags=re.I)
         if len(key) == 1:
@@ -451,11 +444,9 @@ class CNVZd0(Synchronize):
     RE = r"D010."
     OE = 'fis.account.customer_terms'
     IMD = 'account_customer_terms'
-    OE_KEY = 'xml_id'
+    OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F8'
-    OE_FIELDS = (
-            'id', 'module', 'xml_id', 'description',
-            )
+    OE_FIELDS = ('id', FIS_MODULE, FIS_ID, 'description')
     FIS_SCHEMA = (
             F8.description,
             )
@@ -474,8 +465,8 @@ class CNVZd0(Synchronize):
                 name=self.calc_xid(key),
                 )
         terms = AttrDict.fromkeys(self.OE_FIELDS, None)
-        terms.xml_id = key
-        terms.module = self.OE_KEY_MODULE
+        terms[FIS_ID] = key
+        terms[FIS_MODULE] = self.OE_KEY_MODULE
         terms.description = ' / '.join([t.strip() for t in fis_rec[F8.description].split('/')]) or None
         return (XidRec.fromdict(terms, imd), )
 
@@ -493,7 +484,7 @@ class CNVZf(Synchronize):
             )[odoo_erp]
     IMD = 'production_line'
     RE = r"f10.."
-    OE_KEY = 'xml_id'
+    OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F341'
     OE_FIELDS = (
             ('id', 'xml_id', 'module', 'desc'),
@@ -551,8 +542,8 @@ class CNVZO1(Synchronize):
     IMD = 'account_transmitter_code'
     #
     RE = r"O110......"
-    OE_KEY = 'xml_id'
-    OE_FIELDS = ('id', 'transmitter_no', 'transmitter_name', 'partner_xml_id', 'ship_to_code', 'xml_id')
+    OE_KEY = FIS_ID
+    OE_FIELDS = ('id', 'transmitter_no', 'transmitter_name', 'partner_' + FIS_ID, 'ship_to_code', FIS_ID)
     #
     FIS_IGNORE_RECORD = lambda self, rec: not (
             rec[F192.transmitter_no].strip().isdigit()
@@ -564,6 +555,8 @@ class CNVZO1(Synchronize):
             )
     #
     TransmitterCode = XmlLink
+
+    # echo('CNVZO1', OE_FIELDS)
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
@@ -583,8 +576,9 @@ class CNVZO1(Synchronize):
         tran_code.transmitter_no = key
         tran_code.transmitter_name = fis_rec[F192.transmitter_name].strip() or None
         tran_code.ship_to_code = ship_to
-        tran_code.partner_xml_id = partner
-        tran_code.xml_id = xml_id
+        tran_code['partner_' + FIS_ID] = partner
+        tran_code[FIS_ID] = xml_id
+        # echo('cnvzo1', tran_code)
         return (XidRec.fromdict(tran_code, imd), )
 
 
@@ -598,14 +592,13 @@ class CNVZSV(SynchronizeAddress):
     OE = 'res.partner'
     IMD = 'res_partner'
     RE = r"SV10.."
-    OE_KEY = 'xml_id'
+    OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F27'
-    OE_FIELDS = [
-            'id', 'is_carrier', 'is_company', 'use_parent_address',
+    OE_FIELDS = (
+            'id', FIS_MODULE, FIS_ID, 'is_carrier', 'is_company', 'use_parent_address',
             'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
             'phone', 'fuel_surcharge', 'fis_updated_by_user',
-            ]
-    OE_FIELDS[1:1] = (['module','xml_id'],['fis_module','fis_id'])[odoo_erp]
+            )
     FIS_SCHEMA = (
             F27.name, F27.tele, F27.fuel_surcharge,
             )
@@ -621,12 +614,6 @@ class CNVZSV(SynchronizeAddress):
                 module='fis',
                 name=self.calc_xid(key),
                 )
-        if odoo_erp:
-            fis_id = 'fis_id'
-            fis_module = 'fis_module'
-        else:
-            fis_id = 'xml_id'
-            fis_module = 'module'
         names, address , do_not_use = self.process_name_address(F27, fis_rec)
         pname = names and names[0] or ''
         pname = re.sub('sunridge', 'SunRidge', BsnsCase(pname), flags=re.I)
@@ -637,8 +624,8 @@ class CNVZSV(SynchronizeAddress):
         company = AttrDict.fromkeys(self.OE_FIELDS, None)
         company.name = name
         company.update(address)
-        company[fis_id] = key
-        company[fis_module] = self.OE_KEY_MODULE
+        company[FIS_ID] = key
+        company[FIS_MODULE] = self.OE_KEY_MODULE
         company.fis_updated_by_user = None
         company.is_company = True
         company.is_carrier = True
@@ -663,12 +650,9 @@ class CNVZ_Z_K(Synchronize):
     IMD = 'account_salesperson'
     RE = r"Z..."
     RE_2ND = r"K...."
-    OE_KEY = 'xml_id'
+    OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F47'
-    OE_FIELDS = (
-            ('id', 'module', 'xml_id', 'fis_name', 'user_id', 'ordered_by_no'),
-            ('id', 'fis_module', 'fis_id', 'fis_name', 'user_id', 'ordered_by_no'),
-            )[odoo_erp]
+    OE_FIELDS = ('id', FIS_MODULE, FIS_ID, 'fis_name', 'user_id', 'ordered_by_no')
     FIS_SCHEMA = ()
     #
     SalesRep = XmlLink
@@ -696,15 +680,9 @@ class CNVZ_Z_K(Synchronize):
                 module='fis',
                 name=self.calc_xid(key),
                 )
-        if odoo_erp:
-            fis_id = 'fis_id'
-            fis_module = 'fis_module'
-        else:
-            fis_id = 'xml_id'
-            fis_module = 'module'
         salesrep = AttrDict.fromkeys(self.OE_FIELDS, None)
-        salesrep[fis_id] = key
-        salesrep[fis_module] = self.OE_KEY_MODULE
+        salesrep[FIS_ID] = key
+        salesrep[FIS_MODULE] = self.OE_KEY_MODULE
         salesrep.ordered_by_no = orderedby_rec and orderedby_rec[F257.ordered_by_id] or None
         name = sales_rec[F47.salesperson_name]
         if '-' in name:
@@ -776,29 +754,23 @@ class CSMS(SynchronizeAddress):
     OE = 'res.partner'
     IMD = 'res_partner'
     FIS_KEY = F33.code
-    OE_KEY = 'xml_id'
+    OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F33'
-    OE_FIELDS_QUICK = [
-            'id', 'fis_csms_terms', 'fis_price_list',
+    OE_FIELDS_QUICK = (
+            'id', FIS_MODULE, FIS_ID, 'fis_csms_terms', 'fis_price_list',
             'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
             'fis_valid', 'specials_notification', 'phone', 'is_company', 'customer',
             'fis_updated_by_user', 'active', 'use_parent_address', 'user_id',
             'fis_transmitter_id',
-            ]
-    OE_FIELDS_QUICK[1:1] = (['module','xml_id'],['fis_module','fis_id'])[odoo_erp]
-    OE_FIELDS_LONG = [
-            'id', 'fis_csms_terms', 'fis_price_list',
-            'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
-            'fis_valid', 'specials_notification', 'phone', 'is_company', 'customer',
-            'fis_updated_by_user', 'active', 'use_parent_address', 'fis_credit_limit',
+            )
+    OE_FIELDS_LONG = OE_FIELDS_QUICK + (
+            'fis_credit_current', 'fis_credit_limit', 'fis_credit_total',
             'fis_credit_10_days', 'fis_credit_20_days', 'fis_credit_30_days',
-            'fis_credit_current', 'fis_credit_total', 'user_id', 'fis_transmitter_id',
-            ]
-    OE_FIELDS_LONG[1:1] = (['module','xml_id'],['fis_module','fis_id'])[odoo_erp]
-    FIS_SCHEMA = [
+            )
+    FIS_SCHEMA = (
             F33.name, F33.salesrep, F33.catalog_category, F33.this_year_sales,
             F33.last_year_sales, F33.tele, F33.contact,
-            ]
+            )
     FIELDS_CHECK_IGNORE = ('active', 'name')
 
     Partner = XmlLink
@@ -819,7 +791,7 @@ class CSMS(SynchronizeAddress):
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         #
         # creates an AttrDict with the following fields
-        # - 'module', 'xml_id',
+        # - '(fis_)module', '(fis|xml)_id',
         # - 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
         # - 'fis_valid', 'specials_notification', 'phone', 'is_company', 'customer',
         # - 'use_parent_address', 'active', 'fis_transmitter_id',
@@ -848,12 +820,6 @@ class CSMS(SynchronizeAddress):
                 module='fis',
                 name=self.calc_xid(key),
                 )
-        if odoo_erp:
-            fis_id = 'fis_id'
-            fis_module = 'fis_module'
-        else:
-            fis_id = 'xml_id'
-            fis_module = 'module'
         names, address, do_not_use = self.process_name_address(F33, fis_rec)
         pname = names and names[0] or ''
         pname = re.sub('sunridge', 'SunRidge', BsnsCase(pname), flags=re.I) or ''
@@ -866,8 +832,8 @@ class CSMS(SynchronizeAddress):
         company = AttrDict.fromkeys(self.OE_FIELDS, None)
         company.name = name
         company.update(address)
-        company[fis_module] = self.OE_KEY_MODULE
-        company[fis_id] = key
+        company[FIS_MODULE] = self.OE_KEY_MODULE
+        company[FIS_ID] = key
         company.fis_updated_by_user = None
         company.is_company = True
         company.customer = True
@@ -934,8 +900,8 @@ class CSMS(SynchronizeAddress):
             if name is not None and not (' ' not in name and '@' in name):
                 name = NameCase(name)
             contact.name = name
-            contact[fis_module] = 'F33'
-            contact[fis_id] = key
+            contact[FIS_MODULE] = 'F33'
+            contact[FIS_ID] = key
             contact.fis_updated_by_user = None
             contact.is_company = False
             contact.customer = True
@@ -973,15 +939,14 @@ class CSMSS(SynchronizeAddress):
     RE = r"10......1...."
     OE = 'res.partner'
     IMD = 'res_partner'
-    OE_KEY = 'xml_id'
+    OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F%s' % TN
-    OE_FIELDS = [
-            'id', 'phone',
+    OE_FIELDS = (
+            'id', FIS_MODULE, FIS_ID, 'phone',
             'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
             'customer', 'fis_ship_to_parent_id', 'use_parent_address', 'is_company',
             'fis_transmitter_id', 'fis_ship_to_code', 'active',
-            ]
-    OE_FIELDS[1:1] = (['module','xml_id'],['fis_module','fis_id'])[odoo_erp]
+            )
     FIS_SCHEMA = (
             F34.name, F34.addr1, F34.addr2, F34.addr3, F34.postal,
             F34.tele, F34.sales_contact,
@@ -998,7 +963,7 @@ class CSMSS(SynchronizeAddress):
         "additional ship-to addresses"
         #
         # creates an XidRec with the following fields
-        # - 'module', 'xml_id', 'active',
+        # - '(fis_)module', '(fis|xml)_id', 'active',
         # - 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
         # - 'phone', 'is_company', 'customer','use_parent_address',
         # - 'fis_ship_to_code', 'fis_ship_to_parent_id', 'fis_transmitter_id',
@@ -1037,17 +1002,11 @@ class CSMSS(SynchronizeAddress):
                 module='fis',
                 name=self.calc_xid(key),
                 )
-        if odoo_erp:
-            fis_id = 'fis_id'
-            fis_module = 'fis_module'
-        else:
-            fis_id = 'xml_id'
-            fis_module = 'module'
         ship_to = AttrDict.fromkeys(self.OE_FIELDS, None)
         ship_to.name = name
         ship_to.update(address)
-        ship_to[fis_module] = self.OE_KEY_MODULE
-        ship_to[fis_id] = key
+        ship_to[FIS_MODULE] = self.OE_KEY_MODULE
+        ship_to[FIS_ID] = key
         ship_to.active = fis_rec[F34.salesrep_id] != 'INA'
         ship_to.fis_ship_to_code = ship_to_code
         ship_to.is_company = False
@@ -1069,7 +1028,7 @@ class EMP1(SynchronizeAddress):
     OE = 'hr.employee'
     IMD = 'hr_employee'
     RE = r"10....."
-    OE_KEY = 'xml_id'
+    OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F74'
     OE_FIELDS = [
             'id', 'name', 'employment_type', 'ssnid', 'birthday',
@@ -1078,8 +1037,8 @@ class EMP1(SynchronizeAddress):
             'emergency_contact', 'emergency_number', 'state_exemptions', 'federal_exemptions',
             ]
     OE_FIELDS[1:1] = (
-            ['module','xml_id','home_phone','home_street','home_street2','home_city','home_state_id','home_zip','home_country_id'],
-            ['fis_module','fis_id','phone','street','street2','city','state_id','zip','country_id'],
+            ('module','xml_id','home_phone','home_street','home_street2','home_city','home_state_id','home_zip','home_country_id'),
+            ('fis_module','fis_id','phone','street','street2','city','state_id','zip','country_id'),
             )[odoo_erp]
     FIS_SCHEMA = (
             F74.name, F74.ssn, F74.tele, F74.date_hired, F74.date_terminated,
@@ -1092,12 +1051,6 @@ class EMP1(SynchronizeAddress):
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
             return ()
-        if odoo_erp:
-            fis_id = 'fis_id'
-            fis_module = 'fis_module'
-        else:
-            fis_id = 'xml_id'
-            fis_module = 'module'
         emp_num = fis_rec[F74.emp_num].strip()
         imd = AttrDict(
                 id=0,
@@ -1121,8 +1074,8 @@ class EMP1(SynchronizeAddress):
         employee = AttrDict.fromkeys(self.OE_FIELDS, None)
         employee.name = name
         employee.update(address)
-        employee[fis_id] = employee.identification_id = emp_num
-        employee[fis_module] = self.OE_KEY_MODULE
+        employee[FIS_ID] = employee.identification_id = emp_num
+        employee[FIS_MODULE] = self.OE_KEY_MODULE
         employee.employment_type = 'standard'
         if odoo_erp:
             employee.phone = fix_phone(fis_rec[F74.tele]) or None
@@ -1176,13 +1129,11 @@ class IFMS(Synchronize):
             )[odoo_erp]
     IMD = 'product_formula'
     OE_KEY = 'name'
-    OE_FIELDS = [
-            'id', 'name', 'formula', 'description', 'coating', 'allergens',
-            ]
-    FIS_SCHEMA = [
+    OE_FIELDS = ('id', 'name', 'formula', 'description', 'coating', 'allergens')
+    FIS_SCHEMA = (
             F320.formula_id, F320.rev_no,
             F320.desc, F320.coating, F320.allergens,
-            ]
+            )
     FIS_IGNORE_RECORD = lambda self, rec: len(rec[F320.formula_id]) != 6
     #
     ProductFormula = XmlLink
@@ -1228,12 +1179,10 @@ class IFDT(Synchronize):
             )[odoo_erp]
     IMD = 'product_ingredient'
     OE_KEY = 'name'
-    OE_FIELDS = [
-            'id', 'name', 'sequence', 'formula_id', 'item_id', 'qty_needed', 'qty_desc',
-            ]
-    FIS_SCHEMA = [
+    OE_FIELDS = ('id', 'name', 'sequence', 'formula_id', 'item_id', 'qty_needed', 'qty_desc')
+    FIS_SCHEMA = (
             F322.formula_id, F322.rev_no, F322.desc_batch_1, F322.line_no,
-            ]
+            )
     FIS_IGNORE_RECORD = lambda self, rec: (
               not IFMS.ProductFormula('%s-%s' % (rec[F322.formula_id], rec[F322.rev_no]))
               or rec[F322.ingr_code_batch_1] in ignored_ingredients
@@ -1294,19 +1243,19 @@ class IFPP0(Synchronize):
             )[odoo_erp]
     IMD = 'production_order'
     OE_KEY = 'order_no'
-    OE_FIELDS = [
+    OE_FIELDS = (
             'id', 'order_no', 'completed_fis_qty', 'confirmed', 'item_id',
             'formula_code', 'line_id', 'schedule_date', 'finish_date',
             'line_id_set', 'schedule_date_set', 'state', 'coating', 'allergens',
             'batches',
-            ]
-    OE_FIELDS.append(('dept','department')[odoo_erp])
-    FIS_SCHEMA = [
+            )
+    OE_FIELDS += (('dept','department')[odoo_erp], )
+    FIS_SCHEMA = (
             F328.order_no, F328.produced, F328.order_confirmed, F328.prod_no,
             F328.formula_id, F328.formula_rev, F328.dept_id, F328.prod_line,
             F328.prod_scheduled_date, F328.prod_date, F328.units_produced,
             F328.no_of_batches_a
-            ]
+            )
     #
     ProductionOrder = XmlLink
 
@@ -1319,11 +1268,11 @@ class IFPP0(Synchronize):
         multiline_table = ('fnx.pd.multiline','fis.production.multiline')[odoo_erp]
         cnvzf_name = '%s_%%_%s' % (CNVZf.F, CNVZf.IMD)
         self.production_lines = dict(
-                (r.xml_id, CNVZf.ProductionLine(r.xml_id, r.id))
+                (r[FIS_ID], CNVZf.ProductionLine(r[FIS_ID], r.id))
                 for r in self.get_xid_records(
                     self.erp,
                     domain=[('module','=','fis'),('name','=like',cnvzf_name)],
-                    fields=['id', 'xml_id'],
+                    fields=['id', FIS_ID],
                     context=self.context,
                     ))
         multi_lines = dict(
@@ -1451,12 +1400,10 @@ class IFPP1(Synchronize):
             )[odoo_erp]
     IMD = 'production_ingredient'
     OE_KEY = 'name'
-    OE_FIELDS = [
-            'id', 'name', 'sequence', 'order_ids', 'item_id', 'qty_needed', 'qty_desc',
-            ]
-    FIS_SCHEMA = [
+    OE_FIELDS = ('id', 'name', 'sequence', 'order_ids', 'item_id', 'qty_needed', 'qty_desc')
+    FIS_SCHEMA = (
             F329.order_no, F329.ingr_code_batch_1, F329.units_batch_1, F329.qty_batch_1, F329.formula_line_no
-            ]
+            )
     def FIS_IGNORE_RECORD(self, rec):
         if rec[F329.item_type_batch_1] == 'M':
             return True
@@ -1544,33 +1491,30 @@ class NVTY(Synchronize):
     RE = r'......101000    101\*\*'
     OE = 'product.product'
     IMD = 'product_product'
-    OE_KEY = 'xml_id'
+    OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F%s' % TN
-    OE_FIELDS_QUICK = [
-            'id',
-            ('module','fis_module')[odoo_erp],
-            ('xml_id','fis_id')[odoo_erp],
-            ('warranty','fis_shelf_life')[odoo_erp],
+    OE_FIELDS_QUICK = (
+            'id', FIS_MODULE, FIS_ID, ('warranty','fis_shelf_life')[odoo_erp],
             'active', 'name', 'fis_name', 'fis_qty_on_hand', 'fis_availability_code',
             'sale_ok', 'fis_whsle_price', 'trademarks', 'ean13', 'fis_location',
             'fis_shipping_size', 'categ_id', 'default_code', 'weight',
             'weight_net', 'list_price',
-            ]
-    OE_FIELDS_LONG = OE_FIELDS_QUICK + [
+            )
+    OE_FIELDS_LONG = OE_FIELDS_QUICK + (
             'fis_qty_produced', 'fis_10_day_produced', 'fis_21_day_produced',
             'fis_qty_consumed', 'fis_10_day_consumed', 'fis_21_day_consumed',
             'fis_qty_purchased', 'fis_10_day_purchased', 'fis_21_day_purchased',
             'fis_qty_sold', 'fis_10_day_sold', 'fis_21_day_sold',
             'fis_qty_available', 'fis_10_day_available', 'fis_21_day_available',
             'fis_web_ingredients', 'fis_web_prep_instructions',
-            ]
-    FIS_SCHEMA = [
+            )
+    FIS_SCHEMA = (
             F135.item_id,
             F135.available_key, F135.sales_cat, F135.trademarkd,
             F135.catalog_location, F135.desc, F135.size, F135.upc_no, F135.primary_location,
             F135.supplier_id, F135.new_retail, F135.new_whlsl,
             F135.net_un_wt, F135.grs_un_wt,
-            ]
+            )
     FIELDS_CHECK_IGNORE = ('name', )
     #
     Product = XmlLink
@@ -1733,17 +1677,16 @@ class POSM_VNMS(SynchronizeAddress):
     OE = 'res.partner'
     IMD = 'res_partner'
     RE = r"10(......)"
-    OE_KEY = 'xml_id'
+    OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F163'
-    OE_FIELDS = [
-            'id', 'active', 'phone', 'fax',
+    OE_FIELDS = (
+            'id', FIS_MODULE, FIS_ID, 'active', 'phone', 'fax',
             'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
             'fis_valid', 'is_company', 'customer', 'supplier',
             'fis_updated_by_user', 'use_parent_address',
             'fis_org_cert_file', 'fis_non_gmo', 'fis_kosher', 'fis_org_exp',
             'fis_gmo_exp', 'fis_kosher_exp',
-            ]
-    OE_FIELDS[1:1] = (['module','xml_id'],['fis_module','fis_id'])[odoo_erp]
+            )
     FIS_SCHEMA = ()
     FIELDS_CHECK_IGNORE = ('active', 'name')
 
@@ -1762,7 +1705,7 @@ class POSM_VNMS(SynchronizeAddress):
     def convert_fis_rec(self, posm_vnms, use_ignore=True):
         #
         # creates a company AttrDict with the following fields
-        # - 'module', 'xml_id', 'active',
+        # - '(fis_)module', '(fis|xml)_id', 'active',
         # - 'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
         # - 'fis_valid', 'phone', 'fax', 'is_company', 'customer', 'fis_org_cert_file',
         # - 'fis_non_gmo', 'fis_kosher', 'fis_org_exp', 'fis_gmo_exp', 'fis_kosher_exp',
@@ -1794,15 +1737,9 @@ class POSM_VNMS(SynchronizeAddress):
                 module='fis',
                 name=self.calc_xid(key),
                 )
-        if odoo_erp:
-            fis_id = 'fis_id'
-            fis_module = 'fis_module'
-        else:
-            fis_id = 'xml_id'
-            fis_module = 'module'
         company = AttrDict().fromkeys(self.OE_FIELDS, None)
-        company[fis_id] = key
-        company[fis_module] = self.OE_KEY_MODULE
+        company[FIS_ID] = key
+        company[FIS_MODULE] = self.OE_KEY_MODULE
         company.active = True
         company.fis_updated_by_user = ''
         company.is_company = True
@@ -1881,8 +1818,8 @@ class POSM_VNMS(SynchronizeAddress):
                 ext = unk.lower()
                 name = ' '.join(name.split()[:-1])
             contact = AttrDict().fromkeys(self.OE_FIELDS, None)
-            contact[fis_module] = 'F163'
-            contact[fis_id] = 'cntct_' + key
+            contact[FIS_MODULE] = 'F163'
+            contact[FIS_ID] = 'cntct_' + key
             contact.fis_updated_by_user = ''
             contact.active = company.active
             contact.name = name
@@ -1907,7 +1844,7 @@ class POSM_VNMS(SynchronizeAddress):
                     model=self.OE,
                     res_id=0,
                     module='fis',
-                    name=self.calc_xid(contact[fis_id]),
+                    name=self.calc_xid(contact[FIS_ID]),
                     )
             contact = XidRec.fromdict(
                     contact,
@@ -2052,7 +1989,7 @@ class Specials(str, Enum):
 def is_contact(obj):
     "obj must be either a string or have an xml_id key"
     if not isinstance(obj, basestring):
-        obj = obj.get('xml_id')
+        obj = obj.get(FIS_ID)
     return obj.startswith('cntct_')
 
 def sanitize_ean13(ean13):
@@ -2182,7 +2119,7 @@ def update_ir_model_data(model, table_number, oe_records):
 
 
 # main
-import cProfile
-file_name = DateTime.now().strftime("updates_%Y-%m-%d_%H:%M:%S.stats")
-cProfile.run('Main()', '/opt/openerp/var/log/sync-updates/%s' % file_name)
-# Main()
+# import cProfile
+# file_name = DateTime.now().strftime("updates_%Y-%m-%d_%H:%M:%S.stats")
+# cProfile.run('Main()', virtualenv / 'var/log/sync-updates/%s' % file_name)
+Main()
