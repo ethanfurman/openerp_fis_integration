@@ -6,6 +6,7 @@ from __future__ import print_function
 import dbf
 import os
 import re
+from aenum import Enum, auto
 from antipathy import Path
 from ast import literal_eval
 from fnx_script_support import all_equal
@@ -235,7 +236,7 @@ def sql(command, separator, wrap):
     """
     SELECT field_name [, field_name [, ...]]
         FROM table
-        [WHERE ...]
+        [WHERE ... | subquery ]
         [ORDER BY field1 [ASC|DESC] [, field2 [ASC|DESC] [, ...]]]
         [TO file]
 
@@ -389,7 +390,7 @@ def sql_select(command, separator, wrap, _internal=''):
     # get SELECT fields
     #
     seleccion, resto = re.split(' from ', command, maxsplit=1, flags=re.I)
-    seleccion = ' '.join(seleccion.split())
+    seleccion = [s.strip(',') for s in seleccion.split()[1:] if s != ',']
     if not seleccion:
         abort('missing fields')
     if seleccion[0].upper() == 'DISTINCT':
@@ -397,7 +398,7 @@ def sql_select(command, separator, wrap, _internal=''):
         seleccion.pop(0)
     if not seleccion:
         abort('missing fields')
-    if SHOW_ID and 'id' not in seleccion and seleccion != ['*']:
+    if SHOW_ID and 'id' not in seleccion.lower() and seleccion != ['*']:
         seleccion.insert(0, 'id')
     print('SELECT:', seleccion)
     #
@@ -444,7 +445,7 @@ def sql_select(command, separator, wrap, _internal=''):
         seleccion = ['id'] + sorted(fields)
         print('SELECT:', seleccion)
     #
-    # now make sure all field names are db and not user
+    # TODO: now make sure all field names are db and not user
     #
     print('WHERE', clausa)
     print('ORDER BY', orden)
@@ -570,7 +571,7 @@ def sql_update(command):
     table = pieces[1]
     try:
         tables[table] = table = oe.get_model(table)
-    except Fault, exc:
+    except Fault as exc:
         if "doesn't exist" in exc.faultCode:
             abort('unknown table %r' % (table, ))
         raise
@@ -616,7 +617,7 @@ def sql_delete(command):
     table = pieces[2]
     try:
         tables[table] = table = oe.get_model(table)
-    except Fault, exc:
+    except Fault as exc:
         if "doesn't exist" in exc.faultCode:
             abort('unknown table %r' % (table, ))
         raise
@@ -640,12 +641,16 @@ def sql_delete(command):
 
 def sql_count(command, separator):
     """
-    COUNT field_name [, field_name [, ...]]
+    COUNT
         FROM table
         [WHERE ...]
         [ORDER BY field1 [ASC|DESC] [, field2 [ASC|DESC] [, ...]]]
         [TO file] # ignored
     """
+    temp = command.split()
+    if len(temp) > 1 and temp[1].upper() == 'FROM':
+        temp.insert(1, 'id')
+        command = ' '.join(temp)
     query = sql_select(command, separator, wrap=None, _internal=True)
     echo('COUNT %d' % len(query))
     return len(query)
@@ -662,7 +667,9 @@ def list_exports(table=None):
 
 # helpers
 
-def normalize_fields(model, fields):
+def normalize_field_names(model, fields):
+        # currently unused
+        #
         # make sure top-level fields are db names, not user names
         ambiguous_fields = {}
         model_strings = {}
@@ -760,8 +767,34 @@ def convert_set(clausa):
     return values
 
 def convert_where(clausa):
+    def subquery(match):
+        print('subquery:', match, verbose=1)
+        command = match.group()[1:-1]
+        echo(command)
+        if not command.upper().startswith(('SELECT ','COUNT ')):
+            abort('subquery must be SELECT or COUNT')
+        if command.upper().startswith('COUNT '):
+            return str(sql_count(command, separator=False))
+        else:  # SELECT
+            result = sql_select(command, separator=False, wrap=(), _internal='subquery')
+            if not result:
+                return '[]'
+            fields = result.records[0].keys()
+            if len(fields) == 1:
+                # must be id
+                return str([r.id for r in result])
+            elif len(fields) == 2:
+                fields.remove('id')
+                field = fields.pop()
+                return str([r[field] for r in result])
+            else:
+                abort('only one field can be returned from subqueries')
+
+    clausa = re.sub(r"\(.*\)", subquery, clausa)
+    print('after subquery: %r' % (clausa, ))
+
     std_match = Var(lambda clausa: re.match(
-            r"^(\w+)\s*(is not|is|like|=like|not like|ilike|=ilike|not ilike|<=|>=|!=|=|<|>)\s*('(?:[^'\\]|\\.)*?'|\S*)\s*(.*?)\s*$",
+            r"^(\w+)\s*(is not|is|not in|in|like|=like|not like|ilike|=ilike|not ilike|<=|>=|!=|=|<|>)\s*('(?:[^'\\]|\\.)*?'|\[[^]]*\]|\S*)\s*(.*?)\s*$",
             clausa,
             flags=re.I
             ))
@@ -777,8 +810,9 @@ def convert_where(clausa):
         #      WHERE id=201
         #      WHERE blah is not null AND this = 'that'
         #      WHERE count(fis_portal_logins) > 1
-        #      WHERE 'Warehouse notes' is not null
-        print('clausa', clausa, verbose=2)
+        #      WHERE 'Warehouse notes' is not null  (future enhancement)
+        #      WHERE id in (SELECT res_id FROM ir.model.data WHERE name =like 'F074_%_res_partner')
+        print('clausa: %r' % (clausa, ), verbose=2)
         if std_match(clausa):
             field, op, condition, clausa = std_match().groups()
             print('\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (field, op, condition, clausa), verbose=2)
@@ -801,6 +835,8 @@ def convert_where(clausa):
                 condition = None
             elif lcond == 'null':
                 pass
+            elif lcond[0] == '[' and lcond[-1] == ']':
+                condition = literal_eval(condition)
             else:
                 try:
                     condition = int(condition)
