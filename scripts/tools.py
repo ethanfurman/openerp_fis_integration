@@ -739,7 +739,7 @@ class Synchronize(SynchronizeABC):
         sub_fields = {}
         check_fields = self.fis_records.values()[0].keys()
         #
-        # gather the fields that are links
+        # gather the fields that may be links
         #
         for rec in self.fis_records.values():
             for field_name in check_fields:
