@@ -988,7 +988,7 @@ class CSMSS(SynchronizeAddress):
         o1_key = ('%s-%s' % (fis_rec[F34.code], ship_to_code or '')).strip('-')
         key = '%s-%s' % (fis_rec[F34.code], ship_to_code or 'default')
         pname = names and names[0] or ''
-        pname = re.sub('sunridge', 'SunRidge', BsnsCase(pname), flags=re.I) or None
+        pname = re.sub('sunridge', 'SunRidge', BsnsCase(pname), flags=re.I) or ''
         if re.match('HE\d\d\d-default*$', key) and pname.startswith('Heb '):
             pname = 'HEB ' + pname[4:]
         names[0:1] = [pname]
