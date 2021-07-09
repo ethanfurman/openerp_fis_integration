@@ -1,0 +1,47 @@
+#!/usr/local/sbin/suid-python --virtualenv
+
+# imports
+from __future__ import print_function
+
+from scription import *
+from antipathy import Path
+from openerplib import get_connection, get_records, local_to_utc
+import os
+
+@Command(
+        )
+def emp2rp():
+    """
+    make F74 links in ir.model.data into fis links for res.partner
+    """
+    virtual_env = Path(os.environ.get('VIRTUAL_ENV'))
+    config = OrmFile(virtual_env / 'config/fnx.ini', types={'_path': Path})
+    oe = config.openerp
+    oe = get_connection(hostname=oe.host, database=oe.db, login=oe.user, password=oe.pw)
+    imd = oe.get_model('ir.model.data')
+    src_recs = imd.search_read(
+            domain=[('module','=','F74'),('model','=','res.partner')],
+            fields=['name', 'res_id'],
+            )
+    tgt_recs = set([
+            r.name
+            for r in imd.search_read(
+                domain=[('module','=','fis'),('name','=like','F074_%_res_partner')],
+                fields=['name'],
+                )])
+    # cycle through source records looking for any missing target records
+    added = 0
+    for rec in src_recs:
+        tgt_name = 'F074_%s_res_partner' % (rec.name, )
+        if tgt_name not in tgt_recs:
+            imd.create({
+                    'module': 'fis',
+                    'name': tgt_name,
+                    'model': 'res.partner',
+                    'res_id': rec.res_id
+                    })
+            tgt_recs.add(tgt_name)
+            added += 1
+    echo('%d records added' % (added, ))
+
+Main()
