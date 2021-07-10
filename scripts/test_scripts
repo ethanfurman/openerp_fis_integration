@@ -1445,6 +1445,7 @@ oe_fis_data = (
         OE_FIS_Data('F074_770_res_users', 'res.users', login='mdemay', name='Mary Michelle Demay', ref='mdemay'),
         OE_FIS_Data('F074_1_res_users', 'res.users', login='mcohen', name='Morty Cohen', ref='mcohen'),
         OE_FIS_Data('F074_125_res_users', 'res.users', login='rcoleman', name='Ronald Coleman', ref='rcoleman'),
+        OE_FIS_Data('F074_1306_res_partner', 'res.partner', fis_id='1306', xml_id='1306', name='Carolina Torres', active=True, ref='ctorres_rp'),
 
         OE_FIS_Data('F341_06_production_line', 'fis_integration.production_line', 'fis.production.line', xml_id='06', fis_id='06', ref='line_06'),
         OE_FIS_Data('F341_11_production_line', 'fis_integration.production_line', 'fis.production.line', xml_id='11', fis_id='11', ref='line_11'),
@@ -3569,6 +3570,12 @@ def emp1_data(script):
                         emergency_number=None,
                         state_exemptions=0,
                         federal_exemptions=0,
+                        partner_id=(0, 0, {
+                            'employee': True,
+                            script.FIS_ID: '9002',
+                            'name': 'Inventory Team',
+                            'active': True,
+                            })
                         ),
                     imd(name='F074_9002_hr_employee'),
                     ),
@@ -3644,6 +3651,12 @@ def emp1_data(script):
                         emergency_number='818.283.8485',
                         state_exemptions=5,
                         federal_exemptions=5,
+                        partner_id=(0, 0, {
+                            'employee': True,
+                            script.FIS_ID: '1376',
+                            'name': 'Mark Andrew Pezzini',
+                            'active': False,
+                            })
                         ),
                     imd(name='F074_1376_hr_employee'),
                     ),
@@ -3718,6 +3731,7 @@ def emp1_data(script):
                         emergency_number='876.123.5911',
                         state_exemptions=2,
                         federal_exemptions=2,
+                        partner_id=Many2One(id=ref.ctorres_rp.id, name='Carolina Torres', model='res.partner'),
                         ),
                     imd(name='F074_1306_hr_employee'),
                     ),

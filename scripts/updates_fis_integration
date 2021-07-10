@@ -1034,7 +1034,7 @@ class EMP1(SynchronizeAddress):
             'id', 'name', 'employment_type', 'ssnid', 'birthday',
             'hire_date', 'fire_date', 'active', 'status_flag', 'pension_plan',
             'pay_type', 'hourly_rate', 'last_raise', 'marital', 'gender', 'identification_id',
-            'emergency_contact', 'emergency_number', 'state_exemptions', 'federal_exemptions',
+            'emergency_contact', 'emergency_number', 'state_exemptions', 'federal_exemptions', 'partner_id',
             ]
     OE_FIELDS[1:1] = (
             ('module','xml_id','home_phone','home_street','home_street2','home_city','home_state_id','home_zip','home_country_id'),
@@ -1047,6 +1047,17 @@ class EMP1(SynchronizeAddress):
             F74.emergency_phone, F74.exempt_fed, F74.exempt_state, F74.hourly_rate,
             )
     FIS_IGNORE_RECORD = lambda self, rec: int(rec[F74.emp_num]) >= 9000
+
+    def __init__(self, oe, config, *args, **kwds):
+        super(EMP1, self).__init__(oe, config, *args, **kwds)
+        self.partners = dict(
+                (r[FIS_ID], r)
+                for r in self.get_xid_records(
+                    self.erp,
+                    domain=[('module','=','fis'),('name','=like','F074_%_res_partner')],
+                    fields=['id',FIS_ID,'name','employee_id'],
+                    context=self.context,
+                    ))
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
@@ -1112,6 +1123,14 @@ class EMP1(SynchronizeAddress):
         employee.emergency_number = fix_phone(fis_rec[F74.emergency_phone]) or None
         employee.federal_exemptions = int(fis_rec[F74.exempt_fed] or 0)
         employee.state_exemptions = int(fis_rec[F74.exempt_state] or 0)
+        partner_id = self.partners.get(emp_num)
+        employee.partner_id = partner_id and partner_id.id or (
+                0, 0, {
+                    FIS_ID: emp_num,
+                    'employee': True,
+                    'name': name,
+                    'active': employee.active,
+                    })
         return (XidRec.fromdict(employee, imd), )
 
 
