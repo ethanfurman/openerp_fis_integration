@@ -29,6 +29,9 @@ virtual_env = Path(os.environ.get('VIRTUAL_ENV'))
 dbf_log_path = virtual_env / 'var/log/sync-updates'
 pid_path = virtual_env / 'run'
 
+# global error condition -- True if an error occurred at any point
+failure = False
+
 @Script()
 def main():
     print('getting logger', verbose=2)
@@ -172,7 +175,8 @@ def fis_update(method, skip_copy, skip_update, files, dryrun, list_records, bw_l
                     time.sleep(420)
                 else:
                     break
-
+    if failure:
+        return Exit.UnknownError
 
 @Command(
         fis_file=Spec('File name or number to examine', default='all'),
@@ -478,6 +482,7 @@ def calc_widths_types(field_names, rows, table=None):
     return widths, types
 
 def system(cmd, abort_on_error=False):
+    global failure
     with user_ids(0, 0):
         print(
                 '--==[%s] running "%s" . . .: ' % (time.strftime('%H:%M:%S', time.localtime()), cmd),
@@ -500,6 +505,7 @@ def system(cmd, abort_on_error=False):
             if v_level:
                 print('==========================================', verbose=1)
         if job.returncode or job.stderr:
+            failure = True
             error('---- stderr ----')
             if job.stderr.strip():
                 error('\n'.join(['   %s' % l for l in job.stderr.strip().split('\n')]))
