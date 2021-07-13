@@ -103,6 +103,8 @@
                 @customer position='after'
                     @is_bulk attrs="{'invisible': [('customer','=',False)]}"
                 @supplier position='after'
+                    @employee
+                    @employee_id attrs="{'invisible':[('employee','=',False)]}"
                     @is_carrier
                     @fuel_surcharge attrs="{'invisible':[('is_carrier','=',False)]}"
                 ~xpath expr="//page[@string='Contacts']" position='after'
