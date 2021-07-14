@@ -104,6 +104,18 @@ class XmlLinkField(object):
                     self.name, self.value,
                     ))
 
+class NewRecord(object):
+    """
+    hold the details for a new record for an m2o link
+    """
+    def __init__(self, **values):
+        self.values = values
+    def __repr__(self):
+        return 'NewRecord(%s)' % ', '.join([
+                '%s=%r' % (k, v)
+                for k, v in sorted(self.values.items())
+                ])
+
 
 Synchronize = None
 
@@ -717,7 +729,11 @@ class Synchronize(SynchronizeABC):
                 values[dbf_field] = v
             if action in ('change','delete'):
                 values['id'] = rec.id
-            self.record_log.append(values)
+            try:
+                self.record_log.append(values)
+            except ValueError:
+                error('unable to log %r' % (values, ))
+                raise
             result.append(self.record_log.last_record)
         return result
 
@@ -920,10 +936,15 @@ class Synchronize(SynchronizeABC):
             self.log('delta', changes)
             self.log('change', *records)
             try:
-                # ensure x2m fields are passed correctly
                 field_names = changes.keys()
                 for fn in field_names:
-                    if fn in self.model._x2many_fields:
+                    if fn in self.model._x2one_fields:
+                        # enusre x2o fields are passed correctly
+                        value = changes[fn]
+                        if isinstance(value, NewRecord):
+                            changes[fn] = (0, 0, value.values)
+                    elif fn in self.model._x2many_fields:
+                        # ensure x2m fields are passed correctly
                         value = changes[fn]
                         if not value:
                             changes[fn] = [(5, )]
@@ -984,7 +1005,7 @@ class Synchronize(SynchronizeABC):
                         module = 'module'
                         if isinstance(value, tuple):
                             module, value = value
-                    vals[module] = value
+                        vals[module] = value
                     self.log_exc(exc, vals)
 
     def reify(self, fields=[]):

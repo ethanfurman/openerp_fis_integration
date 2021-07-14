@@ -18,7 +18,7 @@ from pandaemonium import PidLockFile
 from recipe import ignored_ingredients
 from tools import Model
 # from tools import combine_by_value
-from tools import Synchronize, SynchronizeAddress, XmlLink, ProductLabelDescription, odoo_erp, Odoo13, OE7
+from tools import Synchronize, SynchronizeAddress, XmlLink, NewRecord, ProductLabelDescription, odoo_erp, Odoo13, OE7
 from VSS.address import NameCase, BsnsCase
 # from VSS.BBxXlate.fisData import fisData
 from VSS.utils import fix_phone, fix_date
@@ -1051,7 +1051,7 @@ class EMP1(SynchronizeAddress):
     def __init__(self, oe, config, *args, **kwds):
         super(EMP1, self).__init__(oe, config, *args, **kwds)
         self.partners = dict(
-                (r[FIS_ID], r)
+                (r[FIS_ID], Many2One(r.id, r.name, 'res.partner'))
                 for r in self.get_xid_records(
                     self.erp,
                     domain=[('module','=','fis'),('name','=like','F074_%_res_partner')],
@@ -1124,8 +1124,7 @@ class EMP1(SynchronizeAddress):
         employee.federal_exemptions = int(fis_rec[F74.exempt_fed] or 0)
         employee.state_exemptions = int(fis_rec[F74.exempt_state] or 0)
         partner_id = self.partners.get(emp_num)
-        employee.partner_id = partner_id and partner_id.id or (
-                0, 0, {
+        employee.partner_id = partner_id and partner_id.id or NewRecord(**{
                     FIS_ID: emp_num,
                     'employee': True,
                     'name': name,
