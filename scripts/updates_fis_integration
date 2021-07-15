@@ -16,7 +16,6 @@ from openerplib import AttrDict, Many2One, XidRec
     # from traceback import format_exception
 from pandaemonium import PidLockFile
 from recipe import ignored_ingredients
-from tools import Model
 # from tools import combine_by_value
 from tools import Synchronize, SynchronizeAddress, XmlLink, NewRecord, ProductLabelDescription, odoo_erp, Odoo13, OE7
 from VSS.address import NameCase, BsnsCase
@@ -169,7 +168,7 @@ def fis_integration(method, delete, *files, **extra):
         traceback.print_exc()
         raise SystemExit(Exit.Software)
     finally:
-        for m, problems in sorted(Model.errors.items()):
+        for m, problems in sorted(Synchronize.errors.items()):
             error()
             error(m, border=('lined', '='), sep='')
             for p in problems:

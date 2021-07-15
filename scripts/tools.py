@@ -201,6 +201,8 @@ class Synchronize(SynchronizeABC):
     get_xid_records = staticmethod(get_xid_records)
     get_records = staticmethod(get_records)
 
+    errors = defaultdict(list)
+
     def __init__(self, connect, config, extra=None):
         """
         class level variables that need to be set
@@ -741,6 +743,7 @@ class Synchronize(SynchronizeABC):
         values = {'failure_': str(exc).replace('\\n','\n')}
         values.update(record)
         self.log('failed', *(values, ))
+        self.errors['%s-%s-%s' % (self.F, self.FN, self.OE)] = record
 
     def normalize_fis(self, method):
         """
