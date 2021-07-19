@@ -201,7 +201,7 @@ class Synchronize(SynchronizeABC):
     get_xid_records = staticmethod(get_xid_records)
     get_records = staticmethod(get_records)
 
-    errors = defaultdict(list)
+    errors = defaultdict(lambda: defaultdict(list))
 
     def __init__(self, connect, config, extra=None):
         """
@@ -740,10 +740,11 @@ class Synchronize(SynchronizeABC):
         return result
 
     def log_exc(self, exc, record):
-        values = {'failure_': str(exc).replace('\\n','\n')}
+        failure = str(exc).replace('\\n','\n')
+        values = {'failure_': failure}
         values.update(record)
         self.log('failed', *(values, ))
-        self.errors['%s-%s-%s' % (self.F, self.FN, self.OE)] = record
+        self.errors['%s-%s-%s' % (self.F, self.FN, self.OE)][failure].append(record)
 
     def normalize_fis(self, method):
         """

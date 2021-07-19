@@ -10,7 +10,7 @@ from collections import defaultdict
 from dbf import Date, DateTime, Time
 from fis_schema import F8, F11, F27, F33, F34, F47, F65, F74, F97, F135
 from fis_schema import F163, F192, F257, F262, F320, F322, F328, F329, F341
-from logging import INFO, getLogger, Formatter, handlers
+from logging import getLogger
 from openerplib import get_connection, get_records, local_to_utc
 from openerplib import AttrDict, Many2One, XidRec
     # from traceback import format_exception
@@ -29,6 +29,7 @@ import os
 import socket
 import traceback
 
+OE7
 
 virtualenv = Path(os.environ['VIRTUAL_ENV'])
 
@@ -171,9 +172,13 @@ def fis_integration(method, delete, *files, **extra):
         for m, problems in sorted(Synchronize.errors.items()):
             error()
             error(m, border=('lined', '='), sep='')
-            for p in problems:
-                error('  ', p)
-            error()
+            for failure, values_list in sorted(problems.items()):
+                error('%s' % (failure, ))
+                for values in values_list:
+                    error('    %r' % (values, ))
+                # for p in problems:
+                #     error('  %r' % (p, ))
+                error()
 
     # dependencies:
     #
@@ -708,10 +713,13 @@ class CNVZ_Z_K(Synchronize):
                 rematch=self.RE_2ND,
                 data_path=self.config.network.fis_data_local_old_path,
                 )
-        print('cnvzz: %d\ncnvzk: %d\nold cnvzz: %d\nold cnvzk: %d' %
-                (len(cnvzz_table), len(cnvzk_table),
-                    len(old_cnvzz_table), len(old_cnvzk_table))
+        print('cnvzz: %d\ncnvzk: %d\nold cnvzz: %d\nold cnvzk: %d' % (
+                    len(cnvzz_table), len(cnvzk_table),
+                    len(old_cnvzz_table), len(old_cnvzk_table),
+                    ),
+                verbose=2,
                 )
+
         class PsuedoFisTable(object):
             __slots__ = 'filename', 'data'
             def __init__(self, filename):
@@ -1896,10 +1904,13 @@ class POSM_VNMS(SynchronizeAddress):
                 rematch=self.RE,
                 data_path=self.config.network.fis_data_local_old_path,
                 )
-        print('posm: %d\nvnms: %d\nold posm: %d\nold vnms: %d' %
-                (len(posm_table), len(vnms_table),
-                    len(old_posm_table), len(old_vnms_table))
+        print('posm: %d\nvnms: %d\nold posm: %d\nold vnms: %d' % (
+                    len(posm_table), len(vnms_table),
+                    len(old_posm_table), len(old_vnms_table),
+                    ),
+                verbose=2,
                 )
+
         class PsuedoFisTable(object):
             __slots__ = 'filename', 'data'
             def __init__(self, filename):
