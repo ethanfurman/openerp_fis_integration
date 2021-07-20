@@ -12,7 +12,7 @@ from fis_schema import F8, F11, F27, F33, F34, F47, F65, F74, F97, F135
 from fis_schema import F163, F192, F257, F262, F320, F322, F328, F329, F341
 from logging import getLogger
 from openerplib import get_connection, get_records, local_to_utc
-from openerplib import AttrDict, Many2One, XidRec
+from openerplib import AttrDict, Many2One, XidRec, Phone
     # from traceback import format_exception
 from pandaemonium import PidLockFile
 from recipe import ignored_ingredients
@@ -625,6 +625,8 @@ class CNVZSV(SynchronizeAddress):
         name = ', '.join(names)
         dnu = ', '.join(do_not_use)
         name = ' / '.join([l for l in (name, dnu) if l])
+        if not name:
+            return ()
         company = AttrDict.fromkeys(self.OE_FIELDS, None)
         company.name = name
         company.update(address)
@@ -836,6 +838,8 @@ class CSMS(SynchronizeAddress):
         name = ', '.join(names)
         dnu = ', '.join(do_not_use)
         name = ' / '.join([l for l in (name, dnu) if l])
+        if not name:
+            return ()
         company = AttrDict.fromkeys(self.OE_FIELDS, None)
         company.name = name
         company.update(address)
@@ -1089,6 +1093,8 @@ class EMP1(SynchronizeAddress):
         name = ', '.join(names)
         dnu = ', '.join(do_not_use)
         name = ' / '.join([l for l in (name, dnu) if l])
+        if not name:
+            return ()
         employee = AttrDict.fromkeys(self.OE_FIELDS, None)
         employee.name = name
         employee.update(address)
@@ -1782,6 +1788,8 @@ class POSM_VNMS(SynchronizeAddress):
             name = ', '.join(names)
             dnu = ', '.join(do_not_use)
             name = ' / '.join([l for l in (name, dnu) if l])
+            if not name:
+                return ()
             company.name = name
             company.update(address)
             company.phone = fix_phone(posm_rec[F163.tele]) or None
@@ -1802,10 +1810,12 @@ class POSM_VNMS(SynchronizeAddress):
             name = ', '.join(names)
             dnu = ', '.join(do_not_use)
             name = ' / '.join([l for l in (name, dnu) if l])
+            if not name:
+                return ()
             company.name = name
             company.update(address)
-            company.phone = fix_phone(vnms_rec[F65.tele]) or None
-            company.fax = fix_phone(vnms_rec[F65.fax]) or None
+            company.phone = Phone(vnms_rec[F65.tele])
+            company.fax = Phone(vnms_rec[F65.fax])
             company.fis_org_cert_file = vnms_rec[F65.org_cert_file].upper() in ('Y','O')
             company.fis_org_exp = fix_date(vnms_rec[F65.cert_exp]) or None
             company.fis_non_gmo = False
@@ -1842,44 +1852,56 @@ class POSM_VNMS(SynchronizeAddress):
                  ):
                 ext = unk.lower()
                 name = ' '.join(name.split()[:-1])
-            contact = AttrDict().fromkeys(self.OE_FIELDS, None)
-            contact[FIS_MODULE] = 'F163'
-            contact[FIS_ID] = 'cntct_' + key
-            contact.fis_updated_by_user = ''
-            contact.active = company.active
-            contact.name = name
-            contact.fis_valid = company.fis_valid
-            contact.is_company = False
-            contact.customer = False
-            contact.supplier = True
-            contact.use_parent_address = False
-            contact.street = company.street
-            contact.street2 = company.street2
-            contact.city = company.city
-            contact.state_id = company.state_id
-            contact.zip = company.zip
-            contact.country_id = company.country_id
-            contact.phone = ('%s %s' % (fix_phone(vnms_rec[F65.tele]), ext)).strip() or None
-            contact.fax = fix_phone(vnms_rec[F65.fax]) or None
-            contact.fis_org_cert_file = False
-            contact.fis_non_gmo = False
-            contact.fis_kosher = False
-            imd = AttrDict(
-                    id=0,
-                    model=self.OE,
-                    res_id=0,
-                    module='fis',
-                    name=self.calc_xid(contact[FIS_ID]),
-                    )
-            contact = XidRec.fromdict(
-                    contact,
-                    imd,
-                    types={
-                        'fis_kosher': (bool, ),
-                        'fis_non_gmo': (bool, ),
-                        'fis_org_cert_file': (bool, ),
-                        },
-                    )
+            name = name or None
+            phone = Phone(nvms_rec[F65.tele], ext)
+            fax = Phone(vnms_rec[F65.fax])
+            if phone.base == company.phone.base:
+                if phone.ext == company.phone.ext or phone.ext and not company.phone.ext:
+                    company.phone.ext = phone.ext
+                    phone = None
+            if fax.base == company.fax.base:
+                if fax.ext == company.fax.ext or fax.ext and not company.fax.ext:
+                    company.fax.ext = fax.ext
+                    fax = None
+            if name or phone or fax:
+                contact = AttrDict().fromkeys(self.OE_FIELDS, None)
+                contact[FIS_MODULE] = 'F163'
+                contact[FIS_ID] = 'cntct_' + key
+                contact.fis_updated_by_user = ''
+                contact.active = company.active
+                contact.name = name or 'extra info'
+                contact.fis_valid = company.fis_valid
+                contact.is_company = False
+                contact.customer = False
+                contact.supplier = True
+                contact.use_parent_address = False
+                contact.street = company.street
+                contact.street2 = company.street2
+                contact.city = company.city
+                contact.state_id = company.state_id
+                contact.zip = company.zip
+                contact.country_id = company.country_id
+                contact.phone = ('%s %s' % (fix_phone(vnms_rec[F65.tele]), ext)).strip() or None
+                contact.fax = fix_phone(vnms_rec[F65.fax]) or None
+                contact.fis_org_cert_file = False
+                contact.fis_non_gmo = False
+                contact.fis_kosher = False
+                imd = AttrDict(
+                        id=0,
+                        model=self.OE,
+                        res_id=0,
+                        module='fis',
+                        name=self.calc_xid(contact[FIS_ID]),
+                        )
+                contact = XidRec.fromdict(
+                        contact,
+                        imd,
+                        types={
+                            'fis_kosher': (bool, ),
+                            'fis_non_gmo': (bool, ),
+                            'fis_org_cert_file': (bool, ),
+                            },
+                        )
         if contact is not None:
             if not re.match('\w{2,}', name):
                 contact.active = False
@@ -1888,8 +1910,6 @@ class POSM_VNMS(SynchronizeAddress):
             return (company, )
 
     fis_quick_load = SynchronizeAddress.fis_long_load
-
-
 
     def open_fis_tables(self):
         posm_table = self.get_fis_table(self.TN, rematch=self.RE)
