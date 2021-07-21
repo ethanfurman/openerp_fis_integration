@@ -705,6 +705,7 @@ class Synchronize(SynchronizeABC):
             # values = {'action_': action, 'id': Null}
             values = {'action_': action}
             for k, v in rec.items():
+                print('logging %s: %r' % (k, v))
                 if k.endswith('_'):
                     dbf_field = k
                 else:

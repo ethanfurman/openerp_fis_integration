@@ -1137,12 +1137,13 @@ class EMP1(SynchronizeAddress):
         employee.federal_exemptions = int(fis_rec[F74.exempt_fed] or 0)
         employee.state_exemptions = int(fis_rec[F74.exempt_state] or 0)
         partner_id = self.partners.get(emp_num)
-        employee.partner_id = partner_id and partner_id.id or NewRecord(**{
+        employee.partner_id = partner_id or NewRecord(**{
                     FIS_ID: emp_num,
                     'employee': True,
                     'name': name,
                     'active': employee.active,
                     })
+        print('EMP1 - %s: partner_id -> %s' % (name, partner_id))
         return (XidRec.fromdict(employee, imd), )
 
 
@@ -1792,8 +1793,8 @@ class POSM_VNMS(SynchronizeAddress):
                 return ()
             company.name = name
             company.update(address)
-            company.phone = fix_phone(posm_rec[F163.tele]) or None
-            company.fax = fix_phone(posm_rec[F163.fax]) or None
+            company.phone = Phone(posm_rec[F163.tele])
+            company.fax = Phone(posm_rec[F163.fax])
             company.fis_org_cert_file = posm_rec[F163.org_cert_file].upper() in ('Y','O')
             company.fis_org_exp = fix_date(posm_rec[F163.cert_exp]) or None
             company.fis_non_gmo = posm_rec[F163.non_gmo].upper() == 'Y'
@@ -1853,12 +1854,15 @@ class POSM_VNMS(SynchronizeAddress):
                 ext = unk.lower()
                 name = ' '.join(name.split()[:-1])
             name = name or None
-            phone = Phone(nvms_rec[F65.tele], ext)
+            phone = Phone(vnms_rec[F65.tele], ext)
             fax = Phone(vnms_rec[F65.fax])
-            if phone.base == company.phone.base:
-                if phone.ext == company.phone.ext or phone.ext and not company.phone.ext:
+            if not name:
+                # try to save any phone numbers from the contact
+                if not company.phone.number:
+                    company.phone = phone
+                elif company.phone.base == phone.base and not company.phone.ext:
                     company.phone.ext = phone.ext
-                    phone = None
+                phone = None
             if fax.base == company.fax.base:
                 if fax.ext == company.fax.ext or fax.ext and not company.fax.ext:
                     company.fax.ext = fax.ext
@@ -1881,8 +1885,8 @@ class POSM_VNMS(SynchronizeAddress):
                 contact.state_id = company.state_id
                 contact.zip = company.zip
                 contact.country_id = company.country_id
-                contact.phone = ('%s %s' % (fix_phone(vnms_rec[F65.tele]), ext)).strip() or None
-                contact.fax = fix_phone(vnms_rec[F65.fax]) or None
+                contact.phone = Phone(vnms_rec[F65.tele], ext)
+                contact.fax = Phone(vnms_rec[F65.fax])
                 contact.fis_org_cert_file = False
                 contact.fis_non_gmo = False
                 contact.fis_kosher = False
