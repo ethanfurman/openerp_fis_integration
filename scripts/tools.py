@@ -705,7 +705,7 @@ class Synchronize(SynchronizeABC):
             # values = {'action_': action, 'id': Null}
             values = {'action_': action}
             for k, v in rec.items():
-                print('logging %s: %r' % (k, v))
+                print('logging %s: %r' % (k, v), verbose=3)
                 if k.endswith('_'):
                     dbf_field = k
                 else:
@@ -734,10 +734,10 @@ class Synchronize(SynchronizeABC):
                 values['id'] = rec.id
             try:
                 self.record_log.append(values)
+                result.append(self.record_log.last_record)
             except ValueError:
+                self.record_log.append(None)
                 error('unable to log %r' % (values, ))
-                raise
-            result.append(self.record_log.last_record)
         return result
 
     def log_exc(self, exc, record):
@@ -908,8 +908,9 @@ class Synchronize(SynchronizeABC):
                                 ids.append(x)
                             rec[key] = [(6, 0, ids)]
                 new_id = self.model.create(rec)
-                with log_record:
-                    log_record.id = new_id
+                if log_record is not None:
+                    with log_record:
+                        log_record.id = new_id
             except Exception as exc:
                 vals = {self.OE_KEY: rec[self.OE_KEY]}
                 if self.OE_KEY_MODULE:
@@ -971,7 +972,7 @@ class Synchronize(SynchronizeABC):
         """
         # try the fast method first
         try:
-            action = ('deactivate','delete')['active' in self.OE_FIELDS]
+            action = ('delete','deactivate')['active' in self.OE_FIELDS]
             actioning = action[:-1] + 'ing'
             print('%s %d records' % (actioning, len(self.remove_records)))
             ids = [r.id for r in self.remove_records.values()]
