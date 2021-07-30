@@ -398,7 +398,7 @@ def sql_select(command, separator, wrap, _internal=''):
         seleccion.pop(0)
     if not seleccion:
         abort('missing fields')
-    if SHOW_ID and 'id' not in seleccion.lower() and seleccion != ['*']:
+    if SHOW_ID and 'id' not in [s.lower() for s in seleccion] and seleccion != ['*']:
         seleccion.insert(0, 'id')
     print('SELECT:', seleccion)
     #
