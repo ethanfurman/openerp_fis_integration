@@ -338,6 +338,18 @@ class product_product(xmlid, osv.Model):
         return result
 
     _columns = {
+        # overridden openerp fields
+        'lst_price' : fields.float(
+            string='FIS "A" Price',
+            digits=(15,3),
+            help='per-case price',
+            ),
+        'price': fields.float(
+            string='Unit Price',
+            digits=(15,3),
+            help='FIS per-unit price',
+            ),
+        # added fields
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
         'fis_shipping_size': fields.char('Shipped as', size=50, oldname='shipped_as'),
@@ -357,10 +369,6 @@ class product_product(xmlid, osv.Model):
             string='Immediately Producible',
             digits=(15,3),
             help="How much can be made with current inventory.",
-            ),
-        'fis_whsle_price': fields.float(
-            string='Wholesale Price',
-            digits=(15,3),
             ),
         'label_server_stub': fields.function(
             _label_links,

@@ -582,8 +582,8 @@ class F135(FISenum):
     old_fob_cst             = 'I(19)',       112     # Old FOB Cost
     frght_hndlg             = 'I(20)',       113     # Frght/Hndlg
     disc_allow_amt          = 'I(21)',       114     # Disc/Allow Amt
-    new_retail              = 'I(22)',       115     # New Retail
-    new_whlsl               = 'I(23)',       116     # New Whlsle
+    new_per_unit            = 'I(22)',       115     # New Retail (actually unit pricing)
+    new_retail              = 'I(23)',       116     # "A" New Whlsle (actually case pricing)
     new_landed              = 'I(24)',       117     # New Landed
     new_fob_cst             = 'I(25)',       118     # New FOB Cost
 

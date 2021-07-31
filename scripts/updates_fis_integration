@@ -1528,9 +1528,9 @@ class NVTY(Synchronize):
     OE_FIELDS_QUICK = (
             'id', FIS_MODULE, FIS_ID, ('warranty','fis_shelf_life')[odoo_erp],
             'active', 'name', 'fis_name', 'fis_qty_on_hand', 'fis_availability_code',
-            'sale_ok', 'fis_whsle_price', 'trademarks', 'ean13', 'fis_location',
+            'sale_ok', 'trademarks', 'ean13', 'fis_location',
             'fis_shipping_size', 'categ_id', 'default_code', 'weight',
-            'weight_net', 'list_price',
+            'weight_net', 'list_price', 'lst_price', 'price',
             )
     OE_FIELDS_LONG = OE_FIELDS_QUICK + (
             'fis_qty_produced', 'fis_10_day_produced', 'fis_21_day_produced',
@@ -1596,14 +1596,15 @@ class NVTY(Synchronize):
         item.fis_availability_code = fis_rec[F135.available_key] or None
         # sale_ok actually tracks whether item is in the catalog
         item.sale_ok = len(fis_rec[F135.catalog_location]) == 10
-        item.fis_whsle_price = fis_rec[F135.new_whlsl]
         item.trademarks = fis_rec[F135.trademarkd] or None
         item.ean13 = sanitize_ean13(fis_rec[F135.upc_no]) or None
         item.fis_location = fis_rec[F135.primary_location] or None
         item.fis_qty_on_hand = fis_rec[F135.qty_on_hand]
         item.weight = numeric(fis_rec[F135.grs_un_wt])
         item.weight_net = numeric(fis_rec[F135.net_un_wt])
-        item.list_price = numeric(fis_rec[F135.new_retail])
+        item.lst_price = numeric(fis_rec[F135.new_retail])      # "A" price
+        item.list_price = numeric(fis_rec[F135.new_retail])     # to be consistent
+        item.price = numeric(fis_rec[F135.new_per_unit])        # per unit price
         # 0,2,5,7,36,48,51,52,50,55,56,93,94,99,115,116
         shipping_size = fis_rec[F135.size].strip()
         if shipping_size.lower() in ('each','1 each','1/each'):
