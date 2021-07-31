@@ -330,7 +330,7 @@ class Synchronize(SynchronizeABC):
                 self.fis_table.values(),
                 message='converting $total FIS records',
             ):
-            for rec in self.convert_fis_rec(entry):
+            for rec in self.convert_fis_rec(entry, use_ignore=True):
                 if rec is None:
                     continue
                 key = rec[self.OE_KEY]
@@ -406,9 +406,8 @@ class Synchronize(SynchronizeABC):
             fis_rec = fis_records.get(key)
             oe_rec = oe_records.get(key)
             if fis_rec is None:
-                errors.setdefault(key, {})['fis'] = 'missing'
-                if 'active' in oe_rec and not oe_rec.active:
-                    errors[key]['oe'] = 'inactive'
+                if 'active' not in oe_rec or oe_rec.active:
+                    errors.setdefault(key, {})['fis'] = 'missing'
             elif oe_rec is None:
                 errors.setdefault(key, {})['oe'] = 'missing'
             else:
