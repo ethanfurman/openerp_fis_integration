@@ -17,7 +17,7 @@ from openerplib import AttrDict, Many2One, XidRec, Phone
 from pandaemonium import PidLockFile
 from recipe import ignored_ingredients
 # from tools import combine_by_value
-from tools import Synchronize, SynchronizeAddress, XmlLink, ProductLabelDescription, odoo_erp, Odoo13, OE7
+from tools import Synchronize, SynchronizeAddress, XmlLink, ProductLabelDescription, odoo_erp, Odoo13, OE7, PsuedoFisTable
 from VSS.address import NameCase, BsnsCase
 # from VSS.BBxXlate.fisData import fisData
 from VSS.utils import fix_phone, fix_date
@@ -143,8 +143,8 @@ def fis_integration(method, delete, *files, **extra):
                 # shipping carriers, 27
                 CNVZSV(oe, config, state_recs, country_recs, extra=extra).run(method)
             for filename, handler in (
-                    ('arci', ARCI),
                     ('nvty', NVTY),
+                    ('arci', ARCI),
                     ('ifms', IFMS),
                     ('ifdt', IFDT),
                     ('ifpp', IFPP0),
@@ -250,8 +250,10 @@ def aging():
 #
 
 class ARCI(Synchronize):
+    """
+    customer product cross reference, 262
+    """
 
-    # customer product cross reference, 262
     TN = 262
     FN = 'arci'
     F = 'F262'
@@ -293,34 +295,73 @@ class ARCI(Synchronize):
         item.key = key
         item.list_code = cust_no
         item.fis_code = our_item_id
-        item.partner_id = CSMS.Partner(cust_no)
         item.fis_product_id = NVTY.Product(our_item_id)
         item.customer_product_code = cust_item_id or None
         module_field, module_value = self.OE_KEY_MODULE
         item[module_field] = module_value
+        if cust_no == '-all-':
+            item.partner_id = None
+        else:
+            item.partner_id = CSMS.Partner(cust_no)
 
         #
         return (XidRec.fromdict(item, imd), )
 
-    # class ARCI_all_avail(ARCI):
-    #
-    #     # customer product cross reference, 262
-    #     TN = 262
-    #     FN = 'arci'
-    #     F = 'F262'
-    #     RE = r'10 HE447......'
-    #     OE = (
-    #             'fis_integration.customer_product_cross_reference',
-    #             'fis.customer_product_xref',
-    #             )[odoo_erp]
-    #     IMD = 'customer_product_xref'
-    #     OE_KEY = 'key'
-    #     OE_KEY_MODULE = 'source','all_avail'
-    #     OE_FIELDS = (
-    #             'id','key','list_code','fis_code',
-    #             'partner_id','fis_product_id','customer_product_code',
-    #             'source',
-    #             )
+    def open_fis_tables(self):
+        """
+        combine FIS ARCI records HE447 with OpenERP inventory records containing Y and P availability codes
+        """
+        arci_table = self.get_fis_table(self.TN, rematch=self.RE)
+        old_arci_table = self.get_fis_table(
+                self.TN,
+                rematch=self.RE,
+                data_path=self.config.network.fis_data_local_old_path,
+                )
+        print('arci: %d\nold arci: %d' % (len(arci_table), len(old_arci_table)), verbose=2)
+        #
+        self.fis_table = PsuedoFisTable('combined arci/nvty table')
+        self.old_fis_table = PsuedoFisTable('old combined arci/nvty table')
+        for rec in arci_table.values():
+            key = '%s-%s' % (rec[F262.cust_no], rec[F262.our_item_id])
+            self.fis_table[key] = {
+                    F262.cust_no: rec[F262.cust_no],
+                    F262.our_item_id: rec[F262.our_item_id],
+                    F262.cust_item_id: rec[F262.cust_item_id],
+                    }
+        for rec in old_arci_table.values():
+            key = '%s-%s' % (rec[F262.cust_no], rec[F262.our_item_id])
+            self.old_fis_table[key] = {
+                    F262.cust_no: rec[F262.cust_no],
+                    F262.our_item_id: rec[F262.our_item_id],
+                    F262.cust_item_id: rec[F262.cust_item_id],
+                    }
+        # "new" inventory comes from F135
+        # "old" inventory comes from old F135
+        nvty_table = self.get_fis_table(NVTY.TN, rematch=NVTY.RE)
+        old_nvty_table = self.get_fis_table(
+                NVTY.TN,
+                rematch=NVTY.RE,
+                data_path=self.config.network.fis_data_local_old_path,
+                )
+        print('nvty: %d\nold nvty: %d' % (len(nvty_table), len(old_nvty_table)), verbose=2)
+        cust_no = '-all-'
+        for rec in nvty_table.values():
+            if rec[F135.wrhse_no] == '1000' and rec[F135.available_key] in 'YP':
+                item_id = rec[F135.item_id]
+                self.fis_table['%s-%s' % (cust_no, item_id)] = {
+                        F262.cust_no: cust_no,
+                        F262.our_item_id: item_id,
+                        F262.cust_item_id: item_id,
+                        }
+        for rec in old_nvty_table.values():
+            if rec[F135.wrhse_no] == '1000' and rec[F135.available_key] in 'YP':
+                item_id = rec[F135.item_id]
+                self.old_fis_table['%s-%s' % (cust_no, item_id)] = {
+                        F262.cust_no: cust_no,
+                        F262.our_item_id: item_id,
+                        F262.cust_item_id: item_id,
+                        }
+
 
 class CNVZaa(Synchronize):
     """
@@ -721,18 +762,7 @@ class CNVZ_Z_K(Synchronize):
                     ),
                 verbose=2,
                 )
-
-        class PsuedoFisTable(object):
-            __slots__ = 'filename', 'data'
-            def __init__(self, filename):
-                self.filename = filename
-                self.data = {}
-            def __getattr__(self, name):
-                return getattr(self.data, name)
-            def __getitem__(self, name):
-                return self.data[name]
-            def __setitem__(self, name, value):
-                self.data[name] = value
+        #
         self.fis_table = PsuedoFisTable('combined cnvzz/cnvzk table')
         self.old_fis_table = PsuedoFisTable('old combined cnvzz/cnvzk table')
         current_names = {}
@@ -1535,6 +1565,7 @@ class NVTY(Synchronize):
     def FIS_IGNORE_RECORD(self, rec):
         return rec[F135.wrhse_no] != '1000'
 
+
     def __init__(self, *args, **kwds):
         super(NVTY, self).__init__(*args, **kwds)
         self.INVALID_CATEGORY = CNVZas.ProductCategory(INVALID_CATEGORY_XML_ID)
@@ -1916,18 +1947,7 @@ class POSM_VNMS(SynchronizeAddress):
                     ),
                 verbose=2,
                 )
-
-        class PsuedoFisTable(object):
-            __slots__ = 'filename', 'data'
-            def __init__(self, filename):
-                self.filename = filename
-                self.data = {}
-            def __getattr__(self, name):
-                return getattr(self.data, name)
-            def __getitem__(self, name):
-                return self.data[name]
-            def __setitem__(self, name, value):
-                self.data[name] = value
+        #
         self.fis_table = PsuedoFisTable('combined posm/vnms table')
         self.old_fis_table = PsuedoFisTable('old combined posm/vnms table')
         all_keys = list(posm_table.keys()) + list(vnms_table.keys())

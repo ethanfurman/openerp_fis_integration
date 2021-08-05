@@ -117,6 +117,27 @@ class NewRecord(object):
                 ])
 
 
+class PsuedoFisTable(object):
+    """
+    an FIS table look-alike for more complex data match-ups
+    """
+
+    __slots__ = 'filename', 'data'
+
+    def __init__(self, filename):
+        self.filename = filename
+        self.data = {}
+    
+    def __getattr__(self, name):
+        return getattr(self.data, name)
+    
+    def __getitem__(self, name):
+        return self.data[name]
+    
+    def __setitem__(self, name, value):
+        self.data[name] = value
+
+
 Synchronize = None
 
 class SynchronizeType(ABCMeta):
