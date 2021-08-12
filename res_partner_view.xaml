@@ -90,7 +90,7 @@
                     @keyword_ids widget='many2many_tags' placeholder='Keywords...'
                 @website position='after'
                     @xml_id readonly='1'
-                    @fis_valid readonly='1'
+                    @fis_valid
                     @specials_notification on_change="onchange_specials_notification(specials_notification, parent_id)" attrs="{'readonly':[('is_company','=',True),('xml_id','!=',False)]}"
                     @parent_specials_notification invisible='1'
                     @sn_catalog_type $Catalog_By attrs="{'invisible': ['|',('specials_notification','in',['N','S',False]),'&',('specials_notification','=','D'),('parent_specials_notification','in',['N','S',False])], 'viewonly':[('specials_notification','=','D')]}"

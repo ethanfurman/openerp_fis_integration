@@ -969,6 +969,10 @@ class CSMS(SynchronizeAddress):
             return company, contact
         return (company, )
 
+    def normalize_records(self, fis_rec, oe_rec):
+        super(CSMS, self).normalize_records(fis_rec, oe_rec)
+        fis_rec.fis_valid = oe_rec.fis_valid
+
 
 class CSMSS(SynchronizeAddress):
     """
