@@ -128,6 +128,9 @@ class PsuedoFisTable(object):
         self.filename = filename
         self.data = {}
     
+    def __len__(self):
+        return len(self.data)
+
     def __getattr__(self, name):
         return getattr(self.data, name)
     
