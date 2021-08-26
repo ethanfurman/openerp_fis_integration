@@ -27,7 +27,7 @@
             @model: res.partner
             @arch type='xml'
                 ~tree string='Ship-to Addresses'
-                    @fis_transmitter_no
+                    @fis_transmitter_ids
                     @fis_ship_to_code
                     @name
                     @street
@@ -41,12 +41,12 @@
                 ~form string='Ship-to Entry' version='7.0'
                     ~sheet
                         ~div .oe_right .oe_button_box @buttons
-                            ~button $Place_Order @button_place_order_by_salesperson type='object' attrs="{'invisible': [('fis_transmitter_id','=',False)]}"
+                            ~button $Place_Order @button_place_order_by_salesperson type='object' attrs="{'invisible': [('fis_transmitter_ids','=',[])]}"
                         ~div .oe_title
                             ~h1
                                 @name default_focus='1' placeholder='Name'
                             ~h3
-                                @fis_transmitter_id
+                                @fis_transmitter_ids widget='many2many_tags'
                         ~group
                             ~group
                                 ~label for='street' $Address
@@ -115,7 +115,7 @@
                          | readonly='1'
                          | options="{'action': %(fis_integration.action_ship_to_entry_form)d}"
                 ~xpath expr="//page[@string='Sales & Purchases']/group/group[position()=1]" position='inside'
-                    @fis_transmitter_id
+                    @fis_transmitter_ids widget='many2many_tags'
                 ~xpath expr="//page[@string='Sales & Purchases']/group/group[position()=2]" position='after'
                     ~group colspan='2' cols='2'
                         ~label $Aging_Info for='fis_credit_current'

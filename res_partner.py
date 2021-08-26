@@ -311,17 +311,9 @@ class res_partner(xmlid, osv.Model):
         'fis_data_address_changed': fields.boolean('FIS data has changed', oldname='fis_data_changed'),
         'fis_updated_by_user': fields.char('Updated by user', size=12, oldname='updated_by_user'),
         # online order facilatation (attached to F33 and F34 records)
-        'fis_transmitter_id': fields.many2one(
-                'fis.transmitter_code',
+        'fis_transmitter_ids': fields.one2many(
+                'fis.transmitter_code', 'ship_to_id',
                 string='FIS Transmitter ID',
-                oldname='fis_transmitter_code_id',
-                ),
-        'fis_transmitter_no': fields.related(
-                'fis_transmitter_id', 'transmitter_no',
-                string='Transmitter No',
-                type='char',
-                size=6,
-                oldname='fis_transmitter_code',
                 ),
         'fis_online_ordering_enabled': fields.function(
                 _check_transmitter,
@@ -330,7 +322,7 @@ class res_partner(xmlid, osv.Model):
                 store={
                     'res.partner': (
                         self_ids,
-                        ['fis_ship_to_ids', 'fis_transmitter_id'],
+                        ['fis_ship_to_ids', 'fis_transmitter_ids'],
                         10,
                         )},
                 ),
@@ -395,9 +387,11 @@ class res_partner(xmlid, osv.Model):
                 if old_rep != new_rep:
                     # unfollow from old sales rep
                     if old_rep:
+                        _logger.warning('unfollowing user %s', old_rep)
                         self.message_unsubscribe_users(cr, uid, data['id'], data['user_id'][0], context=context)
                     # and follow from new sales rep
                     if new_rep:
+                        _logger.warning('following user %s', new_rep)
                         self.message_subscribe_users(cr, uid, data['id'], values['user_id'], context=context)
         #
         # then branch depending on source
@@ -485,7 +479,7 @@ class res_partner(xmlid, osv.Model):
                         'default_partner_crossref_list': xref_list,
                         'default_show_req_ship_date': True,
                         'default_show_po_number': True,
-			'default_id': False,
+                        'default_id': False,
                         },
                 }
 

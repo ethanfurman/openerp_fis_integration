@@ -130,18 +130,25 @@ def fis_integration(method, delete, *files, **extra):
             vendor_codes = set()
             if 'emp1' in files:
                 EMP1(oe, config, state_recs, country_recs, extra=extra).run(method)
+            if 'posm' in files or 'vnms' in files:
+                POSM_VNMS(oe, config, state_recs, country_recs, extra=extra).run(method)
             if 'cnvz' in files:
                 for handler in (
                     CNVZaa,      # product location, 97
                     CNVZas,      # product category, 11
                     CNVZd0,      # customer terms, 8
                     CNVZf,       # production lines, 341
-                    CNVZO1,      # transmitter numbers, 192
                     CNVZ_Z_K,    # sales reps, 47
                     ):
                     handler(oe, config, extra=extra).run(method)
                 # shipping carriers, 27
                 CNVZSV(oe, config, state_recs, country_recs, extra=extra).run(method)
+            if 'csms' in files:
+                CSMS(oe, config, state_recs, country_recs, extra=extra).run(method)
+                CSMSS(oe, config, state_recs, country_recs, extra=extra).run(method)
+            if 'cnvz' in files:
+                # transmitter numbers, 192
+                CNVZO1(oe, config, extra=extra).run(method)
             for filename, handler in (
                     ('nvty', NVTY),
                     ('arci', ARCI),
@@ -152,11 +159,6 @@ def fis_integration(method, delete, *files, **extra):
                 ):
                 if filename in files:
                     handler(oe, config, extra=extra).run(method)
-            if 'posm' in files or 'vnms' in files:
-                POSM_VNMS(oe, config, state_recs, country_recs, extra=extra).run(method)
-            if 'csms' in files:
-                CSMS(oe, config, state_recs, country_recs, extra=extra).run(method)
-                CSMSS(oe, config, state_recs, country_recs, extra=extra).run(method)
     except socket.error as s_error:
         if s_error.errno in (
                 errno.ECONNREFUSED,
@@ -184,11 +186,13 @@ def fis_integration(method, delete, *files, **extra):
     #
     # ARCI -> CSMS, NVTY
     #
-    # CNVZaa, CNVZas, CNVZd0, CNVZf, CNVZO1, CNVZSV, CNVZ_Z_K -> None
+    # CNVZaa, CNVZas, CNVZd0, CNVZf, CNVZSV, CNVZ_Z_K -> None
     #
-    # CSMS -> CNVZd0, CNVZO1, CNVZ_Z_K
+    # CNVZO1 -> CSMSS
     #
-    # CSMSS -> CSMS, CNVZO1
+    # CSMS -> CNVZd0, CNVZ_Z_K
+    #
+    # CSMSS -> CSMS
     #
     # EMP1 -> None
     #
@@ -251,7 +255,7 @@ def aging():
 
 class ARCI(Synchronize):
     """
-    customer product cross reference, 262
+    customer product cross reference, 262  [CSMS, NVTY]
     """
 
     TN = 262
@@ -575,7 +579,7 @@ class CNVZf(Synchronize):
 
 class CNVZO1(Synchronize):
     """
-    transmitter numbers, 192
+    transmitter numbers, 192 [CSMSS]
     """
     TN = 192
     FN = 'cnvzo1'
@@ -587,8 +591,8 @@ class CNVZO1(Synchronize):
     IMD = 'account_transmitter_code'
     #
     RE = r"O110......"
-    OE_KEY = FIS_ID
-    OE_FIELDS = ('id', 'transmitter_no', 'transmitter_name', 'partner_' + FIS_ID, 'ship_to_code', FIS_ID)
+    OE_KEY = 'transmitter_no'
+    OE_FIELDS = ('id', 'transmitter_no', 'transmitter_name', 'ship_to_id')
     #
     FIS_IGNORE_RECORD = lambda self, rec: not (
             rec[F192.transmitter_no].strip().isdigit()
@@ -607,22 +611,20 @@ class CNVZO1(Synchronize):
         if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
             return ()
         key = fis_rec[F192.transmitter_no].strip()
-        ship_to = fis_rec[F192.ship_to_id].strip() or None
-        partner = fis_rec[F192.cust_no].strip() or None
-        xml_id = ('%s-%s' % (partner, ship_to or '')).strip('-')
+        partner = fis_rec[F192.cust_no].strip() or ''
+        ship_to = fis_rec[F192.ship_to_id].strip() or ''
+        partner_xml_id = ('%s-%s' % (partner, ship_to)).strip('-')
         imd = AttrDict(
                 id=0,
                 model=self.OE,
                 res_id=0,
                 module='fis',
-                name=self.calc_xid(xml_id),
+                name=self.calc_xid(key),
                 )
         tran_code = AttrDict.fromkeys(self.OE_FIELDS, None)
         tran_code.transmitter_no = key
         tran_code.transmitter_name = fis_rec[F192.transmitter_name].strip() or None
-        tran_code.ship_to_code = ship_to
-        tran_code['partner_' + FIS_ID] = partner
-        tran_code[FIS_ID] = xml_id
+        tran_code.ship_to_id = CSMSS.ShipTo(partner_xml_id)
         # echo('cnvzo1', tran_code)
         return (XidRec.fromdict(tran_code, imd), )
 
@@ -648,6 +650,12 @@ class CNVZSV(SynchronizeAddress):
             F27.name, F27.tele, F27.fuel_surcharge,
             )
 
+    def FIS_IGNORE_RECORD(self, fis_rec):
+        return (
+                fis_rec[F27.code] in ('', '99')
+                or not self.process_name_address(F27, fis_rec)[0]
+                )
+
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
             return ()
@@ -666,8 +674,6 @@ class CNVZSV(SynchronizeAddress):
         name = ', '.join(names)
         dnu = ', '.join(do_not_use)
         name = ' / '.join([l for l in (name, dnu) if l])
-        if not name:
-            return ()
         company = AttrDict.fromkeys(self.OE_FIELDS, None)
         company.name = name
         company.update(address)
@@ -784,7 +790,7 @@ class CNVZ_Z_K(Synchronize):
 
 class CSMS(SynchronizeAddress):
     """
-    customers, 33
+    customers, 33  (CNVZ_Z_K, CNVZd0)
     """
     TN = 33
     FN = 'csms'
@@ -800,7 +806,7 @@ class CSMS(SynchronizeAddress):
             'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
             'fis_valid', 'specials_notification', 'phone', 'is_company', 'customer',
             'fis_updated_by_user', 'active', 'use_parent_address', 'user_id',
-            'fis_transmitter_id',
+            # 'fis_transmitter_id',
             )
     OE_FIELDS_LONG = OE_FIELDS_QUICK + (
             'fis_credit_current', 'fis_credit_limit', 'fis_credit_total',
@@ -923,7 +929,7 @@ class CSMS(SynchronizeAddress):
                 company.fis_credit_20_days = 0
                 company.fis_credit_30_days = 0
                 company.fis_credit_total = 0
-        company.fis_transmitter_id = CNVZO1.TransmitterCode(key)
+        # company.fis_transmitter_id = CNVZO1.TransmitterCode(key)
         company = XidRec.fromdict(company, imd)
         assert set(company._keys) == set(company._values.keys())
         contact = None
@@ -976,7 +982,7 @@ class CSMS(SynchronizeAddress):
 
 class CSMSS(SynchronizeAddress):
     """
-    ship-to addresses, 34
+    ship-to addresses, 34  (CSMS)
     """
     TN = 34
     FN = 'csmss'
@@ -990,7 +996,8 @@ class CSMSS(SynchronizeAddress):
             'id', FIS_MODULE, FIS_ID, 'phone',
             'name', 'street', 'street2', 'city', 'state_id', 'zip', 'country_id',
             'customer', 'fis_ship_to_parent_id', 'use_parent_address', 'is_company',
-            'fis_transmitter_id', 'fis_ship_to_code', 'active',
+            'fis_ship_to_code', 'active',
+            # 'fis_transmitter_id',
             )
     FIS_SCHEMA = (
             F34.name, F34.addr1, F34.addr2, F34.addr3, F34.postal,
@@ -1003,6 +1010,8 @@ class CSMSS(SynchronizeAddress):
                 or re.search('.*additional.*ship.*to.*', rec[F34.addr2], re.I)
                 or re.search('.*additional.*ship.*to.*', rec[F34.addr3], re.I)
                 )
+
+    ShipTo = XmlLink
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         "additional ship-to addresses"
@@ -1030,8 +1039,13 @@ class CSMSS(SynchronizeAddress):
         parent_xml_id = fis_rec[F34.code]
         names, address, do_not_use = self.process_name_address(F34, fis_rec)
         ship_to_code = fis_rec[F34.ship_to_no].strip() or None
-        o1_key = ('%s-%s' % (fis_rec[F34.code], ship_to_code or '')).strip('-')
-        key = '%s-%s' % (fis_rec[F34.code], ship_to_code or 'default')
+        # o1_key = ('%s-%s' % (fis_rec[F34.code], ship_to_code or '')).strip('-')
+        key = '%s-%s' % (parent_xml_id, ship_to_code or 'default')
+        if parent_xml_id == 'BRYER':
+            echo('-' * 50)
+            echo('key:', key)
+            echo(self.calc_xid(key))
+            echo('-' * 50)
         pname = names and names[0] or ''
         pname = re.sub('sunridge', 'SunRidge', BsnsCase(pname), flags=re.I) or ''
         if re.match('HE\d\d\d-default*$', key) and pname.startswith('Heb '):
@@ -1059,7 +1073,7 @@ class CSMSS(SynchronizeAddress):
         ship_to.use_parent_address = False
         ship_to.phone = fix_phone(fis_rec[F34.tele]) or None
         ship_to.fis_ship_to_parent_id = CSMS.Partner(parent_xml_id)
-        ship_to.fis_transmitter_id = CNVZO1.TransmitterCode(o1_key)
+        # ship_to.fis_transmitter_id = CNVZO1.TransmitterCode(o1_key)
         return (XidRec.fromdict(ship_to, imd), )
 
 
@@ -1214,7 +1228,7 @@ class IFMS(Synchronize):
 
 class IFDT(Synchronize):
     """
-    product ingredient
+    product ingredient, 322  (IFMS, NVTY)
     """
     TN = 322
     FN = 'ifdt'
@@ -1278,7 +1292,7 @@ class IFDT(Synchronize):
 
 class IFPP0(Synchronize):
     """
-    production order, 328
+    production order, 328  (CNVZf, IFMS, NVTY)
     """
     TN = 328
     FN = 'ifpp0'
@@ -1435,7 +1449,7 @@ class IFPP0(Synchronize):
 
 class IFPP1(Synchronize):
     """
-    production order ingredient, 329
+    production order ingredient, 329  (IFPP0, NVTY)
     """
     TN = 329
     FN = 'ifpp1'
@@ -1530,7 +1544,7 @@ class IFPP1(Synchronize):
 
 class NVTY(Synchronize):
     """
-    products, 135
+    products, 135  (CNVZas)
     """
     TN = 135
     FN = 'nvty'
@@ -1609,9 +1623,9 @@ class NVTY(Synchronize):
         item.fis_name = name
         item.name = name
         item.active = True
-        item.fis_availability_code = fis_rec[F135.available_key] or None
+        item.fis_availability_code = avail = fis_rec[F135.available_key] or None
         # sale_ok actually tracks whether item is in the catalog
-        item.sale_ok = len(fis_rec[F135.catalog_location]) == 10
+        item.sale_ok = len(fis_rec[F135.catalog_location]) == 10 and avail and avail in 'YPW'
         item.trademarks = fis_rec[F135.trademarkd] or None
         item.ean13 = sanitize_ean13(fis_rec[F135.upc_no]) or None
         item.fis_location = fis_rec[F135.primary_location] or None
@@ -1806,8 +1820,8 @@ class POSM_VNMS(SynchronizeAddress):
             name = ', '.join(names)
             dnu = ', '.join(do_not_use)
             name = ' / '.join([l for l in (name, dnu) if l])
-            if not name:
-                return ()
+            # if not name:
+            #     return ()
             company.name = name
             company.update(address)
             company.phone = Phone(posm_rec[F163.tele])
@@ -1828,8 +1842,8 @@ class POSM_VNMS(SynchronizeAddress):
             name = ', '.join(names)
             dnu = ', '.join(do_not_use)
             name = ' / '.join([l for l in (name, dnu) if l])
-            if not name:
-                return ()
+            # if not name:
+            #     return ()
             company.name = name
             company.update(address)
             company.phone = Phone(vnms_rec[F65.tele])
