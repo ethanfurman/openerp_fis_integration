@@ -327,18 +327,10 @@ class ARCI(Synchronize):
         self.old_fis_table = PsuedoFisTable('old combined arci/nvty table')
         for rec in arci_table.values():
             key = '%s-%s' % (rec[F262.cust_no], rec[F262.our_item_id])
-            self.fis_table[key] = {
-                    F262.cust_no: rec[F262.cust_no],
-                    F262.our_item_id: rec[F262.our_item_id],
-                    F262.cust_item_id: rec[F262.cust_item_id],
-                    }
+            self.fis_table[key] = rec
         for rec in old_arci_table.values():
             key = '%s-%s' % (rec[F262.cust_no], rec[F262.our_item_id])
-            self.old_fis_table[key] = {
-                    F262.cust_no: rec[F262.cust_no],
-                    F262.our_item_id: rec[F262.our_item_id],
-                    F262.cust_item_id: rec[F262.cust_item_id],
-                    }
+            self.old_fis_table[key] = rec
         # "new" inventory comes from F135
         # "old" inventory comes from old F135
         nvty_table = self.get_fis_table(NVTY.TN, rematch=NVTY.RE)
@@ -350,17 +342,19 @@ class ARCI(Synchronize):
         print('nvty: %d\nold nvty: %d' % (len(nvty_table), len(old_nvty_table)), verbose=2)
         cust_no = '-all-'
         for rec in nvty_table.values():
-            if rec[F135.wrhse_no] == '1000' and rec[F135.available_key] in 'YP':
+            if NVTY.in_catalog(rec):
                 item_id = rec[F135.item_id]
                 self.fis_table['%s-%s' % (cust_no, item_id)] = {
+                        F262.company_id: '10',
                         F262.cust_no: cust_no,
                         F262.our_item_id: item_id,
                         F262.cust_item_id: item_id,
                         }
         for rec in old_nvty_table.values():
-            if rec[F135.wrhse_no] == '1000' and rec[F135.available_key] in 'YP':
+            if NVTY.in_catalog(rec):
                 item_id = rec[F135.item_id]
                 self.old_fis_table['%s-%s' % (cust_no, item_id)] = {
+                        F262.company_id: '10',
                         F262.cust_no: cust_no,
                         F262.our_item_id: item_id,
                         F262.cust_item_id: item_id,
@@ -1591,6 +1585,13 @@ class NVTY(Synchronize):
                 'fis', INVALID_CATEGORY_XML_ID,
                 )
 
+    @staticmethod
+    def in_catalog(rec):
+        warehouse = rec[F135.wrhse_no]
+        avail_code = rec[F135.available_key]
+        location = rec[F135.catalog_location]
+        return warehouse == '1000' and avail_code in 'YPW' and len(location) == 10
+
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         # some fields come from non-FIS locations or are only updated once per
         # day -- those fields will not be evaluated here:
@@ -1623,9 +1624,9 @@ class NVTY(Synchronize):
         item.fis_name = name
         item.name = name
         item.active = True
-        item.fis_availability_code = avail = fis_rec[F135.available_key] or None
-        # sale_ok actually tracks whether item is in the catalog
-        item.sale_ok = len(fis_rec[F135.catalog_location]) == 10 and avail and avail in 'YPW'
+        item.fis_availability_code = fis_rec[F135.available_key] or None
+        # sale_ok actually tracks whether item is in the catalog with a Y, P, or W code
+        item.sale_ok = self.in_catalog(fis_rec)
         item.trademarks = fis_rec[F135.trademarkd] or None
         item.ean13 = sanitize_ean13(fis_rec[F135.upc_no]) or None
         item.fis_location = fis_rec[F135.primary_location] or None

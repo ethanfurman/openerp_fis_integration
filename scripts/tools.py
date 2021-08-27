@@ -128,6 +128,9 @@ class PsuedoFisTable(object):
         self.filename = filename
         self.data = {}
     
+    def __len__(self):
+        return len(self.data)
+
     def __getattr__(self, name):
         return getattr(self.data, name)
     
@@ -641,13 +644,13 @@ class Synchronize(SynchronizeABC):
         deleted = []
         old_records_map = {}
         new_records_map = {}
-        for rec in self.old_fis_table:
+        for rec in self.old_fis_table.values():
             key = []
             for f in key_fields:
                 key.append(rec[f])
             key = tuple(key)
             old_records_map[key] = rec
-        for rec in self.fis_table:
+        for rec in self.fis_table.values():
             key = []
             for f in key_fields:
                 key.append(rec[f])
