@@ -517,10 +517,10 @@ def records(filenum, template, code, fields, dbf_name, tabular, rematch, test, c
                     raise SystemExit(1)
             elif dbf_name:
                 data = []
-                for i, item in used_fields:
-                    print(i, item, verbose=3)
-                    cnv = item[1]
-                    data.append(cnv(field_data[i]))
+                for i, (_, converter) in enumerate(used_fields):
+                    print(i, converter, verbose=3)
+                    # cnv = converter[1]
+                    data.append(converter(field_data[i]))
                 print('field data:', data, verbose=3)
                 table.append(tuple(data))
             if not dbf_name and not tabular:
