@@ -311,13 +311,13 @@ class product_product(xmlid, osv.Model):
                 header = False
                 if link.count('%s') == 1:
                     link %= '%s/%s' % (xml_id, xml_id)
-                    link, ts_link = add_timestamp(link, use_cache)
+                    ts_link = add_timestamp(link, use_cache)
                     if ts_link is None:
                         continue
                     remote_link = PRODUCT_LABEL_URL + ts_link
                 elif link.count('%s') == 0:
                     header = 'oe_header'
-                    link, ts_link = add_timestamp(link, use_cache)
+                    ts_link = add_timestamp(link, use_cache)
                     if ts_link is None:
                         continue
                     remote_link = PRODUCT_LABEL_URL + ts_link
@@ -1202,43 +1202,43 @@ def get_LLC():
 
 def add_timestamp(file, use_cache):
     "adds timestamp to filename portion of file"
-    file = Path(file)
-    possibles = [file]
-    last_suffix = file.stem[6:]
+    src_file = Path(file)
+    possibles = [src_file]
+    last_suffix = src_file.stem[6:]
+    target_png_file = PRODUCT_LABEL_PNG_LOCATION / src_file.stem + '.png'
+    tgt_ts = target_png_file.exists() and target_png_file.stat().st_mtime or None
     for key, value in IMAGE_ALTERNATES.items():
-        if file.base.upper().endswith(key):
+        if src_file.base.upper().endswith(key):
             if isinstance(value, basestring):
                 value = (value, )
             for new_suffix in value:
-                file = file.dirname + re.sub(last_suffix+'$', new_suffix, file.base) + file.ext
-                possibles.append(file)
+                src_file = src_file.dirname + re.sub(last_suffix+'$', new_suffix, src_file.base) + src_file.ext
+                possibles.append(src_file)
                 last_suffix = new_suffix
             break
-    with NamedLock(file):
-        for file in possibles:
-            target_bmp_file = PRODUCT_LABEL_BMP_LOCATION / file
-            target_png_file = PRODUCT_LABEL_PNG_LOCATION / file.stem + '.png'
-            if use_cache or not (target_bmp_file.exists() and target_bmp_file.isfile()):
-                if not target_png_file.exists():
-                    continue
-                timestamp = target_png_file.stat().st_mtime
+    with NamedLock(target_png_file):
+        timestamp = None
+        for src_file in possibles:
+            if use_cache:
+                # this can only happen the first time through
+                break
+            target_bmp_file = PRODUCT_LABEL_BMP_LOCATION / src_file
+            if target_bmp_file.exists() and target_bmp_file.isfile():
+                src_ts = target_bmp_file.stat().st_mtime
+                if not tgt_ts or tgt_ts < src_ts:
+                    try:
+                        Image.open(target_bmp_file).save(target_png_file)
+                    except Exception:
+                        _logger.exception('failure converting %r to %r', target_bmp_file, target_png_file)
+                        continue
                 timestamp = '-' + DateTime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%S')
                 break
-            else:
-                if target_bmp_file.exists() and not target_bmp_file.isdir():
-                    timestamp = target_bmp_file.stat().st_mtime
-                    if not target_png_file.exists() or target_png_file.stat().st_mtime < timestamp:
-                        try:
-                            Image.open(target_bmp_file).save(target_png_file)
-                        except Exception:
-                            _logger.exception('failure converting %r to %r', target_bmp_file, target_png_file)
-                            continue
-                    timestamp = '-' + DateTime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%S')
-                    break
-        else:
-            return file, None
+        if timestamp is None:
+            if tgt_ts is None:
+                return None
+            timestamp = '-' + DateTime.fromtimestamp(tgt_ts).strftime('%Y-%m-%dT%H:%M:%S')
         ts_file = target_png_file.stem + timestamp + '.png'
-        return file, ts_file
+        return ts_file
 
 def calc_width(src_rows):
     "return tuple of rows (target, width, align, header)"
