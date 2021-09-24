@@ -309,6 +309,7 @@ class product_product(xmlid, osv.Model):
             raw_rows = defaultdict(list)
             for row, link, align, width in LabelLinks:
                 header = False
+                link = Path(link)
                 if link.count('%s') == 1:
                     link %= '%s/%s' % (xml_id, xml_id)
                     ts_link = add_timestamp(link, use_cache)
@@ -1202,7 +1203,7 @@ def get_LLC():
 
 def add_timestamp(file, use_cache):
     "adds timestamp to filename portion of file"
-    src_file = Path(file)
+    src_file = file
     possibles = [src_file]
     last_suffix = src_file.stem[6:]
     target_png_file = PRODUCT_LABEL_PNG_LOCATION / src_file.stem + '.png'
@@ -1231,7 +1232,7 @@ def add_timestamp(file, use_cache):
                     except Exception:
                         _logger.exception('failure converting %r to %r', target_bmp_file, target_png_file)
                         continue
-                timestamp = '-' + DateTime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%S')
+                timestamp = '-' + DateTime.fromtimestamp(src_ts).strftime('%Y-%m-%dT%H:%M:%S')
                 break
         if timestamp is None:
             if tgt_ts is None:
