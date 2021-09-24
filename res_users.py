@@ -15,7 +15,7 @@ class res_users(osv.Model):
             'res.partner',
             string='FIS Account',
             domain=[
-                    ('fis_transmitter_ids','!=',[]),
+                    ('fis_transmitter_id','!=',False),
                     ('module','in',['F33','F34']),
                     ('xml_id','not like','-default'),
                     ],
@@ -27,13 +27,14 @@ class res_users(osv.Model):
             string='Partner FIS ID',
             ),
         'fis_product_cross_ref_code': fields.char('Online Order Code', size=6, help='usually the customer #'),
-        'fis_transmitter_id': fields.many2one(
-		'res.users',
-		domain="[('fis_transmitter_id','in',fis_transmitter_ids)]",
+        'fis_transmitter_id': fields.related(
+                'fis_partner_id', 'fis_transmitter_id',
+                type='many2one',
                 string='FIS Transmitter ID',
+                relation='fis.transmitter_code',
                 ),
         'fis_transmitter_no': fields.related(
-                'fis_transmitter_id','transmitter_no',
+            'fis_partner_id','fis_transmitter_id','transmitter_no',
                 string='FIS Transmitter No',
                 type='char',
                 size=6,
@@ -91,7 +92,6 @@ class res_users(osv.Model):
 
 class transmitter(osv.Model):
     _name = 'fis.transmitter_code'
-    _rec_name = 'transmitter_no'
 
     def _calc_name(self, cr, uid, ids, field_name=None, arg=None, context=None):
         if isinstance(ids, (int, long)):
@@ -129,13 +129,7 @@ class transmitter(osv.Model):
         'partner_xml_id': fields.char("Customer #", size=6, help="customer number in FIS"),
         'transmitter_name': fields.char("Transmitter Name", size=128),
         'transmitter_no': fields.char('Transmitter #', size=6),
-        'ship_to_id': fields.many2one('res.partner', 'Associated partner/shipping address record'),
-        'ship_to_code': fields.related(
-            'ship_to_id', 'fis_ship_to_code',
-            string='Ship-to Code',
-            size=7,
-            type='char',
-            ),
+        'ship_to_code': fields.char('Ship-to Code', size=7),
         }
 
     _sql_constraints = [

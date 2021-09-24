@@ -12,9 +12,6 @@
                             @disposition
                             @orig_source_id invisible='1'
                             @source_id on_change="onchange_source(orig_source_id)"
-                            @create_date readonly='1'
-                            @active readonly='1'
-                            @module readonly='1'
                             @city readonly='1'
                             @state readonly='1'
                             @phone readonly='1'

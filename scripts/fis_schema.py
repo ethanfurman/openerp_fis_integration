@@ -620,7 +620,7 @@ class F192(FISenum):
     key_type                   = 'An$(1,2)',    0     # Key Type = 'O1'
     company_id                 = 'An$(3,2)',    1     # Company Code
     transmitter_no             = 'An$(5,6)',    2     # Transmitter Number
-    transmitter_name           = 'Bn$',         3     # Transmitter Name
+    transmitter_name           = 'Bn$',         3     # Transmitter  Name
     status                     = 'Cn$',         4     # Status: A=Active, I=Inactive
     date_last_transmission     = 'Cn$(2,6)',    5     # Date Last Transmission
     time_last_transmission     = 'Cn$(8,4)',    6     # Time Last Transmission
