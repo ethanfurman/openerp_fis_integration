@@ -107,18 +107,25 @@ def fis_integration(method, delete, *files, **extra):
             vendor_codes = set()
             if 'emp1' in files:
                 EMP1(oe, config, state_recs, country_recs, extra=extra).run(method)
+            if 'posm' in files or 'vnms' in files:
+                POSM_VNMS(oe, config, state_recs, country_recs, extra=extra).run(method)
             if 'cnvz' in files:
                 for handler in (
                     CNVZaa,      # product location, 97
                     CNVZas,      # product category, 11
                     CNVZd0,      # customer terms, 8
                     CNVZf,       # production lines, 341
-                    CNVZO1,      # transmitter numbers, 192
                     CNVZ_Z_K,    # sales reps, 47
                     ):
                     handler(oe, config, extra=extra).run(method)
                 # shipping carriers, 27
                 CNVZSV(oe, config, state_recs, country_recs, extra=extra).run(method)
+            if 'csms' in files:
+                CSMS(oe, config, state_recs, country_recs, extra=extra).run(method)
+                CSMSS(oe, config, state_recs, country_recs, extra=extra).run(method)
+            if 'cnvz' in files:
+                # transmitter numbers, 192
+                CNVZO1(oe, config, extra=extra).run(method)
             for filename, handler in (
                     ('nvty', NVTY),
                     ('arci', ARCI),
@@ -129,11 +136,6 @@ def fis_integration(method, delete, *files, **extra):
                 ):
                 if filename in files:
                     handler(oe, config, extra=extra).run(method)
-            if 'posm' in files or 'vnms' in files:
-                POSM_VNMS(oe, config, state_recs, country_recs, extra=extra).run(method)
-            if 'csms' in files:
-                CSMS(oe, config, state_recs, country_recs, extra=extra).run(method)
-                CSMSS(oe, config, state_recs, country_recs, extra=extra).run(method)
     except socket.error as s_error:
         if s_error.errno in (
                 errno.ECONNREFUSED,
@@ -161,11 +163,13 @@ def fis_integration(method, delete, *files, **extra):
     #
     # ARCI -> CSMS, NVTY
     #
-    # CNVZaa, CNVZas, CNVZd0, CNVZf, CNVZO1, CNVZSV, CNVZ_Z_K -> None
+    # CNVZaa, CNVZas, CNVZd0, CNVZf, CNVZSV, CNVZ_Z_K -> None
     #
-    # CSMS -> CNVZd0, CNVZO1, CNVZ_Z_K
+    # CNVZO1 -> CSMSS
     #
-    # CSMSS -> CSMS, CNVZO1
+    # CSMS -> CNVZd0, CNVZ_Z_K
+    #
+    # CSMSS -> CSMS
     #
     # EMP1 -> None
     #

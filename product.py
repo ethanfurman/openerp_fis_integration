@@ -1210,7 +1210,7 @@ def get_LLC():
 
 def add_timestamp(file, use_cache):
     "adds timestamp to filename portion of file"
-    src_file = file
+    src_file = Path(file)
     possibles = [src_file]
     last_suffix = src_file.stem[6:]
     target_png_file = PRODUCT_LABEL_PNG_LOCATION / src_file.stem + '.png'

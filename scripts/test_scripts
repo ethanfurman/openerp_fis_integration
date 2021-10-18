@@ -1497,9 +1497,8 @@ def get_oe_only_records(self, erp, table_name, fields):
             for key, value in zip(rec[3::2], rec[4::2]):
                 if key not in fields:
                     continue
-                if isinstance(value, list) and value and isinstance(value[0], Many2One):
-                    for i, m2o in enumerate(value):
-                        value[i] = script.CNVZf.ProductionLine(m2o.name, id=m2o.id)
+                if isinstance(value, list):
+                    value = value[:]
                 datum[key] = value
             result.append(datum)
     return result
@@ -2311,15 +2310,7 @@ def cnvzo1_data(script):
                         ship_to_id=script.CSMSS.ShipTo('RUSTB'),
                         ship_to_xml_id='RUSTB',
                         ),
-                    imd(name='F192_RUSTB_account_transmitter_code'),
-                    ),
-                OE7=AttrDict(
-                    xml_id='RUSTB',
-                    partner_xml_id='RUSTB',
-                    ),
-                Odoo13=AttrDict(
-                    fis_id='RUSTB',
-                    partner_fis_id='RUSTB',
+                    imd(name='F192__account_transmitter_code'),
                     ),
                 ignore=True,
                 ),
@@ -2338,15 +2329,7 @@ def cnvzo1_data(script):
                         ship_to_id=script.CSMSS.ShipTo('BULK'),
                         ship_to_xml_id='BULK',
                         ),
-                    imd(name='F192_None_BULK_account_transmitter_code'),
-                    ),
-                OE7=AttrDict(
-                    xml_id='None-BULK',
-                    partner_xml_id=None,
-                    ),
-                Odoo13=AttrDict(
-                    fis_id='None-BULK',
-                    partner_fis_id=None,
+                    imd(name='F192_700007_account_transmitter_code'),
                     ),
                 ignore=True,
                 ),
@@ -2365,15 +2348,7 @@ def cnvzo1_data(script):
                         ship_to_id=script.CSMSS.ShipTo('CORNT-GEOR'),
                         ship_to_xml_id='CORNT-GEOR',
                         ),
-                    imd(name='F192_CORNT_GEOR_account_transmitter_code'),
-                    ),
-                OE7=AttrDict(
-                    xml_id='CORNT-GEOR',
-                    partner_xml_id='CORNT',
-                    ),
-                Odoo13=AttrDict(
-                    fis_id='CORNT-GEOR',
-                    partner_fis_id='CORNT',
+                    imd(name='F192_500110_account_transmitter_code'),
                     ),
                 ignore=True,
                 ),
@@ -2392,15 +2367,7 @@ def cnvzo1_data(script):
                         ship_to_id=script.CSMSS.ShipTo('GELSO-GR29'),
                         ship_to_xml_id='GELSO-GR29',
                         ),
-                    imd(name='F192_GELSO_GR29_account_transmitter_code'),
-                    ),
-                OE7=AttrDict(
-                    xml_id='GELSO-GR29',
-                    partner_xml_id='GELSO',
-                    ),
-                Odoo13=AttrDict(
-                    fis_id='GELSO-GR29',
-                    partner_fis_id='GELSO',
+                    imd(name='F192_900215_account_transmitter_code'),
                     ),
                 ignore=False,
                 ),
@@ -2419,15 +2386,7 @@ def cnvzo1_data(script):
                         ship_to_id=script.CSMSS.ShipTo('RAING-HEAL'),
                         ship_to_xml_id='RAING-HEAL',
                         ),
-                    imd(name='F192_RAING_HEAL_account_transmitter_code'),
-                    ),
-                OE7=AttrDict(
-                    xml_id='RAING-HEAL',
-                    partner_xml_id='RAING',
-                    ),
-                Odoo13=AttrDict(
-                    fis_id='RAING-HEAL',
-                    partner_fis_id='RAING',
+                    imd(name='F192_900000_account_transmitter_code'),
                     ),
                 ignore=False,
                 ),
@@ -2446,15 +2405,7 @@ def cnvzo1_data(script):
                         ship_to_id=script.CSMSS.ShipTo('HE492'),
                         ship_to_xml_id='HE492',
                         ),
-                    imd(name='F192_HE492_account_transmitter_code'),
-                    ),
-                OE7=AttrDict(
-                    xml_id='HE492',
-                    partner_xml_id='HE492',
-                    ),
-                Odoo13=AttrDict(
-                    fis_id='HE492',
-                    partner_fis_id='HE492',
+                    imd(name='F192_150492_account_transmitter_code'),
                     ),
                 ignore=False,
                 ),
@@ -2473,15 +2424,7 @@ def cnvzo1_data(script):
                         ship_to_id=script.CSMSS.ShipTo('HE714'),
                         ship_to_xml_id='HE714',
                         ),
-                    imd(name='F192_HE714_account_transmitter_code'),
-                    ),
-                OE7=AttrDict(
-                    xml_id='HE714',
-                    partner_xml_id='HE714',
-                    ),
-                Odoo13=AttrDict(
-                    fis_id='HE714',
-                    partner_fis_id='HE714',
+                    imd(name='F192_150714_account_transmitter_code'),
                     ),
                 ignore=False,
                 ),
@@ -2491,6 +2434,9 @@ def cnvzo1_data(script):
 from fis_schema import F27
 def cnvzsv_data(script):
     return (
+
+            # 0
+
             DataSet(
                 on_disk={
                     F27.code: '59',
@@ -2528,6 +2474,9 @@ def cnvzsv_data(script):
                     fis_id='59',
                     ),
                 ),
+
+            # 1
+
             DataSet(
                 on_disk={
                     F27.code: '30',
@@ -2565,6 +2514,9 @@ def cnvzsv_data(script):
                     fis_id='30',
                     ),
                 ),
+
+            # 2
+
             DataSet(
                 on_disk={
                     F27.code: '03',
@@ -2602,6 +2554,9 @@ def cnvzsv_data(script):
                     fis_id='03',
                     ),
                 ),
+
+            # 3
+
             DataSet(
                 on_disk={
                     F27.code: '21',
@@ -2639,6 +2594,9 @@ def cnvzsv_data(script):
                     fis_id='21',
                     ),
                 ),
+
+            # 4
+
             DataSet(
                 on_disk={
                     F27.code: '99',
@@ -2675,6 +2633,7 @@ def cnvzsv_data(script):
                     fis_module='F27',
                     fis_id='99',
                     ),
+                ignore=True,
                 ),
             )
 
@@ -2895,7 +2854,7 @@ def csms_data(script):
                         fis_credit_20_days=20457.27,
                         fis_credit_30_days=-64128.25,
                         fis_credit_total=21562.18,
-                        fis_transmitter_id=script.CNVZO1.TransmitterCode('GELSO'),
+                        # fis_transmitter_id=script.CNVZO1.TransmitterCode('GELSO'),
                         ),
                     imd(name='F033_GELSO_res_partner'),
                     ),
@@ -2957,7 +2916,7 @@ def csms_data(script):
                             fis_credit_20_days=0,
                             fis_credit_30_days=0,
                             fis_credit_total=3078.72,
-                            fis_transmitter_id=script.CNVZO1.TransmitterCode('RAING'),
+                            # fis_transmitter_id=script.CNVZO1.TransmitterCode('RAING'),
                             ),
                         imd(name='F033_RAING_res_partner'),
                         ),
@@ -2987,7 +2946,7 @@ def csms_data(script):
                             fis_credit_20_days=0,
                             fis_credit_30_days=0,
                             fis_credit_total=0,
-                            fis_transmitter_id=None
+                            # fis_transmitter_id=None
                             ),
                         imd(name='F033_cntct_RAING_res_partner'),
                         ),
@@ -3063,7 +3022,7 @@ def csms_data(script):
                         fis_credit_20_days=0,
                         fis_credit_30_days=0,
                         fis_credit_total=3876.88,
-                        fis_transmitter_id=script.CNVZO1.TransmitterCode('HE492'),
+                        # fis_transmitter_id=script.CNVZO1.TransmitterCode('HE492'),
                         ),
                     imd(name='F033_HE492_res_partner'),
                     ),
@@ -3126,7 +3085,7 @@ def csms_data(script):
                         fis_credit_20_days=0,
                         fis_credit_30_days=-2095.14,
                         fis_credit_total=3990.03,
-                        fis_transmitter_id=script.CNVZO1.TransmitterCode('HE714'),
+                        # fis_transmitter_id=script.CNVZO1.TransmitterCode('HE714'),
                         ),
                     imd(name='F033_HE714_res_partner'),
                     ),
@@ -3189,7 +3148,7 @@ def csms_data(script):
                         fis_credit_20_days=0,
                         fis_credit_30_days=0,
                         fis_credit_total=0,
-                        fis_transmitter_id=script.CNVZO1.TransmitterCode('HGRAC'),
+                        # fis_transmitter_id=script.CNVZO1.TransmitterCode('HGRAC'),
                         ),
                     imd(name='F033_HGRAC_res_partner'),
                     ),
@@ -3255,7 +3214,7 @@ def csmss_data(script):
                         use_parent_address=False,
                         active=False,
                         phone=None,
-                        fis_transmitter_id=script.CNVZO1.TransmitterCode('GELSO-G114'),
+                        # fis_transmitter_id=script.CNVZO1.TransmitterCode('GELSO-G114'),
                         ),
                     imd(name='F034_GELSO_G114_res_partner'),
                     ),
@@ -3297,7 +3256,7 @@ def csmss_data(script):
                         use_parent_address=False,
                         active=True,
                         phone=None,
-                        fis_transmitter_id=script.CNVZO1.TransmitterCode('GELSO-BU22'),
+                        # fis_transmitter_id=script.CNVZO1.TransmitterCode('GELSO-BU22'),
                         ),
                     imd(name='F034_GELSO_BU22_res_partner'),
                     ),
@@ -3340,7 +3299,7 @@ def csmss_data(script):
                             use_parent_address=False,
                             active=True,
                             phone='415.863.0620',
-                            fis_transmitter_id=script.CNVZO1.TransmitterCode('RAING-HEAL'),
+                            # fis_transmitter_id=script.CNVZO1.TransmitterCode('RAING-HEAL'),
                             ),
                         imd(name='F034_RAING_HEAL_res_partner'),
                         ),
@@ -3388,7 +3347,7 @@ def csmss_data(script):
                             use_parent_address=False,
                             active=False,
                             phone='415.863.0620',
-                            fis_transmitter_id=script.CNVZO1.TransmitterCode('RAING'),
+                            # fis_transmitter_id=script.CNVZO1.TransmitterCode('RAING'),
                             ),
                         imd(name='F034_RAING_res_partner'),
                         ),
@@ -3437,7 +3396,7 @@ def csmss_data(script):
                         use_parent_address=False,
                         active=True,
                         phone='281.829.0126',
-                        fis_transmitter_id=script.CNVZO1.TransmitterCode('HE492'),
+                        # fis_transmitter_id=script.CNVZO1.TransmitterCode('HE492'),
                         ),
                     imd(name='F034_HE492_res_partner'),
                     ),
@@ -3480,7 +3439,7 @@ def csmss_data(script):
                         use_parent_address=False,
                         active=True,
                         phone=None,
-                        fis_transmitter_id=script.CNVZO1.TransmitterCode('HE714'),
+                        # fis_transmitter_id=script.CNVZO1.TransmitterCode('HE714'),
                         ),
                     imd(name='F034_HE714_res_partner'),
                     ),
@@ -3523,7 +3482,7 @@ def csmss_data(script):
                         use_parent_address=False,
                         active=True,
                         phone='310.638.8400',
-                        fis_transmitter_id=script.CNVZO1.TransmitterCode('HGRAC-LYNW'),
+                        # fis_transmitter_id=script.CNVZO1.TransmitterCode('HGRAC-LYNW'),
                         ),
                     imd(name='F034_HGRAC_LYNW_res_partner'),
                     ),
@@ -3590,12 +3549,6 @@ def emp1_data(script):
                         emergency_number=None,
                         state_exemptions=0,
                         federal_exemptions=0,
-                        partner_id=(0, 0, {
-                            'employee': True,
-                            script.FIS_ID: '9002',
-                            'name': 'Inventory Team',
-                            'active': True,
-                            })
                         ),
                     imd(name='F074_9002_hr_employee'),
                     ),
@@ -3671,12 +3624,6 @@ def emp1_data(script):
                         emergency_number='818.283.8485',
                         state_exemptions=5,
                         federal_exemptions=5,
-                        partner_id=(0, 0, {
-                            'employee': True,
-                            script.FIS_ID: '1376',
-                            'name': 'Mark Andrew Pezzini',
-                            'active': False,
-                            })
                         ),
                     imd(name='F074_1376_hr_employee'),
                     ),
@@ -3751,7 +3698,6 @@ def emp1_data(script):
                         emergency_number='876.123.5911',
                         state_exemptions=2,
                         federal_exemptions=2,
-                        partner_id=Many2One(id=ref.ctorres_rp.id, name='Carolina Torres', model='res.partner'),
                         ),
                     imd(name='F074_1306_hr_employee'),
                     ),
@@ -4820,8 +4766,8 @@ def nvty_data(script):
                     F135.net_un_wt: 10.0,
                     F135.grs_un_wt: 11.0,
                     F135.qty_on_hand: 2646.0,
-                    F135.new_retail: 8.09,
-                    F135.new_whlsl: 53.9,
+                    F135.new_per_unit: 8.09,
+                    F135.new_retail: 53.9,
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
@@ -4831,7 +4777,6 @@ def nvty_data(script):
                         fis_qty_on_hand=2646.0,
                         fis_availability_code='Y',
                         sale_ok=True,
-                        fis_whsle_price=53.9,
                         trademarks='PE',
                         ean13='0867000099188',
                         fis_location='3B39b',
@@ -4840,7 +4785,9 @@ def nvty_data(script):
                         default_code='500991',
                         weight=11,
                         weight_net=10,
-                        list_price=8.09,
+                        lst_price=53.9,
+                        list_price=53.9,
+                        price=8.09,
                         fis_qty_produced=None,
                         fis_10_day_produced=None,
                         fis_21_day_produced=None,
@@ -4899,8 +4846,8 @@ def nvty_data(script):
                     F135.net_un_wt: 10.0,
                     F135.grs_un_wt: 11.0,
                     F135.qty_on_hand: 0.0,
-                    F135.new_retail: 6.29,
-                    F135.new_whlsl: 41.8,
+                    F135.new_per_unit: 6.29,
+                    F135.new_retail: 41.8,
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
@@ -4910,7 +4857,6 @@ def nvty_data(script):
                         fis_qty_on_hand=0.0,
                         fis_availability_code='Y',
                         sale_ok=False,
-                        fis_whsle_price=41.8,
                         trademarks=None,
                         ean13='0867000099188',
                         fis_location='B711a',
@@ -4919,7 +4865,9 @@ def nvty_data(script):
                         default_code='500991',
                         weight=11.0,
                         weight_net=10.0,
-                        list_price=6.29,
+                        lst_price=41.8,
+                        list_price=41.8,
+                        price=6.29,
                         fis_qty_produced=None,
                         fis_10_day_produced=None,
                         fis_21_day_produced=None,
@@ -4978,8 +4926,8 @@ def nvty_data(script):
                     F135.net_un_wt: 27.5,
                     F135.grs_un_wt: 28.5,
                     F135.qty_on_hand: 5276.0,
-                    F135.new_retail: 5.99,
-                    F135.new_whlsl: 109.45,
+                    F135.new_per_unit: 5.99,
+                    F135.new_retail: 109.45,
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
@@ -4989,7 +4937,6 @@ def nvty_data(script):
                         fis_qty_on_hand=5276.0,
                         fis_availability_code='Y',
                         sale_ok=True,
-                        fis_whsle_price=109.45,
                         trademarks=None,
                         ean13='0867000228014',
                         fis_location='2C42a',
@@ -4998,7 +4945,9 @@ def nvty_data(script):
                         default_code='002280',
                         weight=28.5,
                         weight_net=27.5,
-                        list_price=5.99,
+                        lst_price=109.45,
+                        list_price=109.45,
+                        price=5.99,
                         fis_qty_produced=None,
                         fis_10_day_produced=None,
                         fis_21_day_produced=None,

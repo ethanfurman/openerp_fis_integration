@@ -14,7 +14,7 @@ from dbf import Date, DateTime, Time, Table, READ_WRITE
 from dbf import NoneType, NullType, Char, Logical
 from fnx_script_support import grouped_by_column
 from openerplib import DEFAULT_SERVER_DATE_FORMAT, get_records, get_xid_records, XidRec
-from openerplib import Fault, PropertyNames, IDEquality, Many2One, SetOnce
+from openerplib import Fault, PropertyNames, IDEquality, ValueEquality, Many2One, SetOnce
 from scription import print, echo, error, ViewProgress, script_verbosity, abort
 from traceback import format_exception
 from VSS.address import cszk, Rise, Sift, AddrCase, BsnsCase, NameCase, PostalCode
@@ -75,7 +75,7 @@ class XmlLink(IDEquality):
 
 
 @PropertyNames
-class XmlLinkField(object):
+class XmlLinkField(ValueEquality):
     """
     soft reference to a record's field
     """
@@ -310,6 +310,7 @@ class Synchronize(SynchronizeABC):
                 changes = {}
                 for field in self.OE_FIELDS:
                     if old[field] != new[field]:
+                        echo('changing %r from %r to %r' % (field, old[field], new[field]))
                         if not old[field] and not new[field]:
                             echo('old', old)
                             echo('new', new)
@@ -745,6 +746,7 @@ class Synchronize(SynchronizeABC):
                 elif isinstance(v, XmlLink):
                     v = v.xml_id if v.id else None
                 elif isinstance(v, XmlLinkField):
+                    error('extracting %s from %s' % (v.value, v))
                     v = v.value if v else None
                 elif isinstance(v, basestring):
                     if not v: v = None
@@ -935,6 +937,8 @@ class Synchronize(SynchronizeABC):
                             for x in value:
                                 if isinstance(x, IDEquality):
                                     x = x.id
+                                elif isinstance(x, ValueEquality):
+                                    x = x.value
                                 ids.append(x)
                             rec[key] = [(6, 0, ids)]
                 new_id = self.model.create(rec)
@@ -989,6 +993,8 @@ class Synchronize(SynchronizeABC):
                             for x in value:
                                 if isinstance(x, IDEquality):
                                     x = x.id
+                                elif isinstance(x, ValueEquality):
+                                    x = x.value
                                 value_ids.append(x)
                             changes[fn] = [(6, 0, value_ids)]
                 self.model.write(ids, changes)
@@ -1154,8 +1160,8 @@ class Synchronize(SynchronizeABC):
                         'id': rec.id,
                         'key': rec[self.OE_KEY],
                         'xid_name': xid_name,
-                        'existing_id': xid_names[xid_name].res_id,
-                        'display_name': xid_names[xid_name].display_name,
+                        'existing_id': xid_names[xid_name]._imd.res_id,
+                        'display_name': xid_names[xid_name]._imd.display_name,
                         })
                 continue
             self.ir_model_data.create({
@@ -1793,6 +1799,8 @@ def pfm(values):
             result[k] = v.strftime(DEFAULT_SERVER_DATE_FORMAT)
         elif isinstance(v, IDEquality):
             result[k] = v.id
+        elif isinstance(v, ValueEquality):
+            result[k] = v.value
         elif isinstance(v, PostalCode):
             result[k] = v.code
         elif isinstance(v, Enum):

@@ -34,7 +34,6 @@ class res_users(osv.Model):
         'fis_transmitter_id': fields.many2one(
                 'fis.transmitter_code',
                 string='FIS Transmitter ID',
-                relation='fis.transmitter_code',
                 ),
         'fis_transmitter_no': fields.char('FIS Transmitter No', size=6),
         'fis_online_order_show_req_ship_date': fields.boolean('Show Requested Ship Date'),
@@ -198,6 +197,7 @@ class res_users(osv.Model):
 
 class transmitter(osv.Model):
     _name = 'fis.transmitter_code'
+    _rec_name = 'transmitter_no'
 
     def _calc_name(self, cr, uid, ids, field_name=None, arg=None, context=None):
         if isinstance(ids, (int, long)):
