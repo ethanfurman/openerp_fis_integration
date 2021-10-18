@@ -36,17 +36,19 @@ process_orders.script_fullname = 'process_openerp_orders'
 _saved.append(sys.modules.pop('scription'))
 
 with Patch(tools, odoo_erp=tools.OE7):
-    fis_integration_oe7 = fi_oe7 = import_script('updates_fis_integration')
-    fis_integration_oe7.script_fullname = 'updates_fis_integration'
+    import fis_oe_converters as converters_oe7
+    fi_oe7 = converters_oe7
+    converters_oe7.script_fullname = 'updates_fis_integration'
+_saved.append(sys.modules.pop('fis_oe_converters'))
 _saved.append(sys.modules.pop('scription'))
-del sys.modules['updates_fis_integration']
 
 with Patch(tools, odoo_erp=tools.Odoo13):
-    fis_integration_odoo13 = fi_odoo13 = import_script('updates_fis_integration')
-    fis_integration_odoo13.script_fullname = 'updates_fis_integration'
-from updates_fis_integration import CustomerAging
+    import fis_oe_converters as converters_odoo13
+    fi_odoo13 = converters_odoo13
+    converters_odoo13.script_fullname = 'updates_fis_integration'
+from fis_oe_converters import CustomerAging
+_saved.append(sys.modules.pop('fis_oe_converters'))
 _saved.append(sys.modules.pop('scription'))
-del sys.modules['updates_fis_integration']
 
 assert fi_oe7.XmlLink is fi_odoo13.XmlLink
 
@@ -995,8 +997,8 @@ class TestFisIntegrationConversion(unittest.TestCase):
             m_name = m.__name__
             model_overrides[m_name] = m
         for script, model in (
-                (fis_integration_oe7, oe_model),
-                (fis_integration_odoo13, odoo_model),
+                (converters_oe7, oe_model),
+                (converters_odoo13, odoo_model),
             ):
             for name, cls in model_overrides.items():
                 cls.wrapped = getattr(script, name)
@@ -1145,11 +1147,22 @@ class TestFisIntegrationConversion(unittest.TestCase):
 
 
     def test_cnvzo1_convert(self):
+        class CSMS(PassThrough):
+            def __init__(self, oe, config, *args):
+                pass
+            def reify(*args, **kwds):
+                pass
+        class CSMSS(PassThrough):
+            def __init__(self, oe, config, *args):
+                pass
+            def reify(*args, **kwds):
+                pass
         self.validate_record_conversion(
                 'CNVZO1',
                 'fis.transmitter_code',
                 'fis.account.transmitter_code',
                 cnvzo1_data,
+                model_overrides=(CSMS, CSMSS),
                 )
 
     def test_cnvzsv_convert(self):
@@ -2295,7 +2308,8 @@ def cnvzo1_data(script):
                     AttrDict(
                         transmitter_no='',
                         transmitter_name='RUSTIC BAKERY',
-                        ship_to_code=None,
+                        ship_to_id=script.CSMSS.ShipTo('RUSTB'),
+                        ship_to_xml_id='RUSTB',
                         ),
                     imd(name='F192_RUSTB_account_transmitter_code'),
                     ),
@@ -2321,7 +2335,8 @@ def cnvzo1_data(script):
                     AttrDict(
                         transmitter_no='700007',
                         transmitter_name='USE NATURAL ABIL - 701015',
-                        ship_to_code='BULK',
+                        ship_to_id=script.CSMSS.ShipTo('BULK'),
+                        ship_to_xml_id='BULK',
                         ),
                     imd(name='F192_None_BULK_account_transmitter_code'),
                     ),
@@ -2347,7 +2362,8 @@ def cnvzo1_data(script):
                     AttrDict(
                         transmitter_no='500110',
                         transmitter_name=None,
-                        ship_to_code='GEOR',
+                        ship_to_id=script.CSMSS.ShipTo('CORNT-GEOR'),
+                        ship_to_xml_id='CORNT-GEOR',
                         ),
                     imd(name='F192_CORNT_GEOR_account_transmitter_code'),
                     ),
@@ -2373,7 +2389,8 @@ def cnvzo1_data(script):
                     AttrDict(
                         transmitter_no='900215',
                         transmitter_name="GELSON'S MARKET",
-                        ship_to_code='GR29',
+                        ship_to_id=script.CSMSS.ShipTo('GELSO-GR29'),
+                        ship_to_xml_id='GELSO-GR29',
                         ),
                     imd(name='F192_GELSO_GR29_account_transmitter_code'),
                     ),
@@ -2399,7 +2416,8 @@ def cnvzo1_data(script):
                     AttrDict(
                         transmitter_no='900000',
                         transmitter_name='RAINBOW GROCERY',
-                        ship_to_code='HEAL',
+                        ship_to_id=script.CSMSS.ShipTo('RAING-HEAL'),
+                        ship_to_xml_id='RAING-HEAL',
                         ),
                     imd(name='F192_RAING_HEAL_account_transmitter_code'),
                     ),
@@ -2425,7 +2443,8 @@ def cnvzo1_data(script):
                     AttrDict(
                         transmitter_no='150492',
                         transmitter_name='HEB 492 HEALTHY LIVING',
-                        ship_to_code=None,
+                        ship_to_id=script.CSMSS.ShipTo('HE492'),
+                        ship_to_xml_id='HE492',
                         ),
                     imd(name='F192_HE492_account_transmitter_code'),
                     ),
@@ -2451,7 +2470,8 @@ def cnvzo1_data(script):
                     AttrDict(
                         transmitter_no='150714',
                         transmitter_name='HEB 714 HEALTHY LIVING',
-                        ship_to_code=None,
+                        ship_to_id=script.CSMSS.ShipTo('HE714'),
+                        ship_to_xml_id='HE714',
                         ),
                     imd(name='F192_HE714_account_transmitter_code'),
                     ),
@@ -3370,19 +3390,19 @@ def csmss_data(script):
                             phone='415.863.0620',
                             fis_transmitter_id=script.CNVZO1.TransmitterCode('RAING'),
                             ),
-                        imd(name='F034_RAING_default_res_partner'),
+                        imd(name='F034_RAING_res_partner'),
                         ),
                     ),
                 OE7=(
                     AttrDict(
                         module='F34',
-                        xml_id='RAING-default',
+                        xml_id='RAING',
                         ),
                     ),
                 Odoo13=(
                     AttrDict(
                         fis_module='F34',
-                        fis_id='RAING-default',
+                        fis_id='RAING',
                         ),
                     ),
                 ignore=True,
@@ -3419,15 +3439,15 @@ def csmss_data(script):
                         phone='281.829.0126',
                         fis_transmitter_id=script.CNVZO1.TransmitterCode('HE492'),
                         ),
-                    imd(name='F034_HE492_default_res_partner'),
+                    imd(name='F034_HE492_res_partner'),
                     ),
                 OE7=AttrDict(
                     module='F34',
-                    xml_id='HE492-default',
+                    xml_id='HE492',
                     ),
                 Odoo13=AttrDict(
                     fis_module='F34',
-                    fis_id='HE492-default',
+                    fis_id='HE492',
                     ),
                 ),
 
@@ -3462,15 +3482,15 @@ def csmss_data(script):
                         phone=None,
                         fis_transmitter_id=script.CNVZO1.TransmitterCode('HE714'),
                         ),
-                    imd(name='F034_HE714_default_res_partner'),
+                    imd(name='F034_HE714_res_partner'),
                     ),
                 OE7=AttrDict(
                     module='F34',
-                    xml_id='HE714-default',
+                    xml_id='HE714',
                     ),
                 Odoo13=AttrDict(
                     fis_module='F34',
-                    fis_id='HE714-default',
+                    fis_id='HE714',
                     ),
                 ),
 

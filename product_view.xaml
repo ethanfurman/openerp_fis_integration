@@ -421,17 +421,21 @@
             @name: Online Orders
             @model: fis_integration.online_order
             @arch type='xml'
-                ~form $Online_Order version='7.0' setup="onload()"
+                ~form $Online_Order version='7.0' setup="onload(partner_id)"
                     @id invisible='1'
                     @partner_id invisible='1'
+                    @partner_xml_id invisible='1'
                     @show_po_number invisible='1'
                     @show_req_ship_date invisible='1'
+                    @portal_customer invisible='1'
                     ~div attrs="{'invisible': [('id','!=',False)]}"
                         ~group
                             ~group
                                 @po_number attrs="{'invisible': [('show_po_number','=',False)]}"
                                 @req_ship_date placeholder='next standard delivery' attrs="{'invisible': [('show_req_ship_date','=',False)]}"
-                            ~group attrs="{'invisible': [('id','!=',False)]}"
+                            ~group
+                                @transmitter_id attrs="{'invisible': [('portal_customer','=',True)]}"
+                                @transmitter_no readonly='1' attrs="{'invisible': [('portal_customer','=',False)]}"
                                 @partner_crossref_list $Product_list_for readonly='1'
                         ~group attrs="{'invisible': [('partner_crossref_list','=',False)]}"
                             @item_ids

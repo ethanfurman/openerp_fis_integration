@@ -9,8 +9,6 @@ import os
 VIRTUALENV_ROOT = os.environ['VIRTUAL_ENV']
 import sys
 sys.path.pop(0)
-sys.path.append(VIRTUALENV_ROOT)
-print(sys.path)
 import openerp
 from openerp.service import start_services, stop_services
 from openerp.tools import config
@@ -24,6 +22,11 @@ import time
 def main(conf):
     # if os.getuid() != 0:
     #     abort('must be run as root')
+    global oe_config
+    oe = OrmFile('%s/config/fnx.ini' % VIRTUALENV_ROOT)
+    if oe.network.role != 'slave':
+        abort('cannot run neuter on master system')
+    oe_config = oe.openerp
     config.parse_config(['--conf', conf])
 
 
@@ -32,8 +35,10 @@ def main(conf):
         domain=Spec('restrictions on records to show', OPTION),
         )
 def show(model, domain=[None]):
-    config = OrmFile('%s/config/fnx.ini' % VIRTUALENV_ROOT, section='openerp')
-    with OpenERP(config.db) as oe:
+    """
+    Shows records from MODEL matching DOMAIN
+    """
+    with OpenERP(oe_config.db) as oe:
         oe_model = oe.pool.get(model)
         records = oe_model.read(oe.cr, 1, domain)
         if not records:
@@ -48,6 +53,9 @@ def show(model, domain=[None]):
         keep=Spec('keep unchanged [mail, networks, users, schedules]', MULTI),
         )
 def neuter(keep):
+    """
+    remove or set to generic values: mail, networks, users, and schedules
+    """
     keep_arg = keep
     keep = []
     for arg in keep_arg:
@@ -56,9 +64,7 @@ def neuter(keep):
             abort('%s not recognized' % arg)
         keep.append(arg)
 
-    config = OrmFile('%s/config/fnx.ini' % VIRTUALENV_ROOT, section='openerp')
-
-    with OpenERP(config.db) as oe:
+    with OpenERP(oe_config.db) as oe:
 
         cr = oe.cr
 

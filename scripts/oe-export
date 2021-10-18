@@ -151,7 +151,7 @@ def _module_name(text):
 
         )
 def add_imd(module, table, name, domain, field, method):
-    "add ir.model.data names for data export"
+    "add ir.model.data names for data export (not for use with FIS data)"
     print(module, table, name, domain, field, method, sep='\n', verbose=2)
     if method == 'id':
         if field and field != 'id':
@@ -658,12 +658,73 @@ def sql_count(command, separator):
 @Command(
         table=("show exports for TABLE", )
         )
-@Alias('list')
+@Alias(
+        'list'
+        )
 def list_exports(table=None):
     for export in get_records(oe, 'ir.exports'):
         if table and export.resource != table:
             continue
         echo('%-60s [%s]' % (export.name, export.resource))
+
+@Command(
+        name=Spec('name pattern to match'),
+        # domain=Spec('domain to use for relevant model', OPTION),
+        fields=Spec('fields to look up in relevant model', MULTI),
+        )
+def imd(name, fields):
+    """
+    return matching ir.model.data records
+    """
+    query = adhoc(
+            table='ir.model.data',
+            fields=['module','name','model','res_id','display_name'],
+            to_file='',
+            domain=[('name','=like',name)],
+            order='',
+            distinct=False,
+            separator=False,
+            wrap=(),
+            _constraints=[],
+            _internal=True
+            )
+    models = {}
+    for rec in query:
+        models.setdefault(rec.model, []).append(rec.res_id)
+    for model, ids in models.items():
+        model_records = dict(
+                (r.id, r)
+                for r in get_records(oe, model, ids=ids, fields=fields)
+                )
+        for q_rec in query:
+            if q_rec.model == model:
+                model_rec = model_records[q_rec.res_id]
+                for f in fields:
+                    q_rec[f] = model_rec[f]
+    rows = [['module','name','model','res_id','display_name'] + list(fields), None]
+    for q in query:
+        rows.append([
+            q.module, q.name, q.model, q.res_id, q.display_name,
+            ] + [q[f] for f in fields]
+            )
+    echo(rows, border='table')
+
+@Command(
+        code=Spec('transmitter code to look up')
+        )
+def transmitter(code):
+    adhoc(
+            table='fis.transmitter_code',
+            fields=['transmitter_no','transmitter_name','ship_to_id'],
+            to_file='-',
+            domain=[('transmitter_no','like',code)],
+            order='',
+            distinct=False,
+            separator=False,
+            wrap=(),
+            _constraints=[],
+            _internal=True
+            )
 
 # helpers
 

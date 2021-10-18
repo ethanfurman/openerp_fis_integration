@@ -7,9 +7,9 @@ from scription import Execute, OrmFile, TimeoutError
 from fnx import date
 from fnx.oe import dynamic_page_stub
 from fnx.xid import xmlid
-from openerp import SUPERUSER_ID, CONFIG_DIR, ROOT_DIR
+from openerp import SUPERUSER_ID as SU, CONFIG_DIR, ROOT_DIR
 from openerp.exceptions import ERPError
-from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids, self_uid, NamedLock
+from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids, self_uid, NamedLock, get_ids
 import os
 from osv import osv, fields
 from pandaemonium import PidLockFile, AlreadyLocked
@@ -686,7 +686,7 @@ class product_traffic(osv.Model):
 
     def _check_already_open(self, cr, uid, ids):
         products = set()
-        for rec in self.browse(cr, SUPERUSER_ID, [None]):
+        for rec in self.browse(cr, SU, [None]):
             if rec.state in (False, 'done'):
                 continue
             if rec.product_id in products:
@@ -890,6 +890,7 @@ class product_online_order(osv.Model):
 
     _columns = {
         'partner_id': fields.many2one('res.partner', 'Customer'),
+        'partner_xml_id': fields.char('FIS ID', size=11),
         'user_id': fields.many2one('res.users', 'Order placed by',),
         'partner_crossref_list': fields.related(
             'user_id','fis_product_cross_ref_code',
@@ -897,12 +898,8 @@ class product_online_order(osv.Model):
             type='char',
             size=6,
             ),
-        'transmitter_no': fields.related(
-            'user_id','fis_partner_id','fis_transmitter_id','transmitter_no',
-            string='Transmitter #',
-            type='char',
-            size=6,
-            ),
+        'transmitter_id': fields.many2one('fis.transmitter_code', 'Transmitter #'),
+        'transmitter_no': fields.char('Transmitter #', size=6),
         'item_ids': fields.one2many(
             'fis_integration.online_order_item', 'order_id',
             string='Items',
@@ -923,6 +920,7 @@ class product_online_order(osv.Model):
             string='Show PO #',
             ),
         'po_number': fields.char('PO #', size=10),
+        'portal_customer': fields.boolean('Portal customer order', help='False if order placed by sales person'),
         }
 
     _defaults = {
@@ -930,19 +928,12 @@ class product_online_order(osv.Model):
         }
 
     def create(self, cr, uid, vals, context=None):
-        res_users = self.pool.get('res.users')
-        user = res_users.browse(cr, SUPERUSER_ID, uid, context=context)
-        if user.has_group('base.group_sale_salesman'):
-            partner = self.pool.get('res.partner').browse(
-                    cr, uid, vals['partner_id'], context=None
-                    )
-            partner_xmlid = partner.fis_ship_to_parent_id.xml_id
-            transmitter_no = partner.fis_transmitter_id.transmitter_no
-        elif user.has_group('portal.group_portal'):
-            user = self.pool.get('res.users').browse(cr, SUPERUSER_ID, uid, context=context)
-            partner_xmlid = user.fis_partner_id.xml_id
-            transmitter_no = user.fis_partner_id.fis_transmitter_id.transmitter_no
-        else:
+        # the partner_id passed in is the record to use as the ship-to record; this will usually be an
+        #   F34 record, but can be an F33 record when a different ship-to address does not exist; it
+        #   has been set either by `onload` or by `button_place_order_by_salesperson`
+        # transmitter_id
+        user, user_type = self.user_and_type(cr, uid, context=context)
+        if user_type not in ('sales', 'portal'):
             # we shouldn't get here, as a user who is not a sales person nor
             # a portal customer should not be able to:
             # - login to the portal
@@ -958,12 +949,14 @@ class product_online_order(osv.Model):
             if instruction[0] == 0:
                 valid_item_ids.append(instruction)
         vals['item_ids'] = valid_item_ids
+        vals.pop('new_item_ids', None)
         if not valid_item_ids:
             raise ERPError(
                     'Missing Items',
                     'no items listed',
                     )
-        lines = ['%s-%s' % (partner_xmlid, transmitter_no)]
+        transmitter = self.pool.get('fis.transmitter_code').browse(cr, SU, vals['transmitter_id'])
+        lines = ['%s-%s' % (vals['partner_xml_id'], transmitter.transmitter_no)]
         po_number = vals.get('po_number')
         req_ship_date = vals.get('req_ship_date')
         if po_number:
@@ -1007,9 +1000,13 @@ class product_online_order(osv.Model):
         Path(f.name).move(filename)
         return new_id
 
-    def onload(self, cr, uid, ids, context=None):
+    def onchange_transmitter_id(self, cr, uid, ids, transmitter_id, context=None):
+        transmitter = self.pool.get('fis.transmitter_code').browse(cr, SU, transmitter_id, context=context)
+        return {'value': {'transmitter_no': transmitter.transmitter_no}}
+
+    def onload(self, cr, uid, ids, partner_id, context=None):
         """
-        make changes solely on the user id
+        make changes solely on the user id and (possibly) the partner id
 
         context will always be None, so determine actions on whether:
         - the user has the Portal access bit
@@ -1021,14 +1018,22 @@ class product_online_order(osv.Model):
         if user_type == 'sales':
             # by leaving res empty, the defaults from res.partner.button_place_order_by_salesperson
             # will not be overridden
-            pass
+            ship_to = self.pool.get('res.partner').browse(cr, SU, partner_id, context=context)
+            transmitter_ids = get_ids(ship_to,'fis_transmitter_ids')
+            res['domain'] = {
+                    'transmitter_id': [('id','in',transmitter_ids)],
+                    }
         elif user_type == 'portal':
             fis_partner = user.fis_partner_id
             if fis_partner and user.fis_product_cross_ref_code:
                 res['value']['partner_id'] = fis_partner.id
+                res['value']['partner_xml_id'] = fis_partner.xml_id
                 res['value']['partner_crossref_list'] = user.fis_product_cross_ref_code
                 res['value']['show_req_ship_date'] = user.fis_online_order_show_req_ship_date
                 res['value']['show_po_number'] = user.fis_online_order_show_po_number
+                res['value']['transmitter_id'] = user.fis_transmitter_id.id
+                res['value']['transmitter_no'] = user.fis_transmitter_id.transmitter_no
+                res['value']['portal_customer'] = True
             else:
                 res['value']['partner_id'] = False
                 res['value']['partner_crossref_list'] = False
@@ -1047,11 +1052,13 @@ class product_online_order(osv.Model):
                     'title': 'Access Denied',
                     'message': 'You do not have permission to place orders.',
                     }
+        import pprint
+        pprint.pprint(res)
         return res
 
     def user_and_type(self, cr, uid, context=None):
         res_users = self.pool.get('res.users')
-        user = res_users.browse(cr, SUPERUSER_ID, uid, context=context)
+        user = res_users.browse(cr, SU, uid, context=context)
         if user.has_group('base.group_sale_salesman'):
             type = 'sales'
         elif user.has_group('portal.group_portal'):
