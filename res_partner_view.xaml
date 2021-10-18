@@ -40,8 +40,9 @@
             @arch type='xml'
                 ~form string='Ship-to Entry' version='7.0'
                     ~sheet
+                        @fis_online_ordering_enabled invisible='1'
                         ~div .oe_right .oe_button_box @buttons
-                            ~button $Place_Order @button_place_order_by_salesperson type='object' attrs="{'invisible': [('fis_transmitter_ids','=',[])]}"
+                            ~button $Place_Order @button_place_order_by_salesperson type='object' attrs="{'invisible': [('fis_online_ordering_enabled','=',False)]}" context="{'default_transmitter_ids': fis_transmitter_ids}"
                         ~div .oe_title
                             ~h1
                                 @name default_focus='1' placeholder='Name'

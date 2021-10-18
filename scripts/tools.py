@@ -34,7 +34,8 @@ odoo_erp = Odoo13 if 'odoo' in virtualenv else OE7
  # keep pyflakes happy
 script_verbosity
 abort
-
+FIS_ID = None
+FIS_MODULE = None
 
 @PropertyNames
 class XmlLink(IDEquality):
@@ -562,6 +563,12 @@ class Synchronize(SynchronizeABC):
                 dbf_type='vfp',
                 ).open(READ_WRITE)
 
+    def global_updates(self):
+        """
+        any code that needs to run after all records have been processed
+        """
+        return
+
     def fis_long_load(self):
         """
         load entire FIS table
@@ -888,8 +895,8 @@ class Synchronize(SynchronizeABC):
         key = self.OE_KEY
         for rec in self.get_xid_records(
                 self.erp,
-                domain,
-                self.OE_FIELDS,
+                domain=domain,
+                fields=self.OE_FIELDS,
                 context=self.context,
             ):
             if self.extra.get('key_filter') is not None:
@@ -1098,6 +1105,7 @@ class Synchronize(SynchronizeABC):
             self.record_deletions()         # deletions first, in case imd changed
             self.record_additions()
             self.record_changes()
+            self.global_updates()
         finally:
             if method in ('quick', 'full'):
                 print()
@@ -1114,27 +1122,24 @@ class Synchronize(SynchronizeABC):
 
     def update_imd(self):
         updated = 0
+        skipped = 0
         self.oe_load_data()
         # self.oe_records now has all records that have ir.model.data names
-        xid_names = dict(
-                (r.name, r)
-                for r in self.ir_model_data.search_read(
-                    domain=[
-                        ('module','=','fis'),
-                        ('model','=',self.OE),
-                        ('name','=like','%s_%%_%s' % (self.F, self.IMD),)
-                        ],
-                    fields=['name','model','res_id','display_name'],
-                    ))
-        ids = [r.id for r in self.oe_records.values()]
+        xid_names = {}
+        ids = set()
+        for rec in self.oe_records.values():
+            xid_names[rec._imd.name] = rec
+            ids.add(rec.id)
+        ids = list(ids)
         needed_fields = ['id', self.OE_KEY]
         domain = [('id','not in',ids)]
-        if self.OE_KEY_MODULE:
-            value = self.OE_KEY_MODULE
-            module = 'module'
-            if isinstance(value, tuple):
-                module, value = value
-            domain.append((module,'=',value))
+        module_field = FIS_MODULE
+        module_value = self.OE_KEY_MODULE
+        if isinstance(module_value, tuple):
+            module_field, module_value = self.OE_KEY_MODULE
+        if module_value:
+            domain.append((module_field,'=',module_value))
+            needed_fields.append(module_field)
         bare_oe_records = get_records(
                 self.erp,
                 self.OE,
@@ -1148,6 +1153,7 @@ class Synchronize(SynchronizeABC):
             ):
             xid_name = self.calc_xid(rec[self.OE_KEY])
             if xid_name in xid_names:
+                skipped += 1
                 error(
                     '[%(id)s] %(key)s: %(xid_name)s already taken by [%(existing_id)s] %(display_name)s'
                     % {
@@ -1174,11 +1180,11 @@ class Synchronize(SynchronizeABC):
                         fields=['name','model','res_id','display_name'],
                         )))
             updated += 1
-        print('%d records added to ir.model.data' % updated)
+        return updated, skipped
 
 class SynchronizeAddress(Synchronize):
 
-    def __init__(self, connect, config, state_recs, country_recs, *args, **kwds):
+    def __init__(self, connect, config, state_recs=None, country_recs=None, *args, **kwds):
         self.state_recs = state_recs
         self.country_recs = country_recs
         super(SynchronizeAddress, self).__init__(connect, config, *args, **kwds)
@@ -1957,7 +1963,7 @@ class FISenum(str, Enum):
 
     def __new__(cls, value, sequence):
         enum = str.__new__(cls, value)
-	enum._value_ = value
+        enum._value_ = value
         if '(' in value:
             fis_name, segment = value.split('(', 1)
             segment = segment.strip(' )')

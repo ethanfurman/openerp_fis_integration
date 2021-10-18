@@ -1,0 +1,151 @@
+#!/usr/local/bin/suid-python --virtualenv
+"""
+Ensure data integrity by removing duplicates, linking records, and adjusting
+ir.model.data names
+"""
+
+# imports
+
+from __future__ import print_function
+from scription import *
+from antipathy import Path
+from openerplib import get_connection, get_records #, AttrDict, Query, Fault , Many2One, get_records
+from os import environ
+from tools import Synchronize
+
+import fis_oe_converters
+from fis_oe_converters import FIS_ID, FIS_MODULE
+FIS_ID, FIS_MODULE
+
+import re
+
+# globals
+
+virtual_env = environ['VIRTUAL_ENV']
+config = '%s/config/fnx.ini' % virtual_env
+
+ALL = [(1,'=',1)]
+
+
+# API
+@Script(
+        )
+def main():
+    global oe, cfg, fis_tables, imd
+    cfg = OrmFile(config, types={'_path':Path})
+    oe = get_connection(
+            hostname=cfg.openerp.host,
+            database=cfg.openerp.db,
+            login=cfg.openerp.user,
+            password=cfg.openerp.pw,
+            )
+    imd = oe.get_model('ir.model.data')
+    fis_tables = {}
+    for name in fis_oe_converters.__all__:
+        obj = getattr(fis_oe_converters, name)
+        if issubclass(obj, Synchronize):
+            fis_tables[name.lower()] = obj
+            fis_tables[obj.FN] = obj
+            fis_tables[obj.TN] = obj
+            if hasattr(obj, 'TN_2ND'):
+                fis_tables[obj.FN_2ND] = obj
+                fis_tables[obj.TN_2ND] = obj
+
+def _module_name(text):
+    module, name = text.split('.')
+    return module, name
+
+def table(name):
+    if name.isdigit():
+        name = int(name)
+    try:
+        return fis_tables[name.lower()]
+    except KeyError:
+        abort('unable to find %r' % (name, ))
+
+@Command(
+        table=Spec('table to process names for', type=table),
+        )
+def add_imd(table):
+    "ensure eligible records have a link in ir.model.data"
+    # instanciate the table, retrieve all existing ir.model.data records, then
+    # get any records that should have an imd link but don't
+    table = table(oe, cfg)
+    updated, skipped = table.update_imd()
+    print('%d records added to ir.model.data' % updated)
+    print('%d duplicates' % skipped)
+    if script_command_name != 'add_imd':
+        return table
+    else:
+        return skipped
+
+
+@Command(
+        )
+@Alias('192')
+def cnvzo1():
+    "ensure all transmitter numbers have an ir.model.data entry; update user logins"
+    cnvzo1 = add_imd(table('CNVZO1'))
+    #
+    # imd.get_object_reference('portal','group_portal')
+    # ['res.groups', 229]
+    #
+    portal_group_id = imd.get_object_reference('portal','group_portal')[1]
+    res_users = oe.get_model('res.users')
+    fis_transmitter_code = oe.get_model('fis.transmitter_code')
+    users = get_records(res_users, domain=[('groups_id','=',portal_group_id)], fields=['id','login','name','fis_partner_id','fis_transmitter_id'])
+    for user in users:
+        print('user: ', user)
+        if heb(user.login):
+            transmitter_no = '150' + heb.data
+            print('  HEB: ', transmitter_no)
+        elif other(user.name):
+            transmitter_no = other.data
+            print('  other: ', transmitter_no)
+        else:
+            error("unable to extract transmitter from", user.login)
+            transmitter_no = None
+            continue
+        transmitter_m2o = user.fis_transmitter_id
+        if transmitter_m2o:
+            transmitter = fis_transmitter_code.read(transmitter_m2o.id)
+            if transmitter_no == transmitter.transmitter_no:
+                # nothing needed
+                continue
+        # fis_transmitter_id=Many2One(id=66168, name='Staff of Life - Bakery', model='fis.transmitter_code'),
+        # let OpenERP do the work for us
+        transmitters = cnvzo1.model.read([('transmitter_no','=',transmitter_no)])
+        if len(transmitters) != 1:
+            error('too many/too few transmitters for %r:  %s' % (transmitter_no, transmitters))
+            continue
+        transmitter ,= transmitters
+        print('transmitter:', transmitter)
+        values = res_users.onchange_fis_transmitter([user.id], transmitter.id, False, False)['value']
+        values['fis_transmitter_id'] = transmitter.id
+        print('saving %s' % values)
+        res_users.write(user.id, values)
+
+
+# helpers
+
+heb = Var(lambda s: check_code('HE(\d\d\d)', s))
+other = Var(lambda s: check_code('(\d\d\d\d\d\d) ', s))
+
+def check_code(pattern, string):
+    res = re.match(pattern, string)
+    return res and res.groups()[0]
+
+try:
+    import __builtin__ as builtins
+except ImportError:
+    pass
+
+def issubclass(target, allowed):
+    if not isinstance(allowed, tuple):
+        allowed = (allowed, )
+    try:
+        return builtins.issubclass(target, allowed)
+    except TypeError:
+        return False
+
+Main()

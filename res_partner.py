@@ -4,7 +4,7 @@ from itertools import groupby
 from openerp import SUPERUSER_ID
 from openerp.osv import osv, fields
 from openerp.exceptions import ERPError
-from openerp.tools import self_ids
+from openerp.tools import get_ids
 # from tools.misc import EnumNoAlias
 from fnx_fs.fields import files
 from VSS.address import normalize_address, Rise
@@ -50,21 +50,6 @@ class res_partner(xmlid, osv.Model):
 
     _fnxfs_path = 'res_partner'
     _fnxfs_path_fields = ['xml_id', 'name']
-
-    def _check_transmitter(self, cr, uid, ids, field_name, args, context=None):
-        if isinstance(ids, (int, long)):
-            ids = [ids]
-        id = ids[0]
-        res = {id: False}
-        partner = self.browse(cr, uid, id, context=context)
-        if partner.fis_transmitter_id:
-            res[id] = True
-        else:
-            for ship_to in partner.fis_ship_to_ids:
-                if ship_to.fis_transmitter_id:
-                    res[id] = True
-                    break
-        return res
 
     def _get_specials_type(self, cr, uid, ids, field_names, args, context=None):
         res = {}
@@ -116,33 +101,6 @@ class res_partner(xmlid, osv.Model):
                     )
                 if l.strip()
                 ])
-        return result
-
-    def _get_transmitter_code_id(self, cr, uid, ids, field_name, args, context=None):
-        # link records with FIS transmitter codes, if possible
-        if isinstance(ids, (int, long)):
-            ids = [ids]
-        result = dict([(id, False) for id in ids])
-        if not ids:
-            return result
-        xml_ids = dict([
-            (r['id'], r['xml_id'])
-            for r in self.read(
-                    cr, uid,
-                    [('id','in',ids),('xml_id','!=',False)],
-                    fields=['id', 'xml_id'],
-                    context=context,
-                    )])
-        ftc = self.pool.get('fis.transmitter_code')
-        ftc_records = dict([
-            (r['partner_xml_id'], r['id'])
-            for r in ftc.read(
-                    cr, SUPERUSER_ID,
-                    [('partner_xml_id','in',xml_ids.values())],
-                    context=context,
-                    )])
-        for id, xml_id in xml_ids.items():
-            result[id] = ftc_records.get(xml_id, False)
         return result
 
     _columns = {
@@ -311,20 +269,18 @@ class res_partner(xmlid, osv.Model):
         'fis_data_address_changed': fields.boolean('FIS data has changed', oldname='fis_data_changed'),
         'fis_updated_by_user': fields.char('Updated by user', size=12, oldname='updated_by_user'),
         # online order facilatation (attached to F33 and F34 records)
+        # transmitter ids are those attached to the F34 ship-to record, not the parent F33 customer record
         'fis_transmitter_ids': fields.one2many(
                 'fis.transmitter_code', 'ship_to_id',
                 string='FIS Transmitter ID',
                 ),
-        'fis_online_ordering_enabled': fields.function(
-                _check_transmitter,
-                type='boolean',
+        'fis_online_ordering_possible': fields.boolean(
+                string="Online Ordering possible",
+                help="at least one associated ship-to has a transmitter number",
+                ),
+        'fis_online_ordering_enabled': fields.boolean(
                 string="Online Order Okay",
-                store={
-                    'res.partner': (
-                        self_ids,
-                        ['fis_ship_to_ids', 'fis_transmitter_ids'],
-                        10,
-                        )},
+                help="online ordering enabled by associated transmitter number",
                 ),
         # shipping addresses
         'fis_ship_to_parent_id': fields.many2one('res.partner', 'Related Ship-To'),                       # F34
@@ -337,6 +293,8 @@ class res_partner(xmlid, osv.Model):
         'write_date': fields.datetime('Last changed', readonly=True),
         'write_uid': fields.many2one('res.users', string='Last changed by', readonly=True),
         }
+    def _get_ids(key_table, cr, uid, ids_of_changed_records, context=None):
+        pass
 
     _defaults = {
         'specials_notification': Specials.neither,
@@ -459,12 +417,14 @@ class res_partner(xmlid, osv.Model):
         ship_to = self.browse(cr, uid, ids[0], context=context)
         # find matching login account
         res_users = self.pool.get('res.users')
-        login_ids = res_users.search(cr, uid, [('fis_transmitter_id','=',ship_to.fis_transmitter_id.id)])
+        transmitter_ids = get_ids(ship_to,'fis_transmitter_ids')
+        login_ids = res_users.search(cr, uid, [('fis_transmitter_id','in',transmitter_ids)])
+        transmitter = self.pool.get('fis.transmitter_code').browse(cr, SUPERUSER_ID, transmitter_ids[0])
         if login_ids:
             login = res_users.browse(cr, uid, login_ids[0], context=context)
             xref_list = login.fis_product_cross_ref_code
         else:
-            _logger.warning('no users found for %r', ship_to.fis_transmitter_id.transmitter_no)
+            _logger.warning('no users found for %r', ship_to.xml_id)
             # fall back to parent xml_id
             xref_list = ship_to.fis_ship_to_parent_id.xml_id
         return {
@@ -475,7 +435,10 @@ class res_partner(xmlid, osv.Model):
                 'target': 'new',
                 'domain': "[('id','=',False)]",
                 'context': {
+                        'default_transmitter_id': transmitter.id,
+                        'default_transmitter_no': transmitter.transmitter_no,
                         'default_partner_id': ship_to.id,
+                        'default_partner_xml_id': ship_to.xml_id,
                         'default_partner_crossref_list': xref_list,
                         'default_show_req_ship_date': True,
                         'default_show_po_number': True,
@@ -508,11 +471,11 @@ class res_partner(xmlid, osv.Model):
             if xml_id:
                 if not user_ids or show_fis:
                     if module in ('F33', 'F65', 'F163'):
-                        name = '[%s] %s' % (xml_id, name)
+                        name = '[%s:%s] %s' % (module.lstrip('F'), xml_id, name)
                     elif '_' in module:
-                        name = '[%s] %s' % (module.split('_', 1)[1].upper(), name)
+                        name = '[%s:%s] %s' % (module.split('_', 1)[1].upper().lstrip('F'), xml_id, name)
                     else:
-                        name = '[%s] %s' % (module.upper(), name)
+                        name = '[%s:%s] %s' % (module.upper().lstrip('F'), xml_id, name)
             new_res.append((id, name))
         return new_res
 

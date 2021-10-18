@@ -8,18 +8,20 @@
             @priority eval='10'
             @arch type='xml'
                 ~xpath expr="//form[@string='Users']" position='attributes'
-                    ~attribute @setup: onload_set_transmitter_domain(fis_partner_id)
+                    ~attribute @setup: onload_set_transmitter_domain(fis_transmitter_id, fis_partner_id, fis_ship_to_id)
                 ~xpath expr="//form/sheet/notebook" position='inside'
                     ~page $Online_Account
-                        ~group
-                            ~group
-                                @fis_partner_id on_change="onchange_fis_partner(fis_partner_id)" context="{'show_fis': True}"
-                                @fis_transmitter_no readonly='1'
+                        ~group col='6'
+                            @fis_partner_online_ordering_enabled invisible='1'
+                            ~group colspan='4'
+                                @fis_transmitter_id on_change="onchange_fis_transmitter(fis_transmitter_id, fis_partner_id, fis_ship_to_id)"
+                                @fis_partner_id on_change="onchange_fis_partner(fis_partner_id, fis_ship_to_id, fis_transmitter_id)" context="{'show_fis': True}"
+                                @fis_ship_to_id on_change="onchange_fis_ship_to(fis_ship_to_id, fis_partner_id, fis_transmitter_id)" attrs="{'required': [('fis_partner_online_ordering_enabled','=',False)]}" context="{'show_fis': True}"
                                 @fis_product_cross_ref_code $Customer_Item_Code
-                                @fis_partner_code readonly='1'
-                            ~group
-                                @fis_online_order_show_req_ship_date
-                                @fis_online_order_show_po_number
+                                @fis_order_code readonly='1'
+                            ~group colspan='2'
+                                @fis_online_order_show_req_ship_date attrs="{'readonly': [('fis_transmitter_id','=',False)]}"
+                                @fis_online_order_show_po_number attrs="{'readonly': [('fis_transmitter_id','=',False)]}"
 
 
         ~record model='ir.actions.act_window' #base.action_res_users
