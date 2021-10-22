@@ -312,7 +312,7 @@ def sql_describe(command, separator, wrap):
             }[orden]
     else:
         sort = lambda t: t[0]
-    seleccion = sorted(model.fields_get().items(), key=sort)
+    seleccion = sorted(model._all_columns.items(), key=sort)
     table = [('Field','Display','Type','Detail','Help'), None]
     for field, desc in seleccion:
         if 'field' in wrap:
@@ -326,7 +326,7 @@ def sql_describe(command, separator, wrap):
         type = desc['type']
         details = []
         if 'function' in desc:
-            details.append('function: %s' % desc['function'])
+            details.append('function %s: %s' % (type, desc['function']))
         if type in ('one2many', 'many2one', 'many2many'):
             relation = desc.get('relation')
             if relation:
@@ -345,10 +345,11 @@ def sql_describe(command, separator, wrap):
                 if isinstance(context, (bytes, str)):
                     context = literal_eval(context)
                 details.append('context: %s' % '\n         '.join(['%s=%r' % (k, v) for k, v in context.items()]))
+        echo(desc)
         for info in ('digits', 'selection', 'size', 'states'):
             data = desc.get(info)
             if data:
-                if isinstance(data, list):
+                if isinstance(data, list) and info in ('selection', 'states'):
                     data = '|'.join([t[1] for t in data if t[1]])
                 if info in wrap:
                     data = html2text(data, wrap[info])

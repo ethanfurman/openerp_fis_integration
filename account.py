@@ -24,7 +24,7 @@ class fis_account_salesperson(xmlid, osv.Model):
     Mapping of abbreviations with salespeople.
     """
     _name = 'fis.account.salesperson'
-    _name_rec = 'abbr'
+    _rec_name = 'xml_id'
 
     _columns = {
         'xml_id': fields.char('FIS Code', size=3, readonly=True),

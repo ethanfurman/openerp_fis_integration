@@ -293,7 +293,7 @@ class product_product(xmlid, osv.Model):
 
     def _label_links(self, cr, uid, ids, field_name, arg, context=None):
         xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
-        result = {}
+        result = {}.fromkeys(ids)
         try:
             LabelLinks, use_cache = get_LLC()
         except Exception:
@@ -1239,7 +1239,7 @@ def add_timestamp(file, use_cache):
                     except Exception:
                         _logger.exception('failure converting %r to %r', target_bmp_file, target_png_file)
                         continue
-                timestamp = '-' + DateTime.fromtimestamp(src_ts).strftime('%Y-%m-%dT%H:%M:%S')
+                timestamp = '-' + DateTime.fromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%S')
                 break
         if timestamp is None:
             if tgt_ts is None:

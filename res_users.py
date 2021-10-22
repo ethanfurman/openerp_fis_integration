@@ -107,7 +107,6 @@ class res_users(osv.Model):
                 if not partner.fis_online_ordering_enabled:
                     value['fis_order_code'] = False
                     value['fis_partner_id'] = False
-                    value['fis_partner_code'] = False
                     if transmitter_id:
                         value['fis_transmitter_code'] = False
         else:
