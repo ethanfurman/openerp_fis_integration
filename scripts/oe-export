@@ -345,7 +345,6 @@ def sql_describe(command, separator, wrap):
                 if isinstance(context, (bytes, str)):
                     context = literal_eval(context)
                 details.append('context: %s' % '\n         '.join(['%s=%r' % (k, v) for k, v in context.items()]))
-        echo(desc)
         for info in ('digits', 'selection', 'size', 'states'):
             data = desc.get(info)
             if data:
