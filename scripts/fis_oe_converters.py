@@ -1812,7 +1812,7 @@ class POSM_VNMS(SynchronizeAddress):
                             },
                         )
         if contact is not None:
-            if not re.match('\w{2,}', name):
+            if not re.match('\w{2,}', name or ''):
                 contact.active = False
             return company, contact
         else:
