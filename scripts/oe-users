@@ -28,37 +28,6 @@ def main():
     global config, oe, res_users, res_groups, users, groups, res_partner, partners
     global user_map, partner_map, force_update, reset_photos, hr, ir_model_data
     config = OrmFile(config, types={'_path':Path})
-    oe = get_connection(
-            hostname=config.openerp.host,
-            database=config.openerp.db,
-            login=config.openerp.user,
-            password=config.openerp.pw,
-            )
-    print('getting ir.model.data')
-    ir_model_data = oe.get_model('ir.model.data')
-    print('getting hr.employee')
-    hr = oe.get_model('hr.employee')
-    print('getting res.users')
-    res_users = oe.get_model('res.users')
-    print('getting res.groups')
-    res_groups = oe.get_model('res.groups')
-    print('retrieving users')
-    users = res_users.search_read(
-            domain=['|', ('active','=',True), ('active','=',False)],
-            fields=['email', 'groups_id', 'id', 'login', 'image'],
-            )
-    user_map = dict([(u.login, u) for u in users])
-    print('retrieving groups')
-    groups = res_groups.search_read(
-            domain=[('id','!=',0)],
-            fields=['category_id', 'full_name', 'id', 'name'],
-            )
-    res_partner = oe.get_model('res.partner')
-    partners = res_partner.search_read(
-            domain=[('module','=','F74')],
-            fields=['id', 'user_ids', 'xml_id'],
-            )
-    partner_map = dict([(p.xml_id, p) for p in partners])
     if config.users.force_update.exists():
         force_update = True
         config.users.force_update.unlink()
@@ -70,6 +39,38 @@ def main():
     else:
         reset_photos = False
     print('force update: %s\nphoto reset: %s' % (force_update, reset_photos), verbose=2)
+    if script_command_name in ('photos', 'update', 'update_transmitter_logins'):
+        oe = get_connection(
+                hostname=config.openerp.host,
+                database=config.openerp.db,
+                login=config.openerp.user,
+                password=config.openerp.pw,
+                )
+        print('getting ir.model.data')
+        ir_model_data = oe.get_model('ir.model.data')
+        print('getting hr.employee')
+        hr = oe.get_model('hr.employee')
+        print('getting res.users')
+        res_users = oe.get_model('res.users')
+        print('getting res.groups')
+        res_groups = oe.get_model('res.groups')
+        print('retrieving users')
+        users = res_users.search_read(
+                domain=['|', ('active','=',True), ('active','=',False)],
+                fields=['email', 'groups_id', 'id', 'login', 'image'],
+                )
+        user_map = dict([(u.login, u) for u in users])
+        print('retrieving groups')
+        groups = res_groups.search_read(
+                domain=[('id','!=',0)],
+                fields=['category_id', 'full_name', 'id', 'name'],
+                )
+        res_partner = oe.get_model('res.partner')
+        partners = res_partner.search_read(
+                domain=[('module','=','F74')],
+                fields=['id', 'user_ids', 'xml_id'],
+                )
+        partner_map = dict([(p.xml_id, p) for p in partners])
 
 
 @Command(
@@ -693,6 +694,32 @@ def update_transmitter_logins(user, reset, force):
         print('%d logins deleted' % (len(deleted_logins), ))
         print(', '.join([t[0] for t in deleted_logins]), verbose=3)
 
+
+@Alias('dbf')
+@Command(
+        action=Spec('which action to perform', choices=['search','delete','update']),
+        login=Spec('login to search for', ),
+        exact=Spec('only show exact matches', FLAG),
+        values=Spec('values to update', ),
+        )
+def dbf_action(action, login, exact, **values):
+    with dbf.Table(config.users.emp_table, default_data_types={'C':dbf.Char}) as employees:
+        login = login.lower()
+        for record in employees:
+            r_login = record.login.lower()
+            if (exact and r_login == login) or (not exact and login in r_login):
+                if action == 'search':
+                    echo(record, border='lined')
+                elif action == 'delete':
+                    echo(record, border='!')
+                    if input('delete record?'):
+                        dbf.delete(record)
+                elif action == 'update':
+                    echo(record, border='?')
+                    if input('update record?'):
+                        dbf.write(record, values)
+        if action == 'delete':
+            employees.pack()
 
 # helpers
 
