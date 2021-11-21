@@ -24,24 +24,25 @@ class ProductLabel(http.Controller):
         # isolate filename
         target_file = Path(request.httprequest.path[19:])
         # remove timestamp
-        target_file = png_base + target_file.dirname + target_file.stem[:-20] + target_file.ext
+        full_target_file = png_base + target_file.dirname + target_file.stem[:-20] + target_file.ext
         # continue normally
         #
         try:
-            if not target_file.exists():
-                raise MissingFile(target_file)
-            with (target_file).open('rb') as fh:
+            if not full_target_file.exists():
+                raise MissingFile(full_target_file)
+            with (full_target_file).open('rb') as fh:
                 file_data = fh.read()
             return request.make_response(
                     file_data,
                     headers=[
-                        ('Content-Disposition',  content_disposition(target_file.filename, request)),
-                        ('Content-Type', mimetypes.guess_type(target_file.filename)[0] or 'octet-stream'),
+                        ('Content-Disposition',  content_disposition(full_target_file.filename, request)),
+                        ('Content-Type', mimetypes.guess_type(full_target_file.filename)[0] or 'octet-stream'),
                         ('Content-Length', len(file_data)),
                         ('Cache-Control', 'no-cache'),
                         ],
                     )
         except MissingFile:
+            _logger.error('missing file: %s at %s', target_file, full_target_file)
             return request.not_found('file %r not found' % (target_file, ))
         except Exception:
             _logger.exception('Error processing %r', target_file)
