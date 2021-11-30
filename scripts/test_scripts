@@ -4172,7 +4172,8 @@ def ifpp0_data(script):
                     F328.prod_scheduled_date: 'B10612',
                     F328.prod_date: '0619B1',
                     F328.units_produced: 109,
-                    F328.no_of_batches_a: 7
+                    F328.no_of_batches_a: 7,
+                    F328.prod_qty: 109,
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
@@ -4190,6 +4191,7 @@ def ifpp0_data(script):
                         allergens = 'AB',
                         coating = '800199',
                         batches = 7,
+                        ordered_qty = 109,
                         ),
                     imd(name='F328_261323_production_order'),
                     ),
@@ -4216,7 +4218,8 @@ def ifpp0_data(script):
                     F328.prod_scheduled_date: 'B30318',
                     F328.prod_date: '0321B3',
                     F328.units_produced: 14,
-                    F328.no_of_batches_a: 7
+                    F328.no_of_batches_a: 7,
+                    F328.prod_qty: 10,
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
@@ -4234,6 +4237,7 @@ def ifpp0_data(script):
                         allergens = None,
                         coating = None,
                         batches = 7,
+                        ordered_qty = 10,
                         ),
                     imd(name='F328_279900_production_order'),
                     ),
@@ -4260,7 +4264,8 @@ def ifpp0_data(script):
                     F328.prod_scheduled_date: 'B20917',
                     F328.prod_date: '0921B2',
                     F328.units_produced: 149,
-                    F328.no_of_batches_a: 47
+                    F328.no_of_batches_a: 47,
+                    F328.prod_qty: 175,
                     },
                 fis_rec=XidRec.fromdict(
                     AttrDict(
@@ -4278,6 +4283,7 @@ def ifpp0_data(script):
                         allergens = None,
                         coating = None,
                         batches = 47,
+                        ordered_qty = 175,
                         ),
                     imd(name='F328_273597_production_order'),
                     ),
@@ -4304,7 +4310,8 @@ def ifpp0_data(script):
                     F328.prod_scheduled_date: 'B40629',
                     F328.prod_date: '',
                     F328.units_produced: 0,
-                    F328.no_of_batches_a: 33
+                    F328.no_of_batches_a: 33,
+                    F328.prod_qty: 73,
                     },
                 fis_rec=(
                     XidRec.fromdict(
@@ -4323,6 +4330,7 @@ def ifpp0_data(script):
                             allergens = None,
                             coating = None,
                             batches = 33,
+                            ordered_qty = 73,
                             ),
                         imd(name='F328_293379_1_2_production_order'),
                         ),
@@ -4342,6 +4350,7 @@ def ifpp0_data(script):
                             allergens = None,
                             coating = None,
                             batches = 33,
+                            ordered_qty = 73,
                             ),
                         imd(name='F328_293379_2_2_production_order'),
                         ),
@@ -4369,7 +4378,8 @@ def ifpp0_data(script):
                     F328.prod_scheduled_date: 'B31106',
                     F328.prod_date: '1106B3',
                     F328.units_produced: 0,
-                    F328.no_of_batches_a: 21
+                    F328.no_of_batches_a: 21,
+                    F328.prod_qty: 11,
                     },
                 fis_rec=(
                     XidRec.fromdict(
@@ -4388,6 +4398,7 @@ def ifpp0_data(script):
                             allergens = None,
                             coating = None,
                             batches = 21,
+                            ordered_qty = 11,
                             ),
                         imd(name='F328_288278_1_2_production_order'),
                         ),
@@ -4407,6 +4418,7 @@ def ifpp0_data(script):
                             allergens = None,
                             coating = None,
                             batches = 21,
+                            ordered_qty = 11,
                             ),
                         imd(name='F328_288278_2_2_production_order'),
                         ),
@@ -4434,7 +4446,8 @@ def ifpp0_data(script):
                     F328.prod_scheduled_date: 'B40720',
                     F328.prod_date: '',
                     F328.units_produced: 0,
-                    F328.no_of_batches_a: 17
+                    F328.no_of_batches_a: 17,
+                    F328.prod_qty: 0,
                     },
                 fis_rec=(
                     XidRec.fromdict(
@@ -4453,6 +4466,7 @@ def ifpp0_data(script):
                             allergens = None,
                             coating = None,
                             batches = 17,
+                            ordered_qty = 0,
                             ),
                         imd(name='F328_285961_1_2_production_order'),
                         ),
@@ -4472,6 +4486,7 @@ def ifpp0_data(script):
                             allergens = None,
                             coating = None,
                             batches = 17,
+                            ordered_qty = 0,
                             ),
                         imd(name='F328_285961_2_2_production_order'),
                         ),

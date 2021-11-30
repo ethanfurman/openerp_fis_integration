@@ -1172,7 +1172,7 @@ class IFPP0(Synchronize):
     IMD = 'production_order'
     OE_KEY = 'order_no'
     OE_FIELDS = (
-            'id', 'order_no', 'completed_fis_qty', 'confirmed', 'item_id',
+            'id', 'order_no', 'ordered_qty', 'completed_fis_qty', 'confirmed', 'item_id',
             'formula_code', 'line_id', 'schedule_date', 'finish_date',
             'line_id_set', 'schedule_date_set', 'state', 'coating', 'allergens',
             'batches',
@@ -1182,7 +1182,7 @@ class IFPP0(Synchronize):
             F328.order_no, F328.produced, F328.order_confirmed, F328.prod_no,
             F328.formula_id, F328.formula_rev, F328.dept_id, F328.prod_line,
             F328.prod_scheduled_date, F328.prod_date, F328.units_produced,
-            F328.no_of_batches_a
+            F328.no_of_batches_a, F328.prod_qty
             )
     #
     ProductionOrder = XmlLink
@@ -1262,6 +1262,7 @@ class IFPP0(Synchronize):
         sched_date = fix_date(fis_rec[F328.prod_scheduled_date], 'ymd') or None
         order.schedule_date = sched_date
         order.schedule_date_set = False
+        order.ordered_qty = fis_rec[F328.prod_qty]
         fin_date = fix_date(fis_rec[F328.prod_date], 'mdy') or None
         if fin_date:
             fin_date = local_to_utc(DateTime.combine(fin_date, Time(17)))
