@@ -1302,7 +1302,8 @@ class IFPP0(Synchronize):
     def normalize_records(self, fis_rec, oe_rec):
         super(IFPP0, self).normalize_records(fis_rec, oe_rec)
         #
-        fis_rec.state = oe_rec.state
+        if fis_rec.state == 'draft':
+            fis_rec.state = oe_rec.state
         # if oe_rec already has a finish date, remove it
         # TODO: figure out why a changed finish_date isn't updated on OpenERP
         if oe_rec.finish_date:
