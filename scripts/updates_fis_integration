@@ -18,6 +18,7 @@ from tools import Synchronize
 import errno
 import os
 import socket
+import tools
 import traceback
 
 virtualenv = Path(os.environ['VIRTUAL_ENV'])
@@ -58,7 +59,7 @@ def main(dryrun, list_records, raise_on_exception):
     ir_model_data = oe.get_model('ir.model.data')
     errors = defaultdict(list)
     if dryrun:
-        DRYRUN = True
+        tools.DRYRUN = True
         if not script_verbosity:
             script_verbosity = 1
     LIST_RECORDS = list_records

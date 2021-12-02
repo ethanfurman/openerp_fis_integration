@@ -15,7 +15,7 @@ from dbf import NoneType, NullType, Char, Logical
 from fnx_script_support import grouped_by_column
 from openerplib import DEFAULT_SERVER_DATE_FORMAT, get_records, get_xid_records, XidRec
 from openerplib import Fault, PropertyNames, IDEquality, ValueEquality, Many2One, SetOnce
-from scription import print, echo, error, ViewProgress, script_verbosity, abort
+from scription import print, echo, error, ViewProgress, script_verbosity, abort, empty
 from traceback import format_exception
 from VSS.address import cszk, Rise, Sift, AddrCase, BsnsCase, NameCase, PostalCode
 from VSS.BBxXlate.fisData import fisData
@@ -36,6 +36,8 @@ script_verbosity
 abort
 FIS_ID = None
 FIS_MODULE = None
+
+DRYRUN = False
 
 @PropertyNames
 class XmlLink(IDEquality):
@@ -165,9 +167,9 @@ class SynchronizeType(ABCMeta):
             missing = []
             for setting in (
                     'TN', 'FN', 'RE', 'OE', 'F', 'IMD',
-                    'OE_KEY', 'FIS_IGNORE_RECORD', 'FIS_SCHEMA',
+                    'FIS_KEY', 'OE_KEY', 'FIS_IGNORE_RECORD', 'FIS_SCHEMA',
                 ):
-                if getattr(cls, setting, None) is None:
+                if getattr(cls, setting, empty) is empty:
                     missing.append(setting)
             
             for setting in ('OE_FIELDS', 'OE_FIELDS_LONG'):
@@ -214,13 +216,14 @@ class Synchronize(SynchronizeABC):
     FIS_IGNORE_RECORD = lambda self, rec: False
     OE_KEY_MODULE = None
     FIELDS_CHECK_IGNORE = ()
+
     def FIS_IGNORE_RECORD(self, rec):
-        if self.extra.get('key_filter') is not None:
-            if self.extra['key_filter'] == rec[self.FIS_KEY]:
-                return False
-            else:
-                return True
-        return False
+        if self.extra.get('key_filter') is None:
+            return False
+        elif self.extra['key_filter'] == rec[self.FIS_KEY]:
+            return False
+        else:
+            return True
 
     get_fis_table = staticmethod(fisData)
     get_xid_records = staticmethod(get_xid_records)
@@ -238,6 +241,7 @@ class Synchronize(SynchronizeABC):
             OE  -> OE model name
             F   -> formated table number, used as prefix for imd name [ 'F262' or 'F163_F65' ]
             IMD -> (Odoo) table name, used as suffix for imd name
+            FIS_KEY             -> key field in FIS tables
             OE_KEY              -> key field in OE tables
             OE_FIELDS_LONG      -> OE fields to fetch for long comparisons
             FIS_SCHEMA          -> FIS fields to use for quick comparisons
@@ -249,6 +253,7 @@ class Synchronize(SynchronizeABC):
             OE_KEY_MODULE       -> module field value or field and value, if any
             FIELDS_CHECK_IGNORE -> fields to ignore during integrity check
         """
+        self.dryrun = DRYRUN
         self.erp = connect
         self.config = config
         self.context = {'fis-updates': True, 'active_test': False}
@@ -310,7 +315,6 @@ class Synchronize(SynchronizeABC):
                 changes = {}
                 for field in self.OE_FIELDS:
                     if old[field] != new[field]:
-                        echo('changing %r from %r to %r' % (field, old[field], new[field]))
                         if not old[field] and not new[field]:
                             echo('old', old)
                             echo('new', new)
@@ -941,10 +945,13 @@ class Synchronize(SynchronizeABC):
                                     x = x.value
                                 ids.append(x)
                             rec[key] = [(6, 0, ids)]
-                new_id = self.model.create(rec)
-                if log_record is not None:
-                    with log_record:
-                        log_record.id = new_id
+                if self.dryrun:
+                    return
+                else:
+                    new_id = self.model.create(rec)
+                    if log_record is not None:
+                        with log_record:
+                            log_record.id = new_id
             except Exception as exc:
                 vals = {self.OE_KEY: rec[self.OE_KEY]}
                 if self.OE_KEY_MODULE:
@@ -997,8 +1004,11 @@ class Synchronize(SynchronizeABC):
                                     x = x.value
                                 value_ids.append(x)
                             changes[fn] = [(6, 0, value_ids)]
-                self.model.write(ids, changes)
-                self.changed_count += len(ids)
+                if self.dryrun:
+                    return
+                else:
+                    self.model.write(ids, changes)
+                    self.changed_count += len(ids)
             except Fault as exc:
                 self.log_exc(exc, changes)
 
@@ -1012,10 +1022,13 @@ class Synchronize(SynchronizeABC):
             actioning = action[:-1] + 'ing'
             print('%s %d records' % (actioning, len(self.remove_records)))
             ids = [r.id for r in self.remove_records.values()]
-            if action == 'delete':
-                self.model.unlink(ids)
+            if self.dryrun:
+                return
             else:
-                self.model.write(ids, {'active': False})
+                if action == 'delete':
+                    self.model.unlink(ids)
+                else:
+                    self.model.write(ids, {'active': False})
             oe_records = self.oe_records.copy()
             self.oe_records.clear()
             self.oe_records.update(dict(

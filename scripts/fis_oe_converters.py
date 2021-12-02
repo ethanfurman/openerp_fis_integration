@@ -69,6 +69,7 @@ class ARCI(Synchronize):
             'fis.customer_product_xref',
             )[odoo_erp]
     IMD = 'customer_product_xref'
+    FIS_KEY = None
     OE_KEY = 'key'
     OE_KEY_MODULE = 'source','fis'
     OE_FIELDS = (
@@ -177,6 +178,7 @@ class CNVZaa(Synchronize):
             )[odoo_erp]
     IMD = 'product_availability'
     RE = r"aa10."
+    FIS_KEY = F97.availability
     OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F97'
     OE_FIELDS = (
@@ -225,6 +227,7 @@ class CNVZas(Synchronize):
     OE = 'product.category'
     IMD = 'product_category'
     RE = r"as10.."
+    FIS_KEY = F11.sales_category_id
     OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F11'
     OE_FIELDS = ('id', FIS_MODULE, FIS_ID, 'name', 'parent_id', 'fis_shelf_life')
@@ -289,6 +292,7 @@ class CNVZd0(Synchronize):
     RE = r"D010."
     OE = 'fis.account.customer_terms'
     IMD = 'account_customer_terms'
+    FIS_KEY = F8.code
     OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F8'
     OE_FIELDS = ('id', FIS_MODULE, FIS_ID, 'description')
@@ -329,6 +333,7 @@ class CNVZf(Synchronize):
             )[odoo_erp]
     IMD = 'production_line'
     RE = r"f10.."
+    FIS_KEY = F341.prod_line_code
     OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F341'
     OE_FIELDS = (
@@ -390,19 +395,27 @@ class CNVZO1(Synchronize):
     IMD = 'account_transmitter_code'
     #
     RE = r"O110......"
+    FIS_KEY = F192.transmitter_no
     OE_KEY = 'transmitter_no'
     OE_FIELDS = ('id', 'transmitter_no', 'transmitter_name', 'ship_to_xml_id', 'ship_to_id')
     #
-    FIS_IGNORE_RECORD = lambda self, rec: not (
-            rec[F192.transmitter_no].strip().isdigit()
-            and rec[F192.status][0:1] == 'A'
-            and rec[F192.cust_no].strip()
-            )
     FIS_SCHEMA = (
             F192.transmitter_name, F192.cust_no, F192.ship_to_id, F192.status,
             )
     #
     TransmitterCode = XmlLink
+
+    def FIS_IGNORE_RECORD(self, rec):
+        if super(CNVZO1, self).FIS_IGNORE_RECORD(rec):
+            return True
+        elif (
+                not rec[F192.transmitter_no].strip().isdigit()
+                or rec[F192.status][0:1] != 'A'
+                or not rec[F192.cust_no].strip()
+            ):
+            return True
+        else:
+            return False
 
     def __init__(self, oe, config, *args, **kwds):
         super(CNVZO1, self).__init__(oe, config, *args, **kwds)
@@ -507,6 +520,7 @@ class CNVZSV(SynchronizeAddress):
     OE = 'res.partner'
     IMD = 'res_partner'
     RE = r"SV10.."
+    FIS_KEY = F27.code
     OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F27'
     OE_FIELDS = (
@@ -519,10 +533,15 @@ class CNVZSV(SynchronizeAddress):
             )
 
     def FIS_IGNORE_RECORD(self, fis_rec):
-        return (
+        if super(CNVZSV, self).FIS_IGNORE_RECORD(fis_rec):
+            return True
+        elif (
                 fis_rec[F27.code] in ('', '99')
                 or not self.process_name_address(F27, fis_rec)[0]
-                )
+            ):
+            return True
+        else:
+            return False
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
@@ -571,6 +590,7 @@ class CNVZ_Z_K(Synchronize):
     IMD = 'account_salesperson'
     RE = r"Z..."
     RE_2ND = r"K...."
+    FIS_KEY = F47.salesperson_id
     OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F47'
     OE_FIELDS = ('id', FIS_MODULE, FIS_ID, 'fis_name', 'user_id', 'ordered_by_no')
@@ -862,6 +882,7 @@ class CSMSS(SynchronizeAddress):
     RE = r"10......1...."
     OE = 'res.partner'
     IMD = 'res_partner'
+    FIS_KEY = F34.code
     OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F%s' % TN
     OE_FIELDS = (
@@ -875,15 +896,22 @@ class CSMSS(SynchronizeAddress):
             F34.name, F34.addr1, F34.addr2, F34.addr3, F34.postal,
             F34.tele, F34.sales_contact,
             )
-    FIS_IGNORE_RECORD = lambda self, rec: (
+
+    ShipTo = XmlLink
+
+    def FIS_IGNORE_RECORD(self, rec):
+        if super(CSMSS, self).FIS_IGNORE_RECORD(rec):
+            return True
+        elif (
                 not rec[F34.name]
                 or re.search('.*additional.*ship.*to.*', rec[F34.name], re.I)
                 or re.search('.*additional.*ship.*to.*', rec[F34.addr1], re.I)
                 or re.search('.*additional.*ship.*to.*', rec[F34.addr2], re.I)
                 or re.search('.*additional.*ship.*to.*', rec[F34.addr3], re.I)
-                )
-
-    ShipTo = XmlLink
+            ):
+            return True
+        else:
+            return False
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         "additional ship-to addresses"
@@ -954,6 +982,7 @@ class EMP1(SynchronizeAddress):
     OE = 'hr.employee'
     IMD = 'hr_employee'
     RE = r"10....."
+    FIS_KEY = F74.emp_num
     OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F74'
     OE_FIELDS = [
@@ -972,7 +1001,13 @@ class EMP1(SynchronizeAddress):
             F74.marital_status, F74.pension_status, F74.gender, F74.emergency_contact,
             F74.emergency_phone, F74.exempt_fed, F74.exempt_state, F74.hourly_rate,
             )
-    FIS_IGNORE_RECORD = lambda self, rec: int(rec[F74.emp_num]) >= 9000
+    def FIS_IGNORE_RECORD(self, rec):
+        if super(EMP1, self).FIS_IGNORE_RECORDS(rec):
+            return True
+        elif int(rec[F74.emp_num]) >= 9000:
+            return True
+        else:
+            return False
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
@@ -1056,15 +1091,23 @@ class IFMS(Synchronize):
             'fis.product.formula',
             )[odoo_erp]
     IMD = 'product_formula'
+    FIS_KEY = F320.formula_id
     OE_KEY = 'name'
     OE_FIELDS = ('id', 'name', 'formula', 'description', 'coating', 'allergens')
     FIS_SCHEMA = (
             F320.formula_id, F320.rev_no,
             F320.desc, F320.coating, F320.allergens,
             )
-    FIS_IGNORE_RECORD = lambda self, rec: len(rec[F320.formula_id]) != 6
     #
     ProductFormula = XmlLink
+
+    def FIS_IGNORE_RECORD(self, rec):
+        if super(IFMS, self).FIS_IGNORE_RECORD(rec):
+            return True
+        elif len(rec[F320.formula_id]) != 6:
+            return True
+        else:
+            return False
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         "product formula"
@@ -1106,17 +1149,24 @@ class IFDT(Synchronize):
             'fis.product.formula.ingredient',
             )[odoo_erp]
     IMD = 'product_ingredient'
+    FIS_KEY = F322.formula_id
     OE_KEY = 'name'
     OE_FIELDS = ('id', 'name', 'sequence', 'formula_id', 'item_id', 'qty_needed', 'qty_desc')
     FIS_SCHEMA = (
             F322.formula_id, F322.rev_no, F322.desc_batch_1, F322.line_no,
             )
-    FIS_IGNORE_RECORD = lambda self, rec: (
-              not IFMS.ProductFormula('%s-%s' % (rec[F322.formula_id], rec[F322.rev_no]))
-              or rec[F322.ingr_code_batch_1] in ignored_ingredients
-              or rec[F322.qty_batch_1] <= 0
-              or not NVTY.Product(rec[F322.ingr_code_batch_1])
-              )
+    def FIS_IGNORE_RECORD(self, rec):
+        if super(IFDT, self).FIS_IGNORE_RECORD(rec):
+            return True
+        elif (
+                not IFMS.ProductFormula('%s-%s' % (rec[F322.formula_id], rec[F322.rev_no]))
+                or rec[F322.ingr_code_batch_1] in ignored_ingredients
+                or rec[F322.qty_batch_1] <= 0
+                or not NVTY.Product(rec[F322.ingr_code_batch_1])
+            ):
+            return True
+        else:
+            return False
 
     def __init__(self, oe, config, *args, **kwds):
         super(IFDT, self).__init__(oe, config, *args, **kwds)
@@ -1165,11 +1215,13 @@ class IFPP0(Synchronize):
     FN = 'ifpp0'
     F = 'F328'
     RE = r'10(......)000010000'
+    RE_filter = r'10%s000010000'
     OE = (
             'fnx.pd.order',
             'fis.production.order',
             )[odoo_erp]
     IMD = 'production_order'
+    FIS_KEY = F328.order_no
     OE_KEY = 'order_no'
     OE_FIELDS = (
             'id', 'order_no', 'ordered_qty', 'completed_fis_qty', 'confirmed', 'item_id',
@@ -1329,22 +1381,26 @@ class IFPP1(Synchronize):
             'fis.production.ingredient',
             )[odoo_erp]
     IMD = 'production_ingredient'
+    FIS_KEY = F329.order_no
     OE_KEY = 'name'
     OE_FIELDS = ('id', 'name', 'sequence', 'order_ids', 'item_id', 'qty_needed', 'qty_desc')
     FIS_SCHEMA = (
             F329.order_no, F329.ingr_code_batch_1, F329.units_batch_1, F329.qty_batch_1, F329.formula_line_no
             )
     def FIS_IGNORE_RECORD(self, rec):
-        if rec[F329.item_type_batch_1] == 'M':
+        if super(IFPP1, self).FIS_IGNORE_RECORD(rec):
             return True
-        elif rec[F329.ingr_code_batch_1] in ignored_ingredients:
-            return True
-        elif rec[F329.qty_batch_1] <= 0:
+        elif (
+                rec[F329.item_type_batch_1] == 'M'
+                or rec[F329.ingr_code_batch_1] in ignored_ingredients
+                or rec[F329.qty_batch_1] <= 0
+            ):
             return True
         order_no = rec[F329.order_no]
         if order_no not in self.oe_orders:
             return True
-        return False
+        else:
+            return False
 
     def __init__(self, oe, config, *args, **kwds):
         super(IFPP1, self).__init__(oe, config, *args, **kwds)
@@ -1421,6 +1477,7 @@ class NVTY(Synchronize):
     RE = r'......101000    101\*\*'
     OE = 'product.product'
     IMD = 'product_product'
+    FIS_KEY = F135.item_id
     OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F%s' % TN
     OE_FIELDS_QUICK = (
@@ -1450,8 +1507,12 @@ class NVTY(Synchronize):
     Product = XmlLink
 
     def FIS_IGNORE_RECORD(self, rec):
-        return rec[F135.wrhse_no] != '1000'
-
+        if super(IFPP1, self).FIS_IGNORE_RECORD(rec):
+            return True
+        elif rec[F135.wrhse_no] != '1000':
+            return True
+        else:
+            return False
 
     def __init__(self, *args, **kwds):
         super(NVTY, self).__init__(*args, **kwds)
@@ -1616,6 +1677,7 @@ class POSM_VNMS(SynchronizeAddress):
     OE = 'res.partner'
     IMD = 'res_partner'
     RE = r"10(......)"
+    FIS_KEY = F163.code, F65.code
     OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F163'
     OE_FIELDS = (
@@ -1631,15 +1693,21 @@ class POSM_VNMS(SynchronizeAddress):
 
     def FIS_IGNORE_RECORD(self, rec):
         key = rec['An$(3,6)']
+        key_filter = self.extra.get('key_filter')
+        if key_filter and key != key_filter:
+            return True
         name = rec['Bn$']
         address = (' '.join([rec[c] for c in ('Cn$','Dn$','En$')])).upper()
-        return (
+        if (
                 not name
                 or len(key) != 6 or not key.isdigit()
                 or '**NO LONGER HERE**' in address
                 or '**OLDER/N.L.H. EMPLOYEE**' in address
                 or '**DISCO' in address
-                )
+            ):
+            return True
+        else:
+            return False
 
     def convert_fis_rec(self, posm_vnms, use_ignore=True):
         #
