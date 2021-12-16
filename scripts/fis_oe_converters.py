@@ -1296,7 +1296,7 @@ class IFPP0(Synchronize):
         order.completed_fis_qty = fis_rec[F328.units_produced]
         status = fis_rec[F328.produced]
         if status == 'Y':
-	order.state = 'complete'
+            order.state = 'complete'
         elif status == 'X':
             order.state = 'cancelled'
         else:
