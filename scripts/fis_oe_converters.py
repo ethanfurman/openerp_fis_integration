@@ -1003,7 +1003,7 @@ class EMP1(SynchronizeAddress):
             F74.emergency_phone, F74.exempt_fed, F74.exempt_state, F74.hourly_rate,
             )
     def FIS_IGNORE_RECORD(self, rec):
-        if super(EMP1, self).FIS_IGNORE_RECORDS(rec):
+        if super(EMP1, self).FIS_IGNORE_RECORD(rec):
             return True
         elif int(rec[F74.emp_num]) >= 9000:
             return True
