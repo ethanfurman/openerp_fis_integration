@@ -44,6 +44,7 @@ INVALID_CATEGORY_XML_ID = 'fis_invalid_product_category'
 ETC_CATEGORY_XML_ID = '9'
 
 ONE_YEAR_AGO = Date.today().replace(delta_year=-1)
+BUSINESS_HOURS = Time(6) <= Time.now() < Time(23)
 
 # For converters that treat 'quick' and 'full' diferently, there are two ways to calculate changes
 # in 'quick' mode after using get_changed_fis_records() to isolate the potential changes:
@@ -1296,7 +1297,10 @@ class IFPP0(Synchronize):
         order.completed_fis_qty = fis_rec[F328.units_produced]
         status = fis_rec[F328.produced]
         if status == 'Y':
-            order.state = 'complete'
+            if BUSINESS_HOURS:
+                order.state = 'produced'
+            else:
+                order.state = 'complete'
         elif status == 'X':
             order.state = 'cancelled'
         else:
