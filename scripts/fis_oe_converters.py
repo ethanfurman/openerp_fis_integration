@@ -1511,7 +1511,7 @@ class NVTY(Synchronize):
     Product = XmlLink
 
     def FIS_IGNORE_RECORD(self, rec):
-        if super(IFPP1, self).FIS_IGNORE_RECORD(rec):
+        if super(NVTY, self).FIS_IGNORE_RECORD(rec):
             return True
         elif rec[F135.wrhse_no] != '1000':
             return True
