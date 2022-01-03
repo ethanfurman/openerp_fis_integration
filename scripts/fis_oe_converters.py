@@ -43,10 +43,11 @@ SALEABLE_CATEGORY_XML_ID = 'product_category_1'
 INVALID_CATEGORY_XML_ID = 'fis_invalid_product_category'
 ETC_CATEGORY_XML_ID = '9'
 
-ONE_YEAR_AGO = Date.today().replace(delta_year=-1)
+TODAY = Date.today()
+ONE_YEAR_AGO = TODAY.replace(delta_year=-1)
 BUSINESS_HOURS = Time(6) <= Time.now() < Time(23)
 
-# For converters that treat 'quick' and 'full' diferently, there are two ways to calculate changes
+# For converters that treat 'quick' and 'full' differently, there are two ways to calculate changes
 # in 'quick' mode after using get_changed_fis_records() to isolate the potential changes:
 #
 # - convert the new records into OpenERP records and retrieve the existing OpenERP
@@ -1295,9 +1296,13 @@ class IFPP0(Synchronize):
         order.order_no = key
         order.item_id = NVTY.Product(item)
         order.completed_fis_qty = fis_rec[F328.units_produced]
+        fin_date = fix_date(fis_rec[F328.prod_date], 'mdy') or None
+        if fin_date:
+            fin_date = local_to_utc(DateTime.combine(fin_date, Time(17)))
+        order.finish_date = fin_date
         status = fis_rec[F328.produced]
         if status == 'Y':
-            if BUSINESS_HOURS:
+            if fin_date == TODAY and BUSINESS_HOURS:
                 order.state = 'produced'
             else:
                 order.state = 'complete'
@@ -1319,10 +1324,6 @@ class IFPP0(Synchronize):
         order.schedule_date = sched_date
         order.schedule_date_set = False
         order.ordered_qty = fis_rec[F328.prod_qty]
-        fin_date = fix_date(fis_rec[F328.prod_date], 'mdy') or None
-        if fin_date:
-            fin_date = local_to_utc(DateTime.combine(fin_date, Time(17)))
-        order.finish_date = fin_date
         order.completed_fis_qty = fis_rec[F328.units_produced] or 0
         formula = IFMS.ProductFormula(item)
         if formula:
