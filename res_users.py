@@ -1,6 +1,7 @@
 from openerp.osv import fields, osv
 from openerp.tools import SUPERUSER_ID, self_ids, get_ids
 from openerp.exceptions import ERPError
+from fnx_fs.fields import files
 
 import re
 
@@ -10,7 +11,10 @@ class res_users(osv.Model):
         - add link to the FIS transmitter accounts
     """
     _name = 'res.users'
-    _inherit = ['res.users']
+    _inherit = ['res.users', 'fnx_fs.fs']
+
+    _fnxfs_path = 'res_users'
+    _fnxfs_path_fields = ['login']
 
     _columns = {
         'fis_partner_id': fields.many2one(
@@ -42,8 +46,16 @@ class res_users(osv.Model):
             'fis.account.salesperson', 'user_id',
             "Salesperson Info",
             ),
+        'fis_salesrep_codes': fields.one2many('fis.account.salesperson', 'user_id', string='Sales Rep Codes'),
+        'fis_files': files('misc_files', string='Files'),
         }
 
+    def fnxfs_folder_name(self, records):
+        "default leaf folder name is the record's reference number"
+        res = {}
+        for record in records:
+            res[record['id']] = record['login']
+        return res
 
     def onchange_fis_partner(self, cr, uid, ids, partner_id, ship_to_id, transmitter_id, context=None):
         """

@@ -1,8 +1,13 @@
 !!! xml1.0
+
+-view = 'ir.ui.view'
+-action = 'ir.actions.act_window'
+-action_view = 'ir.actions.act_window.view'
+
 ~openerp
     ~data
 
-        ~record model='ir.ui.view' #fis_view_users_form
+        ~record model=view #fis_view_users_form
             @model: res.users
             @inherit_id ref='base.view_users_form'
             @priority eval='10'
@@ -24,5 +29,48 @@
                                 @fis_online_order_show_po_number attrs="{'readonly': [('fis_transmitter_id','=',False)]}"
 
 
-        ~record model='ir.actions.act_window' #base.action_res_users
+        ~record model=action #base.action_res_users
             @context: {'reset_password': False}
+
+
+        // Messaging -> Miscellany
+
+        ~record model=view #view_misc_files_list
+            @name: res.users.misc_files.list
+            @model: res.users
+            @arch type='xml'
+                ~tree $Users create='false' edit='false' delete='false'
+                    @id invisible='1'
+                    @login
+
+        ~record model=view #view_misc_files_form
+            @name: res.users.misc_files.form
+            @model: res.users
+            @arch type='xml'
+                ~form $Miscellaneous_Files version='7.0' create='false' edit='false' delete='false'
+                    @id invisible='1'
+                    @fis_files
+
+        ~record model=action #action_messaging_fis_misc_files
+            @name: Files for
+            @res_model: res.users
+            @view_type: form
+            @view_id ref='view_misc_files_list'
+            @view_mode: tree,form
+            @domain: [('id','=',uid)]
+
+        ~record model=action_view #action_messaging_fis_misc_files_list
+            @sequence eval='21'
+            @view_mode: tree
+            @view_id ref='view_misc_files_list'
+            @act_window_id ref='action_messaging_fis_misc_files'
+
+        ~record model=action_view #action_messaging_fis_misc_files_form
+            @sequence eval='22'
+            @view_mode: form
+            @view_id ref='view_misc_files_form'
+            @act_window_id ref='action_messaging_fis_misc_files'
+
+        ~menuitem name='FIS Files' #menu_messaging_fis_files parent='mail.messaging_miscellany' action='action_messaging_fis_misc_files' sequence='1'
+
+            
