@@ -9,6 +9,7 @@ import re
 from aenum import Enum, auto
 from antipathy import Path
 from ast import literal_eval
+from dbf import Date, DateTime, Time
 from fnx_script_support import all_equal
 from openerplib import get_connection, get_records, AttrDict, Query, Many2One, Fault
 from scription import *
@@ -591,7 +592,10 @@ def sql_update(command):
     values = convert_set(set_clause)
     if not values:
         abort('malformed command -- no changes specified')
-    domain, constraints = convert_where(where_clause)
+    if where_clause:
+        domain, constraints = convert_where(where_clause)
+    else:
+        domain = constraints = []
     if constraints:
         abort('constraints not supported in UPDATE command')
     #
@@ -819,8 +823,6 @@ def convert_set(clausa):
                     oval = value
                     value = eval(value)
                 except Exception:
-                    pass
-                if not isinstance(value, (int, long, float)):
                     abort('cannot use/convert data: %r' % (oval, ))
             values[field] = value
             if clausa.startswith(','):
@@ -851,6 +853,7 @@ def convert_where(clausa):
             else:
                 abort('only one field can be returned from subqueries')
 
+    print('subquery: %r,  clausa: %r' % (subquery, clausa))
     clausa = re.sub(r"\(.*\)", subquery, clausa)
     print('after subquery: %r' % (clausa, ))
 
@@ -1382,6 +1385,8 @@ def next_word(command):
 parse_sql("select id, name, login from res.users where name=ilike 'ethan' order by login")
 
 
-
 # run it
 Main()
+
+# keep pyflakes happy
+Date, Time, DateTime
