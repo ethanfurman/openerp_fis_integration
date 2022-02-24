@@ -17,8 +17,11 @@ except ImportError:
 from antipathy import Path
 from datetime import timedelta
 from dbf import DateTime
+from random import choice
 from scription import Exit, error, Job, OrmFile, print
-import time
+from time import mktime
+
+# notification support
 
 NOW = DateTime.now()
 TOMORROW = NOW.replace(delta_day=+1).date()
@@ -31,6 +34,9 @@ NOTIFIED = BASE / 'var/notified.'
 SCRIPT_NAME = None
 
 class Notify(object):
+    """
+    notifies users via email/text message when a script signals failure
+    """
 
     def __init__(self, name, schedule=None, notified=None, cut_off=0, grace=13, stable=5, renotify=67):
         # name: name of script (used for notified file name)
@@ -308,6 +314,10 @@ class WeeklyAvailability(object):
 
 
 def which_days(text):
+    """
+    return days from text string
+    i.e. 'mo-we' -> ['mo','tu','we']
+    """
     week = ['su','mo','tu','we','th','fr','sa']
     text = text.lower()
     groups = text.split(',')
@@ -331,7 +341,9 @@ def which_days(text):
 
 def time_stamp(dt):
     "return POSIX timestamp as float"
-    return time.mktime((dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, -1, -1, -1)) + dt.microsecond / 1e6
+    return mktime((dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, -1, -1, -1)) + dt.microsecond / 1e6
+
+# general
 
 def grouped(it, size):
     'yield chunks of it in groups of size'
@@ -377,4 +389,211 @@ def all_equal(iterator, test=None):
         if not test(item):
             return False
     return True
+
+class Sentinel(object):
+    "provides better help for sentinels"
+    #
+    def __init__(self, text, boolean=True):
+        self.text = text
+        self.boolean = boolean
+    #
+    def __repr__(self):
+        return "%s(%r, bool=%r)" % (self.text, self.boolean)
+    #
+    def __str__(self):
+        return '<%s>' % self.text
+    #
+    def __bool__(self):
+        return self.boolean
+    __nonzero__ = __bool__
+
+_trans_sentinel = Sentinel('no strip argument')
+def translator(frm=u'', to=u'', delete=u'', keep=u'', strip=_trans_sentinel, compress=False):
+    """
+    modify string by transformation and/or deletion of characters
+    """
+    # delete and keep are mutually exclusive
+    if delete and keep:
+        raise ValueError('cannot specify both keep and delete')
+    replacement = replacement_ord = None
+    if len(to) == 1:
+        if frm == u'':
+            replacement = to
+            replacement_ord = ord(to)
+            to = u''
+        else:
+            to = to * len(frm)
+    if len(to) != len(frm):
+        raise ValueError('frm and to should be equal lengths (or to should be a single character)')
+    uni_table = dict(
+            (ord(f), ord(t))
+            for f, t in zip(frm, to)
+            )
+    for ch in delete:
+        uni_table[ord(ch)] = None
+    def translate(s):
+        if isinstance(s, bytes):
+            s = s.decode('latin1')
+        if keep:
+            for chr in set(s) - set(keep):
+                uni_table[ord(chr)] = replacement_ord
+        s = s.translate(uni_table)
+        if strip is not _trans_sentinel:
+            s = s.strip(strip)
+        if replacement and compress:
+            s = replacement.join([p for p in s.split(replacement) if p])
+        return s
+    return translate
+
+def hrtd(td):
+    "human readable time delta"
+    seconds = td.total_seconds()
+    days, seconds = divmod(seconds, 60*60*24)
+    hours, seconds = divmod(seconds, 60*60)
+    minutes, seconds = divmod(seconds, 60)
+    if seconds:
+        minutes += 1
+    res = []
+    if days:
+        res.append('%d days' % days)
+    if hours:
+        res.append('%d hours' % hours)
+    if minutes:
+        if minutes != 1:
+            res.append('%d minutes' % minutes)
+        else:
+            res.append('%d minute' % minutes)
+    return ', '.join(res)
+
+class xrange(object):
+    '''
+    accepts arbitrary objects to use to produce sequences
+    '''
+
+    def __init__(self, start, stop=None, step=None, count=None, epsilon=None):
+        if stop is not None and count is not None:
+            raise ValueError("cannot specify both stop and count")
+        if stop is None and count is None:
+            # check for default start based on type
+            start, stop = None, start
+            try:
+                start = type(stop)(0)
+            except Exception:
+                raise ValueError("start must be specified for type %r" %
+                        type(stop))
+        if start is None:
+            ref = type(stop)
+        else:
+            ref = type(start)
+        if step is None:
+            try:
+                step = ref(1)
+            except TypeError:
+                raise ValueError("step must be specified for type %r" %
+                        type(stop))
+        if epsilon is None:
+            try:
+                epsilon = .5 * step
+                if not isinstance(epsilon, ref):
+                    raise TypeError
+            except TypeError:
+                pass
+        self.start = self.init_start = start
+        self.stop = stop
+        self.step = step
+        self.count = self.init_count = count
+        self.epsilon = epsilon
+
+    def __contains__(self, value):
+        start, stop, step = self.start, self.stop, self.step
+        count = self.count
+        if callable(step):
+            raise TypeError(
+                    "range with step %r does not support containment checks" %
+                    step)
+        try:
+            value % step
+        except TypeError:
+            raise TypeError(
+                    "range of %s with step %s does not support "
+                    "containment checks" % (type(start), type(step)))
+        if stop is None:
+            stop = start + (step * count)
+        if stop == start:
+            return False
+        if start < stop and not start <= value < stop:
+            return False
+        elif stop < start and not stop >= value > stop:
+            return False
+        try:
+            distance = value - start
+            return distance % step == 0.0
+        except TypeError:
+            raise TypeError(
+                    "range of %s with step %s does not support "
+                    "containment checks" % (type(start), type(step)))
+
+    def __iter__(self):
+        start = self.start
+        stop = self.stop
+        step = self.step
+        count = self.count
+        epsilon = self.epsilon
+        if stop is not None and epsilon:
+            stop -= epsilon
+        value = None
+        i = -1
+        while 'more values to yield':
+            i += 1
+            if callable(step):
+                if i:
+                    value = step(start, i, value)
+                else:
+                    value = start
+            else:
+                value = start + i * step
+            if count is not None:
+                if count < 1:
+                    break
+                count -= 1
+            else:
+                if stop > start and value >= stop:
+                    break
+                if stop < start and value <= stop:
+                    break
+            yield value
+
+    def __repr__(self):
+        values = [
+                '%s=%r' % (k,v)
+                for k,v in (
+                    ('start',self.start),
+                    ('stop',self.stop),
+                    ('step', self.step),
+                    ('count', self.count),
+                    ('epsilon', self.epsilon),
+                    )
+                if v is not None
+                ]
+        return '%s(%s)' % (self.__class__.__name__, ', '.join(values))
+
+def generate_passphrase(words=[]):
+    """
+    xkcd password generator
+    http://xkcd.com/936/
+    """
+    if not words:
+        with open('/usr/share/dict/words') as fh:
+            for line in fh:
+                word = line.strip()
+                if word.isalpha() and word.islower() and 4 <= len(word) <= 9:
+                    words.append(word)
+    pass_phrase = []
+    while len(pass_phrase) < 4:
+        word = choice(words)
+        if word in pass_phrase:
+            continue
+        pass_phrase.append(word)
+    return ' '.join(pass_phrase)
+
 
