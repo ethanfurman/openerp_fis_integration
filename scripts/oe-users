@@ -39,7 +39,7 @@ def main():
     else:
         reset_photos = False
     print('force update: %s\nphoto reset: %s' % (force_update, reset_photos), verbose=2)
-    if script_command_name in ('photos', 'update', 'update_transmitter_logins'):
+    if script_command_name in ('create', 'photos', 'update', 'update_transmitter_logins'):
         oe = get_connection(
                 hostname=config.openerp.host,
                 database=config.openerp.db,
@@ -371,8 +371,11 @@ def update():
         line[5].append('human_resources')
         logins.add(line[2])
         data.append(line)
+    if not data:
+        print('nothing to do')
+        return
     for row in data:
-        print('checking', row[6], verbose=2)
+        print('checking', row[6], '...', verbose=2, end='')
         try:
             # groups is which groups this user is allowed to be in (strings)
             # permissions is which groups the user is actually in (list of ints)
@@ -389,8 +392,10 @@ def update():
             emp_num, old_login, login, password, active, groups, email, name = row
             user = [user for user in users if user.login == old_login][0]
         except IndexError:
+            print('not found', verbose=2)
             not_found.append(row)
         else:
+            print('', verbose=2)
             # monitored_groups is the groups we care about
             # groups are the groups the user can belong to that we care about
             # user is the user record
@@ -530,6 +535,8 @@ def update():
                 error(str(exc).replace('\\n','\n'))
                 row = row + [exc.message or 'index failure']
                 failed.append(row)
+            except TypeError, exc:
+                row = row + [exc.message or 'type error']
     for tb, problems in errors.items():
         error()
         for p in problems:
