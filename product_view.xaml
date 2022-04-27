@@ -438,6 +438,7 @@
                                 @transmitter_no readonly='1' attrs="{'invisible': [('portal_customer','=',False)]}"
                                 @partner_crossref_list $Product_list_for readonly='1'
                         ~group attrs="{'invisible': [('partner_crossref_list','=',False)]}"
+                            // HEB fields
                             @item_ids
                              | nolabel='1'
                              | attrs="{'invisible': [('partner_crossref_list','!=','HE447')]}"
@@ -453,6 +454,7 @@
                                     @product_fis_id invisible='1'
                                     @partner_product_code invisible='1'
                                     @product_desc invisible='1'
+                            // non-HEB fields
                             @new_item_ids
                              | nolabel='1'
                              | attrs="{'invisible': [('partner_crossref_list','=','HE447')]}"

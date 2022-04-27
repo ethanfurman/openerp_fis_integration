@@ -10,10 +10,14 @@ from aenum import Enum, auto
 from antipathy import Path
 from ast import literal_eval
 from dbf import Date, DateTime, Time
-from fnx_script_support import all_equal
-from openerplib import get_connection, get_records, AttrDict, Query, Many2One, Fault
+from fnx_script_support import all_equal, translator
+from openerplib import get_connection, get_records, AttrDict, Query, Many2One
 from scription import *
-from VSS.utils import translator
+
+try:
+    from xmlrpclib import Fault
+except ImportError:
+    from xmlrpc.client import Fault
 
 # globals
 
@@ -1382,11 +1386,11 @@ def next_word(command):
 # parse_sql('select this, that from res.users')
 # parse_sql('describe product.product')
 # parse_sql('delete from project.task where id=99')
-parse_sql("select id, name, login from res.users where name=ilike 'ethan' order by login")
+# parse_sql("select id, name, login from res.users where name=ilike 'ethan' order by login")
 
 
 # run it
-Main()
+Run()
 
 # keep pyflakes happy
 Date, Time, DateTime

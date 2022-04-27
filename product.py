@@ -884,6 +884,21 @@ class product_fis2customer(osv.Model):
             ),
         }
 
+    def name_search(self, cr, uid, name='', args=None, operator='ilike', context=None, limit=100):
+        context = context or {}
+        if not args:
+            args = []
+        args.insert(0, ('sale_ok','=',True))
+        if name:
+            if name[0] == ' ':
+                ids = self.search(cr, uid, [('xml_id','ilike',name.lstrip())]+args, limit=limit, context=context)
+            else:
+                ids = self.search(cr, uid, [('xml_id','=ilike',name+'%')]+args, limit=limit, context=context)
+            if ids:
+                return self.name_get(cr, uid, ids, context=context)
+        return super(xmlid, self).name_search(cr, uid, name=name, args=args, operator=operator, context=context, limit=limit)
+
+
 
 class product_online_order(osv.Model):
     _name = 'fis_integration.online_order'
