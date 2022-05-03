@@ -311,12 +311,12 @@ def product_description(quick, update, *items):
         for fis_code, product_id in ViewProgress(saleable_items.items()):
                 print('  code: %r' % (fis_code, ), verbose=3)
                 values = {
-                        'key': '-all--%s-' % (fis_code, ),
+                        'key': '-all--%s' % (fis_code, ),
                         'list_code': '-all-',
                         'fis_code': fis_code,
                         'fis_product_id': product_id,
                         'customer_product_code': fis_code,
-                        'source': 'all_avail',
+                        'source': 'fis',
                         }
                 crossref_id = current_items.pop(fis_code, None)
                 if crossref_id is None:
