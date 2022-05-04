@@ -11,7 +11,7 @@ from antipathy import Path
 from ast import literal_eval
 from dbf import Date, DateTime, Time
 from fnx_script_support import all_equal, translator
-from openerplib import get_connection, get_records, AttrDict, Query, Many2One
+from openerplib import get_connection, get_records, AttrDict, Query, Many2One, MissingTable
 from scription import *
 
 try:
@@ -733,6 +733,30 @@ def transmitter(code):
             _constraints=[],
             _internal=True
             )
+
+
+@Command(
+        table=Spec('table to examine'),
+        )
+def show_relations(table):
+    """
+    show tables that link to TABLE and that TABLE links to
+    """
+    ir_model_fields = oe.get_model('ir.model.fields')
+    try:
+        oe.get_model(table)
+    except MissingTable:
+        abort("'%s' does not exist" % table)
+    from_fields = ir_model_fields.read([('relation','=',table)], fields=['model','name'])
+    to_fields = ir_model_fields.read([('model','=',table),('relation','!=',False)], fields=['name','relation'])
+    results = [('upstream','table','downstream'), None]
+    results.append((
+        '\n'.join('%s.%s' % (r.model, r.name) for r in from_fields),
+        table,
+        '\n'.join('%s.%s' % (r.relation, r.name) for r in to_fields if r.relation), 
+        ))
+    echo(results, border='table')
+
 
 # helpers
 
