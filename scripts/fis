@@ -426,14 +426,16 @@ def record(filenum, which, id, fields):
         code=Spec('code to match with template', force_default='', type=lambda s: s and tuple(s.split(',') or s)),
         fields=Spec('specific fields to display [default: all]', MULTI, type=int),
         dbf_name=Spec('dbf to create with data', OPTION),
-        tabular=Spec('show output in tabular mode', FLAG,),
+        tabular=Spec('save output in tab-delimited mode [default: dump_<filenum>]', OPTION, None, default='dump', force_default=True),
         rematch=Spec('template is a re match', FLAG, abbrev=('r', 're')),
         test=Spec('output in format usable by test_scripts', FLAG, abbrev=None),
         check_old=Spec('use older version of data files', FLAG, None),
+        table=Spec('show output in a table', FLAG, None),
         )
-def records(filenum, template, code, fields, dbf_name, tabular, rematch, test, check_old):
+def records(filenum, template, code, fields, dbf_name, tabular, rematch, test, check_old, table):
     print('fields requested: %s' % (fields, ))
     print('code given: %r' % (code, ))
+    show_table = table
     if filenum.isdigit():
         filenum = int(filenum)
     if template == 'default':
@@ -459,7 +461,7 @@ def records(filenum, template, code, fields, dbf_name, tabular, rematch, test, c
             abort('Table %r has no file number, unable to generate test output' % fis_table.filename)
     print('  found %d records' % (len(records), ))
     used_fields = []
-    tabular_names = []
+    table_names = []
     if records:
         # get field defs now, may be needed for dbf creation
         record = records[0]
@@ -481,7 +483,7 @@ def records(filenum, template, code, fields, dbf_name, tabular, rematch, test, c
             name, spec = row[1:4:2]
             if not name.strip() or name.strip().lower() == '(open)':
                 continue
-            tabular_names.append(name)
+            table_names.append(name)
             max_spec_width = max(max_spec_width, len(spec.strip()))
             width = fis_table.field_widths[i]
             field_widths.append(width)
@@ -528,8 +530,17 @@ def records(filenum, template, code, fields, dbf_name, tabular, rematch, test, c
                 table.append(tuple(data))
             if not dbf_name and not tabular:
                 echo()
-        if tabular and tabular_names:
-            echo([tabular_names, None] + output, border='table')
+        if tabular:
+            if tabular == 'dump':
+                tabular = 'dump_%03d' % filenum
+            with open(tabular,'w') as fh:
+                for record in output:
+                    fh.write("\t".join(map(str,record))+"\n")
+        if show_table:
+            if table_names:
+                echo([table_names, None] + output, border='table')
+            else:
+                error('no records found')
     except Exception:
         import traceback
         traceback.print_exc()
