@@ -899,7 +899,6 @@ class product_fis2customer(osv.Model):
         return super(xmlid, self).name_search(cr, uid, name=name, args=args, operator=operator, context=context, limit=limit)
 
 
-
 class product_online_order(osv.Model):
     _name = 'fis_integration.online_order'
 
