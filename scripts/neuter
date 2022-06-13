@@ -90,29 +90,28 @@ def neuter(keep):
 
         if 'networks' not in keep:
             echo('switching network map...')
-            ip_map_network = oe.pool.get('ip_map.network')
+            ip_map_network = oe.pool.get('ip_network.network')
             network_ids = ip_map_network.search(cr, 1, [])
             if network_ids:
                 ip_map_network.unlink(cr, 1, network_ids)
             ip_map_network.create(cr, 1, {'network':'172.27.11.0/24'})
 
             echo('removing old network devices...')
-            ip_map_devices = oe.pool.get('ip_map.device')
+            ip_map_devices = oe.pool.get('ip_network.device')
             device_ids = ip_map_devices.search(cr, 1, [])
             if device_ids:
                 ip_map_devices.unlink(cr, 1, device_ids)
 
         if 'mail' not in keep:
-            echo('removing non-localhost mail servers')
+            echo('removing mail servers')
             ir_mail_server = oe.pool.get('ir.mail_server')
             for rec in ir_mail_server.browse(cr, 1):
-                if rec.name != 'localhost' or rec.smtp_host != 'localhost':
-                    rec.unlink()
+                rec.unlink()
 
-        oe.pool.get('res.company').write(cr, 1, [1], {'pad_server': '172.27.11.16:9001'})
+        oe.pool.get('res.company').write(cr, 1, [1], {'pad_server': '127.0.0.1:9001'})
         icp = oe.pool.get('ir.config_parameter')
         wbu_id = icp.search(cr, 1, [('key','=','web.base.url')])[0]
-        icp.write(cr, 1, [wbu_id], {'value': 'http://173.12.184.233:8069'})
+        icp.write(cr, 1, [wbu_id], {'value': 'http://127.0.0.1:8069'})
 
 
         echo('done')
