@@ -185,7 +185,7 @@ def photos(reset, users, ids):
             if users and record.login not in users:
                 continue
             print('checking %s:' % record.login, end='', verbose=3)
-            if not reset and record.image_crc == crc32(user.image):
+            if not reset and record.image_crc == crc32(user.image.value):
                 print('  same', verbose=3)
                 continue
             try:
@@ -205,7 +205,7 @@ def photos(reset, users, ids):
                 continue
             # not sure what next line is supposed to do
             # user.update(res_users.read(user.id))
-            dbf.write(record, image_crc=crc32(user.image))
+            dbf.write(record, image_crc=crc32(user.image.value))
     # process hr photos
     domain = []
     if ids:
@@ -399,18 +399,18 @@ def update():
             # monitored_groups is the groups we care about
             # groups are the groups the user can belong to that we care about
             # user is the user record
-            before = set(user.groups_id)
-            permissions = adjust_permissions(monitored_groups, groups, user)
-            target = set(permissions)
-            group_change = False
-            if before != target:
-                group_change = True
-                print('changing group assignment for %s: ' % user.login)
-                for id in (before - target):
-                    print('   should lose: %3d -- %s' % (id, all_groups[id]))
-                for id in (target - before):
-                    print('      will add: %3d -- %s' % (id, all_groups[id]))
-                permissions = list(before | set(permissions))
+            # before = set(user.groups_id)
+            # permissions = adjust_permissions(monitored_groups, groups, user)
+            # target = set(permissions)
+            # group_change = False
+            # if before != target:
+            #     group_change = True
+            #     print('changing group assignment for %s: ' % user.login)
+            #     for id in (before - target):
+            #         print('   should lose: %3s -- %s' % (id, all_groups[id]))
+            #     for id in (target - before):
+            #         print('      will add: %3s -- %s' % (id, all_groups[id]))
+            #     permissions = list(before | set(permissions))
             email = user.email or email
             values = dict(
                         xml_id=emp_num,
@@ -436,22 +436,22 @@ def update():
                     row = row + [exc.message or 'unknown failure']
                 failed.append(row)
                 continue
-            if group_change:
-                res_users.write(user.id, dict(groups_id=[(6, 0, permissions)]))
-                # now check to see if it took
-                user = get_records(res_users, ids=user.id)
-                actual = set(user.groups_id)
-                if actual != target:
-                    print('      * FAILED *')
-                    for id in target - actual:
-                        print('         not added: %3d -- %s' % (id, all_groups[id]))
-                    # currently not removing any group associations;
-                    # leaving in in case we do later
-                    # for id in (actual & (before - target)):
-                    #     print('       not removed: %3d -- %s' % (id, all_groups[id]))
-                    for id in (actual - (before | target)):
-                        print('        also added: %3d -- %s' % (id, all_groups[id]))
-                    print()
+            # if group_change:
+            #     res_users.write(user.id, dict(groups_id=[(6, 0, permissions)]))
+            #     # now check to see if it took
+            #     user = get_records(res_users, ids=user.id)
+            #     actual = set(user.groups_id)
+            #     if actual != target:
+            #         print('      * FAILED *')
+            #         for id in target - actual:
+            #             print('         not added: %s -- %s' % (id, all_groups[id]))
+            #         # currently not removing any group associations;
+            #         # leaving in in case we do later
+            #         # for id in (actual & (before - target)):
+            #         #     print('       not removed: %3d -- %s' % (id, all_groups[id]))
+            #         for id in (actual - (before | target)):
+            #             print('        also added: %s -- %s' % (id, all_groups[id]))
+            #         print()
     ir_model_data = oe.get_model('ir.model.data')
     with employees:
         emp_ndx = employees.create_index(lambda rec: rec.login)
@@ -505,9 +505,9 @@ def update():
                     group_change = True
                     print('adding group assignment for %s: ' % user.login)
                     for id in (before - target):
-                        print('   losing: %3d -- %s' % (id, all_groups[id]))
+                        print('   losing: %s -- %s' % (id, all_groups[id]))
                     for id in (target - before):
-                        print('   adding: %3d -- %s' % (id, all_groups[id]))
+                        print('   adding: %s -- %s' % (id, all_groups[id]))
                 if group_change:
                     res_users.write(user.id, dict(groups_id=[(6, 0, permissions)]))
                     # now check to see if it took
@@ -516,16 +516,16 @@ def update():
                     if actual != target:
                         print('      * FAILED *')
                         for id in target - actual:
-                            print('         not added: %3d -- %s' % (id, all_groups[id]))
+                            print('         not added: %s -- %s' % (id, all_groups[id]))
                         not_removed = actual & (before - target)
                         for id in not_removed:
-                            print('       not removed: %3d -- %s' % (id, all_groups[id]))
+                            print('       not removed: %s -- %s' % (id, all_groups[id]))
                         added = actual - (before | target)
                         for id in added:
-                            print('        also added: %3d -- %s' % (id, all_groups[id]))
+                            print('        also added: %s -- %s' % (id, all_groups[id]))
                         print()
                 # grab crc of current image and store in employee db
-                crc = crc32(user.image) # hex mask is for Py3k compatibility
+                crc = crc32(user.image.value) # hex mask is for Py3k compatibility
                 dbf.write(emp_ndx[login][0], image_crc=crc)
             except Fault, exc:
                 error(str(exc).replace('\\n','\n'))
