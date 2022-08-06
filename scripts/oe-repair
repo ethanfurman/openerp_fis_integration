@@ -205,6 +205,20 @@ def dedupe(table, selection, dupe, prefer, use_empty, dry_run):
         primary, secondary = pick_one(records, prefer)
         merge(main_table, dupe, primary, secondary)
 
+@Command(
+        table=Spec('table to use', ),
+        field=Spec('field(s) to update', ),
+        )
+def update_calc(table, field):
+    """
+    read and rewrite values for fields causing dependent calced fields to update
+    """
+    model = oe.get_model(table)
+    records = model.read([(1,'=',1)], fields=[field])
+    for rec in ViewProgress(records):
+        model.write(rec.id, {field: rec[field]})
+    echo('%d source records processed' % len(records))
+
 
 # helpers
 
