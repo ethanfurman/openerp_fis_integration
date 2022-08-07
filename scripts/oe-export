@@ -236,8 +236,9 @@ imd_methods = {
         command=('sql command', REQUIRED),
         separator=('insert blank line between records', FLAG),
         wrap=Spec('field name and width of fields to wrap [ignored in .xls and .csv output]', MULTI),
+        quiet=Spec('do not display output', FLAG),
         )
-def sql(command, separator, wrap):
+def sql(command, separator, wrap, quiet):
     """
     SELECT field_name [, field_name [, ...]]
         FROM table
@@ -265,6 +266,9 @@ def sql(command, separator, wrap):
         [WHERE ...]
         [ORDER BY field1 [ASC|DESC] [, field2 [ASC|DESC] [, ...]]]
     """
+    if quiet:
+        global script_verbosity
+        script_verbosity = -1
     if wrap and isinstance(wrap, tuple):
         wrap = dict(
             (k, int(v))
@@ -278,7 +282,12 @@ def sql(command, separator, wrap):
     if check_command.startswith('select '):
         return not sql_select(command, separator, wrap)
     elif check_command.startswith('count '):
-        sql_count(command, separator)
+        found = sql_count(command, separator)
+        import sys
+        if found > 1:
+            sys.exit(2)
+        else:
+            sys.exit(found)
     elif check_command.startswith('describe '):
         sql_describe(command, separator, wrap)
     elif check_command.startswith('update '):
