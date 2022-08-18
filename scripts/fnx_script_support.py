@@ -233,6 +233,8 @@ def send_mail(recipients, subject, body):
     """
     sent_addresses = []
     failed_to_send = []
+    if isinstance(recipients, basestring):
+        recipients = (recipients, )
     for address in recipients:
         message = "To: %s\nSubject: %s\n\n%s" % (address, subject, body)
         try:

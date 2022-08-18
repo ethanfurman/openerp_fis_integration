@@ -12,7 +12,7 @@ from scription import split_text
 from aenum import NamedTuple
 from antipathy import Path
 from ast import literal_eval
-from openerplib import get_connection, MissingTable
+from openerplib import get_connection, MissingTable, Many2One, XidRec, CSV
 from os import environ
 from tools import Synchronize
 
@@ -21,6 +21,7 @@ from fis_oe_converters import FIS_ID, FIS_MODULE
 FIS_ID, FIS_MODULE
 
 import re
+import sys
 
 try:
     import __builtin__ as builtins
@@ -97,7 +98,9 @@ def add_imd(table):
 
 @Command(
         )
-@Alias('192')
+@Alias(
+        '192'
+        )
 def cnvzo1():
     "ensure all transmitter numbers have an ir.model.data entry; update user logins"
     cnvzo1 = add_imd(table('CNVZO1'))
@@ -155,9 +158,10 @@ def cnvzo1():
         dupe=Spec('fields to consider for duplicates', MULTIREQ),
         prefer=Spec('which non-empty fields have priority in picking winning record', MULTI),
         use_empty=Spec('consider empty fields as duplicates?', FLAG),
+        ignore_case=Spec('do not consider upper/lower-case as distinct', FLAG),
         dry_run=Spec('Do not affect changes, merely report what they would be', FLAG),
         )
-def dedupe(table, selection, dupe, prefer, use_empty, dry_run):
+def dedupe(table, selection, dupe, prefer, use_empty, ignore_case, dry_run):
     """
     Remove duplicate records according to criteria.
 
@@ -169,31 +173,41 @@ def dedupe(table, selection, dupe, prefer, use_empty, dry_run):
     integral records will be excluded from the dedupe process.
     """
     global OERec, OERel, mail_message, DRY_RUN
+    try:
+        main_model = oe.get_model(table)
+    except MissingTable:
+        abort("table '%s' does not exist" % table)
+    inheriting_fields = [v for k,v in main_model._inherits]
     domain = literal_eval(selection)
     DRY_RUN = dry_run
     OERec = NamedTuple(
             'OERec',
-            list(dupe) + [
+            list(dupe) + list(prefer) + inheriting_fields + [
                 'model', 'id', 'create_uid', 'create_date', 'write_uid', 'write_date',
                 'xmlid', 'tertiary',
                 ])
     OERel = NamedTuple('OERel', ['model', 'field'])
-    try:
-        main_table = oe.get_model(table)
-    except MissingTable:
-        abort("table '%s' does not exist" % table)
     upstream, downstream, inherited = get_relations(table)
-    records = get_main_records(main_table, domain, dupe, prefer, use_empty)
+    records = get_main_records(main_model, domain, dupe, prefer+tuple(inheriting_fields), use_empty)
     valid_records = []
     dupes = {}
     mixed = {}
-    key = lambda rec: rec[:len(dupe)]
-    # keep the following as some empty fields are not returned as False
-    valid = lambda rec: all(f for f in rec[:len(dupe)])
-    for rec in ViewProgress(records, "validating $total records"):
-        if valid(rec):
-            valid_records.append(rec)
-    records = enhance_and_filter(valid_records)
+    def key(record):
+        keys = []
+        for value in rec[:len(dupe)]:
+            if isinstance(value, str):
+                keys.append(value.upper())
+            else:
+                keys.append(value)
+        return tuple(keys)
+    if use_empty:
+        valid_records = records
+    else:
+        valid = lambda rec: all(f for f in rec[:len(dupe)])
+        for rec in ViewProgress(records, "validating $total records"):
+            if valid(rec):
+                valid_records.append(rec)
+    records = enhance_and_filter(valid_records, upstream, inherited, dupe+prefer)
     for rec in ViewProgress(records, 'sorting $total records'):
         mixed.setdefault(key(rec), []).append(rec)
     total = 0
@@ -201,11 +215,109 @@ def dedupe(table, selection, dupe, prefer, use_empty, dry_run):
         if len(records) > 1:
             dupes[key] = records
             total += len(records)
-    for key, records in ViewProgress(dupes.items(), "removing duplicates from $total sets"):
+    errors = None
+    for key, records in ViewProgress(dupes.items(), "removing duplicates from $total sets / %d records" % total):
         primary, secondary = pick_one(records, prefer)
-        merge(main_table, dupe, primary, secondary)
+        errors = merge(main_model, dupe, primary, secondary)
+    if errors:
+        errors.insert(0, None)
+        errors.insert(0, ('Duplicate Record','Exception','Relation','IDs'))
+        echo(errors, border='table')
 
 @Command(
+        table=Spec('Which table to update', ),
+        selection=Spec('an OpenERP domain to determine record selection', ),
+        dry_run=Spec('Do not affect changes, merely report what they would be', FLAG),
+        )
+def fix_fis_id(table, selection, dry_run):
+    """
+    update empty xml_id with xml_id found in name field
+    """
+    try:
+        main_model = oe.get_model(table)
+    except MissingTable:
+        abort("table '%s' does not exist" % table)
+    name_field = main_model._rec_name
+    domain = literal_eval(selection) + [('xml_id','=',False)]
+    print(name_field, domain, verbose=2)
+    fields = [l[0] for l in domain if (isinstance(l, tuple) and not isinstance(l[0], int))]
+    if name_field not in fields:
+        fields.append(name_field)
+    print(fields, verbose=2)
+    count = 0
+    for rec in ViewProgress(main_model.read(domain, fields=fields)):
+        count += 1
+        print(rec[name_field], verbose=3)
+        if rec[name_field] and fis_id(rec[name_field]):
+            values = {}
+            values['xml_id'] = xml_id = fis_id()
+            name = rec[name_field].replace(xml_id,'').strip('- /')
+            values[name_field] = name or xml_id
+            if dry_run:
+                echo('%r: %r' % (rec[name_field], values))
+            else:
+                main_model.write(rec.id, values, context={'fis_maintenance':True})
+    echo('%d records examined' % count)
+
+@Command(
+        table=Spec('Which table to update', ),
+        selection=Spec('an OpenERP domain to determine record selection', ),
+        dry_run=Spec('Do not affect changes, merely report what they would be', FLAG),
+        )
+def fix_name(table, selection, dry_run):
+    """
+    update empty name fields with xml_id
+    """
+    global script_verbosity
+    try:
+        main_model = oe.get_model(table)
+    except MissingTable:
+        abort("table '%s' does not exist" % table)
+    if dry_run:
+        script_verbosity = 2
+    name_field = main_model._rec_name
+    domain = literal_eval(selection) + [(name_field,'=','')]
+    fields = [l[0] for l in domain if (isinstance(l, tuple) and not isinstance(l[0], int))]
+    if name_field not in fields:
+        fields.append(name_field)
+    if 'xml_id' not in fields:
+        fields.append('xml_id')
+    for rec in ViewProgress(main_model.read(domain, fields=fields), 'checking $total records'):
+        if not rec.xml_id:
+            continue
+        if dry_run:
+            echo(rec)
+        else:
+            main_model.write(rec.id, {name_field: rec.xml_id}, context={'fis_maintenance':True})
+
+
+@Command(
+        table=Spec('Which table to update', ),
+        selection=Spec('an OpenERP domain to determine record selection', ),
+        fields=Spec('other fields to display', MULTIREQ, force_default=()),
+        )
+def map_record(table, selection, fields):
+    global OERec, OERel, script_verbosity
+    try:
+        main_model = oe.get_model(table)
+    except MissingTable:
+        abort("table '%s' does not exist" % table)
+    domain = literal_eval(selection)
+    fields = [l[0] for l in domain if (isinstance(l, tuple) and not isinstance(l[0], int) and l[0] != 'id')] + list(fields)
+    inheriting_fields = [v for k,v in main_model._inherits]
+    OERec = NamedTuple(
+            'OERec',
+            fields + inheriting_fields + [
+                'model', 'id', 'create_uid', 'create_date', 'write_uid', 'write_date',
+                'xmlid', 'tertiary',
+                ])
+    OERel = NamedTuple('OERel', ['model', 'field'])
+    upstream, downstream, inherited = get_relations(table)
+    records = get_main_records(main_model, domain, fields, inheriting_fields, use_blanks=True)
+    script_verbosity = script_verbosity or 2
+    records = enhance_and_filter(records, upstream, inherited, fields)
+
+
         table=Spec('table to use', ),
         field=Spec('field(s) to update', ),
         )
@@ -224,11 +336,12 @@ def update_calc(table, field):
 
 heb = Var(lambda s: check_code('HE(\d\d\d)', s))
 other = Var(lambda s: check_code('(\d\d\d\d\d\d) ', s))
+fis_id = Var(lambda s: check_code('(\w{3}\d{5,})', s))
 
-def enhance_and_filter(records, upstream, inherited):
+def enhance_and_filter(records, upstream, inherited, fields):
     kept_records = []
     relations = set()
-    for rec in ViewProgress(records, 'filtering %total records'):
+    for rec in ViewProgress(records, 'filtering $total records'):
         for action, relation in (('discard', inherited), ('keep', upstream)):
             for rel in relation:
                 try:
@@ -260,19 +373,26 @@ def enhance_and_filter(records, upstream, inherited):
         else:
             # get through all the discards without a match, keep the record
             kept_records.append(rec)
-    if relations and script_verbosity:
+    if script_verbosity > 1:
         relations = list(relations)
-        rows = [['%s\n%s' % (records[0].model, ', '.join(records[0][:-8]))] + relations, None]
-        for rec in records:
+        header = [kept_records[0].model] + list(fields) # + list(kept_records[0][:-8])
+        for r in relations:
+            models = [p.strip() for p in r.model.split('.')] + [r.field]
+            header.append('.\n'.join(models))
+        rows = [header, None]
+        for rec in kept_records:
             row = ['%s\n%s' % (rec.id, rec.xmlid)]
-            print('ROW', row)
-            print('TERTIARY', rec.tertiary.keys())
+            for f in fields:
+                v = getattr(rec, f)
+                if isinstance(v, Many2One):
+                    v = '/\n'.join(t.strip() for t in str(v).split('/'))
+                row.append(v)
             for rel in relations:
                 row.append(
                         '\n'.join(
                             split_text(
                                 ', '.join(str(id) for id in rec.tertiary.get(rel, [])),
-                                50,
+                                30,
                                 )))
             rows.append(row)
             rows.append(None)
@@ -283,20 +403,49 @@ def check_code(pattern, string):
     res = re.match(pattern, string)
     return res and res.groups()[0]
 
-def get_main_records(table, domain, fields, extra, use_blanks=False):
+def get_fields(model):
+    """
+    return non-image and non-x2m fields
+    """
+    result = (
+            set(model._all_columns)
+            - model._binary_fields
+            - model._x2many_fields
+            - model._html_fields
+            - set(['contact_address', 'create_uid', 'create_date', 'write_uid', 'write_date'])
+            )
+    for name in model._binary_fields:
+        if 'image' not in name:
+            result.add(name)
+    return list(result)
+
+def get_main_records(model, domain, fields, extra=[], use_blanks=False):
     if not use_blanks:
         for f in fields:
-            domain.append((f,'!=',False))
-    records = table.read(domain, fields=fields+extra)
+            if f in model._text_fields or f in model._html_fields:
+                domain.append((f,'!=',''))
+            else:
+                domain.append((f,'!=',False))
+    records = model.read(domain, fields=fields+extra)
     # add the metadata
     meta = dict(
             (r['id'], r)
-            for r in table.meta_read([rec.id for rec in records], details=True)
+            for r in model.meta_read([rec.id for rec in records], details=True)
             )
     for i, rec in enumerate(records):
         rec.update(meta[rec.id])
-        records[i] = OERec(model=table.model_name, tertiary={}, **rec)
+        records[i] = OERec(model=model.model_name, tertiary={}, **rec)
     return records
+
+def get_id_from_name(fis_module, name, table):
+    imd_name = ('%s_%s_%s' % (fis_module, name, table)).replace('.','_')
+    found = imd.read([('name','=ilike',name)], fields=['module','model','res_id'])
+    if len(found) > 1:
+        abort('too many records found for %r:\n%s' % (name, '\n'.join('%s %s:%s' % (f.module, f.model, f.res_id) for f in found)))
+    elif not found:
+        abort('no record found for %r' % name)
+    else:
+        return found[0].res_id
 
 def get_relations(table):
     """
@@ -334,13 +483,16 @@ def get_relations(table):
             model = oe.get_model(rel.model)
         except MissingTable:
             continue
+        except Exception:
+            echo(rel)
+            raise
         else:
             for table_name, field in model._inherits:
                 if table_name == table:
                     inh_rel = OERel(rel.model, field)
                     if inh_rel in upstream:
                         inheriting.add(inh_rel)
-    upstream = upstream - inheriting
+    upstream = list(set(upstream) - inheriting)
     return upstream, downstream, inheriting
 
 def is_searchable(table, field):
@@ -360,20 +512,28 @@ def merge(main_model, selection, primary, duplicates):
     # TODO: special case mail.message create entries: leave them on their original records
     # echo('merging with %s' % (primary, ), border='flag')
     echo('keeping', primary)
+    errors = []
     for rec in duplicates:
+        error = False
         for rel, ids in rec.tertiary.items():
             model = oe.get_model(rel.model)
             if DRY_RUN:
                 echo('\n\n')
-                echo("would assign %s to %s" % (primary.id, ids))
+                echo("would assign %s to %s ids %s" % (primary.id, model.model_name, ', '.join([str(i) for i in ids])))
             else:
-                model.write(ids, {rel.field: primary.id})
+                try:
+                    model.write(ids, {rel.field: primary.id}, context={'fis_maintenance':True})
+                except Exception:
+                    _, exc, _ = sys.exc_info()
+                    errors.append((rec[:-8], str(exc).split('\n'), rel, ids))
+                    error = True
         if DRY_RUN:
-            echo('\n\n')
             echo("would delete %s" % (rec, ))
-        else:
-            echo("  deleting", rec)
+            echo('\n\n')
+        elif not error:
+            print("  deleting", rec, verbose=2)
             main_model.unlink(rec.id)
+    return errors
 
 def pick_one(records, prefer):
     # given a group of records picks the one:
@@ -389,13 +549,13 @@ def pick_one(records, prefer):
         for ids in record.tertiary.values():
             count += len(ids)
         if record.xmlid and record.xmlid.startswith(('fis.','whc.')):
-            is_fis = 0  # 0 means yes (sorts before 1
+            is_fis = 1  # 1 means yes (sorts after 0)
         else:
-            is_fis = 1  # 1 means no (sorts after 0)
-        preferred = sum([1 for p in prefer if record[p]])
-        return is_fis, -preferred, -count, record.create_date
-    records.sort(key=lambda r: key(r), reverse=True)
-    primary = records.pop()
+            is_fis = 0  # 0 means no (sorts before 1)
+        preferred = sum([1 for p in prefer if getattr(record, p, None)])
+        return -is_fis, -preferred, -count, record.create_date
+    records.sort(key=lambda r: key(r))
+    primary = records.pop(0)
     return primary, records
 
 
