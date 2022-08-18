@@ -227,14 +227,14 @@ class Notify(object):
                 fh.write('%-20s %s\n' % (NOW.strftime('%Y-%m-%d %H:%M'), address))
 
 
-def send_mail(recipients, subject, message):
+def send_mail(recipients, subject, body):
     """
     use system mail command to send MESSAGE to RECIPIENTS
     """
     sent_addresses = []
     failed_to_send = []
     for address in recipients:
-        # may be skipped if all eligible addresses have already been notified
+        message = "To: %s\nSubject: %s\n\n%s" % (address, subject, body)
         try:
             job = Job(
                     '/usr/sbin/sendmail -i -v -Am -- %s' % (address, ),
