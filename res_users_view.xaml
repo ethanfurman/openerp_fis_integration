@@ -21,7 +21,7 @@
                             ~group colspan='4'
                                 @fis_transmitter_id on_change="onchange_fis_transmitter(fis_transmitter_id, fis_partner_id, fis_ship_to_id)"
                                 @fis_partner_id on_change="onchange_fis_partner(fis_partner_id, fis_ship_to_id, fis_transmitter_id)" context="{'show_fis': True}"
-                                @fis_ship_to_id on_change="onchange_fis_ship_to(fis_ship_to_id, fis_partner_id, fis_transmitter_id)" attrs="{'required': [('fis_partner_online_ordering_enabled','=',False)]}" context="{'show_fis': True}"
+                                @fis_ship_to_id on_change="onchange_fis_ship_to(fis_ship_to_id, fis_partner_id, fis_transmitter_id)" attrs="{'required': [('fis_partner_online_ordering_enabled','=',True)]}" context="{'show_fis': True}"
                                 @fis_product_cross_ref_code $Customer_Item_Code
                                 @fis_order_code readonly='1'
                             ~group colspan='2'
