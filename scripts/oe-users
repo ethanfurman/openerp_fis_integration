@@ -185,7 +185,7 @@ def photos(reset, users, ids):
             if users and record.login not in users:
                 continue
             print('checking %s:' % record.login, end='', verbose=3)
-            if not reset and record.image_crc == crc32(user.image.value):
+            if not reset and user.image and record.image_crc == crc32(user.image.value):
                 print('  same', verbose=3)
                 continue
             try:
