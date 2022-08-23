@@ -27,12 +27,12 @@
             @model: res.partner
             @arch type='xml'
                 ~tree string='Ship-to Addresses'
-                    @fis_transmitter_ids
+                    @fis_transmitter_ids_text
                     @fis_ship_to_code
                     @name
                     @street
                     @city
-                    @country_id
+                    @state_id
 
         ~record model='ir.ui.view' #view_ship_to_entry_form
             @name: view.fis_integration.ship_to.entry.form

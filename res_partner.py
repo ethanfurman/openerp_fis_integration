@@ -51,6 +51,12 @@ class res_partner(xmlid, osv.Model):
     _fnxfs_path = 'res_partner'
     _fnxfs_path_fields = ['xml_id', 'name']
 
+    def _transmitter_ids_to_text(self, cr, uid, ids, field_name, args, context=None):
+        result = {}
+        for record in self.browse(cr, uid, ids, context=context):
+            result[record.id] = ', '.join(ti.transmitter_no for ti in record.fis_transmitter_ids)
+        return result
+
     def _get_specials_type(self, cr, uid, ids, field_names, args, context=None):
         res = {}
         if isinstance(ids, (int, long)):
@@ -273,6 +279,12 @@ class res_partner(xmlid, osv.Model):
         'fis_transmitter_ids': fields.one2many(
                 'fis.transmitter_code', 'ship_to_id',
                 string='FIS Transmitter ID',
+                ),
+        'fis_transmitter_ids_text': fields.function(
+                _transmitter_ids_to_text,
+                string='FIS Transmitter IDs',
+                size=64,
+                type='char',
                 ),
         'fis_online_ordering_possible': fields.boolean(
                 string="Online Ordering possible",
