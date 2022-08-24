@@ -318,6 +318,7 @@ def map_record(table, selection, fields):
     records = enhance_and_filter(records, upstream, inherited, fields)
 
 
+@Command(
         table=Spec('table to use', ),
         field=Spec('field(s) to update', ),
         )
