@@ -12,13 +12,10 @@ from scription import split_text
 from aenum import NamedTuple
 from antipathy import Path
 from ast import literal_eval
-from openerplib import get_connection, MissingTable, Many2One, XidRec, CSV
+from openerplib import get_connection, MissingTable, Many2One
 from os import environ
-from tools import Synchronize
-
-import fis_oe_converters
-from fis_oe_converters import FIS_ID, FIS_MODULE
-FIS_ID, FIS_MODULE
+from updates import fis_oe_converters
+from updates.tools import Synchronize
 
 import re
 import sys
@@ -439,7 +436,7 @@ def get_main_records(model, domain, fields, extra=[], use_blanks=False):
     return records
 
 def get_id_from_name(fis_module, name, table):
-    imd_name = ('%s_%s_%s' % (fis_module, name, table)).replace('.','_')
+    # imd_name = ('%s_%s_%s' % (fis_module, name, table)).replace('.','_')
     found = imd.read([('name','=ilike',name)], fields=['module','model','res_id'])
     if len(found) > 1:
         abort('too many records found for %r:\n%s' % (name, '\n'.join('%s %s:%s' % (f.module, f.model, f.res_id) for f in found)))
