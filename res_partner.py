@@ -57,6 +57,26 @@ class res_partner(xmlid, osv.Model):
             result[record.id] = ', '.join(ti.transmitter_no for ti in record.fis_transmitter_ids)
         return result
 
+    def _transmitter_ids_to_text_search(self, cr, uid, obj, name, args, context=None):
+        # _transmitter_ids_to_text_search(
+        #       self, cr, uid=201, obj=<res.partner>, name='fis_transmitter_ids_text',
+        #       args=[('fis_transmitter_ids_text', 'ilike', '401512')]
+        #       )
+        new_args = []
+        for term in args:
+            if isinstance(term, basestring):
+                new_args.append(term)
+            else:
+                field, op, value = term
+                if field == 'fis_transmitter_ids_text':
+                    field = 'transmitter_no'
+                new_args.append((field, op, value))
+        transmitters = self.pool.get('fis.transmitter_code').browse(cr, uid, new_args, context=context)
+        if not transmitters:
+            return [('id','in',[0])]
+        main_ids = [tc.ship_to_id.fis_ship_to_parent_id.id for tc in transmitters] or [0]
+        return [('id','in',main_ids)]
+
     def _get_specials_type(self, cr, uid, ids, field_names, args, context=None):
         res = {}
         if isinstance(ids, (int, long)):
@@ -282,6 +302,7 @@ class res_partner(xmlid, osv.Model):
                 ),
         'fis_transmitter_ids_text': fields.function(
                 _transmitter_ids_to_text,
+                fnct_search=_transmitter_ids_to_text_search,
                 string='FIS Transmitter IDs',
                 size=64,
                 type='char',

@@ -223,6 +223,7 @@
             @arch type='xml'
                 ~search
                     @xml_id
+                    @fis_transmitter_ids_text
                 ~filter @customer position='before'
                     ~filter $FIS @type_fis_account domain="[('fis_valid','=',True)]"
                     ~separator
