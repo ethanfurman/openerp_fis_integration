@@ -22,7 +22,7 @@ BASE = 'git_repo_check-'
 @Command(
         repositories=Spec('git repositories to examine', type=Path),
         email=Spec('addresses to send report to', MULTI),
-        grace_period=Spec('grace period before notifying', FLAG, ('g','grace'), force_default=90),
+        grace_period=Spec('grace period before notifying', OPTION, ('g','grace'), force_default=90),
         )
 def check_git_repo(email, grace_period, *repositories):
     for repo in repositories:
