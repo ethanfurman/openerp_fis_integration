@@ -146,8 +146,10 @@ class ARCI(Synchronize):
                 )
         print('nvty: %d\nold nvty: %d' % (len(nvty_table), len(old_nvty_table)), verbose=2)
         cust_no = '-all-'
+        kept = old_kept = 0
         for rec in nvty_table.values():
             if NVTY.in_catalog(rec):
+                kept += 1
                 item_id = rec[F135.item_id]
                 self.fis_table['%s-%s' % (cust_no, item_id)] = {
                         F262.company_id: '10',
@@ -157,6 +159,7 @@ class ARCI(Synchronize):
                         }
         for rec in old_nvty_table.values():
             if NVTY.in_catalog(rec):
+                old_kept += 1
                 item_id = rec[F135.item_id]
                 self.old_fis_table['%s-%s' % (cust_no, item_id)] = {
                         F262.company_id: '10',
@@ -164,6 +167,7 @@ class ARCI(Synchronize):
                         F262.our_item_id: item_id,
                         F262.cust_item_id: item_id,
                         }
+        print('nvty kept: %d\nold nvty kept: %d' % (kept, old_kept), verbose=2)
 
 
 class CNVZaa(Synchronize):
