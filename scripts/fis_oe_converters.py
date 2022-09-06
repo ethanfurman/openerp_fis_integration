@@ -1327,7 +1327,7 @@ class IFPP0(Synchronize):
         # ignore FIS schedule date until it is maintained
         # sched_date = fix_date(fis_rec[F328.prod_scheduled_date], 'ymd') or None
         # order.schedule_date = sched_date
-        # order.schedule_date_set = False
+        order.schedule_date_set = False
         order.ordered_qty = fis_rec[F328.prod_qty]
         order.completed_fis_qty = fis_rec[F328.units_produced] or 0
         formula = IFMS.ProductFormula(item)
