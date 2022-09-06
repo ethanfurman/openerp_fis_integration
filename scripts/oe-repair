@@ -12,7 +12,7 @@ from scription import split_text
 from aenum import NamedTuple
 from antipathy import Path
 from ast import literal_eval
-from openerplib import get_connection, MissingTable, Many2One
+from openerplib import get_connection, get_records, MissingTable, Many2One
 from os import environ
 from updates import fis_oe_converters
 from updates.tools import Synchronize
@@ -287,6 +287,70 @@ def fix_name(table, selection, dry_run):
         else:
             main_model.write(rec.id, {name_field: rec.xml_id}, context={'fis_maintenance':True})
 
+
+@Command(
+        add_missing=Spec('add missing fis bindings', FLAG),
+        )
+def check_imd(add_missing):
+    """
+    show the number of old-style F??? names vs new-style fis names
+    """
+    print('getting data from OpenERP')
+    # raw_data is a list of records
+    raw_data = get_records(
+            imd,
+            domain=['|',('module','=','fis'),('module','=like','F%'),('module','!=','FIS_now'),('module','!=','FIS_unfi')],
+            fields=['id','module','name','model','res_id'],
+            )
+    # sorted_data = {'11: product.category': {'fis': {1: rec, 13: rec}, 'integration': {1: rec, 13: rec}}}
+    sorted_data = {}
+    errors = []
+    for rec in ViewProgress(raw_data, message='sorting'):
+        try:
+            if rec.module == 'fis':
+                key = '%3s: %s' % (int(rec.name.split('_')[0][1:]), rec.model)
+                type = 'fis'
+            elif rec.module[0] == 'F':
+                key = '%3s: %s' % (int(rec.module.split('-')[0][1:]), rec.model)
+                type = 'integration'
+            else:
+                raise ValueError('unknown record type')
+        except:
+            errors.append(rec)
+            continue
+        row = sorted_data.setdefault(key, {})
+        row.setdefault(type, {})[rec.res_id] = rec
+    table = [('file #','fis','integration',('missing','added')[add_missing]), None]
+    for table_name in ViewProgress(sorted(sorted_data), message='building table'):
+        fis_integration_records = sorted_data[table_name]
+        fis = fis_integration_records.get('fis', {})
+        integration = fis_integration_records.get('integration', {})
+        missing = 0
+        for res_id in integration:
+            if res_id not in fis:
+                missing += 1
+                if add_missing:
+                    int_rec = integration[res_id]
+                    if int_rec.module in ('F33','F163','F135'):
+                        module = 'F%03d' % int(int_rec.module[1:])
+                        # get the record
+                        for rec in get_records(oe, int_rec.model, fields=['id','xml_id'], domain=[('id','=',int_rec.res_id)]):
+                            if rec.xml_id is None:
+                                name = ('%s_%s_%s' % (module, int_rec.name, int_rec.model)).replace('-','_')
+                            else:
+                                name = ('%s_%s_%s' % (module, rec.xml_id, int_rec.model)).replace('-','_')
+                            imd.create({
+                                    'module': 'fis',
+                                    'name': name,
+                                    'model': int_rec.model,
+                                    'res_id': int_rec.res_id,
+                                    })
+        table.append((table_name, len(fis), len(integration), missing))
+    echo(table, border='table')
+    if errors:
+        echo('\nunable to process:')
+        for err in errors:
+            echo('   %-5s %30s %20s %6s' % (err.module, err.name, err.model, err.res_id))
 
 @Command(
         table=Spec('Which table to update', ),
