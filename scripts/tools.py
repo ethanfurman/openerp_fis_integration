@@ -316,9 +316,9 @@ class Synchronize(SynchronizeABC):
                 for field in self.OE_FIELDS:
                     if old[field] != new[field]:
                         if not old[field] and not new[field]:
-                            echo('old', old)
-                            echo('new', new)
-                            echo('[%s] %r:  %r != %r' % (key, field, old[field], new[field]), border='flag')
+                            print('old', old, verbose=2)
+                            print('new', new, verbose=2)
+                            print('[%s] %r:  %r != %r' % (key, field, old[field], new[field]), border='flag', verbose=2)
                         new_value = new[field]
                         if isinstance(new_value, list):
                             new_value = tuple(new_value)
