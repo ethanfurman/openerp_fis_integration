@@ -884,6 +884,9 @@ class product_fis2customer(osv.Model):
             ),
         }
 
+    def unlink(self, cr, uid, ids, context=None):
+        raise ERPError('illegal operation','deleting fis_integration.customer_product_cross_reference records is not supported')
+
 
 class product_online_order(osv.Model):
     _name = 'fis_integration.online_order'
