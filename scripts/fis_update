@@ -73,7 +73,7 @@ def main():
         files=Spec('files to process', MULTI, None),
         dryrun=Spec('do not actually make changes', FLAG),
         list_records=Spec('list affected records', FLAG),
-        bw_limit=Spec('rate limit rsync command', OPTION, force_default=10),
+        bw_limit=Spec('rate limit rsync command', OPTION, force_default=1024),
         abort_on_error=Spec('abort on error', FLAG),
         extra=Spec('extra arguments for subscripts', OPTION),
         )
