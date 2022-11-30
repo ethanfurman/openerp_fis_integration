@@ -284,6 +284,7 @@ def product_description(quick, update, *items):
                 if fis_desc in items:
                     echo('%s:  %s' % (item_code, full_desc))
     if update:
+        abort('update not currently supported')
         print('updating -all- cross-reference codes')
         oe = connect_oe()
         cross_ref = oe.get_model('fis_integration.customer_product_cross_reference')
