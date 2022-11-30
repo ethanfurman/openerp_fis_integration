@@ -837,7 +837,9 @@ class product_fis2customer(osv.Model):
                 fields=['id','customer_product_code','fis_product_id','fis_code','fis_product_size'],
                 context=context,
                 )
-        product_ids = [d['fis_product_id'][0] for d in cross_refs]
+        product_ids = [d['fis_product_id'][0] for d in cross_refs if d['fis_product_id']]
+        if not product_ids:
+            return res
         products = dict([
             (p['xml_id'], p)
             for p in product.read(
@@ -884,8 +886,8 @@ class product_fis2customer(osv.Model):
             ),
         }
 
-    def unlink(self, cr, uid, ids, context=None):
-        raise ERPError('illegal operation','deleting fis_integration.customer_product_cross_reference records is not supported')
+    # def unlink(self, cr, uid, ids, context=None):
+    #     raise ERPError('illegal operation','deleting fis_integration.customer_product_cross_reference records is not supported')
 
 
 class product_online_order(osv.Model):

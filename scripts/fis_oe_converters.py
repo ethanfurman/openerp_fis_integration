@@ -65,7 +65,7 @@ class ARCI(Synchronize):
     TN = 262
     FN = 'arci'
     F = 'F262'
-    RE = r'10 HE447......'
+    RE = r'10 ...........'
     OE = (
             'fis_integration.customer_product_cross_reference',
             'fis.customer_product_xref',
@@ -82,6 +82,15 @@ class ARCI(Synchronize):
     FIS_SCHEMA = (
             F262.cust_item_id,
             )
+
+    def FIS_IGNORE_RECORD(self, rec):
+        cust_no = rec[F262.cust_no]
+        if super(ARCI, self).FIS_IGNORE_RECORD(rec):
+            return True
+        elif ' ' in cust_no or cust_no.startswith('HE') and cust_no != 'HE447':
+            return True
+        else:
+            return False
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
