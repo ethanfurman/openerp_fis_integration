@@ -437,11 +437,12 @@
                                 @transmitter_id attrs="{'invisible': [('portal_customer','=',True)]}"
                                 @transmitter_no readonly='1' attrs="{'invisible': [('portal_customer','=',False)]}"
                                 @partner_crossref_list $Product_list_for readonly='1'
+                                @restricted invisible='1'
                         ~group attrs="{'invisible': [('partner_crossref_list','=',False)]}"
                             // HEB and other restricted accounts
                             @item_ids
                              | nolabel='1'
-                             | attrs="{'invisible': [('partner_crossref_list','=','-all-')]}"
+                             | attrs="{'invisible': [('restricted','=',False)]}"
                              | context="{'default_partner_list_code': partner_crossref_list}"
                                 ~tree editable='bottom' $New_Order
                                     @partner_product_id $Item
@@ -457,7 +458,7 @@
                             // order-anything customers
                             @new_item_ids
                              | nolabel='1'
-                             | attrs="{'invisible': [('partner_crossref_list','!=','-all-')]}"
+                             | attrs="{'invisible': [('restricted','=',True)]}"
                              | context="{'default_partner_list_code': partner_crossref_list}"
                                 ~tree editable='bottom' $New_Order
                                     @partner_product_id $Item

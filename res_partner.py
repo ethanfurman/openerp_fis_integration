@@ -460,6 +460,12 @@ class res_partner(xmlid, osv.Model):
             _logger.warning('no users found for %r', ship_to.xml_id)
             # fall back to parent xml_id
             xref_list = ship_to.fis_ship_to_parent_id.xml_id
+        cr.execute("""
+                SELECT DISTINCT list_code
+                FROM fis_integration_customer_product_cross_reference
+                WHERE source='fis'
+                """)
+        restricted_accounts = [t[0] for t in cr.fetchall()]
         return {
                 'type': 'ir.actions.act_window',
                 'res_model': 'fis_integration.online_order',
@@ -473,6 +479,7 @@ class res_partner(xmlid, osv.Model):
                         'default_partner_id': ship_to.id,
                         'default_partner_xml_id': ship_to.xml_id,
                         'default_partner_crossref_list': xref_list,
+                        'default_restricted': xref_list in restricted_accounts,
                         'default_show_req_ship_date': True,
                         'default_show_po_number': True,
                         'default_id': False,

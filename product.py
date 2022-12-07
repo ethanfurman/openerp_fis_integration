@@ -926,6 +926,7 @@ class product_online_order(osv.Model):
             ),
         'po_number': fields.char('PO #', size=10),
         'portal_customer': fields.boolean('Portal customer order', help='False if order placed by sales person'),
+        'restricted': fields.boolean('Restricted Ordering'),
         }
 
     _defaults = {
@@ -1029,6 +1030,12 @@ class product_online_order(osv.Model):
                     'transmitter_id': [('id','in',transmitter_ids)],
                     }
         elif user_type == 'portal':
+            cr.execute("""
+                    SELECT DISTINCT list_code
+                    FROM fis_integration_customer_product_cross_reference
+                    WHERE source='fis'
+                    """)
+            restricted_accounts = [t[0] for t in cr.fetchall()]
             fis_partner = user.fis_partner_id
             if fis_partner and user.fis_product_cross_ref_code:
                 res['value']['partner_id'] = fis_partner.id
@@ -1039,6 +1046,7 @@ class product_online_order(osv.Model):
                 res['value']['transmitter_id'] = user.fis_transmitter_id.id
                 res['value']['transmitter_no'] = user.fis_transmitter_id.transmitter_no
                 res['value']['portal_customer'] = True
+                res['value']['restricted'] = user.fis_product_cross_ref_code in restricted_accounts
             else:
                 res['value']['partner_id'] = False
                 res['value']['partner_crossref_list'] = False
@@ -1057,8 +1065,6 @@ class product_online_order(osv.Model):
                     'title': 'Access Denied',
                     'message': 'You do not have permission to place orders.',
                     }
-        import pprint
-        pprint.pprint(res)
         return res
 
     def user_and_type(self, cr, uid, context=None):
