@@ -440,7 +440,8 @@
                                 @restricted invisible='1'
                         ~group attrs="{'invisible': [('partner_crossref_list','=',False)]}"
                             // HEB and other restricted accounts
-                            @item_ids
+                            ~label for='item_ids' string='Items by customer code' attrs="{'invisible': [('portal_customer','=',True)]}"
+                            @item_ids colspan='4'
                              | nolabel='1'
                              | attrs="{'invisible': [('restricted','=',False)]}"
                              | context="{'default_partner_list_code': partner_crossref_list}"
@@ -456,9 +457,10 @@
                                     @partner_product_code invisible='1'
                                     @product_desc invisible='1'
                             // order-anything customers
-                            @new_item_ids
+                            ~label for='new_item_ids' string='Items by SRF code' attrs="{'invisible': [('portal_customer','=',True)]}"
+                            @new_item_ids colspan='4'
                              | nolabel='1'
-                             | attrs="{'invisible': [('restricted','=',True)]}"
+                             | attrs="{'invisible': ['&',('restricted','=',True),('portal_customer','=',True)]}"
                              | context="{'default_partner_list_code': partner_crossref_list}"
                                 ~tree editable='bottom' $New_Order
                                     @partner_product_id $Item

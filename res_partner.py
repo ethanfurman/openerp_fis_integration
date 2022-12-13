@@ -482,6 +482,7 @@ class res_partner(xmlid, osv.Model):
                         'default_restricted': xref_list in restricted_accounts,
                         'default_show_req_ship_date': True,
                         'default_show_po_number': True,
+                        'default_portal_customer': False,
                         'default_id': False,
                         },
                 }
