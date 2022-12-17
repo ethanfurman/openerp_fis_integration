@@ -93,9 +93,10 @@ class Forecast(NamedTuple):
     day_21 = 2, None, ForecastDetail()
 
 class ProductAvailability(fields.SelectionEnum):
-    _order_ = 'no yes'
-    no =  'N', 'No'
-    yes = 'Y', 'Yes'
+    _order_ = 'no yes sales'
+    no =  'N', ''
+    yes = 'Y', 'Customers and Sales'
+    sales = 'S', 'Sales Only'
 
 def _get_category_records(key_table, cr, uid, ids, context=None):
     if isinstance(ids, (int, long)):
@@ -290,6 +291,50 @@ class product_product(xmlid, osv.Model):
                     ''')
             result[id] = dynamic_page_stub % "".join(htmlContentList)
         return result
+
+    def _get_orderable(self, cr, uid, ids, field_name, arg, context=None):
+        user = self.pool.get('res.users').browse(cr, uid, uid, context=context)
+        if user.has_group('base.group_sale_salesman'):
+            target = [ProductAvailability.yes.db, ProductAvailability.sales.db]
+        elif user.has_group('portal.group_portal'):
+            target = [ProductAvailability.yes.db, ]
+        aa_codes = [
+                aa['xml_id']
+                for aa in self.pool
+                        .get('product.available_at')
+                        .read(cr, uid, [('available','in',target)], fields=['xml_id'], context=context)
+                ]
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        res = {}.fromkeys(ids, False)
+        for rec in self.read(cr, uid, ids, fields=['fis_availability_code'], context=context):
+            if rec['fis_availability_code'] in aa_codes:
+                res[rec['id']] = True
+        return res
+
+    def _search_orderable(self, cr, uid, obj, name, criterion, context=None):
+        # return ids that are orderable by the current user
+        # current user is either a salesperson or a portal customer
+        user = self.pool.get('res.users').browse(cr, uid, uid, context=context)
+        if user.has_group('base.group_sale_salesman'):
+            target = [ProductAvailability.yes.db, ProductAvailability.sales.db]
+        elif user.has_group('portal.group_portal'):
+            target = [ProductAvailability.yes.db, ]
+        aa_codes = [
+                aa['xml_id']
+                for aa in self.pool
+                        .get('product.available_at')
+                        .read(cr, uid, [('available','in',target)], fields=['xml_id'], context=context)
+                ]
+        if criterion[0][1:] in [('=',True),('!=',False)]:
+            op = 'in'
+        elif criterion[0][1:] in [('=',False),('!=',True)]:
+            op = 'not in'
+        else:
+            _logger.error('unknown domain: %r', criterion)
+            return []
+        ids = self.search(cr, uid, [('fis_availability_code',op,aa_codes)], context=context)
+        return [('id','in',ids)]
 
     def _label_links(self, cr, uid, ids, field_name, arg, context=None):
         xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
@@ -538,6 +583,12 @@ class product_product(xmlid, osv.Model):
         'fnxfs_files': files('general', string='Available Files'),
         'prop65': fields.selection(Prop65, string='Req. Prop 65 warning'),
         'prop65_info': fields.text('Addl. Prop 65 info'),
+        'fis_product_orderable': fields.function(
+            _get_orderable,
+            fnct_search=_search_orderable,
+            string='Orderable',
+            type='boolean',
+            ),
         }
 
     _defaults = {
@@ -876,6 +927,11 @@ class product_fis2customer(osv.Model):
             string='Sold per',
             type='char',
             size=50,
+            ),
+        'fis_product_orderable': fields.related(
+            'fis_product_id','fis_product_orderable',
+            string='Orderable by',
+            type='boolean',
             ),
         'customer_product_code': fields.char('Code', size=15),
         'source': fields.selection((

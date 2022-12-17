@@ -273,12 +273,13 @@
                                 ~label for='xml_id' string="FIS ID: " .oe_inline
                                 @xml_id attrs="{'readonly':True}" .oe_inline
                             ~div
-                                ~label for='available' string='Resale:' .oe_inline
+                                ~label for='available' string='Orderable by:' .oe_inline
                                 @available .oe_inline
                         ~notebook colspan='4'
                             ~page $Products_at_this_location
                                 @product_ids nolabel='1' readonly='1'
                                     ~tree
+                                        @xml_id
                                         @name
                             ~page $Notes
 
@@ -298,7 +299,7 @@
             @view_id ref='product_available_at_tree'
             @view_mode: tree,form
 
-        ~menuitem @Availability_Codes #product.available_at parent='product.prod_config_main' action='product_available_at_action' groups='base.group_user'
+        ~menuitem name='Availability Codes' #product.available_at parent='product.prod_config_main' action='product_available_at_action' groups='base.group_user'
 
         ~record model='ir.ui.view' #production_line_tree
             @name: Production Lines
@@ -440,7 +441,7 @@
                                 @restricted invisible='1'
                         ~group attrs="{'invisible': [('partner_crossref_list','=',False)]}"
                             // HEB and other restricted accounts
-                            ~label for='item_ids' string='Items by customer code' attrs="{'invisible': [('portal_customer','=',True)]}"
+                            ~label for='item_ids' string='Items by customer code' attrs="{'invisible': ['|',('portal_customer','=',True),('restricted','=',False)]}"
                             @item_ids colspan='4'
                              | nolabel='1'
                              | attrs="{'invisible': [('restricted','=',False)]}"
@@ -448,7 +449,7 @@
                                 ~tree editable='bottom' $New_Order
                                     @partner_product_id $Item
                                      | required='1'
-                                     | domain="[('list_code','=',partner_list_code)]"
+                                     | domain="[('list_code','=',partner_list_code),('fis_product_orderable','=',True)]"
                                      | options="{'create': False, 'create_edit': False, 'no_open': True}"
                                      | on_change="onchange_product(partner_product_id, partner_list_code, 'old')"
                                     @quantity required='1'
@@ -466,7 +467,7 @@
                                     @partner_product_id $Item
                                      | required='1'
                                      | options="{'create': False, 'create_edit': False, 'no_open': True}"
-                                     | domain="[('list_code','=','-all-')]"
+                                     | domain="[('list_code','=','-all-'),('fis_product_orderable','=',True)]"
                                      | on_change="onchange_product(partner_product_id, partner_list_code, 'new')"
                                     @quantity required='1'
                                     @partner_list_code invisible='1'
