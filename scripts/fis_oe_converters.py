@@ -218,16 +218,16 @@ class CNVZaa(Synchronize):
                 name=self.calc_xid(key),
                 )
         fis_module = ('module', 'fis_module')[odoo_erp]
-        saleable = ('available', 'saleable')[odoo_erp]
         location = AttrDict.fromkeys(self.OE_FIELDS, None)
         location.name = re.sub('sunridge', 'SunRidge', fis_rec[F97.desc].title(), flags=re.I) or None
         location[FIS_ID] = key
         location[fis_module] = self.OE_KEY_MODULE
-        avail = fis_rec[F97.availability].upper()
-        if avail not in 'YN':
-            avail = None
-        location[saleable] = avail
         return (XidRec.fromdict(location, imd), )
+
+    def normalize_records(self, fis_rec, oe_rec):
+        super(CNVZaa, self).normalize_records(fis_rec, oe_rec)
+        saleable = ('available', 'saleable')[odoo_erp]
+        fis_rec[saleable] = oe_rec[saleable]
 
 
 class CNVZas(Synchronize):
