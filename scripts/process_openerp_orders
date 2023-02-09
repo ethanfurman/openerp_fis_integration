@@ -10,7 +10,7 @@ from fnx_script_support import *
 from antipathy import Path
 from traceback import format_exception_only
 from dbf import Date, Period
-import errno, sys
+import sys
 
 # all order numbers must be in the 10000-19999 range or we have collisions
 # with other FIS-feeding processes
@@ -92,8 +92,9 @@ def process_openerp_orders():
 
 
 @Command(
-        date=Spec('date to examine', OPTION, type=Date),
+        date=Spec('date to examine', OPTION, type=Date, radio='date'),
         email=Spec('send email to these addresses', MULTI),
+        yesterday=Spec('examine yesterday', FLAG, target='date', radio='date', default=Date.today().replace(delta_day=-1)),
         )
 def daily_digest(date, email):
     """
