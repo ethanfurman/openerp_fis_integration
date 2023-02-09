@@ -8,7 +8,7 @@ from openerp.tools import get_ids
 # from tools.misc import EnumNoAlias
 from fnx_fs.fields import files
 from VSS.address import normalize_address, Rise
-from fnx.xid import xmlid
+from .xid import xmlid
 
 _logger = logging.getLogger(__name__)
 

@@ -1,6 +1,6 @@
 import logging
 from osv import osv, fields
-from fnx.xid import xmlid
+from .xid import xmlid
 from fnx_fs.fields import files
 from hr.selections import EmploymentType as ET
 

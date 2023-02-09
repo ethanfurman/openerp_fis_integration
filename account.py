@@ -1,6 +1,6 @@
 import logging
 from osv import osv, fields
-from fnx.xid import xmlid
+from .xid import xmlid
 
 _logger = logging.getLogger(__name__)
 

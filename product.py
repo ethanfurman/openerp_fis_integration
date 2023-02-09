@@ -6,7 +6,7 @@ from fnx_fs.fields import files
 from scription import Execute, OrmFile, TimeoutError
 from fnx import date
 from fnx.oe import dynamic_page_stub
-from fnx.xid import xmlid
+from .xid import xmlid
 from openerp import SUPERUSER_ID as SU, CONFIG_DIR, ROOT_DIR
 from openerp.exceptions import ERPError
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids, self_uid, NamedLock, get_ids
