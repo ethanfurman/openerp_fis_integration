@@ -24,7 +24,7 @@ class ProductLabel(http.Controller):
         # isolate filename
         target_file = Path(request.httprequest.path[19:])
         # remove timestamp
-        full_target_file = png_base + target_file.dirname + target_file.stem[:-20] + target_file.ext
+        full_target_file = png_base / target_file.dirname / target_file.stem[:-20] + target_file.ext
         # continue normally
         #
         try:
