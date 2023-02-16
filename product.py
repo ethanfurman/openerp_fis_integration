@@ -1273,6 +1273,7 @@ def get_LLC():
             except:
                 _logger.exception('failed to update LabelLinkCtl cached file')
             LLC_lock.release()
+    _logger.warning('get_LLC --> %r', (LabelLinks, use_cache))
     return LabelLinks, use_cache
 
 def add_timestamp(file, use_cache):
@@ -1287,7 +1288,7 @@ def add_timestamp(file, use_cache):
             if isinstance(value, basestring):
                 value = (value, )
             for new_suffix in value:
-                src_file = src_file.dirname + re.sub(last_suffix+'$', new_suffix, src_file.base) + src_file.ext
+                src_file = src_file.dirname / re.sub(last_suffix+'$', new_suffix, src_file.base) + src_file.ext
                 possibles.append(src_file)
                 last_suffix = new_suffix
             break
@@ -1295,6 +1296,7 @@ def add_timestamp(file, use_cache):
         timestamp = None
         for src_file in possibles:
             if use_cache:
+                _logger.debug('using cache, aborting search')
                 # this can only happen the first time through
                 break
             target_bmp_file = PRODUCT_LABEL_BMP_LOCATION / src_file
