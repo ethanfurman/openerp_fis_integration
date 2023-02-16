@@ -157,7 +157,7 @@ class ARCI(Synchronize):
         cust_no = '-all-'
         kept = old_kept = 0
         for rec in nvty_table.values():
-            if NVTY.in_catalog(rec):
+            if NVTY.product_remaining(rec):
                 kept += 1
                 item_id = rec[F135.item_id]
                 self.fis_table['%s-%s' % (cust_no, item_id)] = {
@@ -167,7 +167,7 @@ class ARCI(Synchronize):
                         F262.cust_item_id: item_id,
                         }
         for rec in old_nvty_table.values():
-            if NVTY.in_catalog(rec):
+            if NVTY.product_remaining(rec):
                 old_kept += 1
                 item_id = rec[F135.item_id]
                 self.old_fis_table['%s-%s' % (cust_no, item_id)] = {
@@ -1546,6 +1546,12 @@ class NVTY(Synchronize):
         avail_code = rec[F135.available_key]
         location = rec[F135.catalog_location]
         return warehouse == '1000' and avail_code in 'YPW' and len(location) == 10
+
+    @staticmethod
+    def product_remaining(rec):
+        # can include discontinued items, etc
+        warehouse = rec[F135.wrhse_no]
+        return warehouse == '1000'
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
         # some fields come from non-FIS locations or are only updated once per
