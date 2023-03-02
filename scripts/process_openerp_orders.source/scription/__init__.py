@@ -33,7 +33,7 @@ intelligently parses command lines
 from __future__ import print_function
 
 # version
-version = 0, 86, 15
+version = 0, 86, 18
 
 # imports
 import sys
@@ -46,6 +46,7 @@ PY33 = (3, 3)
 PY34 = (3, 4)
 PY35 = (3, 5)
 PY36 = (3, 6)
+ModuleType = type(sys)
 
 is_win = sys.platform.startswith('win')
 if is_win:
@@ -523,17 +524,22 @@ def _get_version(from_module, _try_other=True):
     return version
 
 def _get_all_versions(from_module, _try_other=True):
+    scription_debug('getting all versions', verbose=2)
     versions = ['%s=%s' % (from_module['module']['script_name'], _get_version(from_module, _try_other=False))]
-    for name, module in sys.modules.items():
-        fm_obj = from_module.get(name)
-        if fm_obj is module:
-            for ver in _version_strings:
-                if hasattr(module, ver):
-                    version = getattr(module, ver)
-                    if not isinstance(version, basestring):
-                        version = '.'.join(['%s' % x for x in version])
-                    versions.append('%s=%s' % (name, version))
-                    break
+    for name, obj in from_module.items():
+        if name.startswith('_') or not isinstance(obj, ModuleType):
+            continue
+        scription_debug('checking', name, verbose=2)
+        for ver in _version_strings:
+            scription_debug('  looking for', ver, verbose=3)
+            if hasattr(obj, ver):
+                version = getattr(obj, ver)
+                if not isinstance(version, basestring):
+                    version = '.'.join(['%s' % x for x in version])
+                versions.append('%s=%s' % (name, version))
+                break
+        else:
+            versions.append('%s=unknown' % (name, ))
     versions.append('python=%s' % '.'.join([str(i) for i in sys.version_info]))
     return versions
 
@@ -1235,7 +1241,7 @@ class Alias(object):
             _init_script_module(func)
         canonical = self.canonical
         if canonical:
-            func_name = func.__name__.replace('_', '-').lower()
+            func_name = func.__name__.replace('_', '-').lower().lstrip('-')
             try:
                 script_module['script_aliases'][func_name] = func
                 del script_module['script_commands'][func_name]
@@ -1274,17 +1280,13 @@ class Command(object):
         if func.__doc__ is not None:
             func.__doc__ = textwrap.dedent(func.__doc__).strip()
         _add_annotations(func, self.annotations)
-        func_name = func.__name__.replace('_', '-').lower()
-        if func_name.startswith('-'):
-            # internal name, possibly shadowing a keyword or data type -- an alias will be needed
-            # to access this command
-            pass
-        else:
-            if func_name in script_module['script_commands']:
-                raise ScriptionError('command name %r already defined' % (func_name, ))
-            elif func_name in script_module['script_aliases']:
-                raise ScriptionError('command name %r already defined as an alias' % (func_name, ))
-            script_module['script_commands'][func_name] = func
+        # a leading underscore is used so functions can be called by keywords or data types
+        func_name = func.__name__.replace('_', '-').lower().lstrip('-')
+        if func_name in script_module['script_commands']:
+            raise ScriptionError('command name %r already defined' % (func_name, ))
+        elif func_name in script_module['script_aliases']:
+            raise ScriptionError('command name %r already defined as an alias' % (func_name, ))
+        script_module['script_commands'][func_name] = func
         _help(func)
         return func
 
@@ -1328,7 +1330,7 @@ class Script(object):
             _init_script_module(func)
         if script_module['script_commands']:
             raise ScriptionError('Script must be defined before any Command')
-        func_name = func.__name__.replace('_', '-').lower()
+        func_name = func.__name__.replace('_', '-').lower().lstrip('-')
         if func_name in script_module['script_commands']:
             raise ScriptionError('%r cannot be both Command and Script' % func_name)
         if func.__doc__ is not None:
@@ -1940,12 +1942,16 @@ class Job(object):
                             break
                 else:
                     # wait a moment for any passwords to be sent
-                    scription_debug('[echo: %s] sleeping at least 5 seconds so passwords can be sent and response read' % (self.get_echo(), ))
+                    scription_debug('[echo: %s] sleeping at most 5 seconds so passwords can be sent and response read' % (self.get_echo(), ))
                     waiting_time = 5.0
                     while waiting_time > 0.05:
+                        if self.get_echo():
+                            scription_debug('[echo: %s] password entry finished' % (self.get_echo(), ))
+                            break
                         scription_debug('[echo: %s]      quick sleep (%s remaning)' % (self.get_echo(), waiting_time))
                         waiting_time -= 0.1
                         time.sleep(0.1)
+                    else:
                         if not self.get_echo():
                             # host still wants a password -- not good
                             if not self.process:
@@ -1956,14 +1962,12 @@ class Job(object):
                                     e = self._set_exc(FailedPassword)
                                     self.kill()
                                     raise e
-                    else:
-                        scription_debug('[echo: %s] password entry finished' % (self.get_echo(), ))
             if input is not None:
                 scription_debug('writing input: %r' % input, verbose=2)
                 time.sleep(input_delay)
                 for line in input:
-                    self.write(line)
-                    time.sleep(0.1)
+                    self.write(line, block=False)
+                    time.sleep(0.01)
             scription_debug('joining process thread...')
             while not self.abort:
                 process_thread.join(1)
@@ -1982,17 +1986,20 @@ class Job(object):
             scription_debug('closing job')
             self.close()
 
-    def close(self, force=True):
-        'parent method'
+    def close(self, timeout=0):
+        'parent method - timeout=0 means terminate immediately'
         if not self.closed:
             try:
-                if self.is_alive() and not self.abort:
-                    self.terminate()
-                    time.sleep(0.1)
-                    if force and self.is_alive():
-                        self.kill(error='ignore')
+                if not self.abort:
+                    while self.is_alive() and timeout > 0:
+                        timeout -= 0.1
                         time.sleep(0.1)
-                        self.is_alive()
+                    if self.is_alive():
+                        self.terminate()
+                        time.sleep(0.1)
+                        if self.is_alive():
+                            self.kill(error='ignore')
+                            time.sleep(0.1)
                 # shutdown stdin thread
                 self._all_input.put(None)
                 # close handles and pipes
@@ -2096,27 +2103,26 @@ class Job(object):
                 scription_debug('checking job for life')
                 if not self.is_alive():
                     scription_debug('dead, exiting')
-                    break
+                    return
             except Exception:
                 cls, exc, tb = sys.exc_info()
                 scription_debug('received', exc)
                 if cls in (IOError, OSError) and exc.errno in (errno.ESRCH, errno.ECHILD):
                     # child already died
-                    break
+                    return
+        # unable to kill job
+        self.abort = True
+        scription_debug('abort switch set')
+        if exc is None:
+            try:
+                raise UnableToKillJob('Signals %s failed' % ', '.join(self.kill_signals))
+            except Exception:
+                cls, exc, tb = sys.exc_info()
+                e = self._set_exc(UnableToKillJob, None, traceback=tb)
         else:
-            # unable to kill job
-            self.abort = True
-            scription_debug('abort switch set')
-            if exc is None:
-                try:
-                    raise UnableToKillJob('Signals %s failed' % ', '.join(self.kill_signals))
-                except Exception:
-                    cls, exc, tb = sys.exc_info()
-                    e = self._set_exc(UnableToKillJob, None, traceback=tb)
-            else:
-                e = self._set_exc(UnableToKillJob, '%s: %s' % (exc.__class__.__name__, exc), traceback=tb)
-            if error == 'raise':
-                raise e
+            e = self._set_exc(UnableToKillJob, '%s: %s' % (exc.__class__.__name__, exc), traceback=tb)
+        if error == 'raise':
+            raise e
 
     def poll(self):
         scription_debug('polling')
@@ -2207,8 +2213,9 @@ class Job(object):
         scription_debug('terminating')
         if self.is_alive() and self.kill_signals:
             sig = self.kill_signals[0]
-            os.kill(self.pid, sig)
-            time.sleep(0.1)
+            self.send_signal(sig)
+            if self.is_alive:
+                self.abort = True
 
     def write(self, data, block=True):
         'parent method'
