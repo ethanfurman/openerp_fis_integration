@@ -1309,11 +1309,8 @@ class IFPP0(Synchronize):
         order.order_no = key
         order.item_id = NVTY.Product(item)
         order.completed_fis_qty = fis_rec[F328.units_produced]
-        fin_date = fix_date(fis_rec[F328.prod_date], 'mdy') or None
-        if fin_date:
-            fin_date = local_to_utc(DateTime.combine(fin_date, Time(17)))
-        order.finish_date = fin_date
         status = fis_rec[F328.produced]
+        fin_date = fix_date(fis_rec[F328.prod_date], 'mdy') or None
         if status == 'Y':
             if fin_date == TODAY and BUSINESS_HOURS:
                 order.state = 'produced'
@@ -1323,6 +1320,9 @@ class IFPP0(Synchronize):
             order.state = 'cancelled'
         else:
             order.state = 'draft'
+        if fin_date:
+            fin_date = local_to_utc(DateTime.combine(fin_date, Time(17)))
+        order.finish_date = fin_date
         order.confirmed = (None, 'fis')[fis_rec[F328.order_confirmed] == 'Y']
         formula = '%s-%s' % (fis_rec[F328.formula_id], fis_rec[F328.formula_rev])
         order.formula_code = ('[%s] %s' % (formula, fis_rec[F328.label_name])).replace('\x01','')
