@@ -1308,6 +1308,10 @@ def add_timestamp(file, use_cache):
                     except Exception:
                         _logger.exception('failure converting %r to %r', target_bmp_file, target_png_file)
                         continue
+                    try:
+                        target_png_file.chmod(0o666)
+                    except Exception:
+                        _logger.exception('unable to set permissions for %s' % target_png_file)
                 timestamp = '-' + DateTime.fromtimestamp(src_ts).strftime('%Y-%m-%dT%H:%M:%S')
                 break
         if timestamp is None:
