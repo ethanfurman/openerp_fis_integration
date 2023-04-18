@@ -415,6 +415,7 @@
 
         ~report model='fis_integration.product_traffic' name='fis_integration.product_traffic.selected_records' header='True' auto='True' multi='True' xml='fis_integration/report/product-traffic.xml' xsl='fis_integration/report/product-traffic.xsl' $Product_Traffic #report_fis_integration_product_traffic
         ~report model='product.product' name='product.product.spec_sheet' auto='False' $Spec_Sheet #report_product_spec_sheet
+        ~report model='product.product' name='product.product.spec_sheet_image' auto='False' $Spec_Sheet_Image #report_product_spec_sheet_image
 
         // Online Orders
 
