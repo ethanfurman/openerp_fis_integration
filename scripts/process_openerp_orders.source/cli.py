@@ -189,7 +189,7 @@ def get_files_to_process(path):
     order_list.sort(key=lambda fn: int(fn.stem)) 
     return order_list
 
-Main()
+Run()
 
 # file formats
 
