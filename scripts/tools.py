@@ -1009,7 +1009,7 @@ class Synchronize(SynchronizeABC):
                 else:
                     self.model.write(ids, changes)
                     self.changed_count += len(ids)
-            except Fault as exc:
+            except Exception as exc:
                 self.log_exc(exc, changes)
 
     def record_deletions(self):
