@@ -7,13 +7,10 @@ scripts/recipe.py updates/recipe.py
 scripts/fis_oe_converters.py /opt/bin/updates/fis_oe_converters.py
 scripts/fis_update --suid
 scripts/fis_schema.py updates/fis_schema.py
-scripts/tools.py updates/tools.py
 scripts/updates.py updates/__init__.py
 scripts/updates_fis_integration updates/fis_integration --suid openerp
 scripts/updates_mapping.py updates/fis_integration_mapping.py
 scripts/check_active_products --suid openerp
-scripts/fnx_script_support.py /usr/local/bin/fnx_script_support.py
-scripts/fnx_script_support.py /opt/openerp/lib/python2.7/site-packages/fnx_script_support.py
 scripts/process_openerp_orders /usr/local/bin/process_openerp_orders
 scripts/check_git_repo /usr/local/bin/check_git_repo
 scripts/check_labeltime_connection /usr/local/bin/check_labeltime_connection
