@@ -45,7 +45,7 @@ class report_spec_sheet(report_int):
         today = fields.date.today(product_product, cr, localtime=True)
         datas = product_product.read(
                 cr, uid, product_ids,
-                fields=['label_server_stub', 'xml_id', 'name', 'ean13', 'image_medium'],
+                fields=['label_server_stub', 'xml_id', 'name', 'ean13', 'image'],
                 context=context,
                 )
         # create canvas
@@ -58,12 +58,11 @@ class report_spec_sheet(report_int):
         else:
             display.setTitle('Various Products')
         for data in datas:
-            _logger.warning('stub:\n%s', data['label_server_stub'])
             xml_id = data['xml_id']
             display.bookmarkPage(xml_id)
             display.addOutlineEntry('Product %s' % xml_id, xml_id)
             xml_ids.add(xml_id)
-            product_image = data['image_medium']
+            product_image = data['image']
             # download images and convert width and align
             image_specs = re.findall(
                     r'''<img src="([^"]*)" align="([^"]*)" *(oe_header="oe_header")? *width="(\d*)%"''',
@@ -103,10 +102,10 @@ class report_spec_sheet(report_int):
                     row.append(layout)
             requested_rows.append(row)
             page = Area(*letter)
-            viewable_area = Area(page.width - 2.5*inch, page.height - 0.25*inch)
-            left_margin = 0.50*inch
+            viewable_area = Area(page.width - 1.5*inch, page.height - 1.25*inch)
+            left_margin = 0.75*inch
             bottom_margin = 0.50*inch
-            right_margin = page.width - 0.50*inch
+            right_margin = page.width - 0.75*inch
             top_margin = page.height - 0.75*inch
             top_left = Point(left_margin, top_margin)
             anchor = top_left
@@ -116,14 +115,14 @@ class report_spec_sheet(report_int):
                 image = Image.open(BytesIO(product_image))
                 display.drawImage(
                         ImageReader(image),
-                        right_margin-128, top_margin-0.25*inch-128,
-                        128, 128,
+                        right_margin-96, top_margin+0.10*inch-96,
+                        96, 96,
                         preserveAspectRatio=True,
                         )
             display.setFontSize(10)
             display.drawString(left_margin, top_margin+0.25*inch, today)
             display.setFontSize(19)
-            lines = format_lines(data['name'], 50, split=('nongmo','organic','eco-farmed','sunridge'))
+            lines = format_lines(data['name'], 40, split=('nongmo','organic','eco-farmed','sunridge'))
             display.drawString(left_margin, top_margin-0.25*inch, lines[0])
             if len(lines) > 1:
                 display.drawString(left_margin, top_margin-0.5*inch, lines[1])
