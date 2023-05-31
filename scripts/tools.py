@@ -2051,11 +2051,16 @@ class ProductLabelDescription(object):
             try:
                 lines = self.label_text('TT',".91100")
             except IOError as exc2:
-                lines = []
-                if exc1.errno not in (errno.ENOENT, errno.ENOTDIR):   # no such file or directory / not a directory
-                    warnings.warn('item %r: %s' % (self.item_code, exc1))
-                elif exc2.errno not in (errno.ENOENT, errno.ENOTDIR):
-                    warnings.warn('item %r: %s' % (self.item_code, exc1))
+                try:
+                    lines = self.label_text('',".91100")
+                except IOError as exc3:
+                    lines = []
+                    if exc1.errno not in (errno.ENOENT, errno.ENOTDIR):   # no such file or directory / not a directory
+                        warnings.warn('item %r: %s' % (self.item_code, exc1))
+                    if exc2.errno not in (errno.ENOENT, errno.ENOTDIR):
+                        warnings.warn('item %r: %s' % (self.item_code, exc2))
+                    if exc3.errno not in (errno.ENOENT, errno.ENOTDIR):
+                        warnings.warn('item %r: %s' % (self.item_code, exc3))
         lines.sort()
         found = None
         self.ingredients = []
