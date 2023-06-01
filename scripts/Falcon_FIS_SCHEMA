@@ -351,7 +351,7 @@ FCOPER   -Operator Codes Master File  ( 19 at start)
     11    Message Group                            8    Gn$
     12    Linux user/email ID                     30
 FCCNVZ"  -REPORT HEADING RECORD (GENERAL FORMAT)  ( 20 at start)
-     1    Key Group = ' '                          1    AN$(1,1)
+     1    Key Group = BLANK                        1    AN$(1,1)
      2    Program Name                             6    AN$(2,6)
      3    Report Heading                          50    BN$
      4    Report Frequency                         1    DN$
@@ -1003,7 +1003,7 @@ FCCNVZt  -FORM TYPE MASTER FILE  ( 44 at start)
     11    OPEN                                     1
     12    OPEN                                     1    FN$
 FCSADFC  -SALES ANALYSIS - CATEGORY RECORD  ( 45 at start)
-     1    KEY TYPE - 'C'                           1    AN$(1,1)
+     1    KEY TYPE = 'C'                           1    AN$(1,1)
      2    COMPANY                                  2    AN$(2,2)
      3    SALESMN                                  2    AN$(4,2)
      4    CATEGORY                                 1    AN$(6,1)
@@ -2801,7 +2801,8 @@ FCCNVZ:  -SELECTOR ACCESS CONTROL FILE  ( 139 at start)
 FCCSMSB  -CUSTOMER MASTER FILE - DEFAULT SHIP-TO  ( 140 at start)
      1    Company Code                             2    An$(1,2)
      2    Customer No                              6    An$(3,6)
-     3    Record Type ='1    '                     5    An$(9,5)
+     3    KEY GROUP = '1'                          1    An$(9,1)
+     4    Ship-to Code=spaces                      2    An$(10,2)
      4    Ship To Name                            30    Bn$
      5    Addr Line 1                             30    Cn$
      6    Addr Line 2                             30    Dn$

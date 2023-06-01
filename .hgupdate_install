@@ -4,13 +4,14 @@ scripts/oe-repair
 scripts/oe-export
 scripts/recipe
 scripts/recipe.py updates/recipe.py
-scripts/fis_oe_converters.py /opt/bin/updates/fis_oe_converters.py
 scripts/fis_update --suid
-scripts/fis_schema.py updates/fis_schema.py
-scripts/updates.py updates/__init__.py
 scripts/updates_fis_integration updates/fis_integration --suid openerp
-scripts/updates_mapping.py updates/fis_integration_mapping.py
 scripts/check_active_products --suid openerp
 scripts/process_openerp_orders /usr/local/bin/process_openerp_orders
 scripts/check_git_repo /usr/local/bin/check_git_repo
 scripts/check_labeltime_connection /usr/local/bin/check_labeltime_connection
+scripts/fis_oe_converters.py 		$fislib/fis_oe_converters.py
+scripts/fis_schema.py 			$fislib/schema.py
+scripts/updates.py 			$fislib/__init__.py
+scripts/updates_mapping.py 		$fislib/mapping.py
+scripts/Falcon_FIS_SCHEMA		$virtualenv/
