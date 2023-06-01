@@ -373,8 +373,10 @@ def product_forecast(*items):
     hours, minutes = divmod(minutes, 60)
     output = [l for l in result.stdout.strip().split('\n') if len(l.split(':')) == 3]
     with open(PRODUCT_FORECAST, 'w') as f:
-        f.write('\n'.join(output))
-    print('\n'.join(output), verbose=2)
+        for line in output:
+            f.write(line+'\n')
+    if script_verbosity >= 2:
+        print('\n'.join(output), verbose=2)
     print('elapsed time: %d:%d:%d' % (hours, minutes, seconds))
 
 
