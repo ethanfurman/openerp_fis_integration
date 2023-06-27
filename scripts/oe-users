@@ -554,10 +554,11 @@ def update():
 
 @Command(
         user=Spec('user to add/reset', force_default=None),
+        update=Spec('update existing logins', FLAG),
         reset=Spec('delete/recreate existing logins', FLAG),
         force=Spec('assume `yes` to all questions', FLAG),
         )
-def update_transmitter_logins(user, reset, force):
+def update_transmitter_logins(user, update, reset, force):
     """
     Maintain logins for transmitter number / ship-to code pairs.
     """
@@ -623,12 +624,11 @@ def update_transmitter_logins(user, reset, force):
             'Sifting through $total records...',
             view_type='bar',
         ):
-        master_xml_id = transmitter.partner_xml_id
+        ship_to_id = transmitter.ship_to_id
+        user_login = transmitter.ship_to_xml_id
+        master_xml_id = user_login.split('-')[0]
         heb = HEB(master_xml_id)
-        ship_to_code = transmitter.ship_to_code
-        ship_to_xml_id = ('%s-%s' % (master_xml_id, ship_to_code or '')).strip('-')
-        user_login = ('%s-%s' % (master_xml_id, ship_to_code or '')).strip('-')
-        ship_to_partner = partner_by_xml_id.get(ship_to_xml_id)
+        ship_to_partner = partner_by_xml_id.get(user_login)
         #
         if user:
             if user.endswith('*') and user_login.startswith(user[:-1]):
@@ -638,7 +638,7 @@ def update_transmitter_logins(user, reset, force):
             else:
                 continue
         elif not heb and (ship_to_partner is None or ship_to_partner.active is False):
-            inactive_logins.append(user_login)
+            inactive_logins.append((user_login, transmitter.name))
             continue
         login = {
                 'login': user_login,
@@ -659,47 +659,57 @@ def update_transmitter_logins(user, reset, force):
             login['fis_online_order_show_req_ship_date'] = True
             login['fis_online_order_show_po_number'] = True
         affirmative = not reset or force
-        if found_id(user_login) and reset:
-            affirmative = force
-            if not affirmative:
-                affirmative = input('delete and recreate %r?' % (user_login, ))
-            if affirmative:
-                print('deleting %s [%r]' % (user_login, found_id()), verbose=3)
-                res_users.unlink(found_id().id)
-                del login_id_by_xml_id[user_login]
-        if found_id():
-            # update
-            old_login = found_id()
-            new_values = {}
-            for field in login.keys():
-                if field in ('login','password','name','groups_id'):
-                    continue
-                if login[field] != old_login[field]:
-                    new_values[field] = login[field]
-            new_values['groups_id'] = login['groups_id']
-            res_users.write(old_login.id, new_values)
-            updated_logins.append(found_id().login)
+        if found_id(user_login):
+            if reset:
+                affirmative = force
+                if not affirmative:
+                    affirmative = input('delete and recreate %r?' % (user_login, ))
+                if affirmative:
+                    print('deleting %s [%r]' % (user_login, found_id()), verbose=3)
+                    res_users.unlink(found_id().id)
+                    del login_id_by_xml_id[user_login]
+            elif update:
+                old_login = found_id()
+                new_values = {}
+                for field in login.keys():
+                    if field in ('login','password','name','groups_id'):
+                        continue
+                    if login[field] != old_login[field]:
+                        new_values[field] = login[field]
+                new_values['groups_id'] = login['groups_id']
+                res_users.write(old_login.id, new_values)
+                updated_logins.append((found_id().login, '\n'.join('%s: %r' % (k, v) for k,v in new_values.items())))
         else:
             login['fis_partner_id'] = partner_by_xml_id[master_xml_id].id
             if len(transmitter.name) > 60:
                 name = transmitter.name[:57] + '...'
             else:
                 name = transmitter.name
-            print('| %-15s | %-80s |' % (user_login, name), verbose=3)
+            # print('| %-15s | %-80s |' % (user_login, name), verbose=3)
+            info = res_users.onchange_fis_ship_to([], ship_to_id, False, False, context=ctx)
+            login.update(info['value'])
+            login['fis_ship_to_id'] = ship_to_id
+            if 'fis_transmitter_id' not in login:
+                login['fis_transmitter_id'] = info['domain']['fis_transmitter_id'][0][-1][0]
             login_id_by_xml_id[user_login] = res_users.create(login)
-            created_logins.append(user_login)
+            created_logins.append((user_login, name))
     print('%d logins created' % (len(created_logins), ))
-    print(', '.join(created_logins), verbose=3)
+    if created_logins:
+        print([('login','name'), None] + created_logins, border='table', verbose=3)
+
     print('%d logins updated' % (len(updated_logins), ))
-    print(', '.join(updated_logins), verbose=3)
-    for inactive in inactive_logins:
+    if updated_logins:
+        print([('login', 'updated values'), None] + updated_logins, border='table', verbose=3)
+
+    for inactive, name in inactive_logins:
         login = login_id_by_xml_id.get(inactive)
         if login is not None:
-            deleted_logins.append((inactive, login.id))
+            deleted_logins.append((login.id, login.login, name))
     if deleted_logins:
-        res_users.unlink([t[1] for t in deleted_logins])
-        print('%d logins deleted' % (len(deleted_logins), ))
-        print(', '.join([t[0] for t in deleted_logins]), verbose=3)
+        res_users.unlink([t[0] for t in deleted_logins])
+    print('%d logins deleted' % (len(deleted_logins), ))
+    if deleted_logins:
+        print([('id','login','name'), None] + deleted_logins, border='table', verbose=3)
 
 
 @Alias('dbf')
