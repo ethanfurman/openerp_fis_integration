@@ -14,4 +14,4 @@ scripts/fis_oe_converters.py 		$fislib/fis_oe_converters.py
 scripts/fis_schema.py 			$fislib/schema.py
 scripts/updates.py 			$fislib/__init__.py
 scripts/updates_mapping.py 		$fislib/mapping.py
-scripts/Falcon_FIS_SCHEMA		$virtualenv/
+scripts/Falcon_FIS_SCHEMA		$virtualenv/Falcon_FIS_SCHEMA
