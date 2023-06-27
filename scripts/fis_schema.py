@@ -1,4 +1,4 @@
-from tools import FISenum
+from fislib.tools import FISenum
 
 class F8(FISenum):
     """
