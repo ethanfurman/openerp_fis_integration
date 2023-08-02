@@ -1301,18 +1301,24 @@ def add_timestamp(file, use_cache):
                 # this can only happen the first time through
                 break
             target_bmp_file = PRODUCT_LABEL_BMP_LOCATION / src_file
-            if target_bmp_file.exists() and target_bmp_file.isfile():
+            if target_bmp_file.exists() and target_bmp_file.isfile() and target_bmp_file.stat().st_size:
                 src_ts = target_bmp_file.stat().st_mtime
                 if not tgt_ts or tgt_ts < src_ts:
                     try:
                         Image.open(target_bmp_file).save(target_png_file)
                     except Exception:
                         _logger.exception('failure converting %r to %r', target_bmp_file, target_png_file)
+                        if target_png_file.exists():
+                            target_png_file.unlink()
                         continue
                     try:
+                        if not target_png_file.stat().st_size:
+                            target_png_file.unlink()
+                            continue
                         target_png_file.chmod(0o666)
+                        target_png_file.touch(reference=target_bmp_file)
                     except Exception:
-                        _logger.exception('unable to set permissions for %s' % target_png_file)
+                        _logger.exception('unable to update permissions/timestamp for %s' % target_png_file)
                 timestamp = '-' + DateTime.fromtimestamp(src_ts).strftime('%Y-%m-%dT%H:%M:%S')
                 break
         if timestamp is None:
