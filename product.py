@@ -467,6 +467,7 @@ class product_product(xmlid, osv.Model):
                 )},
             ),
         'state_trademark': fields.char('State Trademark', size=128),
+        'state_trademark_no': fields.char('State Registration #', size=128),
         'state_trademark_class_ids': fields.many2many(
                 'fis_integration.trademark.class',
                 'product_trademark_class_rel', 'product_id', 'class_id',

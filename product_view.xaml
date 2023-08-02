@@ -39,6 +39,7 @@
                         ~group
                             ~group $State
                                 @state_trademark
+                                @state_trademark_no
                                 @state_trademark_state readonly='1'
                                 @state_trademark_expiry on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
                                 @state_trademark_renewal on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
@@ -211,7 +212,8 @@
                     @xml_id
                     @name
                     @trademark_state
-                    @trademark_expiry
+                    @state_trademark_expiry
+                    @federal_trademark_expiry
 
         ~record #product_trademark_search model='ir.ui.view'
             @name: Product Trademark Search
