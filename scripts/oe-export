@@ -9,7 +9,6 @@ import re
 from aenum import Enum, auto
 from antipathy import Path
 from ast import literal_eval
-from base64 import b64encode
 from dbf import Date, DateTime, Time
 from fnx_script_support import all_equal, translator
 from openerplib import get_connection, get_records, AttrDict, Binary, Query, Many2One, MissingTable, CSV
@@ -1082,7 +1081,7 @@ def write_csv(table, query, fields, file, separator=False):
                             elif cv is None:
                                 line.append('')
                             elif isinstance(cv, Binary):
-                                line.append('b64"%s"' % b64encode(cv.value))
+                                line.append('b64"%s"' % cv.to_base64())
                             else:
                                 line.append(str(cv))
                         else:
@@ -1095,7 +1094,7 @@ def write_csv(table, query, fields, file, separator=False):
                     cell_value = re.sub('\n', r'\\n', cell_value)
                     cell_value = r'"%s"' % cell_value
                 elif isinstance(cell_value, Binary):
-                    line.append('b64"%s"' % b64encode(cell_value.value))
+                    line.append('b64"%s"' % cell_value.to_base64())
                 elif isinstance(cell_value, bool):
                     cell_value = int(cell_value)
                 elif cell_value is None:
