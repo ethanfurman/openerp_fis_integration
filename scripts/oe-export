@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import dbf
 import os
+import pprint
 import re
 from aenum import Enum, auto
 from antipathy import Path
@@ -257,6 +258,7 @@ def sql(command, separator, wrap, quiet):
         (field1, field2, ...)
         VALUES
         (value1, value2, ...)
+        [UPDATE ON field1 [, field [...]]]
 
     INSERT INTO table FILE <filename>
 
@@ -553,19 +555,26 @@ def sql_insert(command):
     INSERT INTO table FILE <filename.csv>
     """
     # use re to isolate fields and values
-    fv_match = Var(lambda c: re.match(r" *INSERT +INTO +(.*) +\((.*)\) +VALUES +\((.*)\)", c, re.I))
-    fl_match = Var(lambda c: re.match(r" *INSERT +INTO +(.*) +FILE +(.*)", c, re.I))
+    fv_match = Var(lambda c: re.match(r" *INSERT +INTO +(.*) +\((.*)\) +VALUES +\((.*)\)( *UPDATE ON *)?(.*)?", c, re.I))
+    fl_match = Var(lambda c: re.match(r" *INSERT +INTO +(.*) +FILE +(\S*)( *UPDATE ON *)?(.*)?", c, re.I))
     if not fv_match(command) and not fl_match(command):
         abort('malformed command; use --help for help')
     elif fv_match():
-        table, fields, values = fv_match.groups()
+        table, fields, values, verb, key = fv_match.groups()
         fields = [f.strip() for f in fields.split(',') if f != ',']
         data = [literal_eval(values)]
     elif fl_match():
-        table, csv_file = fl_match.groups()
-        csv = CSV(csv_file)
+        table, csv_file, verb, key= fl_match.groups()
+        try:
+            csv = CSV(csv_file)
+        except (IOError, OSError) as exc:
+            abort("problem with %r -- <%r>" % (csv_file, repr(exc), ))
         fields = csv.header
         data = list(csv)
+    if verb and verb.strip().lower() != 'update on' or not key:
+        abort('invalid UPDATE ON clause')
+    if key and key not in fields:
+        abort('key %r no in FIELDS')
     try:
         table = oe.get_model(table)
     except Fault as exc:
@@ -576,13 +585,28 @@ def sql_insert(command):
         # print('fields: %r\nvalues: %r' % (fields, values))
         abort('fields/values mismatch')
     # create the record(s)
-    count = 0
+    insert_count = 0
+    update_count = 0
     for row in data:
         values = dict(zip(fields, row))
-        table.create(values)
-        count += 1
-    echo('INSERT %d' % count)
-    return count
+        if key:
+            # try update operation first
+            records = table.search([(key,'=',values[key])])
+            if records:
+                table.write(records[0], values)
+                update_count += 1
+                continue
+        # either no key, or record doesn't exist
+        try:
+            table.create(values)
+        except Exception as exc:
+            error('unable to create:\n', pprint.pformat(values))
+            abort(repr(exc))
+        insert_count += 1
+    echo('INSERT %d' % insert_count)
+    if update_count:
+        echo('UPDATE %d' % update_count)
+    return insert_count + update_count
 
 def sql_update(command):
     """\
@@ -1094,7 +1118,7 @@ def write_csv(table, query, fields, file, separator=False):
                     cell_value = re.sub('\n', r'\\n', cell_value)
                     cell_value = r'"%s"' % cell_value
                 elif isinstance(cell_value, Binary):
-                    line.append('b64"%s"' % cell_value.to_base64())
+                    cell_value = '"%s"' % cell_value.to_base64()
                 elif isinstance(cell_value, bool):
                     cell_value = int(cell_value)
                 elif cell_value is None:
@@ -1103,7 +1127,7 @@ def write_csv(table, query, fields, file, separator=False):
             lines.append(','.join(line))
     print('\n'.join([repr(l) for l in lines]), verbose=3)
     with open(file, 'w') as output:
-        output.write('\n'.join(lines).encode('utf8'))
+        output.write('\n'.join(lines))
 
 def write_txt(table, query, fields, file, separator=False, wrap=None,):
     lines = []
