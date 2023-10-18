@@ -212,8 +212,8 @@
                     @xml_id
                     @name
                     @trademark_state
-                    @state_trademark_expiry
-                    @federal_trademark_expiry
+                    @state_trademark_expiry $State_Expiry
+                    @federal_trademark_expiry $Federal_Expiry
 
         ~record #product_trademark_search model='ir.ui.view'
             @name: Product Trademark Search

@@ -619,6 +619,7 @@ def update_transmitter_logins(user, update, reset, force):
     created_logins = []
     deleted_logins = []
     updated_logins = []
+    unknown_partners = []
     for transmitter in ViewProgress(
             sorted(transmitters.values(), key=lambda t: t.transmitter_name),
             'Sifting through $total records...',
@@ -637,8 +638,11 @@ def update_transmitter_logins(user, update, reset, force):
                 pass
             else:
                 continue
-        elif not heb and (ship_to_partner is None or ship_to_partner.active is False):
-            inactive_logins.append((user_login, transmitter.name))
+        elif ship_to_partner is None or ship_to_partner.active is False:
+            if not heb:
+                inactive_logins.append((user_login, transmitter.name))
+            elif ship_to_partner is None:
+                unknown_partners.append(user_login)
             continue
         login = {
                 'login': user_login,
@@ -710,6 +714,9 @@ def update_transmitter_logins(user, update, reset, force):
     print('%d logins deleted' % (len(deleted_logins), ))
     if deleted_logins:
         print([('id','login','name'), None] + deleted_logins, border='table', verbose=3)
+
+    if unknown_partners:
+        print('transmitter codes without partner records:\n%s' % '\n'.join(unknown_partners))
 
 
 @Alias('dbf')
