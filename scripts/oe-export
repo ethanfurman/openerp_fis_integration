@@ -5,13 +5,14 @@ from __future__ import print_function
 
 import dbf
 import os
+import pprint
 import re
 from aenum import Enum, auto
 from antipathy import Path
 from ast import literal_eval
 from dbf import Date, DateTime, Time
 from fnx_script_support import all_equal, translator
-from openerplib import get_connection, get_records, AttrDict, Query, Many2One, MissingTable
+from openerplib import get_connection, get_records, AttrDict, Binary, Query, Many2One, MissingTable, CSV
 from scription import *
 
 try:
@@ -257,6 +258,9 @@ def sql(command, separator, wrap, quiet):
         (field1, field2, ...)
         VALUES
         (value1, value2, ...)
+        [UPDATE ON field1 [, field [...]]]
+
+    INSERT INTO table FILE <filename>
 
     DELETE FROM table
         [WHERE ...]
@@ -395,7 +399,7 @@ def sql_select(command, separator, wrap, _internal=''):
     print('command: %r' % (command, ), verbose=2)
     command = ' '.join(command.split())
     print('command: %r' % (command, ), verbose=1)
-    if not re.search(' from ', command, flags=re.I):
+    if not re.search(r' from ', command, flags=re.I):
         abort('FROM not specified')
     if command.split()[-2].lower() == 'to':
         imprimido = command.split()[-1]
@@ -403,7 +407,7 @@ def sql_select(command, separator, wrap, _internal=''):
     #
     # get SELECT fields
     #
-    seleccion, resto = re.split(' from ', command, maxsplit=1, flags=re.I)
+    seleccion, resto = re.split(r' from ', command, maxsplit=1, flags=re.I)
     seleccion = [s.strip(',') for s in seleccion.split()[1:] if s != ',']
     if not seleccion:
         abort('missing fields')
@@ -430,8 +434,8 @@ def sql_select(command, separator, wrap, _internal=''):
             if not resto or ' '.join(resto[:2]).upper() == 'ORDER BY':
                 abort('missing WHERE clause')
             resto = ' '.join(resto)
-            if re.search(' ORDER BY ', resto, flags=re.I):
-                clausa, orden = re.split(' ORDER BY ', resto, maxsplit=1, flags=re.I)
+            if re.search(r' ORDER BY ', resto, flags=re.I):
+                clausa, orden = re.split(r' ORDER BY ', resto, maxsplit=1, flags=re.I)
             else:
                 clausa = resto
             clausa = clausa.strip()
@@ -547,29 +551,62 @@ def sql_diff(command, separator, wrap):
 
 def sql_insert(command):
     """\
-    INSERT INTO table
-    (field1, field2, field3, ...)
-    VALUES (val1, val2, val3, ...)
+    INSERT INTO table (field1, field2, field3, ...) VALUES (val1, val2, val3, ...)
+    INSERT INTO table FILE <filename.csv>
     """
     # use re to isolate fields and values
-    matched = re.match(" *INSERT +INTO +(.*) +\((.*)\) +VALUES +\((.*)\)", command, re.I)
-    if not matched:
+    fv_match = Var(lambda c: re.match(r" *INSERT +INTO +(.*) +\((.*)\) +VALUES +\((.*)\)( *UPDATE ON *)?(.*)?", c, re.I))
+    fl_match = Var(lambda c: re.match(r" *INSERT +INTO +(.*) +FILE +(\S*)( *UPDATE ON *)?(.*)?", c, re.I))
+    if not fv_match(command) and not fl_match(command):
         abort('malformed command; use --help for help')
-    table, fields, values = matched.groups()
+    elif fv_match():
+        table, fields, values, verb, key = fv_match.groups()
+        fields = [f.strip() for f in fields.split(',') if f != ',']
+        data = [literal_eval(values)]
+    elif fl_match():
+        table, csv_file, verb, key= fl_match.groups()
+        try:
+            csv = CSV(csv_file)
+        except (IOError, OSError) as exc:
+            abort("problem with %r -- <%r>" % (csv_file, repr(exc), ))
+        fields = csv.header
+        data = list(csv)
+    if verb and verb.strip().lower() != 'update on' or not key:
+        abort('invalid UPDATE ON clause')
+    if key and key not in fields:
+        abort('key %r no in FIELDS')
     try:
         table = oe.get_model(table)
     except Fault as exc:
         if "doesn't exist" in exc.faultCode:
             abort('unknown table %r' % (table, ))
         raise
-    fields = [f.strip() for f in fields.split(',')]
-    values = literal_eval(values)
-    if len(fields) != len(values):
-        print('fields: %r\nvalues: %r' % (fields, values))
+    if not all_equal(data, test=lambda r,l=len(fields): len(r) == l):
+        # print('fields: %r\nvalues: %r' % (fields, values))
         abort('fields/values mismatch')
-    # create the record
-    values = dict(zip(fields, values))
-    table.create(values)
+    # create the record(s)
+    insert_count = 0
+    update_count = 0
+    for row in data:
+        values = dict(zip(fields, row))
+        if key:
+            # try update operation first
+            records = table.search([(key,'=',values[key])])
+            if records:
+                table.write(records[0], values)
+                update_count += 1
+                continue
+        # either no key, or record doesn't exist
+        try:
+            table.create(values)
+        except Exception as exc:
+            error('unable to create:\n', pprint.pformat(values))
+            abort(repr(exc))
+        insert_count += 1
+    echo('INSERT %d' % insert_count)
+    if update_count:
+        echo('UPDATE %d' % update_count)
+    return insert_count + update_count
 
 def sql_update(command):
     """\
@@ -1011,8 +1048,8 @@ def write_xls(sheet_name, query, fields, file, separator=False):
                         if isinstance(cv, Many2One):
                             worksheet.write(i, cell_index+ci_bump, cv)
                         elif cv:
-                            cv = re.sub("\r", " ", cv)
-                            cv = re.sub('"', '\"', cv)
+                            cv = re.sub(r"\r", r" ", cv)
+                            cv = re.sub(r'"', r'\"', cv)
                             cv = '%s' % cv
                             worksheet.write(i, cell_index+ci_bump, cv)
                         else:
@@ -1020,8 +1057,8 @@ def write_xls(sheet_name, query, fields, file, separator=False):
                         ci_bump += 1
                     continue
                 elif isinstance(cell_value, basestring):
-                    cell_value = re.sub("\r", " ", cell_value)
-                    cell_value = re.sub('"', '\"', cell_value)
+                    cell_value = re.sub(r"\r", r" ", cell_value)
+                    cell_value = re.sub(r'"', r'\"', cell_value)
                     cell_value = '%s' % cell_value
                 elif cell_value in (False, None):
                     cell_value = ''
@@ -1054,27 +1091,34 @@ def write_csv(table, query, fields, file, separator=False):
                     cell_value = str(cell_value)
                     # print('skipping m2o', cell_value, verbose=3)
                 elif isinstance(cell_value, (list, tuple)):
-                    print('cell_value ->', cell_value, verbose=3)
+                    print('cell_value [sequence] ->', cell_value, verbose=3)
                     for cv in cell_value:
                         if cv:
                             if isinstance(cv, basestring):
-                                cv = re.sub("\r", " ", cv)
-                                cv = re.sub('"', '\"', cv)
+                                cv = re.sub("\r", r" ", cv)
+                                cv = re.sub(r'"', r'""', cv)
+                                cv = re.sub('\n', r'\n', cv)
                                 cv = '"%s"' % cv
                                 line.append(cv)
                             elif isinstance(cv, bool):
                                 line.append(str(int(cv)))
                             elif cv is None:
                                 line.append('')
+                            elif isinstance(cv, Binary):
+                                line.append('b64"%s"' % cv.to_base64())
                             else:
                                 line.append(str(cv))
                         else:
                             line.append('')
                     continue
                 elif isinstance(cell_value, basestring):
-                    cell_value = re.sub("\r", " ", cell_value)
-                    cell_value = re.sub('"', '\"', cell_value)
-                    cell_value = '"%s"' % cell_value
+                    print('cell_value [basestring] ->', cell_value, verbose=3)
+                    cell_value = re.sub("\r", r" ", cell_value)
+                    cell_value = re.sub(r'"', r'""', cell_value)
+                    cell_value = re.sub('\n', r'\\n', cell_value)
+                    cell_value = r'"%s"' % cell_value
+                elif isinstance(cell_value, Binary):
+                    cell_value = '"%s"' % cell_value.to_base64()
                 elif isinstance(cell_value, bool):
                     cell_value = int(cell_value)
                 elif cell_value is None:
@@ -1083,7 +1127,7 @@ def write_csv(table, query, fields, file, separator=False):
             lines.append(','.join(line))
     print('\n'.join([repr(l) for l in lines]), verbose=3)
     with open(file, 'w') as output:
-        output.write('\n'.join(lines).encode('utf8'))
+        output.write('\n'.join(lines))
 
 def write_txt(table, query, fields, file, separator=False, wrap=None,):
     lines = []
