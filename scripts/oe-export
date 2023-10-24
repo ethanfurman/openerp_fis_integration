@@ -1098,7 +1098,7 @@ def write_csv(table, query, fields, file, separator=False):
                                 cv = re.sub("\r", r" ", cv)
                                 cv = re.sub(r'"', r'""', cv)
                                 cv = cv.replace('\\','\\\\')
-                                cv = re.sub('\n', r'\n', cv)
+                                cv = re.sub('\n', r'\\n', cv)
                                 cv = '"%s"' % cv
                                 line.append(cv)
                             elif isinstance(cv, bool):
@@ -1117,7 +1117,7 @@ def write_csv(table, query, fields, file, separator=False):
                     cell_value = re.sub("\r", r" ", cell_value)
                     cell_value = re.sub(r'"', r'""', cell_value)
                     cell_value = cell_value.replace('\\', '\\\\')
-                    cell_value = re.sub('\n', r'\n', cell_value)
+                    cell_value = re.sub('\n', r'\\n', cell_value)
                     cell_value = r'"%s"' % cell_value
                 elif isinstance(cell_value, Binary):
                     cell_value = '"%s"' % cell_value.to_base64()
