@@ -907,6 +907,11 @@ class product_fis2customer(osv.Model):
                     )).strip(' -')
         return res
 
+    def _get_product_dependent_ids(product_product, cr, uid, ids, field, unknown_none, context=None):
+        self = product_product.pool.get('fis_integration.customer_product_cross_reference')
+        self_ids = self.search(cr, uid, [('fis_product_id','in',ids)], context=context)
+        return self_ids
+
     _columns = {
         'complete_name': fields.function(
             _calc_name,
@@ -916,6 +921,8 @@ class product_fis2customer(osv.Model):
             store={
                 'fis_integration.customer_product_cross_reference':
                     (self_ids, ['customer_product_code'], 10),
+                'product.product':
+                    (_get_product_dependent_ids, ['name','fis_shipping_size'], 10),
                     },
             ),
         'key': fields.char('Key', size=13, help='used to sync with external source'),
