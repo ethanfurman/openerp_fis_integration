@@ -10,8 +10,9 @@ scripts/check_active_products --suid openerp
 scripts/process_openerp_orders /usr/local/bin/process_openerp_orders
 scripts/check_git_repo /usr/local/bin/check_git_repo
 scripts/check_labeltime_connection /usr/local/bin/check_labeltime_connection
-scripts/fis_oe_converters.py 		$fislib/fis_oe_converters.py
-scripts/fis_schema.py 			$fislib/schema.py
-scripts/updates.py 			$fislib/__init__.py
-scripts/updates_mapping.py 		$fislib/mapping.py
-scripts/Falcon_FIS_SCHEMA		$virtualenv/Falcon_FIS_SCHEMA
+scripts/fis_oe_converters.py $fislib/fis_oe_converters.py
+scripts/fis_schema.py $fislib/schema.py
+scripts/recipe.py $fislib/recipe.py
+scripts/updates.py $fislib/__init__.py
+scripts/updates_mapping.py $fislib/mapping.py
+scripts/Falcon_FIS_SCHEMA $virtualenv/Falcon_FIS_SCHEMA

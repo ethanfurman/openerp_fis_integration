@@ -5,8 +5,8 @@ from scription import *
 from collections import defaultdict
 from itertools import cycle
 from openerplib import get_connection, get_records
-from updates import fis_schema
-from updates.tools import FISenum, ProductLabelDescription
+from fislib import schema as fis_schema
+from fislib.tools import FISenum, ProductLabelDescription
 from VSS.BBxXlate import fisData as fd
 from VSS.BBxXlate.bbxfile import TableError
 from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, name_chars

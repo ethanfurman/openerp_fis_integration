@@ -3,8 +3,8 @@ from __future__ import print_function
 
 from scription import *
 from openerplib import AttrDict
-from updates.fis_schema import F322, F328, F329
-from updates.recipe import ignored_ingredients, get_ingredient_data, get_items_with_recipes
+from fislib.schema import F322, F328, F329
+from fislib.recipe import ignored_ingredients, get_ingredient_data, get_items_with_recipes
 from VSS.BBxXlate.fisData import fisData
 
 # API
