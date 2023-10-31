@@ -562,16 +562,18 @@ def sql_insert(command):
     elif fv_match():
         table, fields, values, verb, key = fv_match.groups()
         fields = [f.strip() for f in fields.split(',') if f != ',']
+        print('%r -- %r -- %r -- %r -- %r' % (table, fields, values, verb, key), verbose=3)
         data = [literal_eval(values)]
     elif fl_match():
-        table, csv_file, verb, key= fl_match.groups()
+        table, csv_file, verb, key = fl_match.groups()
         try:
             csv = CSV(csv_file)
         except (IOError, OSError) as exc:
             abort("problem with %r -- <%r>" % (csv_file, repr(exc), ))
         fields = csv.header
+        print('%r -- %r -- %r -- %r' % (table, csv_file, verb, key), verbose=3)
         data = list(csv)
-    if verb and verb.strip().lower() != 'update on' or not key:
+    if verb and (verb.strip().lower() != 'update on' or not key):
         abort('invalid UPDATE ON clause')
     if key and key not in fields:
         abort('key %r no in FIELDS')
