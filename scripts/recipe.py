@@ -1,4 +1,4 @@
-from schema import F135, F320, F322, F328, F329
+from fislib.schema import F135, F320, F322, F328, F329
 from VSS.BBxXlate.fisData import fisData
 from openerplib import AttrDict
 

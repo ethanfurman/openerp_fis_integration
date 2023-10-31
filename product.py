@@ -907,7 +907,7 @@ class product_fis2customer(osv.Model):
                     )).strip(' -')
         return res
 
-    def _get_product_dependent_ids(product_product, cr, uid, ids, field, unknown_none, context=None):
+    def _get_product_dependent_ids(product_product, cr, uid, ids, context=None):
         self = product_product.pool.get('fis_integration.customer_product_cross_reference')
         self_ids = self.search(cr, uid, [('fis_product_id','in',ids)], context=context)
         return self_ids
