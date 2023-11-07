@@ -33,8 +33,8 @@ PRODUCT_FORECAST = '/FIS/data/product_forecast.txt'
 
 # API
 @Command(
-        filenum=Spec('file abbreviation or number to operate on', ),
-        keymatch=Spec('key template to select individual records', default=None),
+        filenum=Spec('file abbreviation or number to operate on', REQUIRED),
+        keymatch=Spec('key template to select individual records', REQUIRED, default=None),
         key=Spec('key of desired record', MULTIREQ, default=()),
         full=Spec('show all fields', FLAG),
         color=Spec('use color output', FLAG),
@@ -249,8 +249,8 @@ def field_check(filenum, which):
 
 @Command(
     quick=('use local copy of product descriptions', FLAG),
-    items=Spec('item number to look up', usage='ITEM'),
     update=Spec('update OpenERP cross references',  FLAG),
+    items=Spec('item number to look up', usage='ITEM'),
     )
 def product_description(quick, update, *items):
     "retrieve and save the latest product descriptions"
@@ -338,7 +338,7 @@ def product_description(quick, update, *items):
 
 
 @Command(
-    items=Spec('item number to look up', usage='ITEM'),
+    items=Spec('item number to look up', MULTI, usage='ITEM'),
     )
 def product_forecast(*items):
     "retrieve and save the latest forecast data for ITEMS (default is all)"
@@ -354,9 +354,10 @@ def product_forecast(*items):
         print('%d items retrieved' % len(items), verbose=2)
     else:
         items = list(items)
+    items = items
     items = ViewProgress(
             (i+'\n' for i in items + ['exit']),
-            'communicating with 11.11',
+            'communicating with 11.111',
             view_type='bar',
             total=len(items),
             )
@@ -371,13 +372,13 @@ def product_forecast(*items):
     stop = time.time()
     minutes, seconds = divmod(stop-start, 60)
     hours, minutes = divmod(minutes, 60)
+    print('time with 11.111: %d:%d:%d' % (hours, minutes, seconds))
     output = [l for l in result.stdout.strip().split('\n') if len(l.split(':')) == 3]
     with open(PRODUCT_FORECAST, 'w') as f:
-        for line in output:
+        for line in ViewProgress(output):
             f.write(line+'\n')
     if script_verbosity >= 2:
         print('\n'.join(output), verbose=2)
-    print('elapsed time: %d:%d:%d' % (hours, minutes, seconds))
 
 
 @Command(

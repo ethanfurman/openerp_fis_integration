@@ -1,4 +1,4 @@
-scripts/fis --suid
+scripts/fis /usr/local/bin/fis --suid
 scripts/oe-users --suid
 scripts/oe-repair
 scripts/oe-export
