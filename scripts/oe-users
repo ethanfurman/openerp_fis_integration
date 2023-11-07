@@ -90,8 +90,10 @@ def create(force, users):
             if employee.login not in user_map:
                 print('%s is missing from OpenERP' % employee.login)
                 force = True
-    dept_changed = not fce(config.users.raw_dept, last_arch_dept)
-    user_changed = not fce(config.users.raw_user, last_arch_user)
+    dept_file = config.users.raw_dept
+    user_file = config.users.raw_user
+    dept_changed = not fce(dept_file, last_arch_dept)
+    user_changed = not fce(user_file, last_arch_user)
     if (
             not force
             and not dept_changed
@@ -102,7 +104,7 @@ def create(force, users):
     with employees:
         emp_num_index = employees.create_index(lambda rec: rec.emp_num)
         record = employees.create_template()
-        with open(config.users.raw_user) as user:
+        with open(user_file) as user:
             for line in user:
                 line = line.strip().split()
                 record.login = line[0]
@@ -133,7 +135,7 @@ def create(force, users):
                         record.name = old_record.name
                         record.old_login = old_record.login
                         dbf.gather(old_record, record)
-        with open(config.users.raw_dept) as dept:
+        with open(dept_file) as dept:
             for line in dept:
                 emp_num, departments, _ = line.split(',', 2)
                 emp_num = int(emp_num)
@@ -156,11 +158,14 @@ def create(force, users):
                         (record.emp_num, record.old_login, record.login, record.password,
                          record.active, record.groups, record.email, record.name))
     # new_ext = ".%03d" % (int(last_arch_dept.ext[1:]) + 1)
-    new_ext = DateTime.fromtimestamp(last_arch_user.stat().st_mtime).strftime('%Y-%m-%d+%H:%M')
+    if user_changed:
+        new_ext = DateTime.fromtimestamp(dept_file.stat().st_mtime).strftime('.%Y-%m-%d+%H:%M')
     next_arch_dept = last_arch_dept.strip_ext() + new_ext
-    config.users.raw_dept.copy(next_arch_dept)
-    next_arch_user = last_arch_user.strip_ext() + new_ext
-    config.users.raw_user.copy(next_arch_user)
+    dept_file.copy(next_arch_dept)
+    if user_changed:
+        new_ext = DateTime.fromtimestamp(user_file.stat().st_mtime).strftime('.%Y-%m-%d+%H:%M')
+        next_arch_user = last_arch_user.strip_ext() + new_ext
+        user_file.copy(next_arch_user)
     Execute(['chown', 'openerp:', next_arch_dept, next_arch_user])
 
 
