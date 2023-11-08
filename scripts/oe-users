@@ -11,7 +11,6 @@ from xmlrpclib import Fault
 from antipathy import Path
 from openerplib import get_connection, get_records, SchroedingerFile, AttrDict
 from scription import *
-from urllib2 import urlopen, URLError
 from VSS.address import NameCase
 from VSS.utils import crc32
 
@@ -182,6 +181,8 @@ def photos(reset, users, ids):
     with dbf.Table(config.users.emp_table, default_data_types={'C':dbf.Char}) as employees:
         print('  %d records' % len(employees), verbose=2)
         for record in employees:
+            if not record.emp_num:
+                continue
             try:
                 user = user_map[record.login]
             except KeyError:
@@ -195,18 +196,19 @@ def photos(reset, users, ids):
                 continue
             try:
                 print('  updating from %s' % config.users.photo_location % record.emp_num, end='', verbose=3)
-                pic = urlopen(config.users.photo_location % record.emp_num).read()
+                with open(virtual_env / config.users.photo_location % record.emp_num) as fh:
+                    pic = fh.read()
                 print('  success', verbose=3)
-            except URLError:
-                print('  failed', verbose=3)
+            except Exception as e:
+                print('  failed [%r]' % e, verbose=3)
                 continue
             image = b64encode(pic)
             try:
                 print('  writing to OpenERP...', end='', verbose=3)
                 res_users.write(user.id, dict(image=image))
                 print('  success', verbose=3)
-            except Fault:
-                print('  failed', verbose=3)
+            except Fault as e:
+                print('  failed [%r]' % e, verbose=3)
                 continue
             # not sure what next line is supposed to do
             # user.update(res_users.read(user.id))
@@ -218,23 +220,26 @@ def photos(reset, users, ids):
     employees = get_records(hr, domain=domain, fields=['id','name', 'image_crc','xml_id'])
     no_image = set()
     for e in employees:
-        pic_path = config.users.photo_location % e.xml_id
-        print('checking %r\n  id: %r\n  xml_id: %r\n  path: %r' % (e.name, e.id, e.xml_id, pic_path))
+        if not e.xml_id:
+            continue
+        pic_path = virtual_env / config.users.photo_location % e.xml_id
+        print('checking %r\n  id: %r\n  xml_id: %r\n  path: %r' % (e.name, e.id, e.xml_id, pic_path), verbose=3)
         try:
-            pic = urlopen(pic_path).read()
-            print(' ', pic_path)
-        except Exception, exc:
-            print('    ', exc)
+            with open(pic_path) as fh:
+                pic = fh.read()
+            print(' ', pic_path, verbose=3)
+        except Exception as exc:
+            print('    ', exc, verbose=3)
             no_image.add(pic_path)
             pic_crc = False
             image = False
-        else:
-            pic_crc = str(crc32(pic))
-            image = b64encode(pic)
+            continue
+        pic_crc = str(crc32(pic))
+        image = b64encode(pic)
         if not e.image_crc or e.image_crc != pic_crc or reset:
-            print('  updating record with %s' % (pic_crc, ))
+            print('  updating record with %s' % (pic_crc, ), verbose=3)
             hr.write(e.id, dict(image=image, image_crc=pic_crc))
-        print()
+        print(verbose=3)
 
 
 @Command(
