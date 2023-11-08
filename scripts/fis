@@ -250,7 +250,7 @@ def field_check(filenum, which):
 @Command(
     quick=('use local copy of product descriptions', FLAG),
     update=Spec('update OpenERP cross references',  FLAG),
-    items=Spec('item number to look up', usage='ITEM'),
+    items=Spec('item number to look up', MULTI, usage='ITEM'),
     )
 def product_description(quick, update, *items):
     "retrieve and save the latest product descriptions"
