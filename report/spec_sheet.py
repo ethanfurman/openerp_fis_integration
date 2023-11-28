@@ -202,9 +202,9 @@ class report_spec_sheet(report_int):
         #
         xml_ids = sorted(xml_ids)
         if len(xml_ids) == 1:
-            self._filename = '%s-Spec_Sheet' % (xml_ids[0], )
+            self._filename = '%s-Spec_Sheet_Labels' % (xml_ids[0], )
         elif xml_ids:
-            self._filename = 'Spec_Sheets-%s-%s' % (xml_ids[0], xml_ids[-1])
+            self._filename = 'Spec_Sheet_Labels-%s-%s' % (xml_ids[0], xml_ids[-1])
         self.obj = external_pdf(pdf_io.getvalue())
         self.obj.render()
         return (self.obj.pdf, 'pdf')
