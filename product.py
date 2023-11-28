@@ -1312,7 +1312,7 @@ def add_timestamp(file, use_cache):
                 src_ts = target_bmp_file.stat().st_mtime
                 if not tgt_ts or tgt_ts < src_ts:
                     try:
-                        Image.open(target_bmp_file).save(target_png_file)
+                        copy_image(target_bmp_file, target_png_file)
                     except Exception:
                         _logger.exception('failure converting %r to %r', target_bmp_file, target_png_file)
                         if target_png_file.exists():
@@ -1334,6 +1334,19 @@ def add_timestamp(file, use_cache):
             timestamp = '-' + DateTime.fromtimestamp(tgt_ts).strftime('%Y-%m-%dT%H:%M:%S')
         ts_file = target_png_file.stem + timestamp + '.png'
         return ts_file
+
+def copy_image(source, target):
+    # img = Image.open(target_bmp_file).save(target_png_file)
+    img = Image.open(source)
+    #
+    if img.format == 'BMP' and len(img.getbands()) == 1:
+        # remove empty space at bottom of label
+        width, height = img.size
+        l, t, r, b = img.getbbox(img.crop(box=(0, 0, width, height-10)))
+        if b < height-36:   # save at least 1/2"
+            img = img.crop(box=(0, 0, width, b))
+    #
+    img.save(target)
 
 def calc_width(src_rows):
     "return tuple of rows (target, width, align, header)"
