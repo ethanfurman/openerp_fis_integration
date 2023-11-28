@@ -1342,7 +1342,7 @@ def copy_image(source, target):
     if img.format == 'BMP' and len(img.getbands()) == 1:
         # remove empty space at bottom of label
         width, height = img.size
-        l, t, r, b = img.getbbox(img.crop(box=(0, 0, width, height-10)))
+        l, t, r, b = img.crop(box=(0, 0, width, height-10)).getbbox()
         if b < height-36:   # save at least 1/2"
             img = img.crop(box=(0, 0, width, b))
     #
@@ -1398,5 +1398,5 @@ LabelLinkTab = """\
                 ~img src=target width=width align=align oe_header
             -else:
                 ~img src=target width=width align=align
-    ~br
+                ~br
 """
