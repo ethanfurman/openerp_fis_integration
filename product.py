@@ -13,7 +13,7 @@ from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids, self_uid
 import os
 from osv import osv, fields
 from pandaemonium import PidLockFile, AlreadyLocked
-from PIL import Image
+from PIL import Image, ImageOps
 from xaml import Xaml
 import logging
 import re
@@ -1281,7 +1281,6 @@ def get_LLC():
             except:
                 _logger.exception('failed to update LabelLinkCtl cached file')
             LLC_lock.release()
-    _logger.warning('get_LLC --> %r', (LabelLinks, use_cache))
     return LabelLinks, use_cache
 
 def add_timestamp(file, use_cache):
@@ -1339,10 +1338,18 @@ def copy_image(source, target):
     # img = Image.open(target_bmp_file).save(target_png_file)
     img = Image.open(source)
     #
-    if img.format == 'BMP' and len(img.getbands()) == 1:
-        # remove empty space at bottom of label
+    if img.format == 'BMP':
         width, height = img.size
-        l, t, r, b = img.crop(box=(0, 0, width, height-10)).getbbox()
+        b = height
+        bands = img.getbands()
+        if bands == ('P', ):
+            # band ('P', ) means 0 = white, 1 = black, so
+            # getbbox will work as-is
+            l, t, r, b = img.crop(box=(0, 0, width, height-10)).getbbox()
+        elif bands == ('R', 'G', 'B'):
+            # (0, 0, 0) = black, (255, 255, 255) = white -- need to
+            # invert to get good numbers from getbbox
+            l, t, r, b = ImageOps.invert(img).crop(box=(0, 0, width, height-10)).getbbox()
         if b < height-36:   # save at least 1/2"
             img = img.crop(box=(0, 0, width, b))
     #
@@ -1398,5 +1405,5 @@ LabelLinkTab = """\
                 ~img src=target width=width align=align oe_header
             -else:
                 ~img src=target width=width align=align
-                ~br
+    ~br
 """
