@@ -2,10 +2,15 @@
 
 from __future__ import division
 from aenum import NamedTuple
-import re
-import requests
+from antipathy import Path
 from PIL import Image, ImageChops
 from io import BytesIO
+
+import re
+import requests
+
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.units import inch
@@ -21,6 +26,13 @@ import base64
 import logging
 
 _logger = logging.getLogger(__name__)
+
+FONT_DIR = Path(__file__).dirname
+
+pdfmetrics.registerFont(TTFont('NimbusSansL', FONT_DIR/'NimbusSanL-Reg.ttf'))
+pdfmetrics.registerFont(TTFont('NimbusSansLBold', FONT_DIR/'NimbusSanL-Bol.ttf'))
+pdfmetrics.registerFont(TTFont('NimbusSansLItalic', FONT_DIR/'NimbusSanL-RegIta.ttf'))
+pdfmetrics.registerFont(TTFont('NimbusSansLBoldItalic', FONT_DIR/'NimbusSanL-BolIta.ttf'))
 
 GUTTER = 5
 
@@ -51,6 +63,7 @@ class report_spec_sheet(report_int):
         # create canvas
         pdf_io = BytesIO()
         display = Canvas(pdf_io, pagesize=letter, bottomup=1)
+        display.setFont('NimbusSansL', 12)
         display.setAuthor('Sunridge Farms')
         display.setSubject('Product Specification Labels')
         if len(datas) == 1:
