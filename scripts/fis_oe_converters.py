@@ -1001,14 +1001,15 @@ class EMP1(SynchronizeAddress):
     OE_KEY = FIS_ID
     OE_KEY_MODULE = 'F74'
     OE_FIELDS = [
-            'id', 'name', 'employment_type', 'ssnid', 'birthday',
-            'hire_date', 'fire_date', 'active', 'status_flag', 'pension_plan',
-            'pay_type', 'hourly_rate', 'last_raise', 'marital', 'gender', 'identification_id',
-            'emergency_contact', 'emergency_number', 'state_exemptions', 'federal_exemptions',
+            'id', 'name', 'home_phone', 'home_street', 'home_street2', 'home_city', 'home_state_id',
+            'home_zip', 'home_country_id', 'employment_type', 'ssnid', 'birthday', 'hire_date',
+            'fire_date', 'active', 'status_flag', 'pension_plan', 'pay_type', 'hourly_rate',
+            'last_raise', 'marital', 'gender', 'identification_id', 'emergency_contact',
+            'state_exemptions', 'federal_exemptions',
             ]
     OE_FIELDS[1:1] = (
-            ('module','xml_id','home_phone','home_street','home_street2','home_city','home_state_id','home_zip','home_country_id'),
-            ('fis_module','fis_id','phone','street','street2','city','state_id','zip','country_id'),
+            ('module','xml_id','emergency_number'),
+            ('fis_module','fis_id','emergency_phone'),
             )[odoo_erp]
     FIS_SCHEMA = (
             F74.name, F74.ssn, F74.tele, F74.date_hired, F74.date_terminated,
@@ -1037,9 +1038,10 @@ class EMP1(SynchronizeAddress):
                 )
         if odoo_erp:
             # odoo13
-            kwds = {}
+            emergency_no = 'emergency_phone'
         else:
-            kwds = {'home': True}
+            emergency_no = 'emergency_number'
+        kwds = {'home': True}
         names, address, do_not_use = self.process_name_address(F74, fis_rec, **kwds)
         pname = names and names[0] or ''
         pname = re.sub('sunridge', 'SunRidge', BsnsCase(pname), flags=re.I) or None
@@ -1087,7 +1089,7 @@ class EMP1(SynchronizeAddress):
         employee.marital = ('single', 'married')[fis_rec[F74.marital_status].upper() == 'M']
         employee.gender = ('male', 'female')[fis_rec[F74.gender].upper() == 'F']
         employee.emergency_contact = NameCase(fis_rec[F74.emergency_contact]) or None
-        employee.emergency_number = fix_phone(fis_rec[F74.emergency_phone]) or None
+        employee[emergency_no] = fix_phone(fis_rec[F74.emergency_phone]) or None
         employee.federal_exemptions = int(fis_rec[F74.exempt_fed] or 0)
         employee.state_exemptions = int(fis_rec[F74.exempt_state] or 0)
         return (XidRec.fromdict(employee, imd), )
