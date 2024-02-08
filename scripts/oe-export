@@ -943,6 +943,10 @@ def convert_where(clausa):
             clausa,
             flags=re.I
             ))
+    date_match = Var(lambda clausa: re.match(
+            r"\d{4}-\d{2]-\d{2}$",
+            clausa,
+            ))
     donde = []
     constraints = []
     while clausa:
@@ -977,6 +981,8 @@ def convert_where(clausa):
                 pass
             elif lcond[0] == '[' and lcond[-1] == ']':
                 condition = literal_eval(condition)
+            elif date_match(lcond):
+                condition = lcond.replace('-','')
             else:
                 try:
                     condition = int(condition)
