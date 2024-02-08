@@ -100,13 +100,11 @@ def fis_update(method, skip_copy, skip_update, files, dryrun, list_records, bw_l
             files = [path/pre+f for f in user_files]
         else:
             if method == 'full':
-                files = '{path}/{pre}???? {path}/{pre}????? {path}/{pre}??????'.format(path=path, pre=pre).split()
-                for filename in extra_files:
-                    files.append('{path}/{name}'.format(path=path, name=filename))
+                files = '{path}/*'.format(path=path).split()
             else:
                 files = ['%s/%s%s' % (path, pre, f) for f in active_files]
         # and grab the files
-        system('rsync --bwlimit=%d %s:%s %s/' % (bw_limit, master, ' :'.join(files), new))
+        system('rsync --update --bwlimit=%d %s:%s %s/' % (bw_limit, master, ' :'.join(files), new))
         system('chown -R openerp: %s/' % config.network.fis_data_local_path)
         system('chown -R openerp: %s/' % config.network.fis_data_local_old_path)
         config.network.fis_data_local_path.chmod(0o440, '*')
@@ -117,17 +115,9 @@ def fis_update(method, skip_copy, skip_update, files, dryrun, list_records, bw_l
         print('checking for changed files (at: %s)' % time.strftime('%H:%M:%S', time.localtime()))
         print('  between %r and %r' % (old, new), verbose=2)
         files = [
-            f for f in new.glob('%s????' % pre) if
+            f for f in new.glob('%s*' % pre) if
                 f.stat().st_mtime != old.stat(f.filename).st_mtime
             ]
-        files.extend([
-            f for f in new.glob('%s?????' % pre) if
-                f.stat().st_mtime != old.stat(f.filename).st_mtime
-            ])
-        files.extend([
-            f for f in new.glob('%s??????' % pre) if
-                f.stat().st_mtime != old.stat(f.filename).st_mtime
-            ])
         # strip path and leading {pre} from filenames
         files = [f.filename[1:] for f in files]
         print('changed file candidates: %s [%s]' % (len(files), ', '.join(files)), verbose=1)
