@@ -91,6 +91,14 @@ def create(force, users):
                 force = True
     dept_file = config.users.raw_dept
     user_file = config.users.raw_user
+    #
+    # temp code until odoo 13 is primary app
+    #
+    Execute('/usr/bin/scp %s 192.168.11.160:/opt/odoo/var/openerp/' % dept_file, pty=True, password=config.openerp.pw)
+    Execute('/usr/bin/scp %s 192.168.11.160:/opt/odoo/var/openerp/' % user_file, pty=True, password=config.openerp.pw)
+    #
+    # end temp code
+    #
     dept_changed = not fce(dept_file, last_arch_dept)
     user_changed = not fce(user_file, last_arch_user)
     if (
@@ -175,6 +183,13 @@ def create(force, users):
         )
 def photos(reset, users, ids):
     "add photos to both user login accounts and hr accounts"
+    #
+    # temp code until odoo 13 is primary app
+    #
+    Execute('/usr/bin/rsync -rtc %s 192.168.11.160:/opt/odoo/var/openerp/headshots/' % (config.users.photo_location % '*'), pty=True, password=config.openerp.pw)
+    #
+    # end temp code
+    #
     reset = reset or reset_photos
     # process user photos
     print('employee table:', config.users.emp_table, verbose=2)
