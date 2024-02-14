@@ -9,15 +9,16 @@ appropriate script, and runs it.
 from __future__ import print_function
 from scription import *
 from antipathy import Path
+from collections import defaultdict
 from dbf import Char, Date, DateTime, Time, Logical, NoneType, Null, NullType
 from logging import getLogger, INFO, Formatter, handlers
 from pandaemonium import PidLockFile
+from traceback import format_exc
 import dbf
 import os
 import re
 import time
-import updates
-updates.script_verbosity = script_verbosity
+
 
 # two directories are used, one for old data and one for the new incoming
 # data;
@@ -126,7 +127,7 @@ def fis_update(method, skip_copy, skip_update, files, dryrun, list_records, bw_l
     #
     if not skip_update:
         print('checking for mappings (at: %s)' % time.strftime('%H:%M:%S', time.localtime()))
-        FIS_mapping = updates.get_script_mapping()
+        FIS_mapping = get_script_mapping()
         print('FIS_mapping:\n   ', '\n   '.join(['%s: %r' % (k, v) for k, v in FIS_mapping.items()]), sep='', verbose=2)
         for script, tables in sorted(FIS_mapping.items()):
             print('method', method, '  user_files:', user_files, verbose=3)
@@ -504,5 +505,51 @@ def system(cmd, abort_on_error=False):
                 abort()
             if job.returncode == Exit.Unavailable:
                 raise ServiceUnavailable
+
+def get_script_mapping():
+    """
+    Searches current directory for Python source files, imports them,
+    and updates a mapping of FIS file -> OpenERP script so those
+    scripts can be executed when the matching file changes.
+
+    FIS_mapping = {
+        <fis_file> : [script, script, ... ],
+        }
+
+    Scripts will be called with the changed table as the first argument
+    and possibly 'quick' or 'full' with quick being the default:
+    - quick -> look for changes against previous version of FIS table
+    - full -> look for changes agains the corresponding OpenERP records
+    """
+
+    FIS_mapping = defaultdict(list)
+    # load the files and extract the mappings
+    candidates = [p for p in Path(__file__).dirname.glob('*_mapping.py')]
+    print('potential info files: %s' % ', '.join(candidates), verbose=2)
+    for data in candidates:
+        info = {}
+        try:
+            with open(data) as f:
+                info.update(eval(f.read()))
+            print('actual info: %r' % info, verbose=3)
+            for fis, scripts in info.items():
+                if isinstance(scripts, str):
+                    scripts = [scripts]
+                # current_scripts = FIS_mapping.setdefault(fis, set())
+                for s in scripts:
+                    if not isinstance(s, str):
+                        raise ValueError('file %r, invalid script: %r ' % (data, s))
+                for s in scripts:
+                    FIS_mapping[s].append(fis)
+        except Exception:
+            tb = format_exc()
+            error('=' * 50, 'file: %s' % data, tb, '=' * 50, sep='\n')
+            continue
+    print('final scripts:', verbose=2)
+    for k, v in sorted(FIS_mapping.items()):
+        print('   %s: %r' % (k, v), verbose=2)
+    return FIS_mapping
+
+
 
 Main()
