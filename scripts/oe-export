@@ -944,7 +944,7 @@ def convert_where(clausa):
             flags=re.I
             ))
     date_match = Var(lambda clausa: re.match(
-            r"\d{4}-\d{2]-\d{2}$",
+            r"\d\d\d\d-\d\d-\d\d$",
             clausa,
             ))
     donde = []
