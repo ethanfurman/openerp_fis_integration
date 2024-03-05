@@ -179,6 +179,7 @@ def fis_update(method, skip_copy, skip_update, files, dryrun, list_records, bw_l
         date=Spec("check files from specified date [yyyy-mm-dd]", OPTION, abbrev=None, radio='when', type=lambda v: Date.strptime(v, '%Y-%m-%d')),
         location=Spec("location of files", OPTION, type=Path),
         info=Spec("display breakdown of files", FLAG),
+        vertical=Spec('print records in columns', FLAG),
         )
 def check_log(fis_file, key, type, last, today, all, date, location, info):
     """
@@ -408,7 +409,11 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
                     widths, types = calc_widths_types(fields, table_rows, table)
                     return {'rows': rows, 'widths': widths, 'types': types}
                 while table.next_record.action_ == 'delta':
-                    echo(table_display(display_none='!', **process_changes()))
+                    echo(table_display(
+                        display_none='!',
+                        table_record=('row','column')[vertical],
+                        **process_changes(),
+                        ))
 
 
 class ServiceUnavailable(Exception):
@@ -505,6 +510,8 @@ def system(cmd, abort_on_error=False):
                 abort()
             if job.returncode == Exit.Unavailable:
                 raise ServiceUnavailable
+            else:
+                error('\nUse `fis_update check_log` for more details')
 
 def get_script_mapping():
     """
