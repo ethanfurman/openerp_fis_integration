@@ -179,7 +179,6 @@ def fis_update(method, skip_copy, skip_update, files, dryrun, list_records, bw_l
         date=Spec("check files from specified date [yyyy-mm-dd]", OPTION, abbrev=None, radio='when', type=lambda v: Date.strptime(v, '%Y-%m-%d')),
         location=Spec("location of files", OPTION, type=Path),
         info=Spec("display breakdown of files", FLAG),
-        vertical=Spec('print records in columns', FLAG),
         )
 def check_log(fis_file, key, type, last, today, all, date, location, info):
     """
