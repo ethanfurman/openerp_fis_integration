@@ -524,7 +524,7 @@ def get_script_mapping():
     - full -> look for changes agains the corresponding OpenERP records
     """
 
-    from fislib.updates_mapping import info
+    from fislib.mapping import info
     FIS_mapping = defaultdict(list)
     for fis, scripts in info.items():
         if isinstance(scripts, str):
