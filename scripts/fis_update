@@ -524,32 +524,17 @@ def get_script_mapping():
     - full -> look for changes agains the corresponding OpenERP records
     """
 
+    from fislib.updates_mapping import info
     FIS_mapping = defaultdict(list)
-    # load the files and extract the mappings
-    candidates = [p for p in Path(__file__).dirname.glob('*_mapping.py')]
-    print('potential info files: %s' % ', '.join(candidates), verbose=2)
-    for data in candidates:
-        info = {}
-        try:
-            with open(data) as f:
-                info.update(eval(f.read()))
-            print('actual info: %r' % info, verbose=3)
-            for fis, scripts in info.items():
-                if isinstance(scripts, str):
-                    scripts = [scripts]
-                # current_scripts = FIS_mapping.setdefault(fis, set())
-                for s in scripts:
-                    if not isinstance(s, str):
-                        raise ValueError('file %r, invalid script: %r ' % (data, s))
-                for s in scripts:
-                    FIS_mapping[s].append(fis)
-        except Exception:
-            tb = format_exc()
-            error('=' * 50, 'file: %s' % data, tb, '=' * 50, sep='\n')
-            continue
-    print('final scripts:', verbose=2)
-    for k, v in sorted(FIS_mapping.items()):
-        print('   %s: %r' % (k, v), verbose=2)
+    for fis, scripts in info.items():
+        if isinstance(scripts, str):
+            scripts = [scripts]
+        # current_scripts = FIS_mapping.setdefault(fis, set())
+        for s in scripts:
+            if not isinstance(s, str):
+                raise ValueError('file %r, invalid script: %r ' % (data, s))
+        for s in scripts:
+            FIS_mapping[s].append(fis)
     return FIS_mapping
 
 
