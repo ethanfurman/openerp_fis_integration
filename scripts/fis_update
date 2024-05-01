@@ -528,11 +528,8 @@ def get_script_mapping():
     FIS_mapping = defaultdict(list)
     for fis, scripts in info.items():
         if isinstance(scripts, str):
-            scripts = [scripts]
+            scripts = (scripts, )
         # current_scripts = FIS_mapping.setdefault(fis, set())
-        for s in scripts:
-            if not isinstance(s, str):
-                raise ValueError('file %r, invalid script: %r ' % (data, s))
         for s in scripts:
             FIS_mapping[s].append(fis)
     return FIS_mapping
