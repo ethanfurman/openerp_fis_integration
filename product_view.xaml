@@ -21,18 +21,45 @@
                         @fnxfs_files colspan='4' nolabel='1' options="{'no_embed': True}"
                 ~page $Information position='after'
                     ~page $Web attrs="{'invisible': [('xml_id','=',False)]}"
-                        ~group
-                            ~group
+                        ~group col='6'
+                            ~group colspan='4'
+                                @fis_web_expanded_name colspan='4'
+                                @fis_web_tagline colspan='4'
+                                @fis_web_keywords widget='many2many_tags' colspan='4'
+                                // ~label for='fis_web_description' colspan='2'
+                                @fis_web_description colspan='4'
+                            ~group colspan='2'
                                 @fis_web_active
-                                @fis_web_tagline
-                                @fis_web_keywords widget='many2many_tags'
+                                ~separator $Certifications colspan='2'
+                                @fis_web_cert_k_pareve
+                                @fis_web_cert_k_dairy
+                                @fis_web_cert_org
+                                @fis_web_cert_org_made
+                                @fis_web_cert_ingred_panel
+                                @fis_web_cert_fair_trade_usa
+                                @fis_web_cert_non_gmo
                         ~group
                             ~group
-                                ~label for='fis_web_ingredients' colspan='2'
-                                @fis_web_ingredients nolabel='1' colspan='2'
+                                ~label for='fis_web_ingredients2' colspan='2'
+                                @fis_web_ingredients2 nolabel='1' colspan='2'
+                                ~label for='fis_web_cooking_instructions' colspan='2'
+                                @fis_web_cooking_instructions nolabel='1' colspan='2'
                             ~group
-                                ~label for='fis_web_prep_instructions' colspan='2'
-                                @fis_web_prep_instructions nolabel='1' colspan='2'
+                                ~label for='fis_web_allergens' colspan='2'
+                                @fis_web_allergens nolabel='1' colspan='2'
+                                ~label for='fis_web_shared_equipment' colspan='2'
+                                @fis_web_shared_equipment nolabel='1' colspan='2'
+                                ~label for='fis_web_warnings' colspan='2'
+                                @fis_web_warnings nolabel='1' colspan='2'
+                        ~separator $Labeltime
+                            ~group
+                                ~group
+                                    ~label for='fis_web_prep_instructions' colspan='2'
+                                    @fis_web_prep_instructions nolabel='1' colspan='2'
+                                ~group
+                                    ~label for='fis_web_ingredients' colspan='2'
+                                    @fis_web_ingredients nolabel='1' colspan='2'
+
                     ~page $Shipping_Instructions attrs="{'invisible': [('xml_id','=',False)]}"
                         @spcl_ship_instr nolabel='1' placeholder='Special shipping instructions here...'
                     ~page string='Trademarks & Registrations' attrs="{'invisible':['|',('trademarks','=',False),('xml_id','=',False)]}"

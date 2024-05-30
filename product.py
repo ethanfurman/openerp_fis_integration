@@ -572,15 +572,35 @@ class product_product(xmlid, osv.Model):
             string='21-day Available',
             help='Qty available in the next 21 days',
             ),
+
         'fis_web_active': fields.boolean('Active on Web'),
-        'fis_web_ingredients': fields.text('Ingredients (Web)'),
-        'fis_web_tagline': fields.text('Tagline (Web)'),
-        'fis_web_prep_instructions': fields.text('Preparation (Web)'),
+        'fis_web_ingredients': fields.text('Labeltime Ingredients', help='ingredients from labeltime'),
+        'fis_web_tagline': fields.text('Tagline'),
+        'fis_web_prep_instructions': fields.text('Labeltime Preparation Instructions'),
+        'fis_web_expanded_name': fields.text('Expanded Name'),
+        'fis_web_description': fields.text('Item Description'),
+        'fis_web_cert_k_pareve': fields.boolean('Kosher Pareve'),
+        'fis_web_cert_k_dairy': fields.boolean('Kosher Dairy'),
+        'fis_web_cert_org': fields.boolean('Organic - 95% (or greater)'),
+        'fis_web_cert_org_made': fields.boolean('Made with Organic - 70-95% Organic'),
+        'fis_web_cert_ingred_panel': fields.boolean('Ingredient Panel Only'),
+        'fis_web_cert_fair_trade_usa': fields.boolean('Fair Trade USA'),
+        'fis_web_cert_non_gmo': fields.boolean('Non-GMO Project Verified'),
+        'fis_web_ingredients2': fields.text('Ingredients', help='new web ingredients fields'),
+        'fis_web_cooking_instructions': fields.text('Cooking Instructions'),
+        'fis_web_allergens': fields.text('Allergen Statement'),
+        'fis_web_shared_equipment': fields.text('Shared Equipment Statement'),
+        'fis_web_warnings': fields.text('Warnings'),
         'fis_web_keywords': fields.many2many(
                 'fis.product.keywords',
                 'fis_product_web_keyword_rel', 'keyword_id', 'product_id',
                 string='Keywords',
                 ),
+
+
+
+
+
         'fnxfs_files': files('general', string='Available Files'),
         'prop65': fields.selection(Prop65, string='Req. Prop 65 warning'),
         'prop65_info': fields.text('Addl. Prop 65 info'),
