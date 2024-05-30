@@ -1,3 +1,4 @@
+scripts/fis-oe $local
 scripts/fis /usr/local/bin/fis --suid
 scripts/oe-users --suid
 scripts/oe-repair

@@ -52,13 +52,13 @@
                                 ~label for='fis_web_warnings' colspan='2'
                                 @fis_web_warnings nolabel='1' colspan='2'
                         ~separator $Labeltime
+                        ~group
                             ~group
-                                ~group
-                                    ~label for='fis_web_prep_instructions' colspan='2'
-                                    @fis_web_prep_instructions nolabel='1' colspan='2'
-                                ~group
-                                    ~label for='fis_web_ingredients' colspan='2'
-                                    @fis_web_ingredients nolabel='1' colspan='2'
+                                ~label for='fis_web_prep_instructions' colspan='2'
+                                @fis_web_prep_instructions nolabel='1' colspan='2'
+                            ~group
+                                ~label for='fis_web_ingredients' colspan='2'
+                                @fis_web_ingredients nolabel='1' colspan='2'
 
                     ~page $Shipping_Instructions attrs="{'invisible': [('xml_id','=',False)]}"
                         @spcl_ship_instr nolabel='1' placeholder='Special shipping instructions here...'
