@@ -137,7 +137,7 @@ def fis_update(method, skip_copy, skip_update, files, dryrun, list_records, bw_l
             else:
                 # sync all tables for "full" update
                 tables = set(tables)
-            cmd = ('/opt/bin/updates/%s --method=%s'
+            cmd = ('/opt/openerp/bin/updates/%s --method=%s'
                 % (script,
                    method,
                 ))
