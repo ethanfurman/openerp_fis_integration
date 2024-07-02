@@ -83,9 +83,9 @@ class ARCI(Synchronize):
             F262.cust_item_id,
             )
 
-    def FIS_IGNORE_RECORD(self, rec):
+    def fis_ignore_record(self, rec):
         cust_no = rec[F262.cust_no]
-        if super(ARCI, self).FIS_IGNORE_RECORD(rec):
+        if super(ARCI, self).fis_ignore_record(rec):
             return True
         elif ' ' in cust_no or cust_no.startswith('HE') and cust_no != 'HE447':
             return True
@@ -93,7 +93,7 @@ class ARCI(Synchronize):
             return False
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         cust_no = fis_rec[F262.cust_no]
         our_item_id = fis_rec[F262.our_item_id]
@@ -207,7 +207,7 @@ class CNVZaa(Synchronize):
     ProductLocation = XmlLink
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         key = fis_rec[F97.availability_id].strip()
         imd = AttrDict(
@@ -268,7 +268,7 @@ class CNVZas(Synchronize):
                     })
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         key = fis_rec[F11.sales_category_id].strip()
         imd = AttrDict(
@@ -318,7 +318,7 @@ class CNVZd0(Synchronize):
     CustomerTerms = XmlLink
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         key = fis_rec[F8.code]
         imd = AttrDict(
@@ -362,7 +362,7 @@ class CNVZf(Synchronize):
     ProductionLine = XmlLink
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         key = fis_rec[F341.prod_line_code]
         imd = AttrDict(
@@ -420,8 +420,8 @@ class CNVZO1(Synchronize):
     #
     TransmitterCode = XmlLink
 
-    def FIS_IGNORE_RECORD(self, rec):
-        if super(CNVZO1, self).FIS_IGNORE_RECORD(rec):
+    def fis_ignore_record(self, rec):
+        if super(CNVZO1, self).fis_ignore_record(rec):
             return True
         elif (
                 not rec[F192.transmitter_no].strip().isdigit()
@@ -438,7 +438,7 @@ class CNVZO1(Synchronize):
         CSMSS(oe, config, None, None).reify(fields=['xml_id','fis_online_ordering_possible','fis_online_ordering_enabled'])
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         key = fis_rec[F192.transmitter_no].strip()
         partner = fis_rec[F192.cust_no].strip() or ''
@@ -547,8 +547,8 @@ class CNVZSV(SynchronizeAddress):
             F27.name, F27.tele, F27.fuel_surcharge,
             )
 
-    def FIS_IGNORE_RECORD(self, fis_rec):
-        if super(CNVZSV, self).FIS_IGNORE_RECORD(fis_rec):
+    def fis_ignore_record(self, fis_rec):
+        if super(CNVZSV, self).fis_ignore_record(fis_rec):
             return True
         elif (
                 fis_rec[F27.code] in ('', '99')
@@ -559,7 +559,7 @@ class CNVZSV(SynchronizeAddress):
             return False
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         key = fis_rec[F27.code].strip()
         imd = AttrDict(
@@ -759,7 +759,7 @@ class CSMS(SynchronizeAddress):
         #     F33.addr1, F33.addr2, F33.addr3,
         #     ],
         #
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         key = fis_rec[F33.code]
         imd = AttrDict(
@@ -914,8 +914,8 @@ class CSMSS(SynchronizeAddress):
 
     ShipTo = XmlLink
 
-    def FIS_IGNORE_RECORD(self, rec):
-        if super(CSMSS, self).FIS_IGNORE_RECORD(rec):
+    def fis_ignore_record(self, rec):
+        if super(CSMSS, self).fis_ignore_record(rec):
             return True
         elif (
                 not rec[F34.name]
@@ -949,7 +949,7 @@ class CSMSS(SynchronizeAddress):
         #     F34.addr1, F34.addr2, F34.addr3,
         #     ],
         #
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         parent_xml_id = fis_rec[F34.code]
         names, address, do_not_use = self.process_name_address(F34, fis_rec)
@@ -1017,8 +1017,8 @@ class EMP1(SynchronizeAddress):
             F74.marital_status, F74.pension_status, F74.gender, F74.emergency_contact,
             F74.emergency_phone, F74.exempt_fed, F74.exempt_state, F74.hourly_rate,
             )
-    def FIS_IGNORE_RECORD(self, rec):
-        if super(EMP1, self).FIS_IGNORE_RECORD(rec):
+    def fis_ignore_record(self, rec):
+        if super(EMP1, self).fis_ignore_record(rec):
             return True
         elif int(rec[F74.emp_num]) >= 9000:
             return True
@@ -1026,7 +1026,7 @@ class EMP1(SynchronizeAddress):
             return False
 
     def convert_fis_rec(self, fis_rec, use_ignore=False):
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         emp_num = fis_rec[F74.emp_num].strip()
         imd = AttrDict(
@@ -1118,8 +1118,8 @@ class IFMS(Synchronize):
     #
     ProductFormula = XmlLink
 
-    def FIS_IGNORE_RECORD(self, rec):
-        if super(IFMS, self).FIS_IGNORE_RECORD(rec):
+    def fis_ignore_record(self, rec):
+        if super(IFMS, self).fis_ignore_record(rec):
             return True
         elif len(rec[F320.formula_id]) != 6:
             return True
@@ -1134,7 +1134,7 @@ class IFMS(Synchronize):
         # using:
         #   F320.formula, F320.rev_no, F320.desc, F320.coating, F320.allergens
         #
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         key = fis_rec[F320.formula_id]
         imd = AttrDict(
@@ -1172,8 +1172,8 @@ class IFDT(Synchronize):
     FIS_SCHEMA = (
             F322.formula_id, F322.rev_no, F322.desc_batch_1, F322.line_no,
             )
-    def FIS_IGNORE_RECORD(self, rec):
-        if super(IFDT, self).FIS_IGNORE_RECORD(rec):
+    def fis_ignore_record(self, rec):
+        if super(IFDT, self).fis_ignore_record(rec):
             return True
         elif (
                 not IFMS.ProductFormula('%s-%s' % (rec[F322.formula_id], rec[F322.rev_no]))
@@ -1202,7 +1202,7 @@ class IFDT(Synchronize):
         #   F322.formula_id, F322.rev_no,
         #   F322.ingr_code_batch_1, F322.qty_batch_1, F322.units_batch_1
         #
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         oe_key = '%s-%s' % (fis_rec[F322.formula_id], fis_rec[F322.rev_no])
         item = fis_rec[F322.ingr_code_batch_1]
@@ -1296,7 +1296,7 @@ class IFPP0(Synchronize):
         # F328.formula_id, F328.formula_rev, F328.dept_id, F328.prod_line,
         # F328.prod_scheduled_date, F328.prod_date, F328.units_produced,
         #
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         key = fis_rec[F328.order_no]
         item = fis_rec[F328.prod_no]
@@ -1408,8 +1408,8 @@ class IFPP1(Synchronize):
     FIS_SCHEMA = (
             F329.order_no, F329.ingr_code_batch_1, F329.units_batch_1, F329.qty_batch_1, F329.formula_line_no
             )
-    def FIS_IGNORE_RECORD(self, rec):
-        if super(IFPP1, self).FIS_IGNORE_RECORD(rec):
+    def fis_ignore_record(self, rec):
+        if super(IFPP1, self).fis_ignore_record(rec):
             return True
         elif (
                 rec[F329.item_type_batch_1] == 'M'
@@ -1455,7 +1455,7 @@ class IFPP1(Synchronize):
         # using:
         #   F329.order_no, F329.ingr_code_batch_1, F329.qty_batch_1, F329.units_batch_1
         #
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         order = fis_rec[F329.order_no]
         item = fis_rec[F329.ingr_code_batch_1]
@@ -1527,8 +1527,8 @@ class NVTY(Synchronize):
     #
     Product = XmlLink
 
-    def FIS_IGNORE_RECORD(self, rec):
-        if super(NVTY, self).FIS_IGNORE_RECORD(rec):
+    def fis_ignore_record(self, rec):
+        if super(NVTY, self).fis_ignore_record(rec):
             return True
         elif rec[F135.wrhse_no] != '1000':
             return True
@@ -1562,7 +1562,7 @@ class NVTY(Synchronize):
         # - fis_qty: _produced, _consumed, _purchased, _sold, _available
         # - fis_10_day: _produced, _consumed, _purchased, _sold, _available
         # - fis_21_day: _produced, _cosnumed, _purchased, _sold, _available
-        if use_ignore and self.FIS_IGNORE_RECORD(fis_rec):
+        if use_ignore and self.fis_ignore_record(fis_rec):
             return ()
         key = fis_rec[F135.item_id]
         imd = AttrDict(
@@ -1718,7 +1718,7 @@ class POSM_VNMS(SynchronizeAddress):
     FIS_SCHEMA = ()
     FIELDS_CHECK_IGNORE = ('active', 'name')
 
-    def FIS_IGNORE_RECORD(self, rec):
+    def fis_ignore_record(self, rec):
         key = rec['An$(3,6)']
         key_filter = self.extra.get('key_filter')
         if key_filter and key != key_filter:
@@ -1753,9 +1753,9 @@ class POSM_VNMS(SynchronizeAddress):
         # - address fields (for contact)
         #
         posm_rec, vnms_rec = posm_vnms
-        if use_ignore and posm_rec and self.FIS_IGNORE_RECORD(posm_rec):
+        if use_ignore and posm_rec and self.fis_ignore_record(posm_rec):
             posm_rec = None
-        if use_ignore and vnms_rec and self.FIS_IGNORE_RECORD(vnms_rec):
+        if use_ignore and vnms_rec and self.fis_ignore_record(vnms_rec):
             vnms_rec = None
         if posm_rec is vnms_rec is None:
             return ()
