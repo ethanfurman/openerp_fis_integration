@@ -1849,7 +1849,7 @@ class POSM_VNMS(SynchronizeAddress):
         ext = ''
         if vnms_rec is not None and vnms_rec[F65.contact]:
             name, ext = strip_ext(NameCase(vnms_rec[F65.contact]))
-            unk = name.split()[-1]
+            unk = name and name.split()[-1] or ''
             if (    unk.lower()[0] == 'x' and unk[1:].isdigit()
                  or unk.lower()[:3] == 'ext' and unk[3:].isdigit()
                  ):
