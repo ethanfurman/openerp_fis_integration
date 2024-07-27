@@ -794,12 +794,15 @@ class CSMS(SynchronizeAddress):
         company.active = not bool(do_not_use)
         added = fis_rec[F33.date_added] or Date()
         if added:
-            year, month, day = added[:2], int(added[2:4]), int(added[4:])
-            if year.isdigit():
-                year = 1900 + int(year)
-            else:
-                year = 1840 + int(year, 16)
-            added = Date(year, month, day)
+            try:
+                year, month, day = added[:2], int(added[2:4]), int(added[4:])
+                if year.isdigit():
+                    year = 1900 + int(year)
+                else:
+                    year = 1840 + int(year, 16)
+                added = Date(year, month, day)
+            except ValueError:
+                added = Date()
         if (
                 fis_rec[F33.this_year_sales]
              or fis_rec[F33.last_year_sales]
@@ -1074,12 +1077,15 @@ class EMP1(SynchronizeAddress):
         text = fis_rec[F74.birth_date]
         emp_birthday = None
         if text:
-            month, day, year = int(text[:2]), int(text[2:4]), text[4:]
-            if year.isdigit():
-                year = 1900 + int(year)
-            else:
-                year = 1740 + int(year, 16)
-            emp_birthday = Date(year, month, day)
+            try:
+                month, day, year = int(text[:2]), int(text[2:4]), text[4:]
+                if year.isdigit():
+                    year = 1900 + int(year)
+                else:
+                    year = 1740 + int(year, 16)
+                emp_birthday = Date(year, month, day)
+            except ValueError:
+                pass
         employee.birthday = emp_birthday or None
         employee.status_flag = fis_rec[F74.status_flag] or None
         employee.pension_plan = fis_rec[F74.pension_status].upper() == 'Y'
