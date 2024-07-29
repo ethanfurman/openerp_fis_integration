@@ -38,7 +38,9 @@ ALL = [(1,'=',1)]
         )
 def main():
     global oe, cfg, fis_tables, imd, imf, admin_user, fis_user
+    print('loading configuration...')
     cfg = OrmFile(config, types={'_path':Path})
+    print('getting connection...')
     oe = get_connection(
             hostname=cfg.openerp.host,
             database=cfg.openerp.db,
@@ -54,6 +56,7 @@ def main():
             [0]['res_id']
             )
     fis_tables = {}
+    print('loading OE table definitions...')
     for name in fis_oe_converters.__all__:
         obj = getattr(fis_oe_converters, name)
         if issubclass(obj, Synchronize):
@@ -100,11 +103,21 @@ def add_imd(table):
         )
 def cnvzo1():
     "ensure all transmitter numbers have an ir.model.data entry; update user logins"
+    global OERec
+    OERec = NamedTuple(
+            'OERec',
+            ['id', 'login', 'name', 'fis_partner_id', 'fis_transmitter_id',
+             'model', 'create_date', 'create_uid', 'write_uid', 'write_date',
+             'xmlid', 'groups_id', 'tertiary',
+             ])
+    #
+    print('ensuring IMD entries for CNVZO1...')
     cnvzo1 = add_imd(table('CNVZO1'))
     #
     # imd.get_object_reference('portal','group_portal')
     # ['res.groups', 229]
     #
+    print('loading OE data...')
     portal_group_id = imd.get_object_reference('portal','group_portal')[1]
     res_users = oe.get_model('res.users')
     fis_transmitter_code = oe.get_model('fis.transmitter_code')
@@ -112,14 +125,16 @@ def cnvzo1():
             res_users,
             domain=[('groups_id','=',portal_group_id)],
             fields=['id','login','name','fis_partner_id','fis_transmitter_id'],
+            use_blanks=True,
             )
+    print('processing %d users...' % len(users))
     for user in users:
-        print('user: ', user)
+        print('user: ', user.login, user.name, end=' -> ')
         if heb(user.login):
-            transmitter_no = '150' + heb.data
+            transmitter_no = '150' + heb()
             print('  HEB: ', transmitter_no)
         elif other(user.name):
-            transmitter_no = other.data
+            transmitter_no = other()
             print('  other: ', transmitter_no)
         else:
             error("unable to extract transmitter from", user.login)
@@ -142,7 +157,7 @@ def cnvzo1():
             error('too many/too few transmitters for %r:  %s' % (transmitter_no, transmitters))
             continue
         transmitter ,= transmitters
-        print('transmitter:', transmitter)
+        print('transmitter:', transmitter.name)
         values = res_users.onchange_fis_transmitter([user.id], transmitter.id, False, False)['value']
         values['fis_transmitter_id'] = transmitter.id
         print('saving %s' % values)
@@ -487,12 +502,15 @@ def get_fields(model):
     return list(result)
 
 def get_main_records(model, domain, fields, extra=[], use_blanks=False):
+    domain_fields = set([t[0] for t in domain])
     if not use_blanks:
         for f in fields:
-            if f in model._text_fields or f in model._html_fields:
-                domain.append((f,'!=',''))
-            else:
-                domain.append((f,'!=',False))
+            if f not in domain_fields:
+                if f in model._text_fields or f in model._html_fields:
+                    domain.append((f,'!=',''))
+                else:
+                    domain.append((f,'!=',False))
+    print('getting records using domain %r' % (domain, ))
     records = model.read(domain, fields=fields+extra)
     # add the metadata
     meta = dict(
