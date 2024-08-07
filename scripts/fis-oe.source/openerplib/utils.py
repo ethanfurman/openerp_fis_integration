@@ -550,12 +550,28 @@ def get_records(
 
 class Query(object):
 
-    def __init__(self, model, ids=None, domain=ALL_RECORDS, fields=None, order=None, context=None, unique=False, to_file=None, constraints=(), _parent=None):
+    def __init__(
+                self,
+                model,
+                ids=None,
+                domain=ALL_RECORDS,
+                fields=None,
+                order=None,
+                context=None,
+                unique=False,
+                to_file=None,
+                constraints=(),
+                aliases=None,
+                _parent=None,
+        ):
         # fields may be modified (reminder: changes will be seen by caller)
         if context is None:
             context = {}
         if fields is None:
             raise ValueError('FIELDS must be given')
+        if aliases is None:
+            aliases = {}
+        self.aliases = aliases
         if ids:
             if domain and domain != ALL_RECORDS:
                 raise ValueError('Cannot specify both ids and domain (%r and %r)' % (ids, domain))
@@ -567,6 +583,7 @@ class Query(object):
         #
         # save current fields as ordering information since fields itself may be modified
         self.order = fields[:]
+        self.fields = self.order
         self.to_file = to_file
         # create a field name to display name mapping
         if _parent is None:
@@ -578,12 +595,13 @@ class Query(object):
         #
         unique_fields = []
         for field in fields:
+            field = aliases.get(field, field)
             field = field.split('/')[0]
             if field not in unique_fields:
                 unique_fields.append(field)
         field_defs = model.fields_get(unique_fields, context=context)
         #
-        main_query = QueryDomain(model, fields, ids, constraints=constraints)
+        main_query = QueryDomain(model, unique_fields, ids, aliases=aliases, constraints=constraints)
         self.query = main_query
         self.sub_queries = sub_queries = {}
         many_fields = [f for f in fields if '/' in f]
@@ -593,7 +611,7 @@ class Query(object):
             for n, f in field_defs.items():
                 self.names[parent_field+n] = parent_display + f['string']
         else:
-            main_query.fields[:] = unique_fields
+            # main_query.fields[:] = unique_fields
             nested = defaultdict(list)
             for f in many_fields:
                 main_field, sub_field = f.split('/', 1)
@@ -613,6 +631,7 @@ class Query(object):
                 self.sub_queries[main_field] = sub_query = QueryDomain(
                         sub_model,
                         sub_fields,
+                        aliases=aliases,
                         _parent=(main_field, main_display),
                         )
                 # if sub_query has it's own query, gather updated field names
@@ -659,7 +678,9 @@ class Query(object):
             if f_type == 'many2one':
                 for rec in main_query.records:
                     if rec[field]:
+                        v = rec[field]
                         rec[field] = sub_query.id_map[rec[field].id]
+                        rec[field]['<self>'] = v
             elif f_type in ('one2many', 'many2many'):
                 for rec in main_query.records:
                     existing = dict(
@@ -706,7 +727,7 @@ class QueryDomain(object):
     _cache = dict()       # key: model.model_name, tuple(fields), tuple(ids)
     _cache_key = None
 
-    def __init__(self, model, fields, ids=None, context=None, constraints=(), _parent=None):
+    def __init__(self, model, fields, ids=None, context=None, aliases=None, constraints=(), _parent=None):
         # fields is the /same/ fields object from Query
         self.model = model          # OpenERP model to query
         self.fields = fields        # specific fields to gather
@@ -714,6 +735,7 @@ class QueryDomain(object):
             ids = []
         self.ids = ids              # record ids to retrieve
         self.context = context or {}
+        self.aliases = aliases
         self.constraints = constraints
         self._parent_field = _parent
         self.query = None
@@ -760,6 +782,14 @@ class QueryDomain(object):
             self.ids = [id for id in self.ids if id in id_map]
             # then put records back into order of ids
             records = [id_map[id] for id in self.ids]
+            if self.aliases and records:
+                # update field names
+                reverse = dict([(f, a) for a, f in self.aliases.items()])
+                to_update = [f for f in reverse if f in records[0]]
+                for f in to_update:
+                    a = reverse[f]
+                    for rec in records:
+                        rec[a] = rec.pop(f)
             # update cache_key as _normalize may have modified list of fields returned
             cache_key = self._cache_key = self.model.model_name, tuple(self.fields), tuple(self.ids)
             self._cache[cache_key] = records, id_map
@@ -1274,28 +1304,44 @@ class CSV(object):
     represents a .csv file
     """
 
-    def __init__(self, filename, mode='r'):
+    def __init__(self, filename, mode='r', header=True, default_type=None, null=None):
         if mode not in ('r','w'):
             raise ValueError("mode must be 'r' or 'w', not %r" % (mode, ))
         self.filename = filename
         self.mode = mode
+        self.default_type = default_type
+        self.null = null
+        self.use_header = header
         if mode == 'r':
-            with codecs.open(filename, mode=mode, encoding='utf-8') as csv:
+            with codecs.open(filename, mode='r', encoding='utf-8') as csv:
                 raw_data = csv.read().split('\n')
-            self.header = raw_data.pop(0).strip().split(',')
+            if header:
+                self.header = raw_data.pop(0).strip().split(',')
+            else:
+                self.header = []
             self.data = [l.strip() for l in raw_data if l.strip()]
         else:
             self.header = []
             self.data = []
+        if not header:
+            self.header = []
+
 
     def __enter__(self):
-        if self.mode == 'r':
-            raise TypeError("CSV must be opened for writing to be used as a context manager")
         return self
 
     def __exit__(self, *args):
-        if args == (None, None, None):
+        if args == (None, None, None) and self.mode == 'w':
             self.save()
+
+    def __getitem__(self, index):
+        if isinstance(index, int):
+            return self.from_csv(self.data[index])
+        # better be a slice
+        lines = []
+        for line in self.data[index]:
+            lines.append(self.from_csv(line))
+        return lines
 
     def __iter__(self):
         """
@@ -1310,7 +1356,7 @@ class CSV(object):
     def append(self, *values):
         if isinstance(values[0], (list, tuple)):
             values = tuple(values[0])
-        if len(values) != len(self.header):
+        if self.header and len(values) != len(self.header):
             raise ValueError('%d fields required, %d value(s) given' % (len(self.header), len(values)))
         line = self.to_csv(*values)
         new_values = self.from_csv(line)
@@ -1398,50 +1444,54 @@ class CSV(object):
         # convert fields to their data types
         final = []
         for i, field in enumerate(fields):
-            if not field:
-                final.append(None)
-            elif field[0] == field[-1] == '"':
-                # simple string
-                final.append(field[1:-1])
-            elif field.lower() in ('true','yes','on','t'):
-                final.append(True)
-            elif field.lower() in ('false','no','off','f'):
-                final.append(False)
-            elif '-' in field and ':' in field:
-                final.append(dates.str_to_datetime(field, localtime=False))
-            elif '-' in field:
-                final.append(Date.strptime(field, '%Y-%m-%d'))
-            elif ':' in field:
-                final.append(Time.strptime(field, '%H:%M:%S'))
-            elif 'Many2One' in field:
-                final.append(eval(field))
-            elif 'Phone' in field:
-                final.append(eval(field))
-            else:
-                try:
-                    final.append(int(field))
-                except ValueError:
+            try:
+                if not field:
+                    final.append(self.null)
+                elif field[0] == field[-1] == '"':
+                    # simple string
+                    final.append(field[1:-1])
+                elif field.lower() in ('true','yes','on','t'):
+                    final.append(True)
+                elif field.lower() in ('false','no','off','f'):
+                    final.append(False)
+                elif '-' in field and ':' in field:
+                    final.append(dates.str_to_datetime(field, localtime=False))
+                elif '-' in field:
+                    final.append(Date.strptime(field, '%Y-%m-%d'))
+                elif ':' in field:
+                    final.append(Time.strptime(field, '%H:%M:%S'))
+                elif 'Many2One' in field:
+                    final.append(eval(field))
+                elif 'Phone' in field:
+                    final.append(eval(field))
+                else:
                     try:
+                        final.append(int(field))
+                    except ValueError:
                         final.append(float(field))
-                    except:
-                        ve = ValueError('unable to determine datatype of <%r>' % (field, ))
-                        ve.__cause__ = None
-                        raise ve
+            except ValueError:
+                if self.default_type is not None:
+                    final.append(self.default_type(field))
+                else:
+                    ve = ValueError('unable to determine datatype of <%r>' % (field, ))
+                    ve.__cause__ = None
+                    raise ve
         return tuple(final)
 
-    def iter_map(self):
+    def iter_map(self, header=None):
+        header = self.header or header
+        if not header:
+            raise ValueError('header needed for iter_map()')
         for record in self:
             yield AttrDict(zip(self.header, record))
 
     def save(self, filename=None):
         if filename is None:
             filename = self.filename
-        # check that we have a header
-        if not self.header:
-            raise ValueError('missing header')
-        # write the header
-        with codecs.open(filename, mode=self.mode, encoding='utf-8') as csv:
-            csv.write(','.join(self.header) + '\n')
+        with codecs.open(filename, mode='w', encoding='utf-8') as csv:
+            if self.header:
+                # write the header
+                csv.write(','.join(self.header) + '\n')
             # write the data
             for line in self.data:
                 csv.write(line + '\n')
@@ -1482,9 +1532,7 @@ class CSV(object):
                 line.append(repr(datum))
         return ','.join(line)
 
-
 _raise_lookup = Sentinel('raise LookupError')
-
 class SelectionEnum(str, _aenum.Enum):
     _init_ = 'db user'
 
@@ -1571,4 +1619,3 @@ class SelectionEnum(str, _aenum.Enum):
             if default is not _raise_lookup:
                 return default
         raise LookupError('%r not found in %s' % (text, cls.__name__))
-

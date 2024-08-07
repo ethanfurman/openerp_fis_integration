@@ -6,28 +6,23 @@ from __future__ import print_function, unicode_literals
 
 from VSS.BBxXlate import fisData as fd
 from VSS.BBxXlate.bbxfile import TableError
-from VSS.address import cszk, normalize_address, Rise, Sift, AddrCase, NameCase, BsnsCase, name_chars
-from VSS.utils import fix_phone
 from abc import ABCMeta, abstractmethod, abstractproperty
 from aenum import Enum, auto
 from antipathy import Path
 from ast import literal_eval
-from collections import defaultdict
-from dbf import Date, DateTime, Time
+from collections import defaultdict, OrderedDict
 from fislib import schema as fis_schema
-from fislib.tools import FISenum, ProductLabelDescription
 from fnx_script_support import all_equal, translator
 from itertools import cycle
 from openerplib import get_connection, get_records, AttrDict, Binary, Query, Many2One, MissingTable, CSV
+from traceback import print_exc
 
 import dbf
 import os
 import pprint
-import random
 import re
 import socket
 import sys
-import textwrap
 import time
 
 from scription import *
@@ -38,11 +33,31 @@ except ImportError:
     from xmlrpc.client import Fault
 
 
-
 virtual_env = os.environ['VIRTUAL_ENV']
 config = OrmFile(Path('%s/config/fnx.ini' % virtual_env), types={'_path':Path})
 env = config.env
 PRODUCT_FORECAST = '/FIS/data/product_forecast.txt'
+
+## Globals
+
+class SQLState(Enum):
+    START = auto()
+    SELECT = auto()
+    FROM = auto()
+    JOIN = auto()
+    ON = auto()
+    WHERE = auto()
+    ORDER_BY = auto()
+    TO = auto()
+
+( START,
+  # DIFF, DIFF_FROM, DIFF_WHERE, DIFF_ORDERBY,
+  SELECT, SELECT_FROM, SELECT_JOIN, SELECT_ON, SELECT_WHERE, SELECT_ORDERBY, SELECT_TO,
+  ) = SQLState
+
+SINGLE_QUOTE = "'"
+COMMA = ","
+BACKSLASH = "\\"
 
 TEST = [
         'xml_id',
@@ -214,9 +229,11 @@ def main(hostname, database, show_ids=False):
         separator=('insert blank line between records', FLAG),
         wrap=Spec('field name and width of fields to wrap [ignored in .xls and .csv output]', MULTI),
         quiet=Spec('do not display output', FLAG),
+        dev=Spec('use in-development routines', FLAG),
+        sheet=Spec('sheet name if writing excel file', OPTION, None),
         )
 @Alias('fis-oe')
-def sql(command, separator, wrap, quiet):
+def sql(command, separator, wrap, quiet, dev, sheet):
     """
     Query FIS/OpenERP databases.
 
@@ -257,31 +274,45 @@ def sql(command, separator, wrap, quiet):
     if quiet:
         global script_verbosity
         script_verbosity = -1
-    if wrap and isinstance(wrap, tuple):
+    if isinstance(wrap, tuple):
         wrap = dict(
             (k, int(v))
             for item in wrap
             for k, v in (item.split(':'), )
             )
     command = command.strip(' ;')
-    check_command = ' '.join(command.lower().split())
     try:
-        q = Table.query(command)
-        print('q --> %s' % (q, ), verbose=2)
+        # get a query object, which has a `records` attribute with all matches
+        if dev:
+            sql = SQL(command)
+            query = sql.execute()
+        else:
+            query = Table.query(command)
+            # table = Table.query(command)
+            # query = table.query
+        print('q --> %s' % (query, ), verbose=2)
     except SQLError as e:
         help(str(e))
-    if q is not None:
-        to_file = q.to_file
-        fields = q.fields
+    except NotImplementedError as e:
+        abort(str(e))
+    if query is not None:
+        print(query.name)
+        model_name = sheet or query.name or command
+        to_file = query.to_file
+        fields = query.fields
+        query = query
         if to_file:
             if to_file.endswith('.xls'):
-                write_xls(self.table.model_name, q, fields, to_file, separator)
+                write_xls(model_name, query, fields, to_file, separator)
             elif to_file.endswith('.csv'):
-                write_csv(self.table.model_name, q, fields, to_file, separator)
+                write_csv(model_name, query, fields, to_file, separator)
             elif to_file.endswith('.txt') or to_file == '-':
-                write_txt(self.table.model_name, q, fields, to_file, separator, wrap)
+                for field, length in wrap.items():
+                    pass
+                write_txt(model_name, query, fields, to_file, separator, wrap)
             else:
                 abort('unknown file type: %r' % to_file)
+        echo(query.status)
 
 # OpenERP commands
 def _module_name(text):
@@ -404,7 +435,7 @@ def imd(name, ignore_case, exact, *fields):
     like = '=ilike' if ignore_case else '=like'
     if not exact and '%' not in name:
         name = "%%%s%%" % name
-    query = Table('ir.model.data').query(
+    query = FISTable('ir.model.data').query(
             fields=['module','name','model','res_id','display_name'],
             to_file='',
             domain=[('name', like, name)],
@@ -444,7 +475,7 @@ def transmitter(code):
     OE: return basic information about <transmitter code>.
     """
     ensure_oe()
-    Table('fis.transmitter_code').query(
+    FISTable('fis.transmitter_code').query(
             fields=['transmitter_no','transmitter_name','ship_to_id'],
             to_file='-',
             domain=[('transmitter_no','like',code)],
@@ -1079,22 +1110,24 @@ def values(filenum, subset, code, fields, counts):
         print('%-23s:  %7d' % ('Total Records', len(fis_table)), verbose=0)
 
 
-# @Command()
-# def test():
-#     """
-#     Perform various tests.
-#
-#     - record matching for sql select
-#     """
-#     records = [
-#             dict(id=1, name='Ethan', age=646, city='Rosalia'),
-#             dict(id=2, name='Garrett', age=38, city='Spokane'),
-#             dict(id=3, name='Elizabeth', age=38, city='Spokane'),
-#             dict(id=4, name='William Kuth', age=21, city='rosalia'),
-#             dict(id=5, name='Cecilie kuth', age=17, city='Rosalia'),
-#             dict(id=6, name='jillian kuth', age=13, city='ROSALIA'),
-#             ]
+@Command()
+def self_test():
+    """
+    Perform various tests.
 
+    - record matching for sql select
+    """
+    # records = [
+    #         dict(id=1, name='Ethan', age=646, city='Rosalia'),
+    #         dict(id=2, name='Garrett', age=38, city='Spokane'),
+    #         dict(id=3, name='Elizabeth', age=38, city='Spokane'),
+    #         dict(id=4, name='William Kuth', age=21, city='rosalia'),
+    #         dict(id=5, name='Cecilie kuth', age=17, city='Rosalia'),
+    #         dict(id=6, name='jillian kuth', age=13, city='ROSALIA'),
+    #         ]
+    #
+    import test
+    test
 
 ## helpers
 
@@ -1185,7 +1218,7 @@ def convert_set(clausa):
         # e.g. login = 'ethan'
         #      id=201
         #      blah = null, this = 'that'
-        print('set', clausa, verbose=2)
+        print('set', clausa, verbose=3)
         try:
             field, op, value, clausa = re.match(
                     "^"
@@ -1205,7 +1238,7 @@ def convert_set(clausa):
             if not (field and op and value):
                 raise ValueError
         except (ValueError, AttributeError):
-            abort('malformed SET clause')
+            raise ValueError('malformed SET clause')
         else:
             lval = value.lower()
             if (
@@ -1226,22 +1259,22 @@ def convert_set(clausa):
                     oval = value
                     value = eval(value)
                 except Exception:
-                    abort('cannot use/convert data: %r' % (oval, ))
+                    raise ValueError('cannot use/convert data: %r' % (oval, ))
             values[field] = value
             if clausa.startswith(','):
                 clausa = clausa[1:].lstrip()
     return values
 
-def convert_where(clausa):
+def convert_where(clausa, alias=None, infix=False, strip_quotes=True):
     """
     Converts the WHERE clause of an SQL command.
     """
     def subquery(match):
-        print('subquery:', match, verbose=1)
+        print('subquery:', match, verbose=2)
         command = match.group()[1:-1]
-        echo(command)
+        echo(command, verbose=0)
         if not command.upper().startswith(('SELECT ','COUNT ')):
-            abort('subquery must be SELECT or COUNT')
+            raise ValueError('subquery must be SELECT or COUNT')
         if command.upper().startswith('COUNT '):
             return str(sql_count(command, separator=False))
         else:  # SELECT
@@ -1257,11 +1290,12 @@ def convert_where(clausa):
                 field = fields.pop()
                 return str([r[field] for r in result])
             else:
-                abort('only one field can be returned from subqueries')
-
-    print('subquery: %r,  clausa: %r' % (subquery, clausa))
+                raise ValueError('only one field can be returned from subqueries')
+    if alias is None:
+        alias = {}
+    print('subquery: %r,  clausa: %r' % (subquery, clausa), verbose=2)
     clausa = re.sub(r"\(.*\)", subquery, clausa)
-    print('after subquery: %r' % (clausa, ))
+    print('after subquery: %r' % (clausa, ), verbose=2)
 
     std_match = Var(lambda clausa: re.match(
             r"^(\S+)\s*(is not|is|not in|in|like|=like|not like|ilike|=ilike|not ilike|<=|>=|!=|==?|<|>)\s*('(?:[^'\\]|\\.)*?'|\[[^]]*\]|\S*)\s*(.*?)\s*$",
@@ -1286,12 +1320,12 @@ def convert_where(clausa):
         #      WHERE count(fis_portal_logins) > 1
         #      WHERE 'Warehouse notes' is not null  (future enhancement)
         #      WHERE id in (SELECT res_id FROM ir.model.data WHERE name =like 'F074_%_res_partner')
-        print('clausa: %r' % (clausa, ), verbose=2)
+        print('clausa: %r' % (clausa, ), verbose=3)
         if std_match(clausa):
             field, op, condition, clausa = std_match().groups()
-            print('\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (field, op, condition, clausa), verbose=2)
+            print('\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (field, op, condition, clausa), verbose=3)
             if not (field and op and condition):
-                abort('std: malformed WHERE clause')
+                raise ValueError('std: malformed WHERE clause')
             if op == '==':
                 op = '='
             lop = op.lower()
@@ -1300,7 +1334,8 @@ def convert_where(clausa):
                     condition[0] == condition[-1] == '"'
                  or condition[0] == condition[-1] == "'"
                  ):
-                condition = condition[1:-1]
+                if strip_quotes:
+                    condition = condition[1:-1]
             elif lcond in ('t', 'true'):
                 condition = True
             elif lcond in ('f', 'false'):
@@ -1320,36 +1355,42 @@ def convert_where(clausa):
                     try:
                         condition = float(condition)
                     except ValueError:
-                        abort('unknown data type: %r %r' % (type(condition), condition))
+                        raise ValueError('unknown data type: %r %r' % (type(condition), condition))
             if condition is not False and condition == 0:
                 condition = 0.0
             elif (lop, lcond) == ('is', 'null'):
                 op, condition = '=', False
             elif (lop, lcond) == ('is not', 'null'):
                 op, condition = '!=', False
-            donde.append((field,op,condition))
+            donde.append((alias.get(field,field),op,condition))
             if clausa.lower().startswith('or '):
-                donde.insert(0, '|')
+                if infix:
+                    donde.append('|')
+                else:
+                    donde.insert(0, '|')
                 clausa = clausa[3:]
             elif clausa.lower().startswith('and '):
-                donde.insert(0, '&')
+                if infix:
+                    donde.append('&')
+                else:
+                    donde.insert(0, '&')
                 clausa = clausa[4:]
         elif enh_match(clausa):
             function, field, op, condition, clausa = enh_match().groups()
-            print('\nfunction: %r\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (function, field, op, condition, clausa), verbose=2)
+            print('\nfunction: %r\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (function, field, op, condition, clausa), verbose=3)
             if not (function and field and op and condition):
-                abort('enh: malformed WHERE clause')
+                raise ValueError('enh: malformed WHERE clause')
             func = function.lower()
             if func.startswith('count'):
                 if op == '=':
                     op = '=='
-                func = length(field, op, condition)
+                func = length(alias.get(field,field), op, condition)
                 constraints.append(func)
                 donde.append((1,'=',1))
             else:
-                abort('unknown command in WHERE clause: %r' % function)
+                raise ValueError('unknown command in WHERE clause: %r' % function)
         else:
-            abort('malformed WHERE clause')
+            raise ValueError('malformed WHERE clause')
     return donde, constraints
 
 class counter(object):
@@ -1369,7 +1410,7 @@ class counter(object):
 
 def ensure_oe():
     """
-    abort of OpenERP is unavailable
+    abort if OpenERP is unavailable
     """
     if oe is None:
         abort('OpenERP is not running; only FIS functions/tables available.')
@@ -1420,7 +1461,7 @@ class ExpandedRow(object):
         #               ),
         #           ],
         #   }
-        print('ExpandedRow.__init__: fields ->', fields, '  record ->', record, verbose=3)
+        print('ExpandedRow.__init__: fields ->', fields, '  record ->', record, verbose=4)
         rows = []
         row = []
         cache = {}
@@ -1431,7 +1472,7 @@ class ExpandedRow(object):
                 iter_fields.append(fld)
         for k in iter_fields:
             v = record[k]
-            print('checking %s -> %r' % (k, v), verbose=3)
+            print('checking %s -> %r' % (k, v), verbose=4)
             cache[k] = set()
             if any([f.startswith(k+'/') for f in fields]):
                 sub_fields = []
@@ -1457,14 +1498,14 @@ class ExpandedRow(object):
                         raise TypeError('invalid type: %r [%r]' % (type(v), v))
                 else:
                     sub_row = [[None] * len(sub_fields)]
-                print('adding subrow', sub_row, verbose=3)
+                print('adding subrow', sub_row, verbose=4)
                 row.append(sub_row)
             elif k in fields:
                 # must go after subfield checking
-                print('  adding element ->', k, verbose=3)
+                print('  adding element ->', k, verbose=4)
                 row.append(v)
-            print('intermediate row ->', row, verbose=3)
-        print('final row ->', row, verbose=3)
+            print('intermediate row ->', row, verbose=4)
+        print('final row ->', row, verbose=4)
         for i in counter():
             line = []
             remaining = False
@@ -1485,7 +1526,7 @@ class ExpandedRow(object):
                             line.extend([None] * len(item))
                         else:
                             line.extend([None])
-            print('processed row ->', line, verbose=2)
+            print('processed row ->', line, verbose=3)
             rows.append(line)
             if not remaining:
                 break
@@ -1524,9 +1565,9 @@ def format_record(record, fields=None):
         print(
                 'field %d -> name width: %d   value width: %d   mask wdith: %d'
                     % (i, name_width, value_width, mask_width),
-                verbose=3,
+                verbose=4,
                 )
-    print(verbose=3)
+    print(verbose=4)
     # for i, row in enumerate(record.fieldlist):
     #     if i in fields:
     for i in fields:
@@ -1542,7 +1583,7 @@ def format_record(record, fields=None):
             value = leading_spaces * u'\u2422' + value.lstrip()
             if u'\u2422' in value or u'\u2400' in value:
                 echo('value is:', value)
-        print('field %d -> %r' % (i, value), verbose=3)
+        print('field %d -> %r' % (i, value), verbose=4)
         if '$' in row[3] and not fieldlist[i][4]:
             lines.append('%5d | %*s | %*s | %*s | %s' % (i+1, -name_width, row[3], mask_width, fieldlist[i][4], -value_width, value, row[1]))
         else:
@@ -1566,6 +1607,7 @@ def html2text(html, wrap):
             while len(html) > target and html[target] not in ' \n\t':
                 target -= 1
                 if target <= 10:
+                    target = wrap
                     break
             tmp.append(html[:target].strip())
             html = html[target:]
@@ -1579,6 +1621,11 @@ def length(field, op, cond):
     exec("def length(rec):\n  return len(rec['%s']) %s %s" % (field, op, cond), d)
     return d['length']
 
+def maybe_lower(value):
+    if isinstance(value, basestring):
+        value = value.lower()
+    return value
+
 def normalize_field_names(model, fields):
         # currently unused
         #
@@ -1587,7 +1634,7 @@ def normalize_field_names(model, fields):
         model_strings = {}
         model_fields = set()
         for field_name, field_def in model.fields_get().items():
-            print('adding: %r' % (field_name, ))
+            print('adding: %r' % (field_name, ), verbose=2)
             model_fields.add(field_name)
             string = field_def['string'].lower()
             if string in model_strings:
@@ -1624,7 +1671,7 @@ def normalize_field_names(model, fields):
 
 def oe_export(name, domain=ALL_ACTIVE, table=None, to_file=None):
     if to_file[-4:].lower() not in ('.txt', '.csv', '.xls') and to_file != '-':
-        abort('unknown file type for %s' % to_file)
+        raise ValueError('unknown file type for %s' % to_file)
     found = []
     for export in get_records(oe, 'ir.exports', domain=[('name','=',name)]):
         found.append(export.resource)
@@ -1633,9 +1680,9 @@ def oe_export(name, domain=ALL_ACTIVE, table=None, to_file=None):
     else:
         # no exact match, check only one match found
         if not found:
-            abort('no export found with name of %r' % (name, ))
+            raise ValueError('no export found with name of %r' % (name, ))
         elif len(found) > 1:
-            abort('multiple matches for %r:\npossible tables: %s'
+            raise ValueError('multiple matches for %r:\npossible tables: %s'
                     % (name, ', '.join(found)))
     # at this point, export is the one we want
     table = export.resource
@@ -1669,7 +1716,7 @@ def write_xls(sheet_name, query, fields, file, separator=False):
     #
     i = 0
     for r in query.records:
-        print(r, verbose=2)
+        print(r, verbose=3)
         if separator:
             i += 1
         er = ExpandedRow(fields, r)
@@ -1679,9 +1726,9 @@ def write_xls(sheet_name, query, fields, file, separator=False):
             for cell_index, cell_value in enumerate(row):
                 if isinstance(cell_value, Many2One):
                     cell_value = str(cell_value)
-                    # print('skipping m2o', cell_value, verbose=3)
+                    # print('skipping m2o', cell_value, verbose=4)
                 elif isinstance(cell_value, (list, tuple)):
-                    print('cell_value ->', cell_value, verbose=3)
+                    print('cell_value ->', cell_value, verbose=4)
                     for cv in cell_value:
                         if isinstance(cv, Many2One):
                             worksheet.write(i, cell_index+ci_bump, cv)
@@ -1712,10 +1759,10 @@ def write_xls(sheet_name, query, fields, file, separator=False):
 def write_csv(table, query, fields, file, separator=False):
     lines = []
     line = []
-    print('field count:', len(fields), fields, verbose=2)
+    print('field count:', len(fields), fields, verbose=3)
     for field_name in fields:
         line.append(field_name)
-    print(repr(line), verbose=3)
+    print(repr(line), verbose=4)
     lines.append(','.join(line))
     #
     for r in query.records:
@@ -1727,9 +1774,9 @@ def write_csv(table, query, fields, file, separator=False):
             for cell_value in row:
                 if isinstance(cell_value, Many2One):
                     cell_value = str(cell_value)
-                    # print('skipping m2o', cell_value, verbose=3)
+                    # print('skipping m2o', cell_value, verbose=4)
                 elif isinstance(cell_value, (list, tuple)):
-                    print('cell_value [sequence] ->', cell_value, verbose=3)
+                    print('cell_value [sequence] ->', cell_value, verbose=4)
                     for cv in cell_value:
                         if cv:
                             if isinstance(cv, basestring):
@@ -1751,7 +1798,7 @@ def write_csv(table, query, fields, file, separator=False):
                             line.append('')
                     continue
                 elif isinstance(cell_value, basestring):
-                    print('cell_value [basestring] ->', cell_value, verbose=3)
+                    print('cell_value [basestring] ->', cell_value, verbose=4)
                     cell_value = re.sub("\r", r" ", cell_value)
                     cell_value = re.sub(r'"', r'""', cell_value)
                     cell_value = cell_value.replace('\\', '\\\\')
@@ -1765,26 +1812,31 @@ def write_csv(table, query, fields, file, separator=False):
                     cell_value = ''
                 line.append(str(cell_value))
             lines.append(','.join(line))
-    print('\n'.join([repr(l) for l in lines]), verbose=3)
+    print('\n'.join([repr(l) for l in lines]), verbose=4)
     with open(file, 'wb') as output:
         output.write('\n'.join(lines).encode('utf8'))
 
 def write_txt(table, query, fields, file, separator=False, wrap=None,):
     lines = []
     line = []
-    print('field count:', len(fields), fields, verbose=2)
+    print('field count:', len(fields), fields, verbose=4)
     for field_name in fields:
-        line.append('%s\n%s' % (query.names[field_name] or field_name.upper(), field_name))
+        field_header = field_name.upper()
+        aliases = getattr(query, 'aliases', {})
+        if script_verbosity:
+            field_header += "\n%s" % aliases.get(field_name, field_name)
+        line.append(field_header)
+        # line.append('%s\n%s' % (query.names[field_name] or field_name.upper(), field_name))
     lines.append(line)
     #
     for r in query.records:
         if separator:
             lines.append(None)
-        print(r, verbose=3)
+        print(r, verbose=4)
         er = ExpandedRow(fields, r)
-        [print(r, verbose=3) for r in er]
+        [print(r, verbose=4) for r in er]
         for row in er:
-            print('post pre-process row ->', row, verbose=2)
+            print('post pre-process row ->', row, verbose=3)
             line = []
             for field_name, (cell_index, cell_value) in zip(fields, enumerate(row)):
                 if isinstance(cell_value, Many2One):
@@ -1816,7 +1868,7 @@ def write_txt(table, query, fields, file, separator=False, wrap=None,):
                 if field_name in wrap:
                     wrap_value = wrap[field_name]
                     line[-1] = html2text(line[-1], wrap_value)
-            print('post post-process line ->', line, verbose=2)
+            print('post post-process line ->', line, verbose=3)
             lines.append(line)
     if not separator:
         lines.insert(1, None)
@@ -1840,36 +1892,34 @@ class Table(object):
     """
     __metaclass__ = ABCMeta
     tables = {}
-    command_table_pat = r"(DELETE\s*FROM|DESCRIBE|DIFF .*? FROM|REPORT .*? FROM|SELECT .*? FROM|INSERT INTO|UPDATE)\s*(\S*)"
+    command_table_pat = r"(COUNT\s*FROM|DELETE\s*FROM|DESCRIBE|DIFF .*? FROM|REPORT .*? FROM|SELECT .*? FROM|INSERT INTO|UPDATE)\s*(\S*)"
 
     def __new__(cls, table_name):
         """
         Select the FISTable or OpenERPTable depending on table_name.
         """
         if '.' in table_name:
-            return super(Table, OpenERPTable).__new__(OpenERPTable, table_name)
+            table = super(Table, OpenERPTable).__new__(OpenERPTable, table_name)
         else:
-            return super(Table, FISTable).__new__(FISTable, table_name)
+            table = super(Table, FISTable).__new__(FISTable, table_name)
+        return table
+
     def __getattr__(self, name):
         return getattr(self.table, name)
+
     @abstractmethod
     def __init__(self, table_name):
         """
         Represent an FIS or OpenERP table.
         """
 
-    @abstractmethod
-    def query(self, criteria):
-        """
-        Return records/fields matching criteria.
-        """
     @abstractproperty
     def fields(self):
         """
         Names and definitions of the table's fields as a dict.
         """
 
-    @classmethod
+    @abstractclassmethod
     def query(cls, command):
         """
         Extract command and primary table, then call cls.query to process.
@@ -1883,7 +1933,11 @@ class Table(object):
         print('%s.%s --> ' % (table.name, method.__name__), end='', verbose=2)
         q = method(command)
         print(q, verbose=2)
+        if not isinstance(q, (Query, SimpleQuery)):
+            raise TypeError('%r did not return a (Simple)Query, but a %r' % (method.__name__, type(q).__name__))
         return q
+        # table.query = q
+        # return table
 
     @abstractmethod
     def sql_count(self, command):
@@ -1926,21 +1980,42 @@ class FISTable(Table):
     def __init__(self, table_name):
         if table_name.isdigit():
             table = int(table_name)
+            source_name = 'filenum'
         else:
             table = table_name.lower()
-        self.num, self.name, self.pat = table_keys[table]
+            source_name = 'name'
+        if table in table_keys:
+            self.num, self.name, self.pat = table_keys[table]
+        else:
+            if table not in fd.tables:
+                for desc in fd.tables.values():
+                    if table == maybe_lower(desc[source_name]):
+                        table_name = desc['filenum']
+                        break
+                else:
+                    raise ValueError('table %r not found' % table_name)
+            table = fd.tables[table_name]
+            self.num = table['filenum']
+            self.name = table['name']
+            self.pat = ''
+            # count = 0
+            # for _, _, _, spec, _ in table['fields']:
+            #     if spec.startswith('An$'):
+            #         count += int(spec.split(',')[1].strip(')'))
+            # self.pat = '.' * count
         self.table = fd.fisData(self.num)
-        print('%3s: %s --> %r' % (self.num, self.name, self.table))
+        print('%3s: %s --> %r' % (self.num, self.name, self.table), verbose=2)
         # get human-usable field names
         fields_by_name = {}
         fields_by_number = {}
+        print('getting fields', verbose=2)
         for i, field in enumerate(self.table.fieldlist, start=1):
             name, spec = field[1:4:2]
             comment = name
             name = convert_name(name, 50)
             fields_by_name[name] = i, name, spec, comment
             fields_by_number[i] = i, name, spec, comment
-            print(repr(i), name, spec, comment, verbose=3)
+            print(repr(i), name, spec, comment, verbose=4)
         self._fields_by_name = fields_by_name
         self._fields_by_number = fields_by_number
 
@@ -2002,30 +2077,40 @@ class FISTable(Table):
 
 
     def _records(self, fields, aliases, where, constraints):
-        print('fields requested: %s' % (fields, ))
-        print('where: %r' % (where, ))
-        print('constraints: %r' % (constraints, ))
+        print('fields requested: %s' % (fields, ), verbose=2)
+        print('where: %r' % (where, ), verbose=2)
+        print('constraints: %r' % (constraints, ), verbose=2)
         filter = self.create_filter(where, aliases)
-        print('filter:', filter, verbose=1)
+        print('filter:', filter, verbose=2)
         records = []
         for k, v in self.table.items():
             if filter(v):
-                print(k, sep='\n', verbose=3)
+                print(k, sep='\n', verbose=4)
                 if all(c(v) for c in constraints):
                     row = []
                     for f in fields:
+                        if f == 'id':
+                            continue
                         row.append(v[aliases[f]])
-                    records.append(tuple(row))
+                    records.append(AttrDict(*zip(fields, row)))
         return records
 
     def sql_count(self, command):
-        pass
+        temp = command.split()
+        if len(temp) > 1 and temp[1].upper() == 'FROM':
+            temp.insert(1, 'id')
+            command = ' '.join(temp)
+        query = self.sql_select(command, _internal=True)
+        sq = SimpleQuery(self.name, ('table', 'count'))
+        sq.records.append(AttrDict(table=self.table.name, count=len(query)))
+        sq.status = "COUNT %s" % len(query)
+        return sq
 
     def sql_delete(self, command):
         """
         Not supported.
         """
-        abort('cannot delete records from FIS tables')
+        raise NotImplementedError('cannot delete records from FIS tables')
 
     def sql_describe(self, command, _internal=''):
         """
@@ -2033,7 +2118,7 @@ class FISTable(Table):
             [ORDER BY (name|index)]
         """
         order_match = Var(lambda hs: re.search(r'ORDER\s*BY\s*(name|index)\s*$', hs, re.I)) 
-        index = 1
+        index = 0
         if order_match(command):
             order ,= order_match.groups()
             if order.lower() == 'name':
@@ -2041,14 +2126,13 @@ class FISTable(Table):
             elif order.lower() == 'index':
                 index = 0
             else:
-                abort('unknown ORDER BY: %r' % order)
+                raise ValueError('unknown ORDER BY: %r' % order)
         defs = sorted(self.fields.values(), key=lambda t: t[index])
-        rows = [['index', 'name','spec','comment'], None]
+        sq = SimpleQuery(self.name, ('index', 'name','spec','comment'))
         for d in defs:
-            rows.append(d)
-        if _internal:
-            return rows[2:]
-        echo(rows, border='table')
+            sq.records.append(AttrDict(*zip(('index','name','spec','comment'), d)))
+        sq.status = "DESCRIBE 1"
+        return sq
 
     def sql_diff(self, command):
         pass
@@ -2057,7 +2141,7 @@ class FISTable(Table):
         """
         Not supported.
         """
-        abort('cannot insert records into FIS tables')
+        raise ValueError('cannot insert records into FIS tables')
 
     def sql_select(self, command, _internal=''):
         """
@@ -2068,28 +2152,29 @@ class FISTable(Table):
             [TO file]
         """
         as_match = Var(lambda sel: re.match(r'(\S+)\s+AS\s+(\S+)', sel, re.I)) 
-        # field_alias_master = {}
+        table_match = Var(lambda sel: re.match(r'(\S+)\s+AS\s+(\S+)\b(.*)', sel, re.I)) 
+        table_alias = {}
         field_alias = {}
         fields = []
         header = []
-        described = self.sql_describe('order by index', _internal=True)
-        for row in described:
-            if row[1]:
+        print('getting table description', verbose=2)
+        for desc in self.sql_describe('order by index', _internal=True):
+            if desc['name']:
                 # field_alias_master[row[0]] = row[0], row[1]
                 # field_alias_master[row[1]] = row[0], row[1]
-                field_alias[str(row[0])] = row[2]
-                field_alias[row[1]] = row[2]
-                fields.append(row[1])
+                field_alias[str(desc['index'])] = desc['spec']
+                field_alias[desc['name']] = desc['spec']
+                fields.append(desc['name'])
         imprimido = '-'
         orden = ''
         clausa = ''
         donde = []
         distinta = False
-        print('command: %r' % (command, ), verbose=2)
+        print('command: %r' % (command, ), verbose=3)
         command = ' '.join(command.split())
-        print('command: %r' % (command, ), verbose=1)
+        print('command: %r' % (command, ), verbose=2)
         if not re.search(r' from ', command, flags=re.I):
-            abort('FROM not specified')
+            raise ValueError('FROM not specified')
         if command.split()[-2].lower() == 'to':
             imprimido = command.split()[-1]
             command = ' '.join(command.split()[:-2])
@@ -2097,21 +2182,20 @@ class FISTable(Table):
         # get SELECT fields
         #
         seleccion, resto = re.split(r' from ', command, maxsplit=1, flags=re.I)
+        print('0 SELECT: %r   REST: %r' % (seleccion, resto), verbose=3)
         seleccion = seleccion.split()[1:]
         if not seleccion:
-            abort('missing fields')
+            raise ValueError('missing fields')
         if seleccion[0].upper() == 'DISTINCT':
             distinta = True
             seleccion.pop(0)
         if not seleccion:
-            abort('missing fields')
-        print('0 SELECT:', seleccion, verbose=2)
+            raise ValueError('missing fields')
         # get field names if * specified
         if seleccion == ['*']:
             seleccion = sorted(fields)
         else:
             seleccion = [s.strip() for s in ' '.join(seleccion).split(',')]
-        print('1 SELECT:', seleccion, verbose=2)
         for i, field in enumerate(seleccion):
             if as_match(field):
                 field, alias = as_match.groups()
@@ -2125,6 +2209,9 @@ class FISTable(Table):
                         header.append('%s - %s' % (self._fields_by_name[int(field)][0], alias))
                 else:
                     header.append(alias)
+            elif field == 'id':
+                # phony field used for COUNTing
+                pass
             else:
                 if field.isdigit():
                     alias = self._fields_by_number[int(field)][1]
@@ -2142,24 +2229,35 @@ class FISTable(Table):
                 bbx_index = field_alias[field]
                 field_alias[alias] = bbx_index
                 seleccion[i] = alias
-
-        print('2 SELECT:', seleccion, verbose=2)
         #
         #
-        # get FROM table
+        # get FROM table: `res.users` or `res.users u`
         #
-        resto = resto.split()
+        if table_match(resto):
+            table, alias, resto = table_match.groups()
+            table_alias[alias] = table
+            resto = resto.split()
+            resto.insert(0, alias)
+        else:
+            resto = resto.split()
         desde, resto = resto[0], resto[1:]
+        print('0 FROM: %r   REST: %r' % (desde, resto), verbose=3)
         if desde.upper() in ('', 'WHERE', 'ORDER'):
-            abort('missing table')
-        if desde not in self.tables:
-            self.tables[desde] = Table(desde)
-        table = self.tables[desde]
+            raise ValueError('missing table')
+        # check for alias
+        if resto and resto[0].upper() not in ('', 'WHERE', 'ORDER'):
+            alias, resto = resto[0], resto[1:]
+            print('0 ALIAS: %r   REST: %r' % (alias, resto), verbose=3)
+            table_alias[alias] = desde
+            desde = alias
+        if table_alias.get(desde, desde) not in self.tables:
+            self.tables[desde] = Table(table_alias.get(desde,desde))
+        # table = self.tables[desde]
         if resto:
             if resto[0].upper() == 'WHERE':
                 resto = resto[1:]
                 if not resto or ' '.join(resto[:2]).upper() == 'ORDER BY':
-                    abort('missing WHERE clause')
+                    raise ValueError('missing WHERE clause')
                 resto = ' '.join(resto)
                 if re.search(r' ORDER BY ', resto, flags=re.I):
                     clausa, orden = re.split(r' ORDER BY ', resto, maxsplit=1, flags=re.I)
@@ -2172,46 +2270,36 @@ class FISTable(Table):
                 orden = ' '.join(resto[2:])
                 resto = []
             if resto:
-                abort('malformed query [%r]' % (resto, ))
-        print('WHERE', clausa)
-        print('ORDER BY', orden)
-        print('TO', imprimido)
+                raise ValueError('malformed query [%r]' % (' '.join(resto), ))
+        print('WHERE', clausa, verbose=2)
+        print('ORDER BY', orden, verbose=2)
+        print('TO', imprimido, verbose=2)
         # normalize_field_names(desde, seleccion, clausa, orden)
-        print('FROM', desde)
+        print('FROM', desde, verbose=2)
         #
         # and get WHERE clause
         #
         donde, constraints = convert_where(clausa)
         if _internal:
             imprimido = ''
-        print('WHERE', donde)
-        print('ORDER BY', orden)
-        print('TO', imprimido)
-        print('CONSTRAINTS', constraints)
+        print('WHERE', donde, verbose=2)
+        print('ORDER BY', orden, verbose=2)
+        print('TO', imprimido, verbose=2)
+        print('CONSTRAINTS', constraints, verbose=2)
         #
-        # at this point we have the fields, and the table -- hand off to _adhoc()
+        # at this point we have the fields, and the table -- get the records
         #
-        # fields = list(fields)
-        # query = Query(
-        #         self.table,
-        #         fields=fields[:],
-        #         domain=donde or ALL_ACTIVE,
-        #         order=orden,
-        #         unique=distinta,
-        #         to_file = imprimido,
-        #         _constraints=constraints
-        #         )
-        # query.status = 'SELECT %d' % len(query)
-        # return query
-        rows = [header, None]
-        rows.extend(self._records(seleccion, field_alias, donde, constraints))
-        echo(rows, border='table')
+        sq = SimpleQuery(self.name, header, aliases=field_alias)
+        print('getting records', verbose=2)
+        sq.records.extend(self._records(seleccion, field_alias, donde, constraints))
+        sq.status = "SELECT %s" % len(sq.records)
+        return sq
 
     def sql_update(self, command):
         """
         Not supported.
         """
-        abort('cannot update records in FIS tables')
+        raise NotImplementedError('cannot update records in FIS tables')
 
 class OpenERPTable(Table):
     """
@@ -2222,37 +2310,36 @@ class OpenERPTable(Table):
         if table_name not in self.tables:
             self.tables[table_name] = oe.get_model(table_name)
         self.table = self.tables[table_name]
+        self.name = self.table.model_name
 
     @property
     def fields(self):
         return self.table._all_columns.copy()
 
-    def query(self):
+    def query(self, command):
         """
         Process records matching criteria.
         """
+        check_command = ' '.join(command.lower().split())
         if check_command.startswith('select '):
-            return not self.sql_select(command, separator, wrap)
+            self.query = self.sql_select(command)
         elif check_command.startswith('count '):
-            found = self.sql_count(command, separator)
-            if found > 1:
-                sys.exit(2)
-            else:
-                sys.exit(found)
+            self.query = self.sql_count(command)
         elif check_command.startswith('describe '):
-            self.sql_describe(command, separator, wrap)
+            self.query = self.sql_describe(command)
         elif check_command.startswith('update '):
-            return not self.sql_update(command)
+            self.query = self.sql_update(command)
         elif check_command.startswith('insert into '):
-            return not self.sql_insert(command)
+            self.query = self.sql_insert(command)
         elif check_command.startswith('delete from '):
-            return not self.sql_delete(command)
+            self.query = self.sql_delete(command)
         elif check_command.startswith('diff '):
-            return not self.sql_diff(command, separator, wrap)
+            self.query = self.sql_diff(command)
         else:
             raise InvalidSQLCommand
+        return self
 
-    def sql_count(self, command, separator):
+    def sql_count(self, command):
         """
         COUNT
             FROM table
@@ -2264,9 +2351,11 @@ class OpenERPTable(Table):
         if len(temp) > 1 and temp[1].upper() == 'FROM':
             temp.insert(1, 'id')
             command = ' '.join(temp)
-        query = sql_select(command, separator, wrap=None, _internal=True)
-        echo('COUNT %d' % len(query))
-        return len(query)
+        query = self.sql_select(command, _internal=True)
+        sq = SimpleQuery(self.name, ('table', 'count'))
+        sq.records.append(AttrDict(table=self.table.model_name, count=len(query)))
+        sq.status = "COUNT %s" % len(query)
+        return sq
 
     def sql_delete(self, command):
         """
@@ -2277,49 +2366,44 @@ class OpenERPTable(Table):
         tables = {}
         pieces = command.split()
         if len(pieces) < 3:
-            abort('table not specified')
+            raise ValueError('table not specified')
         table = pieces[2]
         try:
             tables[table] = table = oe.get_model(table)
         except Fault as exc:
             if "doesn't exist" in exc.faultCode:
-                abort('unknown table %r' % (table, ))
+                raise ValueError('unknown table %r' % (table, ))
             raise
         if len(pieces) > 3 and pieces[3].lower() != 'where':
-            abort('malformed command -- missing WHERE keyword')
+            raise ValueError('malformed command -- missing WHERE keyword')
         where_clause = ' '.join(pieces[4:])
         domain, constraints = convert_where(where_clause)
         if constraints:
-            abort('constraints not supported in DELETE command')
+            raise ValueError('constraints not supported in DELETE command')
         #
         # have all the info, make the changes
         #
-        print('domain: %r' % (domain, ))
+        print('domain: %r' % (domain, ), verbose=2)
         ids = table.search(domain)
         if not ids:
             echo('no records found matching %r' % (where_clause, ))
-        print('deleting %d records from %s' % (len(ids), table._name))
+        print('deleting %d records from %s' % (len(ids), table._name), verbose=2)
         table.unlink(ids)
-        echo('DELETE %d' % len(ids))
-        return len(ids)
+        sq = SimpleQuery(self.name, ('table', 'count'))
+        sq.records.append(AttrDict(table=self.table.model_name, count=len(ids)))
+        sq.status = "DELETE %s" % len(ids)
+        return sq
 
-    def sql_describe(self, command, separator, wrap):
+    def sql_describe(self, command):
         """
         DESCRIBE table
-            [ORDER BY field1]
+            [ORDER BY field]
         """
         command = command.lower()
-        desde = command.split()[1]
-        try:
-            model = oe.get_model(desde)
-        except Fault as exc:
-            if "doesn't exist" in exc.faultCode:
-                abort('unknown table %r' % (desde, ))
-            raise
         if ' order by ' in command:
             orden = command.split(' order by ')[1].strip()
             if orden not in ('field','display','type','help'):
-                abort('ORDER BY must be one of field, display, type, or help [ %r ]')
+                raise ValueError('ORDER BY must be one of field, display, type, or help [ %r ]')
             sort = {
                 'field': lambda t: t[0],
                 'display': lambda t: t[1]['string'],
@@ -2328,17 +2412,12 @@ class OpenERPTable(Table):
                 }[orden]
         else:
             sort = lambda t: t[0]
-        seleccion = sorted(model._all_columns.items(), key=sort)
-        table = [('Field','Display','Type','Detail','Help'), None]
+        seleccion = sorted(self.table._all_columns.items(), key=sort)
+        # table = [('Field','Display','Type','Detail','Help'), None]
+        sq = SimpleQuery(self.name, ('field','display','type','detail','help'))
         for field, desc in seleccion:
-            if 'field' in wrap:
-                field = html2text(field, wrap['field'])
             display = desc['string']
-            if 'display' in wrap:
-                display = html2text(display, wrap['display'])
             help = desc.get('help') or ''
-            if 'help' in wrap:
-                help = html2text(help, wrap['help'])
             type = desc['type']
             details = []
             if 'function' in desc:
@@ -2366,20 +2445,23 @@ class OpenERPTable(Table):
                 if data:
                     if isinstance(data, list) and info in ('selection', 'states'):
                         data = '|'.join([t[1] for t in data if t[1]])
-                    if info in wrap:
-                        data = html2text(data, wrap[info])
-                    else:
-                        try:
-                            if len(data) > 40:
-                                data = data[:37] + '...'
-                        except TypeError:
-                            pass
+                    # if info in wrap:
+                    #     data = html2text(data, wrap[info])
+                    # else:
+                    #     try:
+                    #         if len(data) > 40:
+                    #             data = data[:37] + '...'
+                    #     except TypeError:
+                    #         pass
                     details.append('%s: %s' % (info, data))
             details = '\n'.join(details)
-            table.append((field, display, type, details, help))
-        echo(table, border='table')
+            sq.records.append(AttrDict(
+                    field=field, display=display, type=type, detail=details, help=help
+                    ))
+        sq.status = "DESCRIBE 1"
+        return sq
 
-    def sql_diff(self, command, separator, wrap):
+    def sql_diff(self, command):
         """
         use SELECT to get all records/fields, then diff them
         """
@@ -2387,14 +2469,13 @@ class OpenERPTable(Table):
         if command.upper().startswith('DIFF ^ '):
             changed_only = True
             command = command[:5] + '*' + command[6:]
-        query = sql_select(command, separator, wrap, _internal='-binary -html')
+        query = self.sql_select(command, _internal='-binary -html')
         if not query.records:
-            abort('no records found')
+            raise ValueError('no records found')
         if len(query.records) == 1:
             # if only one record, display all fields
             changed_only = False
-        header = [rec['id'] for rec in query.records]
-        rows = [['fields \ ids']+header]
+        sq = SimpleQuery(self.name, ['fields \ ids']+[rec['id'] for rec in query.records], record_layout='column')
         fields = query.records[1].keys()
         fields.remove('id')
         for field in fields:
@@ -2424,8 +2505,9 @@ class OpenERPTable(Table):
                 else:
                     final_row.append(cell_value)
             final_row.insert(0, '%s %s' % ('^ '[no_diff], field))
-            rows.append(final_row)
-        echo(rows, border='table', table_record='column')
+            sq.records.append(final_row)
+        sq.status = "DIFF %s" % (len(sq.records)-1)
+        return sq
 
     def sql_insert(self, command):
         """
@@ -2436,34 +2518,34 @@ class OpenERPTable(Table):
         fv_match = Var(lambda c: re.match(r" *INSERT +INTO +(.*) +\((.*)\) +VALUES +\((.*)\)( *UPDATE ON *)?(.*)?", c, re.I))
         fl_match = Var(lambda c: re.match(r" *INSERT +INTO +(.*) +FILE +(\S*)( *UPDATE ON *)?(.*)?", c, re.I))
         if not fv_match(command) and not fl_match(command):
-            abort('malformed command; use --help for help')
+            raise ValueError('malformed command; use --help for help')
         elif fv_match():
             table, fields, values, verb, key = fv_match.groups()
             fields = [f.strip() for f in fields.split(',') if f != ',']
-            print('%r -- %r -- %r -- %r -- %r' % (table, fields, values, verb, key), verbose=3)
+            print('%r -- %r -- %r -- %r -- %r' % (table, fields, values, verb, key), verbose=4)
             data = [literal_eval(values)]
         elif fl_match():
             table, csv_file, verb, key = fl_match.groups()
             try:
                 csv = CSV(csv_file)
             except (IOError, OSError) as exc:
-                abort("problem with %r -- <%r>" % (csv_file, repr(exc), ))
+                raise ValueError("problem with %r -- <%r>" % (csv_file, repr(exc), ))
             fields = csv.header
-            print('%r -- %r -- %r -- %r' % (table, csv_file, verb, key), verbose=3)
+            print('%r -- %r -- %r -- %r' % (table, csv_file, verb, key), verbose=4)
             data = list(csv)
         if verb and (verb.strip().lower() != 'update on' or not key):
-            abort('invalid UPDATE ON clause')
+            raise ValueError('invalid UPDATE ON clause')
         if key and key not in fields:
-            abort('key %r no in FIELDS')
+            raise ValueError('key %r no in FIELDS')
         try:
             table = oe.get_model(table)
         except Fault as exc:
             if "doesn't exist" in exc.faultCode:
-                abort('unknown table %r' % (table, ))
+                raise ValueError('unknown table %r' % (table, ))
             raise
         if not all_equal(data, test=lambda r,l=len(fields): len(r) == l):
-            # print('fields: %r\nvalues: %r' % (fields, values))
-            abort('fields/values mismatch')
+            # print('fields: %r\nvalues: %r' % (fields, values), verbose=2)
+            raise ValueError('fields/values mismatch')
         # create the record(s)
         insert_count = 0
         update_count = 0
@@ -2478,34 +2560,39 @@ class OpenERPTable(Table):
                     continue
             # either no key, or record doesn't exist
             try:
+                print('creating', values, verbose=2)
                 table.create(values)
             except Exception as exc:
+                raise
                 error('unable to create:\n', pprint.pformat(values))
-                abort(repr(exc))
+                raise ValueError(repr(exc))
             insert_count += 1
-        echo('INSERT %d' % insert_count)
-        if update_count:
-            echo('UPDATE %d' % update_count)
-        return insert_count + update_count
+        sq = SimpleQuery(self.name, ('table','inserted','updated'))
+        sq.records.append(AttrDict(table=self.table.model_name, inserted=insert_count, updated=update_count))
+        sq.status = "INSERT %s / UPDATE %s" % (insert_count, update_count)
+        return sq
 
     def sql_select(self, command, _internal=''):
         """
-        SELECT field_name [, field_name [, ...]]
+        SELECT field_name [AS name1][, field_name [AS name2][, ...]]
             FROM table
             [WHERE ...]
             [ORDER BY field1 [ASC|DESC] [, field2 [ASC|DESC] [, ...]]]
             [TO file]
         """
+        as_match = Var(lambda sel: re.match(r'(\S+)\s+AS\s+(\S+)', sel, re.I)) 
+        header = []
+        field_alias = {}        # {alias_name: field_name}
         imprimido = '-'
         orden = ''
         clausa = ''
         donde = []
         distinta = False
-        print('command: %r' % (command, ), verbose=2)
+        print('command: %r' % (command, ), verbose=3)
         command = ' '.join(command.split())
-        print('command: %r' % (command, ), verbose=1)
+        print('command: %r' % (command, ), verbose=2)
         if not re.search(r' from ', command, flags=re.I):
-            abort('FROM not specified')
+            raise ValueError('FROM not specified')
         if command.split()[-2].lower() == 'to':
             imprimido = command.split()[-1]
             command = ' '.join(command.split()[:-2])
@@ -2513,17 +2600,31 @@ class OpenERPTable(Table):
         # get SELECT fields
         #
         seleccion, resto = re.split(r' from ', command, maxsplit=1, flags=re.I)
-        seleccion = [s.strip(',') for s in seleccion.split()[1:] if s != ',']
+        seleccion = seleccion.split()[1:]
         if not seleccion:
-            abort('missing fields')
+            raise ValueError('missing fields')
         if seleccion[0].upper() == 'DISTINCT':
             distinta = True
             seleccion.pop(0)
         if not seleccion:
-            abort('missing fields')
-        if SHOW_ID and 'id' not in [s.lower() for s in seleccion] and seleccion != ['*']:
-            seleccion.insert(0, 'id')
-        print('SELECT:', seleccion)
+            raise ValueError('missing fields')
+        if seleccion != ['*']:
+            seleccion = [s.strip() for s in ' '.join(seleccion).split(',')]
+            if SHOW_ID and 'id' not in [s.lower() for s in seleccion]:
+                seleccion.insert(0, 'id')
+
+
+        for i, field in enumerate(seleccion):
+            if as_match(field):
+                field, alias = as_match.groups()
+                field_alias[alias] = field
+                seleccion[i] = alias
+                header.append(alias)
+            else:
+                header.append(field)
+
+                
+        print('SELECT:', seleccion, verbose=2)
         #
         #
         # get FROM table
@@ -2531,13 +2632,13 @@ class OpenERPTable(Table):
         resto = resto.split()
         desde, resto = resto[0], resto[1:]
         if desde.upper() in ('', 'WHERE', 'ORDER'):
-            abort('missing table')
+            raise ValueError('missing table')
         self.tables[desde] = table = Table(desde)
         if resto:
             if resto[0].upper() == 'WHERE':
                 resto = resto[1:]
                 if not resto or ' '.join(resto[:2]).upper() == 'ORDER BY':
-                    abort('missing WHERE clause')
+                    raise ValueError('missing WHERE clause')
                 resto = ' '.join(resto)
                 if re.search(r' ORDER BY ', resto, flags=re.I):
                     clausa, orden = re.split(r' ORDER BY ', resto, maxsplit=1, flags=re.I)
@@ -2550,7 +2651,7 @@ class OpenERPTable(Table):
                 orden = ' '.join(resto[2:])
                 resto = []
             if resto:
-                abort('malformed query [%r]' % (resto, ))
+                raise ValueError('malformed query [%r]' % (resto, ))
         # get field names if * specified
         # model = oe.get_model(desde)
         if seleccion == ['*']:
@@ -2568,39 +2669,46 @@ class OpenERPTable(Table):
                         fields.remove(field)
             fields.remove('id')
             seleccion = ['id'] + sorted(fields)
-            print('SELECT:', seleccion)
+            print('SELECT:', seleccion, verbose=2)
         #
         # TODO: now make sure all field names are db and not user
         #
-        print('WHERE', clausa)
-        print('ORDER BY', orden)
-        print('TO', imprimido)
+        print('WHERE', clausa, verbose=2)
+        print('ORDER BY', orden, verbose=2)
+        print('TO', imprimido, verbose=2)
         # normalize_field_names(desde, seleccion, clausa, orden)
-        print('FROM', desde)
+        print('FROM', desde, verbose=2)
         #
         # and get WHERE clause
         #
-        donde, constraints = convert_where(clausa)
+        donde, constraints = convert_where(clausa, field_alias)
         if _internal:
             imprimido = ''
-        print('WHERE', donde)
-        print('ORDER BY', orden)
-        print('TO', imprimido)
-        print('CONSTRAINTS', constraints)
+        print('WHERE', donde, verbose=2)
+        print('ORDER BY', orden, verbose=2)
+        print('TO', imprimido, verbose=2)
+        print('CONSTRAINTS', constraints, verbose=2)
         #
         # at this point we have the fields, and the table -- hand off to _adhoc()
         #
-        fields = list(fields)
+        fields = list(seleccion)
+        echo(header)
+        echo(fields)
+        echo(donde)
+
         query = Query(
                 self.table,
                 fields=fields[:],
+                aliases=field_alias,
                 domain=donde or ALL_ACTIVE,
                 order=orden,
                 unique=distinta,
                 to_file = imprimido,
-                _constraints=constraints
+                constraints=constraints,
                 )
         query.status = 'SELECT %d' % len(query)
+        query.fields = header
+        query.alias = field_alias
         return query
 
     def sql_update(self, command):
@@ -2613,16 +2721,16 @@ class OpenERPTable(Table):
         tables = {}
         pieces = command.split()
         if len(pieces) < 2:
-            abort('table not specified')
+            raise ValueError('table not specified')
         table = pieces[1]
         try:
             tables[table] = table = oe.get_model(table)
         except Fault as exc:
             if "doesn't exist" in exc.faultCode:
-                abort('unknown table %r' % (table, ))
+                raise ValueError('unknown table %r' % (table, ))
             raise
         if len(pieces) < 3 or pieces[2].lower() != 'set':
-            abort('malformed command -- missing SET keyword')
+            raise ValueError('malformed command -- missing SET keyword')
         command = ' '.join(pieces[3:])
         try:
             where_index = command.lower().index(' where ')
@@ -2630,28 +2738,249 @@ class OpenERPTable(Table):
             set_clause = command[:where_index]
         except ValueError:
             if command.lower().endswith(' where'):
-                abort('malformed command -- missing WHERE parameters')
+                raise ValueError('malformed command -- missing WHERE parameters')
             where_clause = []
             set_clause = command
-        print('where clause: %r' % (where_clause, ))
+        print('where clause: %r' % (where_clause, ), verbose=2)
         values = convert_set(set_clause)
         if not values:
-            abort('malformed command -- no changes specified')
+            raise ValueError('malformed command -- no changes specified')
         if where_clause:
             domain, constraints = convert_where(where_clause)
         else:
             domain = constraints = []
         if constraints:
-            abort('constraints not supported in UPDATE command')
+            raise ValueError('constraints not supported in UPDATE command')
         #
         # have all the info, make the changes
         #
-        print('domain: %r' % (domain, ))
+        print('domain: %r' % (domain, ), verbose=2)
         ids = table.search(domain)
-        print('writing\n  %r\nto %s for ids\n%r' % (values, table._name, ids))
+        print('writing\n  %r\nto %s for ids\n%r' % (values, table._name, ids), verbose=2)
         table.write(ids, values)
-        echo('UPDATE %d' % len(ids))
-        return len(ids)
+        sq = SimpleQuery(self.name, ('table', 'updated'))
+        sq.records.append(AttrDict(table=self.table.model_name, updated=len(ids)))
+        sq.status = 'UPDATE %d' % len(ids)
+        return sq
+
+class ResultsTable(Table):
+    """
+    Results table
+    """
+    def __init__(self, header, fields):
+        self.header = header
+        self.fields = fields
+
+    def query(self, fields, to_file='-', domain=ALL_ACTIVE, order=(), distinct=False, separator=False, wrap=(), _constraints=()):
+        """
+
+        """
+
+    def sql_count(self, command):
+        temp = command.split()
+        if len(temp) > 1 and temp[1].upper() == 'FROM':
+            temp.insert(1, 'id')
+            command = ' '.join(temp)
+        query = self.sql_select(command, _internal=True)
+        sq = SimpleQuery(('table', 'count'))
+        sq.records.append(AttrDict(table=self.table.name, count=len(query)))
+        sq.status = "COUNT %s" % len(query)
+        return sq
+
+    def sql_delete(self, command):
+        """
+        Not supported.
+        """
+        raise NotImplementedError('cannot delete records from FIS tables')
+
+    def sql_describe(self, command, _internal=''):
+        """
+        DESCRIBE table
+            [ORDER BY (name|index)]
+        """
+        order_match = Var(lambda hs: re.search(r'ORDER\s*BY\s*(name|index)\s*$', hs, re.I)) 
+        index = 0
+        if order_match(command):
+            order ,= order_match.groups()
+            if order.lower() == 'name':
+                index = 1
+            elif order.lower() == 'index':
+                index = 0
+            else:
+                raise ValueError('unknown ORDER BY: %r' % order)
+        defs = sorted(self.fields.values(), key=lambda t: t[index])
+        sq = SimpleQuery(('index', 'name','spec','comment'))
+        for d in defs:
+            sq.records.append(AttrDict(*zip(('index','name','spec','comment'), d)))
+        sq.status = "DESCRIBE 1"
+        return sq
+
+    def sql_diff(self, command):
+        pass
+
+    def sql_insert(self, command):
+        """
+        Not supported.
+        """
+        raise ValueError('cannot insert records into FIS tables')
+
+    def sql_select(self, command, _internal=''):
+        """
+        SELECT field_name [AS name1][, field_name [AS name2][, ...]]
+            FROM table
+            [WHERE ...]
+            [ORDER BY field1 [ASC|DESC] [, field2 [ASC|DESC] [, ...]]]
+            [TO file]
+        """
+        as_match = Var(lambda sel: re.match(r'(\S+)\s+AS\s+(\S+)', sel, re.I)) 
+        table_match = Var(lambda sel: re.match(r'(\S+)\s+AS\s+(\S+)\b(.*)', sel, re.I)) 
+        table_alias = {}
+        field_alias = {}
+        fields = []
+        header = []
+        print('getting table description', verbose=2)
+        for desc in self.sql_describe('order by index', _internal=True):
+            if desc['name']:
+                # field_alias_master[row[0]] = row[0], row[1]
+                # field_alias_master[row[1]] = row[0], row[1]
+                field_alias[str(desc['index'])] = desc['spec']
+                field_alias[desc['name']] = desc['spec']
+                fields.append(desc['name'])
+        imprimido = '-'
+        orden = ''
+        clausa = ''
+        donde = []
+        distinta = False
+        print('command: %r' % (command, ), verbose=3)
+        command = ' '.join(command.split())
+        print('command: %r' % (command, ), verbose=2)
+        if not re.search(r' from ', command, flags=re.I):
+            raise ValueError('FROM not specified')
+        if command.split()[-2].lower() == 'to':
+            imprimido = command.split()[-1]
+            command = ' '.join(command.split()[:-2])
+        #
+        # get SELECT fields
+        #
+        seleccion, resto = re.split(r' from ', command, maxsplit=1, flags=re.I)
+        print('0 SELECT: %r   REST: %r' % (seleccion, resto), verbose=3)
+        seleccion = seleccion.split()[1:]
+        if not seleccion:
+            raise ValueError('missing fields')
+        if seleccion[0].upper() == 'DISTINCT':
+            distinta = True
+            seleccion.pop(0)
+        if not seleccion:
+            raise ValueError('missing fields')
+        # get field names if * specified
+        if seleccion == ['*']:
+            seleccion = sorted(fields)
+        else:
+            seleccion = [s.strip() for s in ' '.join(seleccion).split(',')]
+        for i, field in enumerate(seleccion):
+            if as_match(field):
+                field, alias = as_match.groups()
+                bbx_index = field_alias[field]
+                field_alias[alias] = bbx_index
+                seleccion[i] = alias
+                if SHOW_ID:
+                    if field.isdigit:
+                        header.append('%s - %s' % (self._fields_by_number[int(field)][0], alias))
+                    else:
+                        header.append('%s - %s' % (self._fields_by_name[int(field)][0], alias))
+                else:
+                    header.append(alias)
+            elif field == 'id':
+                # phony field used for COUNTing
+                pass
+            else:
+                if field.isdigit():
+                    alias = self._fields_by_number[int(field)][1]
+                    if SHOW_ID:
+                        header.append('%s - %s' % (field, self._fields_by_number[int(field)][1]))
+                    else:
+                        header.append(alias)
+                else:
+                    alias = self._fields_by_name[field][1]
+                    if SHOW_ID:
+                        header.append('%s - %s' % (self._fields_by_name[field][0], field))
+                    else:
+                        header.append(alias)
+
+                bbx_index = field_alias[field]
+                field_alias[alias] = bbx_index
+                seleccion[i] = alias
+        #
+        #
+        # get FROM table: `res.users` or `res.users u`
+        #
+        if table_match(resto):
+            table, alias, resto = table_match.groups()
+            table_alias[alias] = table
+            resto = resto.split()
+            resto.insert(0, alias)
+        else:
+            resto = resto.split()
+        desde, resto = resto[0], resto[1:]
+        print('0 FROM: %r   REST: %r' % (desde, resto), verbose=3)
+        if desde.upper() in ('', 'WHERE', 'ORDER'):
+            raise ValueError('missing table')
+        # check for alias
+        if resto and resto[0].upper() not in ('', 'WHERE', 'ORDER'):
+            alias, resto = resto[0], resto[1:]
+            print('0 ALIAS: %r   REST: %r' % (alias, resto), verbose=3)
+            table_alias[alias] = desde
+            desde = alias
+        if table_alias.get(desde, desde) not in self.tables:
+            self.tables[desde] = Table(table_alias.get(desde,desde))
+        # table = self.tables[desde]
+        if resto:
+            if resto[0].upper() == 'WHERE':
+                resto = resto[1:]
+                if not resto or ' '.join(resto[:2]).upper() == 'ORDER BY':
+                    raise ValueError('missing WHERE clause')
+                resto = ' '.join(resto)
+                if re.search(r' ORDER BY ', resto, flags=re.I):
+                    clausa, orden = re.split(r' ORDER BY ', resto, maxsplit=1, flags=re.I)
+                else:
+                    clausa = resto
+                clausa = clausa.strip()
+                orden = orden.strip()
+                resto = []
+            if ' '.join(resto[:2]).upper() == 'ORDER BY':
+                orden = ' '.join(resto[2:])
+                resto = []
+            if resto:
+                raise ValueError('malformed query [%r]' % (resto, ))
+        print('WHERE', clausa, verbose=2)
+        print('ORDER BY', orden, verbose=2)
+        print('TO', imprimido, verbose=2)
+        # normalize_field_names(desde, seleccion, clausa, orden)
+        print('FROM', desde, verbose=2)
+        #
+        # and get WHERE clause
+        #
+        donde, constraints = convert_where(clausa)
+        if _internal:
+            imprimido = ''
+        print('WHERE', donde, verbose=2)
+        print('ORDER BY', orden, verbose=2)
+        print('TO', imprimido, verbose=2)
+        print('CONSTRAINTS', constraints, verbose=2)
+        #
+        # at this point we have the fields, and the table -- get the records
+        #
+        sq = SimpleQuery(header, aliases=field_alias)
+        print('getting records', verbose=2)
+        sq.records.extend(self._records(seleccion, field_alias, donde, constraints))
+        sq.status = "SELECT %s" % len(sq.records)
+        return sq
+
+    def sql_update(self, command):
+        """
+        Not supported.
+        """
+        raise NotImplementedError('cannot update records in FIS tables')
 
 class Node(object):
     #
@@ -2733,67 +3062,121 @@ class Node(object):
 
     @staticmethod
     def _equals_like(field, target):
+        p_count = target.count('%')
         if '%' not in target:
             return field == target
-        #
-        pieces = target.split('%')
-        new_pieces = []
-        something = True
-        for p in pieces:
-            if something:
-                new_pieces.append(p)
-                something = bool(p)
-            elif p:
-                if new_pieces[-1][-1] == '%':
-                    new_pieces[-1] += p
-                else:
-                    new_pieces.append(p)
-                something = True
+        elif p_count == 1:
+            if target[0] == '%':
+                return field.endswith(target[1:])
+            elif target[-1] == '%':
+                return field.startswith(target[:-1])
             else:
-                # last seen was empty -- this one is also empty
-                # that means we had a double %% -- add one back
-                new_pieces[-1] += '%'
-                something = True
-        pieces = new_pieces
-        if len(pieces) != 2:
-            raise ValueError("too many %%-signs in %s -- use %%%% for literal %%'s" % field)
-        minimum = len(pieces[0]) + len(pieces[1])
-        if len(field) < minimum:
-            return False
-        return field.startswith(pieces[0]) and field.endswith(pieces[1])
+                start, end = target.split('%')
+                return field.startswith(start) and field.endswith(end)
+        elif p_count == 2:
+            if '%%' in target:
+                target = target.replace('%%','%')
+                return field == target
+            elif target[0] == target[-1] == '%':
+                return target[1:-1] in field
+            else:
+                raise ValueError('invalid % placement -- %r' % target)
+        else:
+            # figure out where the string bits are
+            pieces = target.split('%')
+            new_pieces = []
+            last = None
+            for p in pieces:
+                if p:
+                    new_pieces.append(p)
+                else:
+                    if last != '':
+                        new_pieces.append(p)
+                    else:
+                        # two blanks in a row means a doubled %
+                        new_pieces.pop()
+                        p = '%'
+                        new_pieces.append(p)
+                last = p
+            # join any segments separated by %-signs
+            pieces = new_pieces
+            while '%' in pieces:
+                index = pieces.index('%')
+                if index == 0:
+                    pieces[0:2] = ['%' + pieces[1]]
+                elif index == len(pieces) - 1:
+                    pieces[-2:] = [pieces[-2] + '%']
+                else:
+                    pieces[index-1:index+2] = [pieces[index-1] + '%' + pieces[index+1]]
+            if len(pieces) == 1:
+                # containment
+                return pieces[0] in field
+            elif len(pieces) != 2:
+                raise ValueError("too many %%-signs in %r -- use %%%% for literal %%'s" % target)
+            minimum = len(pieces[0]) + len(pieces[1])
+            if len(field) < minimum:
+                return False
+            return field.startswith(pieces[0]) and field.endswith(pieces[1])
 
     @staticmethod
     def _equals_ilike(field, target):
         field = field.lower()
         target = target.lower()
+        p_count = target.count('%')
         if '%' not in target:
             return field == target
-        #
-        pieces = target.split('%')
-        new_pieces = []
-        something = True
-        for p in pieces:
-            if something:
-                new_pieces.append(p)
-                something = bool(p)
-            elif p:
-                if new_pieces[-1][-1] == '%':
-                    new_pieces[-1] += p
-                else:
-                    new_pieces.append(p)
-                something = True
+        elif p_count == 1:
+            if target[0] == '%':
+                return field.endswith(target[1:])
+            elif target[-1] == '%':
+                return field.startswith(target[:-1])
             else:
-                # last seen was empty -- this one is also empty
-                # that means we had a double %% -- add one back
-                new_pieces[-1] += '%'
-                something = True
-        pieces = new_pieces
-        if len(pieces) != 2:
-            raise ValueError("too many %%-signs in %s -- use %%%% for literal %%'s" % field)
-        minimum = len(pieces[0]) + len(pieces[1])
-        if len(field) < minimum:
-            return False
-        return field.startswith(pieces[0]) and field.endswith(pieces[1])
+                start, end = target.split('%')
+                return field.startswith(start) and field.endswith(end)
+        elif p_count == 2:
+            if '%%' in target:
+                target = target.replace('%%','%')
+                return field == target
+            elif target[0] == target[-1] == '%':
+                return target[1:-1] in field
+            else:
+                raise ValueError('invalid % placement -- %r' % target)
+        else:
+            # figure out where the string bits are
+            pieces = target.split('%')
+            new_pieces = []
+            last = None
+            for p in pieces:
+                if p:
+                    new_pieces.append(p)
+                else:
+                    if last != '':
+                        new_pieces.append(p)
+                    else:
+                        # two blanks in a row means a doubled %
+                        new_pieces.pop()
+                        p = '%'
+                        new_pieces.append(p)
+                last = p
+            # join any segments separated by %-signs
+            pieces = new_pieces
+            while '%' in pieces:
+                index = pieces.index('%')
+                if index == 0:
+                    pieces[0:2] = ['%' + pieces[1]]
+                elif index == len(pieces) - 1:
+                    pieces[-2:] = [pieces[-2] + '%']
+                else:
+                    pieces[index-1:index+2] = [pieces[index-1] + '%' + pieces[index+1]]
+            if len(pieces) == 1:
+                # containment
+                return pieces[0] in field
+            elif len(pieces) != 2:
+                raise ValueError("too many %%-signs in %r -- use %%%% for literal %%'s" % target)
+            minimum = len(pieces[0]) + len(pieces[1])
+            if len(field) < minimum:
+                return False
+            return field.startswith(pieces[0]) and field.endswith(pieces[1])
 
     @staticmethod
     def _less_than_or_equal(field, target):
@@ -2871,7 +3254,720 @@ class Not(Node):
         self.result = not operators[op](field, target)
 
 
+class Join(object):
+    def __init__(self, join_type, condition, left_table=None, right_table=None):
+        if join_type not in (
+                'INNER JOIN', 'OUTER JOIN', 'FULL JOIN',
+                'LEFT JOIN', 'RIGHT JOIN',
+                'CROSS JOIN',
+            ):
+            raise ValueError('invalid JOIN type: %r' % (join_type, ))
+        self.type = join_type
+        self.condition = condition
+        self.left_table = left_table
+        self.right_table = right_table
+
+    def __repr__(self):
+        return "%s(%r, %r)" % (self.__class__.__name__, self.type, self.condition)
+
+    def __eq__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self.type == other.type and self.condition == other.condition
+
+    def __ne__(self, other):
+        if not isinstance(other, self.__class__):
+            return NotImplemented
+        return self.type != other.type or self.condition != other.condition
+
+
+    def add_condition(self, condition):
+        self.condition += ' ' + condition
+class SimpleQuery(object):
+    """
+    Presents same attributes as openerplib.utils.query.
+    """
+    def __init__(self, name, fields, aliases=None, record_layout='row'):
+        self.fields = fields
+        self.aliases = aliases or {}
+        self.order = fields[:]
+        self.to_file = '-'
+        self.records = []
+        self.orientation = record_layout
+        self.status = None
+        self.name = name
+
+    def __iter__(self):
+        return iter(self.records)
+
+    def __len__(self):
+        return len(self.records)
+
+
+
+class ResultTable(object):
+    def __init__(self, header, fields, aliases, file):
+        self.header = []                                                            # fields that are part of the result set
+        self.fields = []                                                            # field used only for conditions
+        self.rows = []                                                              # the merged data
+
+class TrackingDict(object):
+    def __init__(self):
+        self.data = {}
+    def __eq__(self, other):
+        return self.data == other
+    def __getattr__(self, name):
+        return getattr(self.data, name)
+    def __getitem__(self, name):
+        return self.data[name]
+    def __repr__(self):
+        return repr(self.data)
+    def __setitem__(self, name, value):
+        if '.' in name:
+            raise valueError('ah ha!')
+        else:
+            setattr(self.data, name, value)
+
+class SQL(object):
+    """
+    Holds all the bits for an SQL query.
+
+    - tables used
+      - fields
+      - match conditions
+      - use unmatched records?
+    - fields used per table
+    """
+    def __init__(self, statement, debug=False):
+        self.primary_table = None
+        self.select = []
+        self.tables = {}                                                            # tables used in query
+        self.fields = TrackingDict()                                                # fields used in query
+        self.joins = {}
+        self.where = ''
+        self.orders = []
+        self.to = '-'
+        self.conditions = []                                                        # how tables are linked together
+        self.queries = []
+        self.aliases = {}
+        self.table_by_field_alias = {}
+        self.raw_statement = statement
+        self._final_statement = []
+        self.words = []
+        self.offset = 0
+        self.complete = False
+        self.command = None
+        try:
+            self.parse()
+            self.q_start()
+            if not self.complete:
+                raise ValueError('SQL statement incomplete')
+            self.process()
+        except Exception:
+            if debug:
+                print_exc()
+            else:
+                raise
+
+    def __repr__(self):
+        return self.statement
+
+    @property
+    def statement(self):
+        return ' '.join(self._final_statement).replace(' , ',', ')
+
+    def execute(self):
+        """
+        query tables and return result
+        """
+        res = ResultTable
+        primary = Table.query(self.queries[0])
+        if len(self.queries) == 1:
+            return primary
+        joining = []
+        for query in self.queries[1:]:
+            keys = re.findall(r"%\((\w+)\)s", query)
+            values = {}
+            for k in keys:
+                values[k] = set([r[k] for r in primary])
+        import pdb; pdb.set_trace()
+
+    def parse(self):
+        """
+        get next "word" in statement
+        """
+        statement = self.raw_statement
+        offset = i = 0
+        while True:
+            alpha = None
+            esc = False
+            quote = False
+            word = []
+            for i, ch in enumerate(statement[offset:]):
+                if esc:
+                    word.append(ch)
+                    esc = False
+                    continue
+                elif quote:
+                    word.append(ch)
+                    if ch == SINGLE_QUOTE:
+                        quote = False
+                        isalpha = False
+                    continue
+                elif ch in ' ' and not word:
+                    continue
+                elif ch in ' ' and word:
+                    break
+                #
+                if ch == BACKSLASH:
+                    esc = True
+                    continue
+                elif ch == SINGLE_QUOTE:
+                    word.append(ch)
+                    quote = True
+                    isalpha = True
+                    continue
+                #
+                if word:
+                    if alpha and ch.isalnum() or ch in '._':
+                        word.append(ch)
+                    elif not alpha and not ch.isalnum() and ch not in '._':
+                        word.append(ch)
+                    else:
+                        # switching from/to symbols (e.g. = < +)
+                        break
+                else:
+                    word.append(ch)
+                    alpha = ch.isalnum() or ch in '._'
+            self.words.append(''.join(word))
+            offset += (i + (ch in ' ')) or 1
+            if offset + 1 >= len(self.raw_statement):
+                break
+
+    def process(self):
+        # if single table query, fix up self.fields
+        if len(self.tables) == 1:
+            self.fields[self.primary_table] = self.fields.pop(None)
+        queries = self.queries
+        pt = self.primary_table
+        for table, fields in self.fields.items():
+            for alias in fields:
+                self.table_by_field_alias[alias] = table
+        # add primary query
+        query = ['SELECT']
+        fields = []
+        t_name = self.tables[pt]
+        for alias, field in self.fields[pt].items():
+            if alias == field:
+                fields.append(field)
+            else:
+                fields.append('%s %s' % (field, alias))
+        query.append(', '.join(fields))
+        query.append('FROM')
+        query.append(t_name)
+        # TODO: add WHEREs, skip ORDER BYs
+        self.split_wheres()
+        if self.where:
+            query.append('WHERE')
+            query.append(self.where)
+        queries.append(' '.join(query))
+        # now add any other tables
+        for t_alias, t_name in self.tables.items():
+            if t_alias == pt:
+                continue
+            query = ['SELECT']
+            fields = []
+            for alias, field in self.fields[t_alias].items():
+                if alias == field:
+                    fields.append(field)
+                else:
+                    fields.append('%s %s' % (field, alias))
+            query.append(', '.join(fields))
+            query.append('FROM')
+            query.append(t_name)
+            query.append('WHERE')
+            # interpret JOIN clause
+            join = self.joins[t_alias]
+            try:
+                field1, op, field2 = join.condition.split()[:3]
+            except ValueError:
+                raise ValueError('unable to split %r' % (join, ))
+            if op != '=':
+                raise ValueError('only the equals operator is supported for joins (%r)' % (join, ))
+            if '.' in field1:
+                table1, field1 = field1.split('.')
+            else:
+                table1 = self.table_by_field_alias[field1]
+            if '.' in field2:
+                table2, field2 = field2.split('.')
+            else:
+                table2 = self.table_by_field_alias[field2]
+            if table1 == pt:
+                if table2 != t_alias:
+                    raise ValueError('JOINing table not listed in JOIN condition (%r)' % (join, ))
+                search_field = field2
+                found_field = field1
+            elif table2 == pt:
+                if table1 != t_alias:
+                    raise ValueError('JOINing table not listed in JOIN condition (%r)' % (join, ))
+                search_field = field1
+                found_field = field2
+            else:
+                raise ValueError('primary table %r not listed in JOIN condition (%r)' % (pt, join))
+            query.append('%s in %%(%s)s' % (search_field, found_field))
+            queries.append(' '.join(query))
+
+    def split_wheres(self):
+        print('split_wheres(): %r' % (self.where, ), verbose=3)
+        print('joins: %r' % (self.joins, ), verbose=3)
+        print('primary table: %r' % (self.primary_table, ), verbose=3)
+        print('tables: %r' % (self.tables, ), verbose=3)
+        print('fields: %r' % (self.fields ), verbose=3)
+        wheres, conditions = convert_where(self.where, infix=True, strip_quotes=False)
+        print('wheres: %r\nconditions: %r' % (wheres, conditions), verbose=3)
+        new_where = []
+        last_table = None
+        last_join = ''
+        for clause in wheres:
+            if isinstance(clause, basestring) and clause in '|&':
+                last_join = clause
+                continue
+            field, op, cond = clause
+            current_table = self.table_by_field_alias[field]
+            print('current table: %r' % (current_table, ), verbose=3)
+            if last_join == '|':
+                # make sure last table and this one are the same
+                if last_table != current_table:
+                    raise ValueError('WHERE: must use AND between fields from different tables')
+            if current_table == self.primary_table:
+                if new_where:
+                    new_where.append(('or','and')[last_join in '&'])
+                new_where.append('%s %s %s' % clause)
+            else:
+                self.joins[current_table].add_condition(('or ','and ')[last_join in '&'] + '%s %s %s' % clause)
+        self.where = ' '.join(new_where)
+
+    def q_from(self, peos):                                                         # possible end of statement?
+        # valid end state
+        # oe tables will have periods in them
+        self.complete = False
+        tables_acquired = False
+        last_table = None
+        alias = False                                                               # True=required, None=optional, False=no
+        comma_needed = False
+        i = 0
+        for i, word in enumerate(self.words[self.offset:], start=1):
+            self._final_statement.append(word)
+            next_word = self.words[self.offset+i:self.offset+i+1]
+            next_word = (next_word and next_word[0] or '').upper()
+            pair = '%s %s' % (word.upper(), next_word)
+            if word.upper() in ('JOIN', 'WHERE', 'TO'):
+                self._final_statement[-1] = self._final_statement[-1].upper()
+                if last_table is not None:
+                    self.tables[last_table] = last_table
+                    self.primary_table = last_table
+                if self._final_statement[-1] == 'JOIN':
+                    self._final_statement[-1] = 'INNER JOIN'
+                break
+            elif pair in ('CROSS JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'OUTER JOIN', 'FULL JOIN', 'ORDER BY'):
+                word = pair.replace(' ','_')
+                self._final_statement[-1] = pair
+                i += 1
+                if last_table is not None:
+                    self.tables[last_table] = last_table
+                    self.primary_table = last_table
+                break
+            if comma_needed and word != COMMA:
+                raise ValueError('comma missing between field definitions')
+            elif word == COMMA:
+                if alias:
+                    raise ValueError('missing alias for %r' % last_table)
+                raise ValueError('only one table supported in FROM clause')
+            elif word.upper() == 'AS':
+                self._final_statement.pop()
+                alias = True
+            elif alias in (None, True):
+                self.tables[word] = last_table
+                self.primary_table = word
+                alias = False
+                last_table = None
+                comma_needed = True
+            else:
+                # this is a table
+                last_table = word
+                alias = None
+                tables_acquired = True
+        else:
+            # loop exhausted, nothing after tables
+            self.offset += i
+            if last_table is not None:
+                self.tables[last_table] = last_table
+                self.primary_table = last_table
+            # sanity checks
+            if alias:
+                raise ValueError('missing alias for %r' % last_table)
+            if not tables_acquired:
+                raise ValueError('no tables in FROM clause')
+            if not peos:
+                raise ValueError('incomplete SQL statement')
+            else:
+                self.complete = True
+                return
+        # sanity checks
+        self.offset += i
+        if alias:
+            raise ValueError('missing alias for %r' % last_table)
+        if not tables_acquired:
+            raise ValueError('no tables in FROM clause')
+        next_method = getattr(self, 'q_%s' % word.lower())
+        next_method(peos=True)
+
+    def q_join(self, peos):
+        join_type = self._final_statement[-1]
+        self.complete = False
+        joins_acquired = False
+        try:
+            word1, word2, word3 = self.words[self.offset:self.offset+3]
+            self._final_statement.append(word1)
+        except ValueError:
+            raise ValueError('incomplete SQL statement')
+        # get table and (possibly) alias
+        if word2.upper() == 'AS':
+            table = word3
+            self.tables[word3] = word1
+            self._final_statement.append(word3)
+            self.offset += 4
+        elif word3.upper() == 'ON':
+            table = word2
+            self.tables[word2] = word1
+            self._final_statement.append(word2)
+            self.offset += 3
+        else:
+            table = word1
+            self.tables[word1] = word1
+            self.offset += 2
+        # double check that ON was the next word
+        if self.words[self.offset-1].upper() != 'ON':
+            raise ValueError('only JOIN ... ON is currently supported')
+        self._final_statement.append('ON')
+        # self.offset should now be pointing to the word after ON
+        condition = []
+        i = 0
+        for i, word in enumerate(self.words[self.offset:], start=1):
+            self._final_statement.append(word)
+            next_word = self.words[self.offset+i:self.offset+i+1]
+            next_word = (next_word and next_word[0] or '').upper()
+            pair = '%s %s' % (word.upper(), next_word)
+            if word.upper() in ('WHERE', 'TO', 'JOIN'):
+                self._final_statement[-1] = self._final_statement[-1].upper()
+                if self._final_statement[-1] == 'JOIN':
+                    self._final_statement[-1] = 'INNER JOIN'
+                break
+            elif pair in ('CROSS JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'OUTER JOIN', 'FULL JOIN', 'ORDER BY'):
+                word = pair.replace(' ','_')
+                self._final_statement[-1] = pair
+                i += 1
+                break
+            # must be part of the condition
+            # might it be a field name/alias?
+            if word not in (
+                    "is not", "is", "not in", "in", "like", "=like", "not like", "ilike", "=ilike", "not ilike",
+                    "<=", ">=", "!=", "==?", "<|>",
+                ):
+                if word.count('.') == 1:
+                    table, field = word.split('.')
+                    if table in self.tables:
+                        fields_by_alias = self.fields.setdefault(table, {})
+                        for alias, name in fields_by_alias.items():
+                            if field == alias:
+                                break
+                            elif field == name:
+                                word = alias
+                                break
+                        else:
+                            fields_by_alias[word] = word
+            condition.append(word)
+        else:
+            # loop exhausted, no further clauses
+            self.offset += i
+            # sanity checks
+            if not condition:
+                raise ValueError('no ON condition in JOIN clause')
+            if not peos:
+                raise ValueError('incomplete SQL statement')
+            else:
+                self.joins[table] = Join(join_type, ' '.join(condition))
+                self.complete = True
+                return
+        self.offset += i
+        # sanity checks
+        if not condition:
+            raise ValueError('no ON condition in JOIN clause')
+        self.joins[table] = Join(join_type, ' '.join(condition))
+        next_method = getattr(self, 'q_%s' % word.lower())
+        next_method(peos=True)
+
+    def q_order_by(self, peos):
+        self.complete = False
+        order_acquired = False
+        last_field = None
+        order_seen = False
+        comma_needed = False
+        i = 0
+        for i, word in enumerate(self.words[self.offset:], start=1):
+            self._final_statement.append(word)
+            next_word = self.words[self.offset+i:self.offset+i+1]
+            next_word = (next_word and next_word[0] or '').upper()
+            if (
+                    word.upper() == 'TO'
+                    and next_word not in ('ASC','DESC')
+                ):
+                self._final_statement[-1] = self._final_statement[-1].upper()
+                break
+            if comma_needed and word != COMMA:
+                raise ValueError('comma missing between order specifications [next word: %r]' % word)
+            elif word == COMMA:
+                last_field = None
+                order_seen = False
+                comma_needed = False
+            elif last_field is not None and word.upper() in ('ASC', 'DESC'):
+                if order_seen:
+                    raise ValueError('ASC/DESC can only be specified once per field')
+                order_seen = True
+                self._final_statement[-1] = self._final_statement[-1].upper()
+                self.orders[-1] = '%s %s' % (self.orders[-1], word.upper())
+                last_field = None
+                comma_needed = True
+            elif last_field is not None:
+                raise ValueError('comma missing between order specifications [next word: %r]' % word)
+            else:
+                last_field = word
+                self.orders.append(last_field)
+                order_acquired = True
+        else:
+            # loop exhausted, nothing after order
+            self.offset += i
+            # sanity checks
+            if not order_acquired:
+                raise ValueError('no ORDER BY fields in clause')
+            if not peos:
+                raise ValueError('incomplete SQL statement')
+            else:
+                self.complete = True
+                return
+        self.offset += i
+        # sanity checks
+        if not order_acquired:
+            raise ValueError('no ORDER BY fields in clause')
+        next_method = getattr(self, 'q_%s' % word.lower())
+        next_method(peos=True)
+
+    def q_select(self):
+        """
+        get and save fields
+        """
+        # possibilities:
+        # - a_field
+        # - a_table.a_field
+        # - as
+        # - comma
+        # - star
+        self.complete = False
+        fields_acquired = False
+        last_field = None
+        last_table = None
+        alias = False
+        comma_needed = False
+        star_seen = False
+        i = 0
+        for i, word in enumerate(self.words[self.offset:], start=1):
+            self._final_statement.append(word)
+            next_word = self.words[self.offset+i:self.offset+i+1]
+            next_word = (next_word and next_word[0] or '').upper()
+            if word.upper() == 'FROM':
+                if last_field is not None:
+                    self.fields.setdefault(last_table, OrderedDict())[last_field] = last_field
+                    if last_table is None:
+                        self.select.append(last_field)
+                    else:
+                        self.select.append('%s.%s' % (last_table, last_field))
+                self._final_statement[-1] = self._final_statement[-1].upper()
+                break
+            if comma_needed and word != COMMA:
+                raise ValueError('comma missing between field definitions')
+            elif word == COMMA:
+                if alias:
+                    raise ValueError('missing alias for %r' % last_field)
+                if last_field is not None:
+                    self.fields.setdefault(last_table, OrderedDict())[last_field] = last_field
+                    if last_table is None:
+                        self.select.append(last_field)
+                    else:
+                        self.select.append('%s.%s' % (last_table, last_field))
+                last_field = None
+                alias = False
+                comma_needed = False
+            elif word.upper() == 'AS':
+                # self._final_statement[-1] = self._final_statement[-1].upper()
+                self._final_statement.pop()
+                alias = True
+            elif '.' in word:
+                if alias:
+                    raise ValueError('aliases cannot contain periods [%r]' % word)
+                table, field = word.rsplit('.', 1)
+                self.tables[table] = table
+                # self.fields.setdefault(table, OrderedDict())[field] = field
+                last_field = field
+                last_table = table
+                alias = None
+                fields_acquired=True
+            elif alias in (None, True):
+                self.fields.setdefault(last_table, OrderedDict())[word] = last_field
+                self.select.append(word)
+                alias = False
+                last_field = None
+                last_table = None
+                comma_needed = True
+            else:
+                assert last_table is None
+                if last_field is not None:
+                    self.fields.setdefault(last_table, OrderedDict())[word] = word
+                last_field = word
+                last_table = None
+                alias = None
+                fields_acquired=True
+        else:
+            # `FROM` not found
+            raise ValueError('missing FROM')
+        self.offset += i
+        # sanity checks
+        if alias:
+            raise ValueError('missing alias for %r' % last_field)
+        if not fields_acquired:
+            raise ValueError('no fields specified')
+        next_method = getattr(self, 'q_%s' % word.lower())
+        next_method(peos=True)
+
+    def q_start(self):
+        word = self.words[0]
+        self.offset = 1
+        if word.upper() not in (
+                'COUNT', 'DELETE', 'DESCRIBE', 'DIFF', 'INSERT', 'SELECT', 'UPDATE',
+            ):
+            raise ValueError('unknown command: %r' % word)
+        self.command = word.upper()
+        self._final_statement.append(word.upper())
+        next_method = getattr(self, 'q_%s' % word.lower())
+        next_method()
+
+    def q_to(self, peos):
+        word = self.words[self.offset:self.offset+1]
+        if not word:
+            raise ValueError('no TO destination')
+        word = word[0]
+        self._final_statement.append(word)
+        self.to = word
+        self.offset += 1
+        word = self.words[self.offset:self.offset+1]
+        if word:
+            raise ValueError('extra TO parameters')
+        self.complete = True
+        return
+
+    def q_where(self, peos):
+        self.complete = False
+        wheres_acquired = False
+        condition = []
+        i = 0
+        for i, word in enumerate(self.words[self.offset:], start=1):
+            self._final_statement.append(word)
+            next_word = self.words[self.offset+i:self.offset+i+1]
+            next_word = (next_word and next_word[0] or '').upper()
+            pair = '%s %s' % (word.upper(), next_word)
+            if word.upper() == 'TO':
+                self._final_statement[-1] = self._final_statement[-1].upper()
+                break
+            elif pair == 'ORDER BY':
+                word = pair.replace(' ','_')
+                self._final_statement[-1] = pair
+                i += 1
+                break
+            # must be part of the condition
+            condition.append(word)
+        else:
+            # loop exhausted, no further clauses
+            self.offset += i
+            # sanity checks
+            if not condition:
+                raise ValueError('no WHERE condition')
+            if not peos:
+                raise ValueError('incomplete SQL statement')
+            else:
+                self.where = ' '.join(condition)
+                self.complete = True
+                return
+        self.offset += i
+        # sanity checks
+        if not condition:
+            raise ValueError('no WHERE condition')
+        self.where = ' '.join(condition)
+        next_method = getattr(self, 'q_%s' % word.lower())
+        next_method(peos=True)
+
+class SQLTable(object):
+    def __init__(self, statement):
+        self.name = ''                                                              # plain text name
+        self.model = ''                                                             # oelib model or fis table
+        self.fields = []                                                            # fields to fetch
+        self.aliases = {}                                                           # field aliases
+        self.conditions = []                                                        # record filters
+        tokens = tokenize(statement)
+        if not tokens:
+            raise ValueError('nothing to process')
+        # get command to process
+        token = tokens.pop(0)
+        if token not in (COUNT, DELETE, DESCRIBE, DIFF, INSERT, SELECT, UPDATE):
+            raise ValueError('unknown command: %r' % token)
+
+    def select(self):
+        pass
+
 ## tokenizer
+
+class Token(object):
+
+    def __init__(self, name, payload=None):
+        self.name = name
+        self.payload = payload
+
+    def __repr__(self):
+        if self.payload is not None:
+            return "Token(%r, payload=%r)" % (self.name, self.payload)
+        else:
+            return "Token(%r)" % self.name
+
+    def __str__(self):
+        if self.payload is not None:
+            return "%s(%r)" % (self.name, self.payload)
+        else:
+            return self.name
+        
+
+for name in (
+            'COUNT', 'DELETE', 'DESCRIBE', 'DIFF', 'INSERT', 'SELECT', 'UPDATE',
+            'AS', 'FROM', 'JOIN', 'ON', 'WHERE', 'ORDER BY', 'ASC', 'DESC', 'TO'
+            'INTO', 'VALUES', 'SET',
+            ):
+    module[name] = Token(name)
+
+
+
+class Parser(object):
+    pass
+
+class Word(Parser):
+    pass
+
 #
 # class NoValue(Enum):
 #
