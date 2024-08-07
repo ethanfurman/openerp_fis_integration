@@ -165,6 +165,75 @@ def cnvzo1():
 
 
 @Command(
+        )
+def portal_logins():
+    """
+    Fill in missing portal login information.
+    """
+    global OERec
+    OERec = NamedTuple(
+            'OERec',
+            ['id', 'login', 'name', 'fis_partner_id', 'fis_ship_to_id',
+             'model', 'create_date', 'create_uid', 'write_uid', 'write_date',
+             'xmlid', 'groups_id', 'tertiary',
+             ])
+    tx_id = Var(lambda h: re.match('(\d\d\d\d\d\d) ', h))
+    print('loading OE data...')
+    portal_group_id = imd.get_object_reference('portal','group_portal')[1]
+    res_users = oe.get_model('res.users')
+    fis_transmitter_code = oe.get_model('fis.transmitter_code')
+    users = get_main_records(
+            res_users,
+            domain=[
+                ('groups_id','=',portal_group_id),
+                ('fis_transmitter_id','=',False),
+                ('login','!=','portaltemplate'),
+                ('active','=',True),
+                ],
+            fields=['id','login','name','fis_partner_id','fis_ship_to_id'],
+            use_blanks=True,
+            )
+    print('checking %d records' % len(users))
+    errors = []
+    count = 0
+    try:
+        for user in users:
+            transmitter_id = None
+            order_code = None
+            if tx_id(user.name):
+                transmitter_no = tx_id.groups()[0]
+                tx_ids = fis_transmitter_code.read([('transmitter_no','=',transmitter_no)], fields=['id'])
+                if tx_ids:
+                    transmitter_id = tx_ids[0].id
+            if user.fis_ship_to_id is None:
+                if transmitter_id is None:
+                    errors.append('%s has no ship-to' % user.login)
+                    continue
+            try:
+                result = res_users.onchange_fis_ship_to([user.id], user.fis_ship_to_id.id, user.fis_partner_id.id, False)
+                transmitter_id = result.value.fis_transmitter_id
+                order_code = result.value.fis_order_code
+                if len(result.get('domain', {}).get('fis_transmitter_id', [])) > 1:
+                    if transmitter_id is None:
+                        errors.append('refusing to guess correct transmitter id from %r' % result['domain']['fis_transmitter_id'])
+                        continue
+            except Exception as e:
+                if transmitter_id is None:
+                    errors.append('%s: %r' % (user.login, e))
+                    continue
+            vals = {'fis_transmitter_id': transmitter_id}
+            if order_code is not None:
+                vals['fis_order_code'] = order_code
+            echo('writing %r = %r' % (user.login, vals))
+            res_users.write([user.id], vals)
+            count += 1
+    finally:
+        for e in errors:
+            error(e)
+        echo('%d users updated' % count)
+
+
+@Command(
         table=Spec('Which table to update', REQUIRED),
         selection=Spec('an OpenERP domain to determine record selection', REQUIRED),
         dupe=Spec('fields to consider for duplicates', MULTIREQ),
