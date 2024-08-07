@@ -10,6 +10,7 @@ from fnx_script_support import *
 from antipathy import Path
 from traceback import format_exception_only
 from dbf import Date, Period
+import re
 import sys
 
 # all order numbers must be in the 10000-19999 range or we have collisions
@@ -25,7 +26,7 @@ ARCHIVE = BASE_PATH / "archive"
 RECIPIENT_FILE = BASE_PATH / 'notify'
 ERROR_FILE = BASE_PATH / 'notified'
 
-# API
+## API
 
 @Command(
         )
@@ -44,51 +45,71 @@ def process_openerp_orders():
             errors.append(msg)
         else:
             for order_file in new_order_list:
-                print('processing %s' % (order_file, ))
-                try:
-                    order_no = int(order_file.stem)
-                    seq = BASE_SEQ + order_no % 10000
-                    with open(order_file) as in_file:
-                        order_lines = in_file.read().strip().split('\n')
-                    # order_lines looks like 
-                    #   ['LUCKY-407B-900002',
-                    #    'RSD-041920',
-                    #    'PON-8172943',
-                    #    '002080 - 1 - 25 lb',
-                    #    '001045 - 1 - 25 lb', '']
-                    # customer login may have dashes, but transmitter numbers never will
-                    # so split on the right-most dash
-                    cust, trans = order_lines[0].strip().rsplit("-", 1)
-                    [rsd] = [xx for xx in order_lines if xx.startswith('RSD')] or ['dflt-%s' % TOMORROW]
-                    [pon] = [xx for xx in order_lines if xx.startswith('PON')] or ['dflt-0000000037']
-                    PON = pon.split('-')[-1]
-                    RSD = rsd.split('-')[-1]
-                    hdr = "C%s+P%s+D%s+" % (trans, PON, RSD)
-                    rec = hdr
-                    for line in order_lines[1:]:
-                        if line.startswith(('RSD','PON')):
-                            continue
-                        item, qty = [val.strip() for val in line.strip().split('-')][:2]
-                        if qty != "0":
-                            rec += "I%s+Q%s+" % (item, qty)
-                    extfile = EOE_PATH / "%s.ext" % seq
-                    with open(extfile, 'w') as out_file:
-                        out_file.write(rec)
-                    # file has been transferred to FIS
-                    # it now MUST be removed
-                    try:
-                        order_file.copy(ARCHIVE)
-                    finally:
-                        order_file.unlink()
-                except Exception:
-                    exc_type, exc, _ = sys.exc_info()
-                    error_lines = format_exception_only(exc_type, exc)
-                    error_lines[0] = ("[%s]  " % order_file.filename) + error_lines[0]
-                    error(''.join(error_lines))
-                    errors.extend(error_lines)
-                    continue
+                process(order_file, errors)
     notify = Notify(script_name)
     return notify(errors)
+
+
+@Command(
+        date=Spec('process orders submitted on DATE', OPTION, type=Date),
+        order_no=Spec('specific order no', OPTION),
+        transmitter_line=Spec('complete first line of file if order_no is for a non-HEB customer', OPTION),
+        )
+def resubmit(date, order_no, transmitter_line):
+    if transmitter_line and not order_no:
+        abort('must specify ORDER-NO if TRANSMITTER-NO given')
+    target_period = None
+    if date:
+        target_period = Period(date.year, date.month, date.day)
+    archive_order_list = get_files_to_process(ARCHIVE, target_period)
+    count = 0
+    for order in archive_order_list:
+        if order_no and order_no != order.stem:
+            continue
+        with open(order) as in_file:
+            data = in_file.read().strip().split('\n')
+        first_line = data[0]
+        if not first_line.endswith('-False'):
+            continue
+        if heb(first_line):
+            tx_id = '150' + heb.groups()[0]
+            data[0] = first_line[:6] + tx_id
+            bk_arc = order.strip_ext() + '.bak'
+            tmp_submit = ORDERS / order.stem
+            final_submit = tmp_submit + '.txt'
+            print()
+            print('source file: %s' % order)
+            print('backup file: %s' % bk_arc)
+            print('submit file: %s' % tmp_submit)
+            print('submit file: %s' % final_submit)
+            print('contents:\n%s' % '\n'.join(data))
+            print('\n')
+            with open(tmp_submit, 'w') as out_file:
+                out_file.write('\n'.join(data))
+            order.rename(bk_arc)
+            tmp_submit.rename(final_submit)
+            count += 1
+        else:
+            if not transmitter_line:
+                error('TRANSMITTER-NO must be specified for non-HEB customers')
+            data[0] = transmitter_line
+            bk_arc = order.strip_ext() + '.bak'
+            tmp_submit = ORDERS / order.stem
+            final_submit = tmp_submit + '.txt'
+            print()
+            print('source file: %s' % order)
+            print('backup file: %s' % bk_arc)
+            print('submit file: %s' % tmp_submit)
+            print('submit file: %s' % final_submit)
+            print('contents:\n%s' % '\n'.join(data))
+            print('\n')
+            with open(tmp_submit, 'w') as out_file:
+                out_file.write('\n'.join(data))
+            order.rename(bk_arc)
+            tmp_submit.rename(final_submit)
+            count += 1
+
+    print('%d orders resubmitted' % count)
 
 
 @Command(
@@ -104,7 +125,7 @@ def daily_digest(date, email):
     print('target date: %r' % (target, ))
     target_period = Period(target.year, target.month, target.day)
     print('       period: %r' % (target_period, ))
-    archive_order_list = get_files_to_process(ARCHIVE)
+    archive_order_list = get_files_to_process(ARCHIVE, target_period)
     process_order_list = get_files_to_process(ORDERS)
     lines = []
     if process_order_list:
@@ -121,10 +142,8 @@ def daily_digest(date, email):
     print('checking %d order files' % len(archive_order_list, ))
     orders = {}
     for order in archive_order_list:
-        order_date = Date.fromtimestamp(order.stat().st_mtime)
-        if order_date in target_period:
-            with open(order) as in_file:
-                orders[order.filename] = in_file.read().strip().split('\n')
+        with open(order) as in_file:
+            orders[order.filename] = in_file.read().strip().split('\n')
     lines.append('found %d records for %s' % (len(orders), target))
     # discard all orders not in date
     archive_order_list = [a for a in archive_order_list if a.filename in orders]
@@ -174,20 +193,76 @@ def test_mail(recipients, subject, message):
     else:
         return Exit.Success
 
-# helpers
+## helpers
 
-def get_files_to_process(path):
+heb = Var(lambda haystack: re.match('HE(\d\d\d)', haystack))
+
+def get_files_to_process(path, target_period=None):
     """
-    returns files that match \d*.txt
+    returns files that match \d*.txt from a specified target_period
     """
     # path must be a Path
-    order_list = [
+    order_candidates = [
             fn
             for fn in path.glob('*.txt')
             if fn.stem.isdigit()
             ]
-    order_list.sort(key=lambda fn: int(fn.stem)) 
-    return order_list
+    if target_period is not None:
+        target_orders = []
+        for order in order_candidates:
+            order_date = Date.fromtimestamp(order.stat().st_mtime)
+            if order_date in target_period:
+                target_orders.append(order)
+        order_candidates = target_orders
+    order_candidates.sort(key=lambda fn: int(fn.stem))
+    return order_candidates
+
+def process(order_file, errors):
+    print('processing %s' % (order_file, ))
+    try:
+        order_no = int(order_file.stem)
+        seq = BASE_SEQ + order_no % 10000
+        with open(order_file) as in_file:
+            order_lines = in_file.read().strip().split('\n')
+        # order_lines looks like
+        #   ['LUCKY-407B-900002',
+        #    'RSD-041920',
+        #    'PON-8172943',
+        #    '002080 - 1 - 25 lb',
+        #    '001045 - 1 - 25 lb', '']
+        # customer login may have dashes, but transmitter numbers never will
+        # so split on the right-most dash
+        cust, trans = order_lines[0].strip().rsplit("-", 1)
+        if trans == 'False':
+            # something failed in the OpenERP export
+            raise Exception('missing transmitter number')
+        [rsd] = [xx for xx in order_lines if xx.startswith('RSD')] or ['dflt-%s' % TOMORROW]
+        [pon] = [xx for xx in order_lines if xx.startswith('PON')] or ['dflt-0000000037']
+        PON = pon.split('-')[-1]
+        RSD = rsd.split('-')[-1]
+        hdr = "C%s+P%s+D%s+" % (trans, PON, RSD)
+        rec = hdr
+        for line in order_lines[1:]:
+            if line.startswith(('RSD','PON')):
+                continue
+            item, qty = [val.strip() for val in line.strip().split('-')][:2]
+            if qty != "0":
+                rec += "I%s+Q%s+" % (item, qty)
+        extfile = EOE_PATH / "%s.ext" % seq
+        with open(extfile, 'w') as out_file:
+            out_file.write(rec)
+        # file has been transferred to FIS
+        # it now MUST be removed
+        try:
+            order_file.copy(ARCHIVE)
+        finally:
+            order_file.unlink()
+    except Exception:
+        exc_type, exc, _ = sys.exc_info()
+        error_lines = format_exception_only(exc_type, exc)
+        error_lines[0] = ("[%s]  " % order_file.filename) + error_lines[0]
+        error(''.join(error_lines))
+        errors.extend(error_lines)
 
 Run()
 
