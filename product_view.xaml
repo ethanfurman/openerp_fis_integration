@@ -479,7 +479,7 @@
                                 ~tree editable='bottom' $New_Order
                                     @partner_product_id $Item
                                      | required='1'
-                                     | domain="[('list_code','=',partner_list_code),('fis_product_orderable','=',True)]"
+                                     | domain="[('list_code','=',partner_list_code)]"
                                      | options="{'create': False, 'create_edit': False, 'no_open': True}"
                                      | on_change="onchange_product(partner_product_id, partner_list_code, 'old')"
                                     @quantity required='1'
