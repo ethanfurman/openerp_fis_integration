@@ -36,7 +36,7 @@ def check_11_111_connection(test):
         errors.append('/mnt/11-111 is no longer available')
     #
     notify = Notify(
-            script_name,
+            script_command_name,
             cut_off=CUT_OFF,
             )
     notify(errors)
