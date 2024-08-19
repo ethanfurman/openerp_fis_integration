@@ -569,6 +569,7 @@ class Query(object):
             context = {}
         if fields is None:
             raise ValueError('FIELDS must be given')
+        self.name = model.model_name
         if aliases is None:
             aliases = {}
         self.aliases = aliases
