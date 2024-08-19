@@ -1,0 +1,45 @@
+#!/usr/local/bin/suid-python
+"""
+This script is designed to:
+
+    - lock up if the /mnt/11-111 connection is hosed
+    - generate pulse if previous run locked up
+
+This script is meant to run at least every five minutes.
+"""
+
+from __future__ import print_function
+from scription import *
+from antipathy import Path
+from datetime import timedelta
+from fnx_script_support import Notify
+from pandaemonium import PidLockFile, AlreadyLocked
+
+PID_FILE = Path('/opt/openerp/var/run/test_mnt_11-111.pid')
+TARGET_FILE = Path('/mnt/11-111/home/README')
+CUT_OFF = 6
+
+@Command(
+        test=('pretend error condition and send mail', FLAG)
+        )
+def check_11_111_connection(test):
+    errors = []
+    #
+    try:
+        if test:
+            errors.append('testing notifications')
+        else:
+            with PidLockFile(PID_FILE, timeout=1):
+                cat = Execute('cat %s' % TARGET_FILE)
+                print(cat.stdout)
+    except AlreadyLocked:
+        errors.append('/mnt/11-111 is no longer available')
+    #
+    notify = Notify(
+            script_name,
+            cut_off=CUT_OFF,
+            )
+    notify(errors)
+
+
+Run()
