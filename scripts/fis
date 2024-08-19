@@ -282,7 +282,7 @@ def product_description(quick, update, *items):
             match = re.match('(.{40})  \((\d{6})\)  (.*)$', line)
             if match:
                 fis_desc, item_code, full_desc = match.groups()
-                if fis_desc in items:
+                if item_code in items:
                     echo('%s:  %s' % (item_code, full_desc))
     if update:
         abort('update not currently supported')
