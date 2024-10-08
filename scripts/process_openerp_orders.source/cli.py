@@ -7,8 +7,10 @@ from __future__ import print_function
 from scription import *
 from fnx_script_support import *
 from antipathy import Path
+from collections import defaultdict
+from dbf import Date, DateTime, Period
+from tarfile import tarfile
 from traceback import format_exception_only
-from dbf import Date, Period
 import re
 import sys
 
@@ -26,6 +28,31 @@ RECIPIENT_FILE = BASE_PATH / 'notify'
 ERROR_FILE = BASE_PATH / 'notified'
 
 ## API
+
+@Command()
+def archive():
+    """
+    move processed order files into monthly archives
+    """
+    to_process = get_files_to_process(ARCHIVE)
+    by_month = defaultdict(list)
+    for fn in ViewProgress(to_process, "Checking $total files"):
+        key = timestamp(fn).strftime("%Y-%m")
+        by_month[key].append(fn)
+    cut_off = DateTime.now().replace(delta_month=-2).strftime('%Y-%m')
+    archive_count = file_count = 0
+    for ts, files in sorted(by_month.items()):
+        if ts > cut_off:
+            break
+        print('archiving', ts)
+        with tarfile.open(ts+'.tgz', mode='w:gz') as tar:
+            archive_count += 1
+            for fn in ViewProgress(sorted(files), view_type='percent'):
+                tar.add(fn, arcname=fn.basename)
+                file_count += 1
+    # XXX actually remove files after tarring
+    print('%d files saved into %d archives' % (file_count, archive_count))
+
 
 @Command(
         date=Spec('date to examine', OPTION, type=Date, radio='date'),
@@ -262,6 +289,15 @@ def process(order_file, errors):
         error_lines[0] = ("[%s]  " % order_file.filename) + error_lines[0]
         error(''.join(error_lines))
         errors.extend(error_lines)
+
+def timestamp(filename):
+    """
+    return DateTime of filename's st_mtime
+    """
+    stat = filename.stat().st_mtime
+    stamp = DateTime.fromtimestamp(stat)
+    return stamp
+
 
 Run()
 
