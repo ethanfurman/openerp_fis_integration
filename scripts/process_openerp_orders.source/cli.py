@@ -9,7 +9,7 @@ from fnx_script_support import *
 from antipathy import Path
 from collections import defaultdict
 from dbf import Date, DateTime, Period
-from tarfile import tarfile
+from tarfile import TarFile
 from traceback import format_exception_only
 import re
 import sys
@@ -44,13 +44,20 @@ def archive():
     for ts, files in sorted(by_month.items()):
         if ts > cut_off:
             break
-        print('archiving', ts)
-        with tarfile.open(ts+'.tgz', mode='w:gz') as tar:
-            archive_count += 1
-            for fn in ViewProgress(sorted(files), view_type='percent'):
-                tar.add(fn, arcname=fn.basename)
-                file_count += 1
-    # XXX actually remove files after tarring
+        tar_name = ARCHIVE/ts + '.tgz'
+        if tar_name.exists():
+            abort('%s already exists, and it should not' % tar_name)
+        try:
+            with TarFile.open(ts+'.tgz', mode='w:gz') as tar:
+                archive_count += 1
+                for fn in ViewProgress(sorted(files), 'archiving %s' % ts, view_type='percent'):
+                    tar.add(fn, arcname=fn.basename)
+                    file_count += 1
+        except:
+            raise
+        else:
+            for fn in ViewProgress(sorted(files), 'deleting %s files' % ts, view_type='percent'):
+                fn.unlink()
     print('%d files saved into %d archives' % (file_count, archive_count))
 
 
