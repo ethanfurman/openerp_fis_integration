@@ -61,6 +61,30 @@ def archive():
     print('%d files saved into %d archives' % (file_count, archive_count))
 
 
+@Command()
+def check():
+    """
+    Show orders with a False transmitter id
+    """
+    archive_order_list = get_files_to_process(ARCHIVE)
+    problems = []
+    for order in ViewProgress(archive_order_list):
+        with open(order) as in_file:
+            lines = in_file.read().strip().split('\n')
+        first_line = lines[0]
+        if not first_line.endswith('-False'):
+            continue
+        info = [first_line]
+        i = 1
+        while i < len(lines) and lines[i][0:1].isalpha():
+            info.append(lines[i])
+            i += 1
+        item_count = len(lines) - i
+        info.append('%d items' % item_count)
+        problems.append('%s: %s' % (order, ' / '.join(info)))
+    echo('\n'.join(problems))
+
+
 @Command(
         date=Spec('date to examine', OPTION, type=Date, radio='date'),
         email=Spec('send email to these addresses', MULTI),
