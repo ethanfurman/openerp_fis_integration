@@ -210,23 +210,9 @@ class product_product(xmlid, osv.Model):
                 )
         for rec in records:
             rec_id = rec['id']
-            state_expiry = date(rec['state_trademark_expiry'], DEFAULT_SERVER_DATE_FORMAT)
-            state_renewal = date(rec['state_trademark_renewal'], DEFAULT_SERVER_DATE_FORMAT)
             federal_expiry = date(rec['federal_trademark_expiry'], DEFAULT_SERVER_DATE_FORMAT)
             federal_renewal = date(rec['federal_trademark_renewal'], DEFAULT_SERVER_DATE_FORMAT)
-            ts = sts = fts = False
-            if state_expiry:
-                expiry_gap = state_expiry - today
-                if expiry_gap > Period.Week26:
-                    sts = TrademarkStatus.active
-                elif state_renewal and today < state_expiry and today - state_renewal < Period.Week13:
-                    sts = TrademarkStatus.renewing
-                elif expiry_gap > Period.Week13:
-                    sts = TrademarkStatus.aging
-                elif state_expiry > today:
-                    sts = TrademarkStatus.dying
-                else:
-                    sts = TrademarkStatus.dead
+            ts = fts = False
             if federal_expiry:
                 expiry_gap = federal_expiry - today
                 if expiry_gap > Period.Week26:
@@ -239,16 +225,11 @@ class product_product(xmlid, osv.Model):
                     fts = TrademarkStatus.dying
                 else:
                     fts = TrademarkStatus.dead
-            if state_expiry and federal_expiry:
-                ts = min(sts, fts)
-            elif state_expiry:
-                ts = sts
-            elif federal_expiry:
+            if federal_expiry:
                 ts = fts
             key = []
             for new_status, field in (
                     (ts, 'trademark_state'),
-                    (sts, 'state_trademark_state'),
                     (fts, 'federal_trademark_state'),
                 ):
                 if field in field_names and new_status != rec[field]:
@@ -492,9 +473,11 @@ class product_product(xmlid, osv.Model):
             oldname='trademark_state',
             ),
         'federal_trademark': fields.char('Federal Registration', size=128),
+        'federal_trademark_class': fields.char('Federal Registration Class', size=128),
         'federal_trademark_no': fields.char('Federal Registration #', size=128),
+        'federal_trademark_serial_no': fields.char('Federal Serial #', size=128),
         'federal_trademark_expiry': fields.date('Federal Registration expires'),
-        'federal_trademark_renewal': fields.date('Federal Registration renewal submitted'),
+        'federal_trademark_renewal': fields.date('Federal Registration application/renewal submitted'),
         'federal_trademark_state': fields.function(
             _trademark_state,
             fnct_inv=True,

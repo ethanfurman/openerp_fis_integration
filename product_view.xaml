@@ -65,18 +65,20 @@
                     ~page string='Trademarks & Registrations' attrs="{'invisible':['|',('trademarks','=',False),('xml_id','=',False)]}"
                         ~group
                             ~group $State
-                                @state_trademark
-                                @state_trademark_no
-                                @state_trademark_state readonly='1'
-                                @state_trademark_expiry on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
-                                @state_trademark_renewal on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
-                                @state_trademark_class_ids widget='many2many_tags'
+                                @state_trademark $Trademark
+                                @state_trademark_class_ids $Class widget='many2many_tags'
+                                @state_trademark_no $Number
+                                @state_trademark_state $Status readonly='1'
+                                @state_trademark_expiry $Expires on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
+                                @state_trademark_renewal $Renewal_submitted on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
                             ~group $Federal
-                                @federal_trademark
-                                @federal_trademark_no
-                                @federal_trademark_state readonly='1'
-                                @federal_trademark_expiry on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
-                                @federal_trademark_renewal on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
+                                @federal_trademark $Trademark
+                                @federal_trademark_class $Class
+                                @federal_trademark_no $Number
+                                @federal_trademark_serial_no $Serial_Number
+                                @federal_trademark_state $Status readonly='1'
+                                @federal_trademark_expiry $Expires on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
+                                @federal_trademark_renewal $Renewal_submitted  on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
                 ~div @buttons position='replace'
                 ~page $Procurements position='replace'
                 ~page $Sales position='after'
@@ -172,6 +174,9 @@
                     @xml_id
                 @name position='after'
                     @fis_shipping_size
+                @state position='replace'
+                    @federal_trademark_no $Federal_Registration
+                    @federal_trademark_renewal $Submitted
 
         ~record #product_normal_action model='ir.actions.act_window'
             @name: Products
