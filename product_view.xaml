@@ -174,7 +174,9 @@
                     @xml_id
                 @name position='after'
                     @fis_shipping_size
-                @state position='replace'
+                @state position='attributes'
+                    ~attribute @invisible: 1
+                @state position='after'
                     @federal_trademark_no $Federal_Registration
                     @federal_trademark_renewal $Submitted
 
