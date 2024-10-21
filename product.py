@@ -1104,7 +1104,7 @@ class product_online_order(osv.Model):
                     """)
             restricted_accounts = [t[0] for t in cr.fetchall()]
             fis_partner = user.fis_partner_id
-            if fis_partner and user.fis_product_cross_ref_code:
+            if fis_partner and user.fis_product_cross_ref_code and user.fis_transmitter_id:
                 res['value']['partner_id'] = fis_partner.id
                 res['value']['partner_xml_id'] = fis_partner.xml_id
                 res['value']['partner_crossref_list'] = user.fis_product_cross_ref_code
