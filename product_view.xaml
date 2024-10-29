@@ -176,9 +176,6 @@
                     @fis_shipping_size
                 @state position='attributes'
                     ~attribute @invisible: 1
-                @state position='after'
-                    @federal_trademark_no $Federal_Registration
-                    @federal_trademark_renewal $Submitted
 
         ~record #product_normal_action model='ir.actions.act_window'
             @name: Products
@@ -245,9 +242,9 @@
                 ~tree $Trademark_Products colors="red:trademark_state == 'dead';orange:trademark_state == 'dying';blue:trademark_state == 'aging';green:trademark_state == 'renewing'"
                     @xml_id
                     @name
-                    @trademark_state
-                    @state_trademark_expiry $State_Expiry
                     @federal_trademark_expiry $Federal_Expiry
+                    @federal_trademark_no $Federal_Registration
+                    @federal_trademark_renewal $Submitted
 
         ~record #product_trademark_search model='ir.ui.view'
             @name: Product Trademark Search
