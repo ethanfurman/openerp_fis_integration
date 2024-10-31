@@ -74,11 +74,11 @@
                             ~group $Federal
                                 @federal_trademark $Trademark
                                 @federal_trademark_class $Class
-                                @federal_trademark_no $Number
+                                @federal_trademark_no $Registration_Number
                                 @federal_trademark_serial_no $Serial_Number
                                 @federal_trademark_state $Status readonly='1'
                                 @federal_trademark_expiry $Expires on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
-                                @federal_trademark_renewal $Renewal_submitted  on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
+                                @federal_trademark_renewal string="Application/Renewal submitted"  on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
                 ~div @buttons position='replace'
                 ~page $Procurements position='replace'
                 ~page $Sales position='after'
