@@ -256,11 +256,11 @@ def main(hostname, database, show_ids=False):
         separator=('insert blank line between records', FLAG),
         wrap=Spec('field name and width of fields to wrap [ignored in .xls and .csv output]', MULTI),
         quiet=Spec('do not display output', FLAG),
-        dev=Spec('use in-development routines', FLAG),
+        legacy=Spec('use use original code', FLAG),
         sheet=Spec('sheet name if writing excel file', OPTION, None),
         )
 @Alias('fis-oe')
-def sql(command, separator, wrap, quiet, dev, sheet):
+def sql(command, separator, wrap, quiet, legacy, sheet):
     """
     Query FIS/OpenERP databases.
 
@@ -310,13 +310,11 @@ def sql(command, separator, wrap, quiet, dev, sheet):
     command = command.strip(' ;')
     try:
         # get a query object, which has a `records` attribute with all matches
-        if dev:
+        if legacy:
+            query = Table.query(command)
+        else:
             sql = SQL(command)
             query = sql.execute()
-        else:
-            query = Table.query(command)
-            # table = Table.query(command)
-            # query = table.query
         print('q --> %s' % (query, ), verbose=2)
     except SQLError as e:
         help(str(e))
