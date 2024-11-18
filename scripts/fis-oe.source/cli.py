@@ -3755,6 +3755,7 @@ class SQL(object):
                     if all(c(rec) for c in constraints):
                         records.append(rec)
             sq.records = records
+        sq.status = "%s %d" % (self.command, len(sq.records))
         return sq
 
     def parse(self):
