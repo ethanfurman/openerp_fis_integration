@@ -1596,7 +1596,7 @@ class ExpandedRow(object):
                             line.extend([None] * len(item))
                         else:
                             line.extend([None])
-            print('processed row ->', line, verbose=3)
+            print('processed row ->', line, verbose=4)
             rows.append(line)
             if not remaining:
                 break
@@ -1919,7 +1919,7 @@ def write_txt(table, query, fields, file, separator=False, wrap=None,):
         er = ExpandedRow(fields, r)
         [print(r, verbose=4) for r in er]
         for row in er:
-            print('post pre-process row ->', row, verbose=3)
+            print('post pre-process row ->', row, verbose=4)
             line = []
             for field_name, (cell_index, cell_value) in zip(fields, enumerate(row)):
                 if isinstance(cell_value, Many2One):
@@ -1951,7 +1951,7 @@ def write_txt(table, query, fields, file, separator=False, wrap=None,):
                 if field_name in wrap:
                     wrap_value = wrap[field_name]
                     line[-1] = html2text(line[-1], wrap_value)
-            print('post post-process line ->', line, verbose=3)
+            print('post post-process line ->', line, verbose=4)
             lines.append(line)
     if not separator:
         lines.insert(1, None)
@@ -2349,7 +2349,7 @@ class FISTable(Table):
         print('getting records', verbose=2)
         sq.records.extend(self._records(seleccion, field_alias, donde, constraints))
         print('sorting records')
-        print(sq.records, verbose=3)
+        # print(sq.records, verbose=3)
         for o in reversed(orden):
             o = o.split()
             if len(o) == 1:
@@ -3081,7 +3081,7 @@ class Node(object):
             raise Exception('too many clauses for %r' % self)
 
     def process(self, record):
-        print('Node.process: %r' % (record, ), verbose=3)
+        # print('Node.process: %r' % (record, ), verbose=3)
         for i, clause in enumerate(self.clauses, start=1):
             if isinstance(clause, tuple):
                 field, op, target = clause
@@ -3433,8 +3433,7 @@ class Join(object):
                     last_right_index = j
                 new_rec = left_data.copy()
                 for field, value in right_data.items():
-                    # if field in header_mapping:
-                        new_rec[header_mapping[field]] = right_data[field]
+                    new_rec[header_mapping[field]] = right_data[field]
                 sq.add_record(new_rec)
                 j += 1
         return sq
@@ -3493,20 +3492,73 @@ class Join(object):
         # sq = left_sq.as_template(self.table_name)
         raise NotImplementedError
 
-    def right_join(self, left_sq, records, table_by_field):
-        # sq = left_sq.as_template(self.table_name)
-        raise NotImplementedError
+    def right_join(self, left_sq, right_sq, table_by_field, header_mapping):
+        # all records in right_sq will be included, along with any matches in left_sq
+        sq = left_sq.as_template(self.table_name)
+        field1, op, field2 = self.condition_match(self.condition).groups()
+        print('table name: %r' % self.table_name)
+        print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=3)
+        if op != '=':
+            raise SQLError('JOIN only allows "=" for joining records')
+        if table_by_field.get(field1, None) == self.table_name:
+            left_name = field2
+            right_name = split_fn(field1)
+            if table_by_field.get(field2, None) == self.table_name:
+                raise SQLError('0 - invalid JOIN condition: %r' % self.condition)
+        elif table_by_field.get(field2, None) == self.table_name:
+            left_name = field1
+            right_name = split_fn(field2)
+        else:
+            raise SQLError('1 - invalid JOIN condition: %r' % self.condition)
+        right_sq.records.sort(key=lambda r: r[right_name])
+        left_sq.records.sort(key=lambda r: r[left_name])
+        i = j = 0
+        last_right_data = None
+        last_left_index = None
+        last_right_index = 0
+        found = False
+        while i < len(right_sq) and j < len(left_sq):
+            right_data = right_sq.records[i]
+            if i != last_right_index and last_right_data == right_data[right_name] and last_left_index is not None:
+                j = last_left_index
+            left_data = left_sq.records[j]
+            if right_data[right_name] < left_data[left_name]:
+                print(0, end='')
+                i += 1
+                if not found:
+                    new_rec = {}
+                    for field, value in right_data.items():
+                        new_rec[header_mapping[field]] = right_data[field]
+                    sq.add_record(new_rec)
+            elif right_data[right_name] > left_data[left_name]:
+                print(1, end='')
+                j += 1
+                last_left_index = None
+                found = False
+            else:
+                print(2, end='')
+                found = True
+                last_right_index = i
+                last_right_data = right_data[right_name]
+                if last_left_index is None:
+                    last_left_index = j
+                new_rec = left_data.copy()
+                for field, value in right_data.items():
+                    new_rec[header_mapping[field]] = right_data[field]
+                sq.add_record(new_rec)
+                j += 1
+        return sq
 
 
 class SimpleQuery(object):
     """
     Presents same attributes as openerplib.utils.query.
     """
-    def __init__(self, name, fields, aliases=None, record_layout='row'):
+    def __init__(self, name, fields, aliases=None, record_layout='row', to='-'):
         self.fields = fields
         self.aliases = aliases or {}
         self.order = fields[:]
-        self.to_file = '-'
+        self.to_file = to
         self.records = []
         self.orientation = record_layout
         self.status = None
@@ -3699,7 +3751,7 @@ class SQL(object):
         query tables and return result
         """
         print('EXECUTE', verbose=2)
-        sq = SimpleQuery('/'.join([tp.alias for tp in self.tables.values()]), self.table_by_field_alias.keys())
+        sq = SimpleQuery('/'.join([tp.alias for tp in self.tables.values()]), self.table_by_field_alias.keys(), to=self.to)
         #
         # do all the queries
         results = {}
@@ -3742,6 +3794,7 @@ class SQL(object):
                     self.table_by_field_alias,
                     field_aliases[join.table_name],
                     )
+        print('sq records after joins: %d' % len(sq), verbose=3)
         # process WHERE
         print('WHERE: %r' % self.where, verbose=3)
         if self.where:
@@ -3755,6 +3808,7 @@ class SQL(object):
                     if all(c(rec) for c in constraints):
                         records.append(rec)
             sq.records = records
+        print('sq records after where: %d' % len(sq), verbose=3)
         sq.status = "%s %d" % (self.command, len(sq.records))
         return sq
 
@@ -3860,13 +3914,14 @@ class SQL(object):
             query.append(', '.join(fields))
             query.append('FROM')
             query.append(tp.table_name)
-            if tp.where:
-                print('tp query: %r' % tp.query, verbose=3)
-                print('tp where: %r' % tp.where, verbose=3)
-                query.append('WHERE')
-                query.extend(tp.where)
+            # if tp.where:
+            #     print('tp query: %r' % tp.query, verbose=3)
+            #     print('tp where: %r' % tp.where, verbose=3)
+            #     query.append('WHERE')
+            #     query.extend(tp.where)
             print(query, verbose=3)
             tp.query = ' '.join(query)
+            print('FINAL tp query: %r' % tp.query, verbose=3)
 
     def q_from(self, peos):                                                         # possible end of statement?
         """
