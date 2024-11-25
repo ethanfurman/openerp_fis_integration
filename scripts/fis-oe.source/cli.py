@@ -6,7 +6,6 @@ from __future__ import print_function, unicode_literals
 
 from VSS.BBxXlate import fisData as fd
 from VSS.BBxXlate.bbxfile import TableError
-from abc import ABCMeta, abstractmethod, abstractproperty
 from aenum import Enum, StrEnum, auto
 from antipathy import Path
 from ast import literal_eval
@@ -1433,7 +1432,7 @@ class counter(object):
 
     next = __next__
 
-def create_filter(domain, aliases=None):
+def create_filter(domain, aliased=None):
     """
     Determine if the record should be included in the result set.
     """
@@ -1450,8 +1449,8 @@ def create_filter(domain, aliases=None):
     #
     root = Node()
     stack = [root]
-    if aliases is None:
-        aliases = {}
+    if aliased is None:
+        aliased = {}
     print('domain:', domain, verbose=2)
     for clause in domain:
         # print('  stack:', stack, verbose=3)
@@ -1459,7 +1458,7 @@ def create_filter(domain, aliases=None):
         current_node = stack[-1]
         if isinstance(clause, tuple) and len(clause) == 3:
             field, op, target = clause
-            field = aliases.get(field, field)
+            field = aliased.get(field, field)
             current_node.add((field, op, target))
             if current_node.complete:
                 stack.pop()
@@ -1905,9 +1904,9 @@ def write_txt(table, query, fields, file, separator=False, wrap=None,):
     print('field count:', len(fields), fields, verbose=4)
     for field_name in fields:
         field_header = field_name.upper()
-        aliases = getattr(query, 'aliases', {})
+        aliased = getattr(query, 'aliased', {})
         if script_verbosity:
-            field_header += "\n%s" % aliases.get(field_name, field_name)
+            field_header += "\n%s" % aliased.get(field_name, field_name)
         line.append(field_header)
         # line.append('%s\n%s' % (query.names[field_name] or field_name.upper(), field_name))
     lines.append(line)
@@ -1973,36 +1972,56 @@ class Table(object):
     Subclasses must also provide the following attributes:
     - fields
     """
-    __metaclass__ = ABCMeta
     tables = {}
     command_table_pat = r"(COUNT\s*FROM|DELETE\s*FROM|DESCRIBE|DIFF .*? FROM|REPORT .*? FROM|SELECT .*? FROM|INSERT INTO|UPDATE)\s*(\S*)"
 
     def __new__(cls, table_name):
         """
-        Select the FISTable or OpenERPTable depending on table_name.
+        Select FISTable, OpenERPTable, or Generic depending on table_name.
         """
-        if '.' in table_name:
-            table = super(Table, OpenERPTable).__new__(OpenERPTable, table_name)
-        else:
-            table = super(Table, FISTable).__new__(FISTable, table_name)
-        return table
+        if table_name not in cls.tables:
+            if '.' in table_name:
+                table = super(Table, OpenERPTable).__new__(OpenERPTable, table_name)
+            else:
+                table = super(Table, FISTable).__new__(FISTable, table_name)
+            cls.tables[table_name] = table
+        return cls.tables[table_name]
 
     def __getattr__(self, name):
+        """
+        Mirror any attributes on a contained table
+        """
         return getattr(self.table, name)
 
-    @abstractmethod
     def __init__(self, table_name):
-        """
-        Represent an FIS or OpenERP table.
-        """
+        pass
 
-    @abstractproperty
     def fields(self):
         """
         Names and definitions of the table's fields as a dict.
         """
 
-    @abstractclassmethod
+    @classmethod
+    def from_data(cls, name, fields=None, data=None):
+        if name in cls.tables:
+            raise NameError('table %r already exists' % name)
+        # if rows in data are simple tuples, header must be specified
+        # otherwise, rows must be namedtuples, attrdicts, or something else supporting getitem access
+        if fields is None:
+            if data is None:
+                raise ValueError('fields must be given when table is empty')
+            fields = data[0].keys()
+        if data and type(data[0]) is tuple:
+            old_data, data = data, []
+            for row in old_data:
+                data.append(dict(zip(fields, row)))
+        table = super(Table, GenericTable).__new__(GenericTable, name, fields)
+        table._fields = fields
+        table.table = data
+        cls.tables[name] = table
+        return table
+
+    @classmethod
     def query(cls, command):
         """
         Extract command and primary table, then call cls.query to process.
@@ -2022,39 +2041,26 @@ class Table(object):
         # table.query = q
         # return table
 
-    @abstractmethod
     def sql_count(self, command):
-        """
-        Return count of records matching criteria.
-        """
+        raise SQLError('cannot count records')
 
-    @abstractmethod
     def sql_delete(self, command):
-        """
-        Remove records from table.
-        """
+        raise NotImplementedError('cannot delete records')
 
-    @abstractmethod
     def sql_describe(self, command):
-        """
-        Show layout of table.
-        """
+        raise SQLError('cannot describe table')
 
-    @abstractmethod
     def sql_diff(self, command):
-        pass
+        raise SQLError('cannot diff records')
 
-    @abstractmethod
     def sql_insert(self, command):
-        pass
+        raise SQLError('cannot insert records')
 
-    @abstractmethod
     def sql_select(self, command):
-        pass
+        raise SQLError('cannot select records')
 
-    @abstractmethod
     def sql_update(self, command):
-        pass
+        raise NotImplementedError('cannot update records')
 
 class FISTable(Table):
     """
@@ -2120,17 +2126,11 @@ class FISTable(Table):
     def fields_by_number(self):
         return self._fields_by_number.copy()
 
-    def query(self, fields, to_file='-', domain=ALL_ACTIVE, order=(), distinct=False, separator=False, wrap=(), _constraints=()):
-        """
-
-        """
-
-
-    def _records(self, fields, aliases, where, constraints):
+    def _records(self, fields, aliased, where, constraints):
         # print('fields requested: %s' % (fields, ), verbose=2)
         # print('where: %r' % (where, ), verbose=2)
         # print('constraints: %r' % (constraints, ), verbose=2)
-        filter = create_filter(where, aliases)
+        filter = create_filter(where, aliased)
         print('filter:', filter, verbose=2)
         records = []
         for k, v in self.table.items():
@@ -2139,10 +2139,10 @@ class FISTable(Table):
                 if all(c(v) for c in constraints):
                     row = []
                     for f in fields:
-                        if f == 'id' and 'id' not in aliases:
+                        if f == 'id' and 'id' not in aliased:
                             continue
-                        row.append(v[aliases[f]])
-                    records.append(AttrDict(*zip(fields, row)))
+                        row.append(v[aliased[f]])
+                    records.append(dict(*zip(fields, row)))
         return records
 
     def sql_count(self, command):
@@ -2151,16 +2151,10 @@ class FISTable(Table):
             temp.insert(1, 'id')
             command = ' '.join(temp)
         query = self.sql_select(command, _internal=True)
-        sq = SimpleQuery(self.name, ('table', 'count'))
+        sq = SimpleQuery(('table', 'count'))
         sq.records.append(AttrDict(table=self.table.name, count=len(query)))
         sq.status = "COUNT %s" % len(query)
         return sq
-
-    def sql_delete(self, command):
-        """
-        Not supported.
-        """
-        raise NotImplementedError('cannot delete records from FIS tables')
 
     def sql_describe(self, command, _internal=''):
         """
@@ -2178,7 +2172,7 @@ class FISTable(Table):
             else:
                 raise SQLError('unknown ORDER BY: %r' % order)
         defs = sorted(self.fields.values(), key=lambda t: t[index])
-        sq = SimpleQuery(self.name, ('index', 'name','spec','comment'))
+        sq = SimpleQuery(('index', 'name','spec','comment'))
         for d in defs:
             sq.records.append(AttrDict(*zip(('index','name','spec','comment'), d)))
         sq.status = "DESCRIBE 1"
@@ -2186,12 +2180,6 @@ class FISTable(Table):
 
     def sql_diff(self, command):
         pass
-
-    def sql_insert(self, command):
-        """
-        Not supported.
-        """
-        raise SQLError('cannot insert records into FIS tables')
 
     def sql_select(self, command, _internal=''):
         """
@@ -2345,7 +2333,7 @@ class FISTable(Table):
         #
         # at this point we have the fields, and the table -- get the records
         #
-        sq = SimpleQuery(self.name, header, aliases=field_alias)
+        sq = SimpleQuery(header, aliased=field_alias)
         print('getting records', verbose=2)
         sq.records.extend(self._records(seleccion, field_alias, donde, constraints))
         print('sorting records')
@@ -2362,12 +2350,6 @@ class FISTable(Table):
         sq.status = "SELECT %s" % len(sq.records)
         return sq
 
-    def sql_update(self, command):
-        """
-        Not supported.
-        """
-        raise NotImplementedError('cannot update records in FIS tables')
-
 class OpenERPTable(Table):
     """
     Handle interactions with OpenERP model.
@@ -2383,29 +2365,6 @@ class OpenERPTable(Table):
     def fields(self):
         return self.table._all_columns.copy()
 
-    def query(self, command):
-        """
-        Process records matching criteria.
-        """
-        check_command = ' '.join(command.lower().split())
-        if check_command.startswith('select '):
-            self.query = self.sql_select(command)
-        elif check_command.startswith('count '):
-            self.query = self.sql_count(command)
-        elif check_command.startswith('describe '):
-            self.query = self.sql_describe(command)
-        elif check_command.startswith('update '):
-            self.query = self.sql_update(command)
-        elif check_command.startswith('insert into '):
-            self.query = self.sql_insert(command)
-        elif check_command.startswith('delete from '):
-            self.query = self.sql_delete(command)
-        elif check_command.startswith('diff '):
-            self.query = self.sql_diff(command)
-        else:
-            raise SQLError('invalid command: %r...' % check_command[:13])
-        return self
-
     def sql_count(self, command):
         """
         COUNT
@@ -2419,7 +2378,7 @@ class OpenERPTable(Table):
             temp.insert(1, 'id')
             command = ' '.join(temp)
         query = self.sql_select(command, _internal=True)
-        sq = SimpleQuery(self.name, ('table', 'count'))
+        sq = SimpleQuery(('table', 'count'))
         sq.records.append(AttrDict(table=self.table.model_name, count=len(query)))
         sq.status = "COUNT %s" % len(query)
         return sq
@@ -2456,7 +2415,7 @@ class OpenERPTable(Table):
             echo('no records found matching %r' % (where_clause, ))
         print('deleting %d records from %s' % (len(ids), table._name), verbose=2)
         table.unlink(ids)
-        sq = SimpleQuery(self.name, ('table', 'count'))
+        sq = SimpleQuery(('table', 'count'))
         sq.records.append(AttrDict(table=self.table.model_name, count=len(ids)))
         sq.status = "DELETE %s" % len(ids)
         return sq
@@ -2481,7 +2440,7 @@ class OpenERPTable(Table):
             sort = lambda t: t[0]
         seleccion = sorted(self.table._all_columns.items(), key=sort)
         # table = [('Field','Display','Type','Detail','Help'), None]
-        sq = SimpleQuery(self.name, ('field','display','type','detail','help'))
+        sq = SimpleQuery(('field','display','type','detail','help'))
         for field, desc in seleccion:
             display = desc['string']
             help = desc.get('help') or ''
@@ -2542,7 +2501,7 @@ class OpenERPTable(Table):
         if len(query.records) == 1:
             # if only one record, display all fields
             changed_only = False
-        sq = SimpleQuery(self.name, ['fields \ ids']+[rec['id'] for rec in query.records], record_layout='column')
+        sq = SimpleQuery(['fields \ ids']+[rec['id'] for rec in query.records], record_layout='column')
         fields = query.records[1].keys()
         fields.remove('id')
         for field in fields:
@@ -2634,7 +2593,7 @@ class OpenERPTable(Table):
                 error('unable to create:\n', pprint.pformat(values))
                 raise ValueError(repr(exc))
             insert_count += 1
-        sq = SimpleQuery(self.name, ('table','inserted','updated'))
+        sq = SimpleQuery(('table','inserted','updated'))
         sq.records.append(AttrDict(table=self.table.model_name, inserted=insert_count, updated=update_count))
         sq.status = "INSERT %s / UPDATE %s" % (insert_count, update_count)
         return sq
@@ -2690,7 +2649,6 @@ class OpenERPTable(Table):
             else:
                 header.append(field)
 
-                
         print('SELECT:', seleccion, verbose=2)
         #
         #
@@ -2825,26 +2783,43 @@ class OpenERPTable(Table):
         ids = table.search(domain)
         print('writing\n  %r\nto %s for ids\n%r' % (values, table._name, ids), verbose=2)
         table.write(ids, values)
-        sq = SimpleQuery(self.name, ('table', 'updated'))
+        sq = SimpleQuery(('table', 'updated'))
         sq.records.append(AttrDict(table=self.table.model_name, updated=len(ids)))
         sq.status = 'UPDATE %d' % len(ids)
         return sq
 
-class ResultsTable(Table):
+class GenericTable(Table):
     """
     Results table
     """
-    def __init__(self, header, fields):
-        self.header = header
-        self.fields = fields
+    def __init__(self, table_name):
+        self.name = table_name
 
     def __repr__(self):
-        return "ResultsTable(header=%r, fields=%r)" % (self.header, self.fields)
+        return "ResultsTable(name=%r, fields=%r)" % (self.name, self._fields)
 
-    def query(self, fields, to_file='-', domain=ALL_ACTIVE, order=(), distinct=False, separator=False, wrap=(), _constraints=()):
-        """
+    @property
+    def fields(self):
+        return self._fields[:]
 
-        """
+    def _records(self, fields, aliased, where, constraints):
+        # print('fields requested: %s' % (fields, ), verbose=2)
+        # print('where: %r' % (where, ), verbose=2)
+        # print('constraints: %r' % (constraints, ), verbose=2)
+        filter = create_filter(where, aliased)
+        print('filter:', filter, verbose=2)
+        print('aliased:', aliased, verbose=2)
+        records = []
+        for r in self.table:
+            if filter(r):
+                if all(c(r) for c in constraints):
+                    row = []
+                    for f in fields:
+                        if f == 'id' and 'id' not in aliased:
+                            continue
+                        row.append(r[aliased.get(f,f)])
+                    records.append(dict(zip(fields, row)))
+        return records
 
     def sql_count(self, command):
         temp = command.split()
@@ -2856,12 +2831,6 @@ class ResultsTable(Table):
         sq.records.append(AttrDict(table=self.table.name, count=len(query)))
         sq.status = "COUNT %s" % len(query)
         return sq
-
-    def sql_delete(self, command):
-        """
-        Not supported.
-        """
-        raise NotImplementedError('cannot delete records from FIS tables')
 
     def sql_describe(self, command, _internal=''):
         """
@@ -2885,15 +2854,6 @@ class ResultsTable(Table):
         sq.status = "DESCRIBE 1"
         return sq
 
-    def sql_diff(self, command):
-        pass
-
-    def sql_insert(self, command):
-        """
-        Not supported.
-        """
-        raise SQLError('cannot insert records into FIS tables')
-
     def sql_select(self, command, _internal=''):
         """
         SELECT field_name [AS name1][, field_name [AS name2][, ...]]
@@ -2906,16 +2866,8 @@ class ResultsTable(Table):
         table_match = Var(lambda sel: re.match(r'(\S+)\s+AS\s+(\S+)\b(.*)', sel, re.I)) 
         table_alias = {}
         field_alias = {}
-        fields = []
+        fields = self._fields
         header = []
-        print('getting table description', verbose=2)
-        for desc in self.sql_describe('order by index', _internal=True):
-            if desc['name']:
-                # field_alias_master[row[0]] = row[0], row[1]
-                # field_alias_master[row[1]] = row[0], row[1]
-                field_alias[str(desc['index'])] = desc['spec']
-                field_alias[desc['name']] = desc['spec']
-                fields.append(desc['name'])
         imprimido = '-'
         orden = ''
         clausa = ''
@@ -2951,36 +2903,16 @@ class ResultsTable(Table):
         for i, field in enumerate(seleccion):
             if as_match(field):
                 field, alias = as_match.groups()
-                bbx_index = field_alias[field]
-                field_alias[alias] = bbx_index
+                field_alias[alias] = field
                 seleccion[i] = alias
-                if SHOW_ID:
-                    if field.isdigit:
-                        header.append('%s - %s' % (self._fields_by_number[int(field)][0], alias))
-                    else:
-                        header.append('%s - %s' % (self._fields_by_name[int(field)][0], alias))
-                else:
-                    header.append(alias)
-            elif field == 'id':
+                header.append(alias)
+            elif field == 'id' and 'id' not in fields:
                 # phony field used for COUNTing
                 pass
             else:
-                if field.isdigit():
-                    alias = self._fields_by_number[int(field)][1]
-                    if SHOW_ID:
-                        header.append('%s - %s' % (field, self._fields_by_number[int(field)][1]))
-                    else:
-                        header.append(alias)
-                else:
-                    alias = self._fields_by_name[field][1]
-                    if SHOW_ID:
-                        header.append('%s - %s' % (self._fields_by_name[field][0], field))
-                    else:
-                        header.append(alias)
-
-                bbx_index = field_alias[field]
-                field_alias[alias] = bbx_index
-                seleccion[i] = alias
+                field_alias[field] = field
+                header.append(field)
+        print('SELECT:', seleccion, verbose=2)
         #
         #
         # get FROM table: `res.users` or `res.users u`
@@ -3038,20 +2970,15 @@ class ResultsTable(Table):
         print('ORDER BY', orden, verbose=2)
         print('TO', imprimido, verbose=2)
         print('CONSTRAINTS', constraints, verbose=2)
+        print('ALIASES', field_alias, verbose=2)
         #
         # at this point we have the fields, and the table -- get the records
         #
-        sq = SimpleQuery(header, aliases=field_alias)
+        sq = SimpleQuery(header, aliased=field_alias)
         print('getting records', verbose=2)
         sq.records.extend(self._records(seleccion, field_alias, donde, constraints))
         sq.status = "SELECT %s" % len(sq.records)
         return sq
-
-    def sql_update(self, command):
-        """
-        Not supported.
-        """
-        raise NotImplementedError('cannot update records in FIS tables')
 
 class Node(object):
     #
@@ -3341,7 +3268,10 @@ class Join(object):
         self.type = join_type
         self.table_name = table
         self.condition = condition
-        if not self.condition_match(condition):
+        if join_type == 'CROSS JOIN':
+            if condition:
+                raise SQLError('invalid JOIN condition: %r' % (condition, ))
+        elif not self.condition_match(condition):
             raise SQLError('invalid JOIN condition: %r' % (condition, ))
 
     def __call__(self, current_sq, records, table_by_field, header_mapping):
@@ -3374,17 +3304,109 @@ class Join(object):
         pass
         # self.condition += ' ' + condition
 
-    def cross_join(self, left_sq, records, table_by_field):
-        # sq = left_sq.as_template(self.table_name)
-        raise NotImplementedError
+    def cross_join(self, left_sq, right_sq, table_by_field, header_mapping):
+        sq = left_sq.as_template()
+        for left_data in left_sq:
+            for right_data in right_sq:
+                new_rec = left_data.copy()
+                for field, value in right_data.items():
+                    if field in header_mapping:
+                        new_rec[header_mapping[field]] = right_data[field]
+                sq.add_record(new_rec)
+        return sq
 
-    def full_join(self, left_sq, records, table_by_field):
-        # sq = left_sq.as_template(self.table_name)
-        raise NotImplementedError
+    def full_join(self, left_sq, right_sq, table_by_field, header_mapping):
+        sq = left_sq.as_template()
+        field1, op, field2 = self.condition_match(self.condition).groups()
+        print('table name: %r' % self.table_name)
+        print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=3)
+        if op != '=':
+            raise SQLError('JOIN only allows "=" for joining records')
+        if table_by_field.get(field1, None) == self.table_name:
+            left_name = field2
+            right_name = split_fn(field1)
+            if table_by_field.get(field2, None) == self.table_name:
+                raise SQLError('0 - invalid JOIN condition: %r' % self.condition)
+        elif table_by_field.get(field2, None) == self.table_name:
+            left_name = field1
+            right_name = split_fn(field2)
+        else:
+            raise SQLError('1 - invalid JOIN condition: %r' % self.condition)
+        right_sq.records.sort(key=lambda r: r[right_name])
+        left_sq.records.sort(key=lambda r: r[left_name])
+        i = j = 0
+        print(len(left_sq), len(right_sq), verbose=3)
+        last_left_data = None
+        last_left_index = last_right_index = None
+        found = False
+        while i < len(left_sq) or j < len(right_sq):
+            print('\n0: i=%d  j=%d  lld=%r  lri=%r' % (i, j, last_left_data, last_right_index), verbose=3)
+            if i < len(left_sq):
+                left_data = left_sq.records[i]
+            else:
+                left_data = EMPTY
+            if i != last_left_index and last_left_data == left_data[left_name]:
+                j = last_right_index
+            if j < len(right_sq):
+                right_data = right_sq.records[j]
+            else:
+                right_data = EMPTY
+            left = left_data and left_data[left_name]
+            right = right_data and right_data[right_name]
+            print('1: i=%d  j=%d  l=%r  r=%r' % (i, j, left, right), verbose=3)
+            # print('comparing: left[%d] - right[%d]' % (i, j), verbose=3)
+            if right is EMPTY:
+                print(2, found, verbose=3)
+                i += 1
+                if not found:
+                    sq.add_record(left_data)
+                    print('2 adding LEFT', verbose=3)
+                found = False
+            elif left is EMPTY:
+                print(3, found, verbose=3)
+                j += 1
+                new_rec = {}
+                for field, value in right_data.items():
+                    new_rec[header_mapping[field]] = right_data[field]
+                sq.add_record(new_rec)
+                print('3 adding RIGHT', verbose=3)
+            elif left < right:
+                print(4, found, verbose=3)
+                i += 1
+                if not found:
+                    sq.add_record(left_data)
+                    print('4 adding LEFT', verbose=3)
+                found = False
+            elif left > right:
+                print(5, found, verbose=3)
+                j += 1
+                if not found:
+                    new_rec = {}
+                    for field, value in right_data.items():
+                        new_rec[header_mapping[field]] = right_data[field]
+                    sq.add_record(new_rec)
+                    print('5 adding RIGHT', verbose=3)
+                last_right_index = None
+                found = False
+            else:
+                # they are equal
+                found = True
+                last_left_index = i
+                last_left_data = left_data[left_name]
+                if last_right_index is None:
+                    last_right_index = j
+                new_rec = left_data.copy()
+                for field, value in right_data.items():
+                    if field in header_mapping:
+                        new_rec[header_mapping[field]] = right_data[field]
+                sq.add_record(new_rec)
+                print('adding BOTH', verbose=3)
+                j += 1
+        return sq
 
     def left_join(self, left_sq, right_sq, table_by_field, header_mapping):
         # all records in left_sq will be included, along with any matches in right_sq
-        sq = left_sq.as_template(self.table_name)
+        sq = left_sq.as_template()
         field1, op, field2 = self.condition_match(self.condition).groups()
         print('table name: %r' % self.table_name)
         print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=3)
@@ -3408,18 +3430,22 @@ class Join(object):
         last_right_index = None
         last_left_index = 0
         found = False
-        while i < len(left_sq) and j < len(right_sq):
+        while i < len(left_sq):
             # print(last_left_data, last_right_index, verbose=3)
             left_data = left_sq.records[i]
             if i != last_left_index and last_left_data == left_data[left_name] and last_right_index is not None:
                 j = last_right_index
-            right_data = right_sq.records[j]
+            if j < len(right_sq):
+                right_data = right_sq.records[j]
+            else:
+                right_data = EMPTY
             print('comparing: left[%d] - right[%d]' % (i, j), verbose=3)
-            if left_data[left_name] < right_data[right_name]:
+            if right_data is EMPTY or left_data[left_name] < right_data[right_name]:
                 # no right match possible, add left record
                 i += 1
                 if not found:
                     sq.add_record(left_data)
+                found = False
             elif left_data[left_name] > right_data[right_name]:
                 j += 1
                 last_right_index = None
@@ -3439,10 +3465,8 @@ class Join(object):
         return sq
 
     def inner_join(self, left_sq, right_sq, table_by_field, header_mapping):
-        sq = left_sq.as_template(self.table_name)
+        sq = left_sq.as_template()
         field1, op, field2 = self.condition_match(self.condition).groups()
-        print('table name: %r' % self.table_name)
-        print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=3)
         if op != '=':
             raise SQLError('JOIN only allows "=" for joining records')
         if table_by_field.get(field1, None) == self.table_name:
@@ -3488,16 +3512,93 @@ class Join(object):
         return sq
 
 
-    def outer_join(self, left_sq, records, table_by_field):
-        # sq = left_sq.as_template(self.table_name)
-        raise NotImplementedError
-
-    def right_join(self, left_sq, right_sq, table_by_field, header_mapping):
-        # all records in right_sq will be included, along with any matches in left_sq
-        sq = left_sq.as_template(self.table_name)
+    def outer_join(self, left_sq, right_sq, table_by_field, header_mapping):
+        sq = left_sq.as_template()
         field1, op, field2 = self.condition_match(self.condition).groups()
         print('table name: %r' % self.table_name)
         print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=3)
+        if op != '=':
+            raise SQLError('JOIN only allows "=" for joining records')
+        if table_by_field.get(field1, None) == self.table_name:
+            left_name = field2
+            right_name = split_fn(field1)
+            if table_by_field.get(field2, None) == self.table_name:
+                raise SQLError('0 - invalid JOIN condition: %r' % self.condition)
+        elif table_by_field.get(field2, None) == self.table_name:
+            left_name = field1
+            right_name = split_fn(field2)
+        else:
+            raise SQLError('1 - invalid JOIN condition: %r' % self.condition)
+        right_sq.records.sort(key=lambda r: r[right_name])
+        left_sq.records.sort(key=lambda r: r[left_name])
+        i = j = 0
+        print(len(left_sq), len(right_sq), verbose=3)
+        last_left_data = None
+        last_left_index = last_right_index = None
+        found = False
+        while i < len(left_sq) or j < len(right_sq):
+            print('\n0: i=%d  j=%d  lld=%r  lri=%r' % (i, j, last_left_data, last_right_index), verbose=3)
+            if i < len(left_sq):
+                left_data = left_sq.records[i]
+            else:
+                left_data = EMPTY
+            if i != last_left_index and last_left_data == left_data[left_name]:
+                j = last_right_index
+            if j < len(right_sq):
+                right_data = right_sq.records[j]
+            else:
+                right_data = EMPTY
+            left = left_data and left_data[left_name]
+            right = right_data and right_data[right_name]
+            print('1: i=%d  j=%d  l=%r  r=%r' % (i, j, left, right), verbose=3)
+            # print('comparing: left[%d] - right[%d]' % (i, j), verbose=3)
+            if right is EMPTY:
+                print(2, found, verbose=3)
+                i += 1
+                if not found:
+                    sq.add_record(left_data)
+                    print('2 adding LEFT', verbose=3)
+                found = False
+            elif left is EMPTY:
+                print(3, found, verbose=3)
+                j += 1
+                new_rec = {}
+                for field, value in right_data.items():
+                    new_rec[header_mapping[field]] = right_data[field]
+                sq.add_record(new_rec)
+                print('3 adding RIGHT', verbose=3)
+            elif left < right:
+                print(4, found, verbose=3)
+                i += 1
+                if not found:
+                    sq.add_record(left_data)
+                    print('4 adding LEFT', verbose=3)
+                found = False
+            elif left > right:
+                print(5, found, verbose=3)
+                j += 1
+                if not found:
+                    new_rec = {}
+                    for field, value in right_data.items():
+                        new_rec[header_mapping[field]] = right_data[field]
+                    sq.add_record(new_rec)
+                    print('5 adding RIGHT', verbose=3)
+                last_right_index = None
+                found = False
+            else:
+                # they are equal
+                found = True
+                last_left_index = i
+                last_left_data = left_data[left_name]
+                if last_right_index is None:
+                    last_right_index = j
+                j += 1
+        return sq
+
+    def right_join(self, left_sq, right_sq, table_by_field, header_mapping):
+        # all records in right_sq will be included, along with any matches in left_sq
+        sq = left_sq.as_template()
+        field1, op, field2 = self.condition_match(self.condition).groups()
         if op != '=':
             raise SQLError('JOIN only allows "=" for joining records')
         if table_by_field.get(field1, None) == self.table_name:
@@ -3517,26 +3618,27 @@ class Join(object):
         last_left_index = None
         last_right_index = 0
         found = False
-        while i < len(right_sq) and j < len(left_sq):
+        while i < len(right_sq):
             right_data = right_sq.records[i]
             if i != last_right_index and last_right_data == right_data[right_name] and last_left_index is not None:
                 j = last_left_index
-            left_data = left_sq.records[j]
-            if right_data[right_name] < left_data[left_name]:
-                print(0, end='')
+            if j < len(left_sq):
+                left_data = left_sq.records[j]
+            else:
+                left_data = EMPTY
+            if left_data is EMPTY or right_data[right_name] < left_data[left_name]:
                 i += 1
                 if not found:
                     new_rec = {}
                     for field, value in right_data.items():
                         new_rec[header_mapping[field]] = right_data[field]
                     sq.add_record(new_rec)
+                found = False
             elif right_data[right_name] > left_data[left_name]:
-                print(1, end='')
                 j += 1
                 last_left_index = None
                 found = False
             else:
-                print(2, end='')
                 found = True
                 last_right_index = i
                 last_right_data = right_data[right_name]
@@ -3547,6 +3649,7 @@ class Join(object):
                     new_rec[header_mapping[field]] = right_data[field]
                 sq.add_record(new_rec)
                 j += 1
+        print('FINAL i, j VALUEs: %d, %r' % (i, j), verbose=3)
         return sq
 
 
@@ -3554,15 +3657,16 @@ class SimpleQuery(object):
     """
     Presents same attributes as openerplib.utils.query.
     """
-    def __init__(self, name, fields, aliases=None, record_layout='row', to='-'):
+    def __init__(self, fields, aliased=None, record_layout='row', to='-'):
+        # fields: list of final field names (could be aliases)
+        # aliased: mapping of above (possibly aliased) field names to actual field names (for verbose mode)
+        print('SQ fields=%r' % (fields, ), verbose=2)
         self.fields = fields
-        self.aliases = aliases or {}
-        self.order = fields[:]
+        self.aliased = aliased or {}
         self.to_file = to
         self.records = []
         self.orientation = record_layout
         self.status = None
-        self.name = name
 
     def __iter__(self):
         return iter(self.records)
@@ -3571,30 +3675,35 @@ class SimpleQuery(object):
         return len(self.records)
 
     def __repr__(self):
-        return "SimpleQuery(name=%r, fields=%r, aliases=%r)" % (
-                self.name,
+        return "SimpleQuery(fields=%r, aliased=%r)" % (
                 self.fields,
-                self.aliases,
+                self.aliased,
                 )
 
     def add_record(self, values):
-        print('ADDING %r into %r' % (values, self.fields), verbose=3)
-        print('ALIASES: %r' % self.aliases, verbose=3)
+        # print('ADDING %r into %r' % (values, self.fields), verbose=3)
+        # print('ALIASES: %r' % self.aliases, verbose=3)
         new_record = {}.fromkeys(self.fields, EMPTY)
         new_record.update(values)
         self.records.append(new_record)
 
-    def as_template(self, new_name):
-        new_sq = self.__class__(new_name, self.fields[:], self.aliases.copy(), self.orientation)
+    def as_template(self):
+        new_sq = self.__class__(self.fields[:], self.aliased.copy(), self.orientation)
         new_sq.to_file = self.to_file
         return new_sq
 
+    def finalize(self, fields):
+        """
+        recreate each row with only the specified fields
+        """
+        if fields != self.fields:
+            records = self.records
+            for i, rec in enumerate(records):
+                records[i] = AttrDict([
+                        (f, rec[f])
+                        for f in fields
+                        ])
 
-class ResultTable(object):
-    def __init__(self, header, fields, file, ):
-        self.header = []                                                            # fields that are part of the result set
-        self.fields = []                                                            # field used only for conditions
-        self.rows = []                                                              # the merged data
 
 
 class TrackingDict(object):
@@ -3644,8 +3753,6 @@ class SQL(object):
         self.to = '-'
         self.conditions = []                                                        # how tables are linked together
         self.strict_fields = False                                                  # whether table prefixes are required
-        # self.queries = []
-        # self.aliases = {}                                                           # {'field_alias': 'table_name'}
         self.table_by_field_alias = {}
         self.raw_statement = statement.strip()
         self._final_statement = []
@@ -3751,14 +3858,16 @@ class SQL(object):
         query tables and return result
         """
         print('EXECUTE', verbose=2)
-        sq = SimpleQuery('/'.join([tp.alias for tp in self.tables.values()]), self.table_by_field_alias.keys(), to=self.to)
+        # sq = SimpleQuery('/'.join([tp.alias for tp in self.tables.values()]), self.table_by_field_alias.keys(), to=self.to)
+        sq = SimpleQuery(self.table_by_field_alias.keys(), to=self.to)
         #
         # do all the queries
         results = {}
         for tp in self.tables.values():
             print('QUERY: %r' % tp.query, verbose=2)
             results[tp.alias] = Table.query(tp.query)
-            print('QUERY ALIASES: %r' % results[tp.alias].aliases.keys(), verbose=3)
+            print('QUERY COUNT: %d' % len(results[tp.alias]), verbose=3)
+            print('QUERY ALIASES: %r' % results[tp.alias].aliased.keys(), verbose=3)
         #
         # create mapping of field alias to field name
         field_aliases = {}    # {table_name: {record_name1:header_name1, record_name2:header_name2, ...}}
@@ -3768,7 +3877,7 @@ class SQL(object):
             header_sq = results[table_alias]
             field_alias = split_fn(name)
             field_aliases.setdefault(table_alias, {})[field_alias] = name
-            sq.aliases[name] = header_sq.aliases[field_alias]
+            sq.aliased[name] = header_sq.aliased[field_alias]
         print('aliases: %r' % field_aliases, verbose=3)
         #
         # if only one table, process and return
@@ -3776,7 +3885,7 @@ class SQL(object):
         primary_aliases = field_aliases[self.primary_table]
         # if len(tables) == 1:
         for row in primary:
-            print(row, verbose=3)
+            # print(row, verbose=3)
             values = {}
             for field, value in row.items():
                 if field in primary_aliases:
@@ -3788,6 +3897,7 @@ class SQL(object):
         # merge with joins
         for join in self.joins:
             print(join, verbose=3)
+            print('records: %d' % len(results[join.table_name]), verbose=3)
             sq = join(
                     sq,
                     results[join.table_name],
@@ -3809,6 +3919,19 @@ class SQL(object):
                         records.append(rec)
             sq.records = records
         print('sq records after where: %d' % len(sq), verbose=3)
+        if self.orders:
+            print('sorting records')
+            # print(sq.records, verbose=3)
+            for o in reversed(self.orders):
+                o = o.split()
+                if len(o) == 1:
+                    o.append('ASC')
+                f, d = o    # field, direction
+                if d.upper() == 'ASC':
+                    sq.records.sort(key=lambda r: r[f])
+                else:
+                    sq.records.sort(key=lambda r: r[f], reverse=True)
+        sq.finalize(self.header)
         sq.status = "%s %d" % (self.command, len(sq.records))
         return sq
 
@@ -3913,6 +4036,8 @@ class SQL(object):
                     fields.append('%s as %s' % (fn, fa))
             query.append(', '.join(fields))
             query.append('FROM')
+            if tp.table_name is None:
+                raise SQLError('missing full table name for table %r' % tp.alias)
             query.append(tp.table_name)
             # if tp.where:
             #     print('tp query: %r' % tp.query, verbose=3)
@@ -4076,9 +4201,10 @@ class SQL(object):
             left_tp = SQLTableParams(alias, table_name)
             tables[alias] = left_tp
         # double check that ON was the next word
-        if self.words[self.offset-1].upper() != 'ON':
-            raise SQLError('only JOIN ... ON is currently supported')
-        self._final_statement.append('ON')
+        if join_type != 'CROSS JOIN':
+            if self.words[self.offset-1].upper() != 'ON':
+                raise SQLError('only JOIN ... ON is currently supported')
+            self._final_statement.append('ON')
         # self.offset should now be pointing to the word after ON
         condition = []
         condition_type = []
@@ -4178,7 +4304,7 @@ class SQL(object):
         print('TBFA: %r' % self.table_by_field_alias, verbose=3)
         self.offset += i
         # sanity checks
-        if not condition:
+        if not condition and join_type != 'CROSS JOIN':
             raise SQLError('no ON condition in JOIN clause')
         self.joins.append(Join(join_type, left_tp.alias, ' '.join(condition)))
         print('joins: %r' % self.joins, verbose=3)
