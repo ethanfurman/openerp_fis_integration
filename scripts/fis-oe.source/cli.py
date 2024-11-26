@@ -309,7 +309,9 @@ def sql(command, separator, wrap, quiet, legacy, sheet):
     command = command.strip(' ;')
     try:
         # get a query object, which has a `records` attribute with all matches
-        if legacy:
+        if command.upper().startswith(('DESCRIBE ', 'DIFF ')):
+            query = Table.query(command)
+        elif legacy:
             query = Table.query(command)
         else:
             sql = SQL(command)
@@ -320,8 +322,8 @@ def sql(command, separator, wrap, quiet, legacy, sheet):
     except NotImplementedError as e:
         abort(str(e))
     if query is not None:
-        print(query.name)
-        model_name = sheet or query.name or command
+        print(sheet or command)
+        model_name = sheet or command
         to_file = query.to_file
         fields = query.fields
         query = query
