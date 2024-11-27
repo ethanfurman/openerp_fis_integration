@@ -2144,7 +2144,7 @@ class FISTable(Table):
                         if f == 'id' and 'id' not in aliased:
                             continue
                         row.append(v[aliased[f]])
-                    records.append(dict(*zip(fields, row)))
+                    records.append(dict(zip(fields, row)))
         return records
 
     def sql_count(self, command):
@@ -3014,6 +3014,7 @@ class Node(object):
         for i, clause in enumerate(self.clauses, start=1):
             if isinstance(clause, tuple):
                 field, op, target = clause
+                print('looking for %r of %r in %r' % (field, record[field], record), verbose=3)
                 field = record[field]
                 self.result = self.operators[op](field, target)
             elif isinstance(clause, Node):
@@ -3860,16 +3861,24 @@ class SQL(object):
         query tables and return result
         """
         print('EXECUTE', verbose=2)
-        # sq = SimpleQuery('/'.join([tp.alias for tp in self.tables.values()]), self.table_by_field_alias.keys(), to=self.to)
-        sq = SimpleQuery(self.table_by_field_alias.keys(), to=self.to)
         #
         # do all the queries
         results = {}
         for tp in self.tables.values():
             print('QUERY: %r' % tp.query, verbose=2)
-            results[tp.alias] = Table.query(tp.query)
+            results[tp.alias] = rtp = Table.query(tp.query)
             print('QUERY COUNT: %d' % len(results[tp.alias]), verbose=3)
             print('QUERY ALIASES: %r' % results[tp.alias].aliased.keys(), verbose=3)
+        #
+        # fix up field names in case of SELECT *
+        if '*' not in self.table_by_field_alias:
+            sq_fields = self.table_by_field_alias.keys()
+        elif len(self.tables) == 1:
+            # easier if only one table
+            sq_fields = self.header = rtp.fields
+        else:
+            raise NotImplementedError
+        sq = SimpleQuery(sq_fields, to=self.to)
         #
         # create mapping of field alias to field name
         field_aliases = {}    # {table_name: {record_name1:header_name1, record_name2:header_name2, ...}}
@@ -3877,15 +3886,23 @@ class SQL(object):
             print('name: %r' % name, verbose=3)
             # table_alias = self.table_by_field_alias[name]
             header_sq = results[table_alias]
-            field_alias = split_fn(name)
-            field_aliases.setdefault(table_alias, {})[field_alias] = name
-            sq.aliased[name] = header_sq.aliased[field_alias]
-        print('aliases: %r' % field_aliases, verbose=3)
+            print(header_sq.aliased, verbose=3)
+            if name == '*':
+                tmp = field_aliases.setdefault(table_alias, {})
+                for n in header_sq.aliased:
+                    tmp[n] = n
+                    sq.aliased[n] = header_sq.aliased[n]
+            else:
+                field_alias = split_fn(name)
+                field_aliases.setdefault(table_alias, {})[field_alias] = name
+                sq.aliased[name] = header_sq.aliased[field_alias]
+        print('field aliases: %r' % field_aliases, verbose=3)
+        print('sq aliased: %r' % sq.aliased, verbose=3)
         #
         # if only one table, process and return
         primary = results[self.primary_table]
         primary_aliases = field_aliases[self.primary_table]
-        # if len(tables) == 1:
+        # print('primary aliases: %r' % primary_aliases, verbose=3)
         for row in primary:
             # print(row, verbose=3)
             values = {}
@@ -3909,7 +3926,9 @@ class SQL(object):
         print('sq records after joins: %d' % len(sq), verbose=3)
         # process WHERE
         print('WHERE: %r' % self.where, verbose=3)
-        if self.where:
+        if self.where and len(self.tables) > 1:
+            # if only one table, WHERE clause was included in query
+            #
             # create alias mapping in the format expected by convert_where of
             # alias_name:field_name
             domain, constraints = convert_where(self.where, null=EMPTY)
