@@ -1910,7 +1910,7 @@ def write_txt(table, query, fields, file, separator=False, wrap=None,):
     print('field count:', len(fields), fields, verbose=4)
     for field_name in fields:
         field_header = field_name.upper()
-        aliased = getattr(query, 'aliased', {})
+        aliased = getattr(query, 'aliases', {})
         if script_verbosity:
             field_header += "\n%s" % aliased.get(field_name, field_name)
         line.append(field_header)
@@ -3600,7 +3600,7 @@ class SimpleQuery(object):
         # aliased: mapping of above (possibly aliased) field names to actual field names (for verbose mode)
         print('SQ fields=%r' % (fields, ), verbose=2)
         self.fields = fields
-        self.aliased = aliased or {}
+        self.aliases = aliased or {}
         self.to_file = to
         self.records = []
         self.orientation = record_layout
@@ -3615,7 +3615,7 @@ class SimpleQuery(object):
     def __repr__(self):
         return "SimpleQuery(fields=%r, aliased=%r)" % (
                 self.fields,
-                self.aliased,
+                self.aliases,
                 )
 
     def add_record(self, values):
@@ -3626,7 +3626,7 @@ class SimpleQuery(object):
         self.records.append(new_record)
 
     def as_template(self):
-        new_sq = self.__class__(self.fields[:], self.aliased.copy(), self.orientation)
+        new_sq = self.__class__(self.fields[:], self.aliases.copy(), self.orientation)
         new_sq.to_file = self.to_file
         return new_sq
 
@@ -3823,18 +3823,18 @@ class SQL(object):
             print('name: %r' % name, verbose=3)
             # table_alias = self.table_by_field_alias[name]
             header_sq = results[table_alias]
-            print(header_sq.aliased, verbose=3)
+            print(header_sq.aliases, verbose=3)
             if name == '*':
                 tmp = field_aliases.setdefault(table_alias, {})
-                for n in header_sq.aliased:
+                for n in header_sq.aliases:
                     tmp[n] = n
-                    sq.aliased[n] = header_sq.aliased[n]
+                    sq.aliases[n] = header_sq.aliases[n]
             else:
                 field_alias = split_fn(name)
                 field_aliases.setdefault(table_alias, {})[field_alias] = name
-                sq.aliased[name] = header_sq.aliased[field_alias]
+                sq.aliases[name] = header_sq.aliases[field_alias]
         print('field aliases: %r' % field_aliases, verbose=3)
-        print('sq aliased: %r' % sq.aliased, verbose=3)
+        print('sq aliases: %r' % sq.aliases, verbose=3)
         #
         # if only one table, process and return
         primary = results[self.primary_table]
