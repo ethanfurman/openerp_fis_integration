@@ -48,8 +48,8 @@ class TestTables(TestCase):
 
     @ensure_oe
     def test_OpenERP(self):
-        OpenERPTable.query('select login, name from res.users')
-        Table.query('select * from res.users')
+        OpenERPTable.query("select id, name from res.users where login='admin'")
+        Table.query("select id, name from res.users where login='admin'")
 
     def test_Generic(self):
         GenericTable.query('select * from customer')
