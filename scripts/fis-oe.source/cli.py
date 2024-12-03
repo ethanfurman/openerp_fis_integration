@@ -1136,8 +1136,10 @@ def values(filenum, subset, code, fields, counts):
         print('%-23s:  %7d' % ('Total Records', len(fis_table)), verbose=0)
 
 
-@Command()
-def self_test():
+@Command(
+        tests=Spec('tests to run [default: all]', nargs='*'),
+        )
+def self_test(*tests):
     """
     Perform various tests.
 
@@ -1153,7 +1155,9 @@ def self_test():
     #         ]
     #
     import test
+    import unittest
     test
+    unittest.main(module='test', exit=True)
 
 ## helpers
 
@@ -1969,11 +1973,12 @@ class SQLError(Exception):
 
 class Table(object):
     """
-    FIS or OpenERP table.
+    FIS, OpenERP, or Generic table.
 
     Subclasses must also provide the following attributes:
     - fields
     """
+    _inited = False
     tables = {}
     command_table_pat = r"(COUNT\s*FROM|DELETE\s*FROM|DESCRIBE|DIFF .*? FROM|REPORT .*? FROM|SELECT .*? FROM|INSERT INTO|UPDATE)\s*(\S*)"
 
@@ -1983,9 +1988,11 @@ class Table(object):
         """
         if table_name not in cls.tables:
             if '.' in table_name:
-                table = super(Table, OpenERPTable).__new__(OpenERPTable, table_name)
+                # table = super(Table, OpenERPTable).__new__(OpenERPTable, table_name)
+                 table = OpenERPTable.__new__(OpenERPTable, table_name)
             else:
-                table = super(Table, FISTable).__new__(FISTable, table_name)
+                # table = super(Table, FISTable).__new__(FISTable, table_name)
+                table = FISTable.__new__(FISTable, table_name)
             cls.tables[table_name] = table
         return cls.tables[table_name]
 
@@ -1995,13 +2002,12 @@ class Table(object):
         """
         return getattr(self.table, name)
 
-    def __init__(self, table_name):
-        pass
-
+    @property
     def fields(self):
         """
-        Names and definitions of the table's fields as a dict.
+        Names/definitions of the table's fields.
         """
+        return self._fields.copy()
 
     @classmethod
     def from_data(cls, name, fields=None, data=None):
@@ -2012,14 +2018,18 @@ class Table(object):
         if fields is None:
             if data is None:
                 raise ValueError('fields must be given when table is empty')
-            fields = data[0].keys()
+            fields = list(data.keys())
+        if isinstance(fields, (list, tuple)):
+            fields = dict([(k, k) for k in data[0].keys()])
         if data and type(data[0]) is tuple:
             old_data, data = data, []
             for row in old_data:
                 data.append(dict(zip(fields, row)))
-        table = super(Table, GenericTable).__new__(GenericTable, name, fields)
+        table = object.__new__(GenericTable)
+        table.name = name
         table._fields = fields
         table.table = data
+        # table._inited = True
         cls.tables[name] = table
         return table
 
@@ -2034,14 +2044,10 @@ class Table(object):
             raise SQLError('command and/or table missing from query')
         table = cls(table_name)
         method = getattr(table, 'sql_%s' % cmd.lower().split()[0])
-        print('%s.%s --> ' % (table.name, method.__name__), end='', verbose=2)
         q = method(command)
-        # print(q, verbose=2)
         if not isinstance(q, (Query, SimpleQuery)):
             raise TypeError('%r did not return a (Simple)Query, but a %r' % (method.__name__, type(q).__name__))
         return q
-        # table.query = q
-        # return table
 
     def sql_count(self, command):
         raise SQLError('cannot count records')
@@ -2068,33 +2074,27 @@ class FISTable(Table):
     """
     Handle interactions with FIS table.
     """
-    def __init__(self, table_name):
-        print('FIS table %r' % table_name)
+    def __new__(cls, table_name):
+        # if self._inited:
+        #     return
+        # self._inited = True
+        self = object.__new__(FISTable)
         if table_name.isdigit():
             table = int(table_name)
             source_name = 'filenum'
         else:
             table = table_name.lower()
             source_name = 'name'
-        # print('FIS table %r' % table)
         if table in table_keys:
-            # print(0)
             self.num, self.name, self.pat = table_keys[table]
         else:
-            # print(1)
             if table not in fd.tables:
-                # print(2)
                 for desc in fd.tables.values():
-                    # print(3)
                     if table == maybe_lower(desc[source_name]):
-                        # print(4)
                         table = desc['filenum']
                         break
                 else:
-                    # print(5)
                     raise SQLError('table %r not found' % table_name)
-            # print(6)
-            # print('FIS table %r' % table)
             table = fd.tables[table]
             self.num = table['filenum']
             self.name = table['name']
@@ -2105,39 +2105,40 @@ class FISTable(Table):
             #         count += int(spec.split(',')[1].strip(')'))
             # self.pat = '.' * count
         self.table = fd.fisData(self.num)
-        # print('%3s: %s --> %r' % (self.num, self.name, self.table), verbose=2)
         # get human-usable field names
         fields_by_name = {}
         fields_by_number = {}
-        # print('getting fields', verbose=2)
+        fields_and_alias = {}
         for i, field in enumerate(self.table.fieldlist, start=1):
             name, spec = field[1:4:2]
             comment = name
             name = convert_name(name, 50)
             fields_by_name[name] = i, name, spec, comment
             fields_by_number[i] = i, name, spec, comment
-            # print(repr(i), name, spec, comment, verbose=4)
+            fields_and_alias[name] = spec
+            fields_and_alias[str(i)] = spec
         self._fields_by_name = fields_by_name
         self._fields_by_number = fields_by_number
+        self._fields_and_alias = fields_and_alias
+        return self
 
     @property
     def fields(self):
         return self._fields_by_name.copy()
 
     @property
+    def fields_and_alias(self):
+        return self._fields_and_alias.copy()
+
+    @property
     def fields_by_number(self):
         return self._fields_by_number.copy()
 
     def _records(self, fields, aliased, where, constraints):
-        # print('fields requested: %s' % (fields, ), verbose=2)
-        # print('where: %r' % (where, ), verbose=2)
-        # print('constraints: %r' % (constraints, ), verbose=2)
         filter = create_filter(where, aliased)
-        print('filter:', filter, verbose=2)
         records = []
         for k, v in self.table.items():
             if filter(v):
-                # print(k, sep='\n', verbose=4)
                 if all(c(v) for c in constraints):
                     row = []
                     for f in fields:
@@ -2173,7 +2174,7 @@ class FISTable(Table):
                 index = 0
             else:
                 raise SQLError('unknown ORDER BY: %r' % order)
-        defs = sorted(self.fields.values(), key=lambda t: t[index])
+        defs = sorted(self._fields_by_name.values(), key=lambda t: t[index])
         sq = SimpleQuery(('index', 'name','spec','comment'))
         for d in defs:
             sq.records.append(AttrDict(*zip(('index','name','spec','comment'), d)))
@@ -2194,25 +2195,15 @@ class FISTable(Table):
         as_match = Var(lambda sel: re.match(r'(\S+)\s+AS\s+(\S+)', sel, re.I)) 
         table_match = Var(lambda sel: re.match(r'(\S+)\s+AS\s+(\S+)\b(.*)', sel, re.I)) 
         table_alias = {}
-        field_alias = {}
-        fields = []
+        field_verbose = self.fields_and_alias
+        fields = self.fields.keys()
         header = []
-        print('getting table description', verbose=2)
-        for desc in self.sql_describe('order by index', _internal=True):
-            if desc['name']:
-                # field_alias_master[row[0]] = row[0], row[1]
-                # field_alias_master[row[1]] = row[0], row[1]
-                field_alias[str(desc['index'])] = desc['spec']
-                field_alias[desc['name']] = desc['spec']
-                fields.append(desc['name'])
         imprimido = '-'
         orden = ''
         clausa = ''
         donde = []
         distinta = False
-        # print('command: %r' % (command, ), verbose=3)
         command = ' '.join(command.split())
-        print('command: %r' % (command, ), verbose=2)
         if not re.search(r' from ', command, flags=re.I):
             raise SQLError('FROM not specified')
         if command.split()[-2].lower() == 'to':
@@ -2222,7 +2213,6 @@ class FISTable(Table):
         # get SELECT fields
         #
         seleccion, resto = re.split(r' from ', command, maxsplit=1, flags=re.I)
-        print('0 SELECT: %r   REST: %r' % (seleccion, resto), verbose=3)
         seleccion = seleccion.split()[1:]
         if not seleccion:
             raise SQLError('missing fields')
@@ -2240,35 +2230,18 @@ class FISTable(Table):
         for i, field in enumerate(seleccion):
             if as_match(field):
                 field, alias = as_match.groups()
-                bbx_index = field_alias[field]
-                field_alias[alias] = bbx_index
+                bbx_index = field_verbose[field]
+                field_verbose[alias] = bbx_index
                 seleccion[i] = alias
-                if SHOW_ID:
-                    if field.isdigit:
-                        header.append('%s - %s' % (self._fields_by_number[int(field)][0], alias))
-                    else:
-                        header.append('%s - %s' % (self._fields_by_name[int(field)][0], alias))
-                else:
-                    header.append(alias)
+                header.append(alias)
             elif field == 'id':
                 # phony field used for COUNTing
                 pass
             else:
-                if field.isdigit():
-                    alias = self._fields_by_number[int(field)][1]
-                    if SHOW_ID:
-                        header.append('%s - %s' % (field, self._fields_by_number[int(field)][1]))
-                    else:
-                        header.append(alias)
-                else:
-                    alias = self._fields_by_name[field][1]
-                    if SHOW_ID:
-                        header.append('%s - %s' % (self._fields_by_name[field][0], field))
-                    else:
-                        header.append(alias)
-
-                bbx_index = field_alias[field]
-                field_alias[alias] = bbx_index
+                alias = self._fields_by_name[field][1]
+                header.append(alias)
+                bbx_index = field_verbose[field]
+                field_verbose[alias] = bbx_index
                 seleccion[i] = alias
         #
         #
@@ -2282,17 +2255,15 @@ class FISTable(Table):
         else:
             resto = resto.split()
         desde, resto = resto[0], resto[1:]
-        print('0 FROM: %r   REST: %r' % (desde, resto), verbose=3)
         if desde.upper() in ('', 'WHERE', 'ORDER'):
             raise SQLError('missing table')
         # check for alias
         if resto and resto[0].upper() not in ('', 'WHERE', 'ORDER'):
             alias, resto = resto[0], resto[1:]
-            print('0 ALIAS: %r   REST: %r' % (alias, resto), verbose=3)
             table_alias[alias] = desde
             desde = alias
-        if table_alias.get(desde, desde) not in self.tables:
-            self.tables[desde] = Table(table_alias.get(desde,desde))
+        # if table_alias.get(desde, desde) not in self.tables:
+        #     self.tables[desde] = Table(table_alias.get(desde,desde))
         # table = self.tables[desde]
         if resto:
             if resto[0].upper() == 'WHERE':
@@ -2304,42 +2275,26 @@ class FISTable(Table):
                     clausa, resto = re.split(r' ORDER BY ', resto, maxsplit=1, flags=re.I)
                     resto = 'ORDER BY ' + resto
                     # clausa, orden = re.split(r' ORDER BY ', resto, maxsplit=1, flags=re.I)
-                    # print('-1 orden being set to', repr(orden), verbose=2)
                 else:
                     clausa, resto = resto, ''
                 clausa = clausa.strip()
-                # orden = orden.strip()
-                # print('-2 orden being set to', repr(orden), verbose=2)
                 resto = resto.split()
             if ' '.join(resto[:2]).upper() == 'ORDER BY':
                 orden = [o.strip() for o in ' '.join(resto[2:]).split(',')]
-                print('-3 orden being set to', repr(orden), verbose=2)
                 resto = []
             if resto:
                 raise SQLError('malformed query [%r]' % (' '.join(resto), ))
-        print('1 WHERE', repr(clausa), verbose=2)
-        print('1 ORDER BY', repr(orden), verbose=2)
-        print('1 TO', repr(imprimido), verbose=2)
-        # normalize_field_names(desde, seleccion, clausa, orden)
-        print('1 FROM', repr(desde), verbose=2)
         #
         # and get WHERE clause
         #
         donde, constraints = convert_where(clausa)
         if _internal:
             imprimido = ''
-        print('2 WHERE', repr(donde), verbose=2)
-        print('2 ORDER BY', repr(orden), verbose=2)
-        print('2 TO', repr(imprimido), verbose=2)
-        print('2 CONSTRAINTS', repr(constraints), verbose=2)
         #
         # at this point we have the fields, and the table -- get the records
         #
-        sq = SimpleQuery(header, aliased=field_alias)
-        print('getting records', verbose=2)
-        sq.records.extend(self._records(seleccion, field_alias, donde, constraints))
-        print('sorting records')
-        # print(sq.records, verbose=3)
+        sq = SimpleQuery(header, aliased=field_verbose, to=imprimido)
+        sq.records.extend(self._records(seleccion, field_verbose, donde, constraints))
         for o in reversed(orden):
             o = o.split()
             if len(o) == 1:
@@ -2356,12 +2311,15 @@ class OpenERPTable(Table):
     """
     Handle interactions with OpenERP model.
     """
-    def __init__(self, table_name):
+    def __new__(cls, table_name):
+        # if self._inited:
+        #     return
+        # self._inited = True
         ensure_oe()
-        if table_name not in self.tables:
-            self.tables[table_name] = oe.get_model(table_name)
-        self.table = self.tables[table_name]
+        self = object.__new__(OpenERPTable)
+        self.table = oe.get_model(table_name)
         self.name = self.table.model_name
+        return self
 
     @property
     def fields(self):
@@ -2610,7 +2568,7 @@ class OpenERPTable(Table):
         """
         as_match = Var(lambda sel: re.match(r'(\S+)\s+AS\s+(\S+)', sel, re.I)) 
         header = []
-        field_alias = {}        # {alias_name: field_name}
+        field_verbose = {}        # {alias_name: field_name}
         imprimido = '-'
         orden = ''
         clausa = ''
@@ -2640,17 +2598,15 @@ class OpenERPTable(Table):
             seleccion = [s.strip() for s in ' '.join(seleccion).split(',')]
             if SHOW_ID and 'id' not in [s.lower() for s in seleccion]:
                 seleccion.insert(0, 'id')
-
-
+        #
         for i, field in enumerate(seleccion):
             if as_match(field):
                 field, alias = as_match.groups()
-                field_alias[alias] = field
+                field_verbose[alias] = field
                 seleccion[i] = alias
                 header.append(alias)
             else:
                 header.append(field)
-
         print('SELECT:', seleccion, verbose=2)
         #
         #
@@ -2660,7 +2616,7 @@ class OpenERPTable(Table):
         desde, resto = resto[0], resto[1:]
         if desde.upper() in ('', 'WHERE', 'ORDER'):
             raise SQLError('missing table')
-        self.tables[desde] = table = Table(desde)
+        # self.tables[desde] = Table(desde)
         if resto:
             if resto[0].upper() == 'WHERE':
                 resto = resto[1:]
@@ -2681,18 +2637,16 @@ class OpenERPTable(Table):
                 raise SQLError('malformed query [%r]' % (resto, ))
         # get field names if * specified
         if seleccion == ['*']:
-            # fields = list(model._all_columns.keys())
-            fields = list(table.fields.keys())
-            if isinstance(table, OpenERPTable):
-                if '-binary' in _internal:
-                    for field in table._binary_fields:
-                        fields.remove(field)
-                if '-x2many' in _internal:
-                    for field in table._x2many_fields:
-                        fields.remove(field)
-                if '-html' in _internal:
-                    for field in table._html_fields:
-                        fields.remove(field)
+            fields = list(self.fields.keys())
+            if '-binary' in _internal:
+                for field in self.table._binary_fields:
+                    fields.remove(field)
+            if '-x2many' in _internal:
+                for field in self.table._x2many_fields:
+                    fields.remove(field)
+            if '-html' in _internal:
+                for field in self.table._html_fields:
+                    fields.remove(field)
             fields.remove('id')
             seleccion = ['id'] + sorted(fields)
             header = seleccion[:]
@@ -2708,7 +2662,7 @@ class OpenERPTable(Table):
         #
         # and get WHERE clause
         #
-        donde, constraints = convert_where(clausa, field_alias)
+        donde, constraints = convert_where(clausa, field_verbose)
         if _internal:
             imprimido = ''
         print('WHERE', donde, verbose=2)
@@ -2726,7 +2680,7 @@ class OpenERPTable(Table):
         query = Query(
                 self.table,
                 fields=fields[:],
-                aliases=field_alias,
+                aliases=field_verbose,
                 domain=donde or ALL_ACTIVE,
                 order=orden,
                 unique=distinta,
@@ -2735,7 +2689,7 @@ class OpenERPTable(Table):
                 )
         query.status = 'SELECT %d' % len(query)
         query.fields = header
-        query.alias = field_alias
+        query.alias = field_verbose
         return query
 
     def sql_update(self, command):
@@ -2794,15 +2748,8 @@ class GenericTable(Table):
     """
     Results table
     """
-    def __init__(self, table_name):
-        self.name = table_name
-
     def __repr__(self):
-        return "ResultsTable(name=%r, fields=%r)" % (self.name, self._fields)
-
-    @property
-    def fields(self):
-        return self._fields[:]
+        return "ResultsTable(name=%r, fields=%r)" % (self.name, self._fields.keys())
 
     def _records(self, fields, aliased, where, constraints):
         # print('fields requested: %s' % (fields, ), verbose=2)
@@ -2837,18 +2784,8 @@ class GenericTable(Table):
     def sql_describe(self, command, _internal=''):
         """
         DESCRIBE table
-            [ORDER BY (name|index)]
         """
-        order_match = Var(lambda hs: re.search(r'ORDER\s*BY\s*(name|index)\s*$', hs, re.I)) 
         index = 0
-        if order_match(command):
-            order ,= order_match.groups()
-            if order.lower() == 'name':
-                index = 1
-            elif order.lower() == 'index':
-                index = 0
-            else:
-                raise SQLError('unknown ORDER BY: %r' % order)
         defs = sorted(self.fields.values(), key=lambda t: t[index])
         sq = SimpleQuery(('index', 'name','spec','comment'))
         for d in defs:
@@ -2868,16 +2805,14 @@ class GenericTable(Table):
         table_match = Var(lambda sel: re.match(r'(\S+)\s+AS\s+(\S+)\b(.*)', sel, re.I)) 
         table_alias = {}
         field_alias = {}
-        fields = self._fields
+        fields = self._fields.keys()
         header = []
         imprimido = '-'
         orden = ''
         clausa = ''
         donde = []
         distinta = False
-        print('command: %r' % (command, ), verbose=3)
         command = ' '.join(command.split())
-        print('command: %r' % (command, ), verbose=2)
         if not re.search(r' from ', command, flags=re.I):
             raise SQLError('FROM not specified')
         if command.split()[-2].lower() == 'to':
@@ -2936,8 +2871,8 @@ class GenericTable(Table):
             print('0 ALIAS: %r   REST: %r' % (alias, resto), verbose=3)
             table_alias[alias] = desde
             desde = alias
-        if table_alias.get(desde, desde) not in self.tables:
-            self.tables[desde] = Table(table_alias.get(desde,desde))
+        # if table_alias.get(desde, desde) not in self.tables:
+        #     self.tables[desde] = Table(table_alias.get(desde,desde))
         # table = self.tables[desde]
         if resto:
             if resto[0].upper() == 'WHERE':
@@ -2976,7 +2911,7 @@ class GenericTable(Table):
         #
         # at this point we have the fields, and the table -- get the records
         #
-        sq = SimpleQuery(header, aliased=field_alias)
+        sq = SimpleQuery(header, aliased=field_alias, to=imprimido)
         print('getting records', verbose=2)
         sq.records.extend(self._records(seleccion, field_alias, donde, constraints))
         sq.status = "SELECT %s" % len(sq.records)
@@ -3864,20 +3799,22 @@ class SQL(object):
         #
         # do all the queries
         results = {}
+        star_fields = []
         for tp in self.tables.values():
-            print('QUERY: %r' % tp.query, verbose=2)
-            results[tp.alias] = rtp = Table.query(tp.query)
-            print('QUERY COUNT: %d' % len(results[tp.alias]), verbose=3)
-            print('QUERY ALIASES: %r' % results[tp.alias].aliased.keys(), verbose=3)
+            results[tp.alias] = r = Table.query(tp.query)
+            print(r.records)
+            star_fields.extend(['%s.%s' % (tp.alias, f) for f in tp.fields if f != '*'])
         #
         # fix up field names in case of SELECT *
         if '*' not in self.table_by_field_alias:
             sq_fields = self.table_by_field_alias.keys()
-        elif len(self.tables) == 1:
-            # easier if only one table
-            sq_fields = self.header = rtp.fields
         else:
-            raise NotImplementedError
+            sq_fields = star_fields
+        # elif len(self.tables) == 1:
+        #     # easier if only one table
+        #     sq_fields = self.header = rtp.fields
+        # else:
+        #     raise NotImplementedError
         sq = SimpleQuery(sq_fields, to=self.to)
         #
         # create mapping of field alias to field name
@@ -4027,11 +3964,14 @@ class SQL(object):
         fields = []
         tp = self.tables[pt]
         print('tp: %r' % tp, verbose=3)
-        for alias, field in tp.fields.items():
-            if alias == field:
-                fields.append(field)
-            else:
-                fields.append('%s as %s' % (field, alias))
+        if '*' in self.table_by_field_alias:
+            fields.append('*')
+        else:
+            for alias, field in tp.fields.items():
+                if alias == field:
+                    fields.append(field)
+                else:
+                    fields.append('%s as %s' % (field, alias))
         query.append(', '.join(fields))
         query.append('FROM')
         query.append(tp.table_name)
@@ -4050,11 +3990,14 @@ class SQL(object):
                 continue
             query = ['SELECT']
             fields = []
-            for fa, fn in tp.fields.items():
-                if fa == fn:
-                    fields.append(fn)
-                else:
-                    fields.append('%s as %s' % (fn, fa))
+            if '*' in self.table_by_field_alias:
+                fields.append('*')
+            else:
+                for fa, fn in tp.fields.items():
+                    if fa == fn:
+                        fields.append(fn)
+                    else:
+                        fields.append('%s as %s' % (fn, fa))
             query.append(', '.join(fields))
             query.append('FROM')
             if tp.table_name is None:
