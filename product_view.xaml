@@ -14,6 +14,9 @@
                 ~xpath expr="//form/sheet/div/div[@name='options']/label" position='replace'
                     ~label for='sale_ok' $Catalog_Item
                 ~xpath expr="//page[@string='Information']" position='inside'
+                    ~hr
+                    ~label for='fis_related_product_ids' $Related_Products
+                    @fis_related_product_ids widget='many2many_kanban'
                     ~hr colspan='4'
                     ~div .fnxfs_files
                         ~newline
@@ -51,6 +54,10 @@
                                 @fis_web_shared_equipment nolabel='1' colspan='2'
                                 ~label for='fis_web_warnings' colspan='2'
                                 @fis_web_warnings nolabel='1' colspan='2'
+                        ~hr
+                        ~group
+                            @fis_web_parent_id colspan='2'
+                        ~hr
                         ~separator $Labeltime
                         ~group
                             ~group

@@ -166,7 +166,9 @@ class product_template(osv.Model):
 
 
 class product_product(xmlid, osv.Model):
-    'Adds Available column and shipped_as columns'
+    """
+    Adds Available column and shipped_as columns
+    """
     _name = 'product.product'
     _inherit = ['product.product', 'fnx_fs.fs']
 
@@ -579,7 +581,12 @@ class product_product(xmlid, osv.Model):
                 'fis_product_web_keyword_rel', 'keyword_id', 'product_id',
                 string='Keywords',
                 ),
-
+        'fis_web_parent_id': fields.many2one('product.product', 'Web Parent'),
+        'fis_related_product_ids': fields.many2many(
+                'product.product',
+                'fis_web_related_rel', 'this_id', 'that_id',
+                string='Related Products',
+                ),
 
 
 
