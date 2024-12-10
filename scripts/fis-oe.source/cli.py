@@ -3635,13 +3635,13 @@ class SimpleQuery(object):
         recreate each row with only the specified fields
         """
         if fields != self.fields:
+            self.fields = fields
             records = self.records
             for i, rec in enumerate(records):
                 records[i] = AttrDict([
                         (f, rec[f])
                         for f in fields
                         ])
-
 
 
 class TrackingDict(object):
@@ -3832,7 +3832,7 @@ class SQL(object):
             else:
                 field_alias = split_fn(name)
                 field_aliases.setdefault(table_alias, {})[field_alias] = name
-                sq.aliases[name] = header_sq.aliases[field_alias]
+                sq.aliases[name] = header_sq.aliases.get(field_alias, field_alias)
         print('field aliases: %r' % field_aliases, verbose=3)
         print('sq aliases: %r' % sq.aliases, verbose=3)
         #
