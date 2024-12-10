@@ -64,13 +64,6 @@
                         @spcl_ship_instr nolabel='1' placeholder='Special shipping instructions here...'
                     ~page string='Trademarks & Registrations' attrs="{'invisible':['|',('trademarks','=',False),('xml_id','=',False)]}"
                         ~group
-                            ~group $State
-                                @state_trademark $Trademark
-                                @state_trademark_class_ids $Class widget='many2many_tags'
-                                @state_trademark_no $Number
-                                @state_trademark_state $Status readonly='1'
-                                @state_trademark_expiry $Expires on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
-                                @state_trademark_renewal $Renewal_submitted on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
                             ~group $Federal
                                 @federal_trademark $Trademark
                                 @federal_trademark_class $Class
@@ -78,7 +71,14 @@
                                 @federal_trademark_serial_no $Serial_Number
                                 @federal_trademark_state $Status readonly='1'
                                 @federal_trademark_expiry $Expires on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
-                                @federal_trademark_renewal string="Application/Renewal submitted"  on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
+                                @federal_trademark_renewal string="Application/Renewal submission date"  on_change="onchange_trademark(federal_trademark, federal_trademark_expiry, federal_trademark_renewal, 'federal_trademark_state')"
+                            ~group $State attrs="{'invisible': [('state_trademark','=',False),('state_trademark_class_ids','=',False),('state_trademark_no','=',False),('state_trademark_state','=',False),('state_trademark_expiry','=',False),('state_trademark_renewal','=',False)]}"
+                                @state_trademark $Trademark
+                                @state_trademark_class_ids $Class widget='many2many_tags'
+                                @state_trademark_no $Number
+                                @state_trademark_state $Status readonly='1'
+                                @state_trademark_expiry $Expires on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
+                                @state_trademark_renewal $Renewal_submitted on_change="onchange_trademark(state_trademark, state_trademark_expiry, state_trademark_renewal, 'state_trademark_state')"
                 ~div @buttons position='replace'
                 ~page $Procurements position='replace'
                 ~page $Sales position='after'
@@ -242,9 +242,10 @@
                 ~tree $Trademark_Products colors="red:trademark_state == 'dead';orange:trademark_state == 'dying';blue:trademark_state == 'aging';green:trademark_state == 'renewing'"
                     @xml_id
                     @name
+                    @trademark_state invisible='1'
                     @federal_trademark_expiry $Federal_Expiry
                     @federal_trademark_no $Federal_Registration
-                    @federal_trademark_renewal $Submitted
+                    @federal_trademark_renewal $Submission_Date
 
         ~record #product_trademark_search model='ir.ui.view'
             @name: Product Trademark Search

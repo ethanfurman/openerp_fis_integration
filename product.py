@@ -237,6 +237,8 @@ class product_product(xmlid, osv.Model):
                     key.append(new_status)
                 else:
                     key.append(False)
+            # add bogus state trademark status
+            key.insert(1, False)
             bulk_res[TrademarkStatusKey(*key)].append(rec_id)
         if arg == 'bulk':
             return bulk_res
@@ -252,7 +254,7 @@ class product_product(xmlid, osv.Model):
             ):
             expiry = TrademarkExpiry(
                     datom['id'],
-                    datom['state_trademark_expiry'],
+                    False,          # datom['state_trademark_expiry'], # no longer consider state trademarks
                     datom['federal_trademark_expiry'],
                     )
             res[expiry.id] = expiry.earliest()
