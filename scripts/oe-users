@@ -164,16 +164,21 @@ def create(force, users):
                 updates.write('%s %s %s %s %s %s %s %s\n' %
                         (record.emp_num, record.old_login, record.login, record.password,
                          record.active, record.groups, record.email, record.name))
-    # new_ext = ".%03d" % (int(last_arch_dept.ext[1:]) + 1)
+    try:
+        new_ext = ".%03d" % (int(last_arch_dept.ext[1:]) + 1)
+    except ValueError:
+        new_ext = '.001'
     if user_changed:
         new_ext = DateTime.fromtimestamp(dept_file.stat().st_mtime).strftime('.%Y-%m-%d+%H:%M')
     next_arch_dept = last_arch_dept.strip_ext() + new_ext
     dept_file.copy(next_arch_dept)
+    command = ['chown', 'openerp:', next_arch_dept]
     if user_changed:
         new_ext = DateTime.fromtimestamp(user_file.stat().st_mtime).strftime('.%Y-%m-%d+%H:%M')
         next_arch_user = last_arch_user.strip_ext() + new_ext
         user_file.copy(next_arch_user)
-    Execute(['chown', 'openerp:', next_arch_dept, next_arch_user])
+        command.append(next_arch_user)
+    Execute(command)
 
 
 @Command(

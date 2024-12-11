@@ -230,7 +230,7 @@ class AttrDict(object):
             assert set(self._keys) == set(self._values.keys())
             return result
         else:
-            raise KeyError(name)
+            raise KeyError('%r not in %r' % (name, self._values.keys()))
 
     def __getattr__(self, name):
         if name in self._values:

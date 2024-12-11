@@ -3634,13 +3634,13 @@ class SimpleQuery(object):
         recreate each row with only the specified fields
         """
         if fields != self.fields:
+            self.fields = fields
             records = self.records
             for i, rec in enumerate(records):
                 records[i] = AttrDict([
                         (f, rec[f])
                         for f in fields
                         ])
-
 
 
 class TrackingDict(object):
