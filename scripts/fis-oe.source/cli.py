@@ -1328,7 +1328,7 @@ def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False
     print('after subquery: %r' % (clausa, ), verbose=2)
 
     std_match = Var(lambda clausa: re.match(
-            r"^(\S+)\s*(is not|is|not in|in|like|=like|not like|ilike|=ilike|not ilike|<=|>=|!=|==?|<|>)\s*('(?:[^'\\]|\\.)*?'|\[[^]]*\]|\S*)\s*(.*?)\s*$",
+            r"^(\S+)\s*(<=|>=|!=|=|<|>|\bis\s+not\b\b|\bis\b|\bnot\s+in\b|\bin\b|\blike\b|\b=like\b|\bnot\s+like\b|\bilike\b|\b=ilike\b|\bnot\s+ilike\b)\s*('(?:[^'\\]|\\.)*?'|\[[^]]*\]|\S*)\s*(.*?)\s*$",
             clausa,
             flags=re.I
             ))
@@ -3420,7 +3420,6 @@ class Join(object):
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
-        print(len(left_sq), len(right_sq), verbose=3)
         last_left_data = None
         last_left_index = last_right_index = None
         while i < len(left_sq) and j < len(right_sq):
@@ -3832,7 +3831,7 @@ class SQL(object):
             else:
                 field_alias = split_fn(name)
                 field_aliases.setdefault(table_alias, {})[field_alias] = name
-                sq.aliases[name] = header_sq.aliases[field_alias]
+                sq.aliases[name] = header_sq.aliases.get(field_alias, field_alias)
         print('field aliases: %r' % field_aliases, verbose=3)
         print('sq aliases: %r' % sq.aliases, verbose=3)
         #
