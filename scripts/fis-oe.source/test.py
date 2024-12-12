@@ -48,12 +48,17 @@ class TestTables(TestCase):
 
     @ensure_oe
     def test_OpenERP(self):
-        OpenERPTable.query("select id, name from res.users where login='admin'")
-        Table.query("select id, name from res.users where login='admin'")
+        OpenERPTable.query("select id, name from res.users where login='admin' order by name")
+        Table.query("select id, name from res.users where login='admin' order by name")
 
     def test_Generic(self):
-        GenericTable.query('select * from customer')
-        Table.query('select * from customer')
+        GenericTable.query('select * from customer order by name')
+        Table.query('select * from customer order by name')
+
+    def test_SQL(self):
+        SQL("select xml_id, name, fis_name from product.product where xml_id = '' order by name")
+        SQL("select xml_id, name, fis_name from product.product p where xml_id = '' order by name")
+
 
 # Tests
 
@@ -349,7 +354,35 @@ class TestSQL(TestCase):
                                       'p.formula':'p', 'p.formula_id':'p',
                                       'ingred':'d', 'd.formula_id':'d'},
                 ),
-            # SQLParams(  # 13
+            SQLParams(  # 13
+                input='select n.name, n.desc from NVTY n',
+                statement='SELECT n.name, n.desc FROM NVTY n',
+                header=['n.name','n.desc'],
+                tables={'n': SQLTableParams(
+                                                    alias='n',
+                                                    table_name='NVTY',
+                                                    fields={'desc':'desc', 'name':'name'},
+                                                    query='SELECT name, desc FROM NVTY',
+                                                    )},
+                primary_table = 'n',
+                table_by_field_alias = {'n.desc': 'n', 'n.name': 'n'},
+                ),
+            SQLParams(  # 14
+                input="select xml_id, name, fis_name from product.product where xml_id != '' order by name",
+                statement="SELECT xml_id, name, fis_name FROM product.product WHERE xml_id != '' ORDER BY name",
+                header=['xml_id','name','fis_name'],
+                tables={'product.product': SQLTableParams(
+                                                    alias='product.product',
+                                                    table_name='product.product',
+                                                    fields={'xml_id':'xml_id', 'name':'name', 'fis_name':'fis_name'},
+                                                    query="SELECT xml_id, name, fis_name FROM product.product WHERE xml_id != ''",
+                                                    )},
+                where="xml_id != ''",
+                orders=['name'],
+                primary_table = 'product.product',
+                table_by_field_alias = {'xml_id':'product.product', 'name':'product.product', 'fis_name':'product.product'},
+                ),
+            # SQLParams(  # xx
             #     input="select n.item, p.formula, d.item ingred from 135 n left join "
             #             "(322 p left join 323 d on d.formula_id=p.formula_id) "
             #             "on n.item_id=p.formula_id and n.item_id like '1000' "
@@ -389,19 +422,6 @@ class TestSQL(TestCase):
             #                           'p.formula':'p', 'p.formula_id':'p',
             #                           'ingred':'d', 'd.formula_id':'d'},
             #     ),
-            SQLParams(  # 14
-                input='select n.name, n.desc from NVTY n',
-                statement='SELECT n.name, n.desc FROM NVTY n',
-                header=['n.name','n.desc'],
-                tables={'n': SQLTableParams(
-                                                    alias='n',
-                                                    table_name='NVTY',
-                                                    fields={'desc':'desc', 'name':'name'},
-                                                    query='SELECT name, desc FROM NVTY',
-                                                    )},
-                primary_table = 'n',
-                table_by_field_alias = {'n.desc': 'n', 'n.name': 'n'},
-                ),
             )
 
     def _test_creation(self, params):
