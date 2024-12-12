@@ -538,6 +538,18 @@ def show_relations(table):
         ))
     echo(results, border='table')
 
+@Command(
+        populate=Spec("update product's Related Products field", FLAG),
+        clear=Spec("remove Related Products entries", FLAG),
+        )
+def related_products(populate, clear):
+    """
+    update product's Related Products field
+    """
+    products = Table.query("select id, name, fis_related_products_ids from product.product where xml_id != ''")
+    products
+
+
 # FIS commands
 @Command(
         filenum=Spec('file abbreviation or number to operate on', REQUIRED),
@@ -4092,6 +4104,9 @@ class SQL(object):
             tp.table_name = last_table
             tables[last_table] = tp
             self.primary_table = last_table
+        for field, table_name in self.table_by_field_alias.items():
+            if table_name is None:
+                self.table_by_field_alias[field] = tp.alias
 
         # sanity checks
         if not peos:
@@ -4104,18 +4119,9 @@ class SQL(object):
             raise SQLError('missing alias for %r' % last_table)
         if not tables_acquired:
             raise SQLError('no tables in FROM clause')
-        if last_table is not None:
-            # no alias specified; tables key could be None, or a dotted table name
-            if None in tables:
-                tables[last_table] = tp = tables.pop(None)
-            else:
-                tp = tables[last_table]
-            tp.table_name = last_table                                              # .table_name was None
-            tp.alias = last_table                                                   # might be redundant
-            self.primary_table = last_table
-
+        print('4 tbfa: %r' % self.table_by_field_alias, verbose=3)
+        print('5 tables: %r' % tables, verbose=3)
         if word is not None:
-            print('4 tbfa: %r' % self.table_by_field_alias, verbose=3)
             if word.endswith('_JOIN'):
                 word = 'JOIN'
             next_method = getattr(self, 'q_%s' % word.lower())
