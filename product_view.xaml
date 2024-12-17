@@ -37,7 +37,7 @@
                                                         @lst_price
                                                     ~li: Unit Price
                                                         @price
-                                                    ~li: Packaging:
+                                                    ~li: Size:
                                                         @fis_shipping_size
                                                     ~li: ~field @fis_availability_code
                     ~hr colspan='4'
@@ -177,11 +177,11 @@
                     ~attribute @invisible: 1
                 @product_manager position='after'
                     @fis_location attrs="{'invisible': [('xml_id','=',False)]}"
-                    @fis_availability_code attrs="{'invisible': [('xml_id','=',False)]}"
                 @list_price position='replace'
                     @lst_price
                     @price
                     @fis_shipping_size attrs="{'invisible': [('xml_id','=',False)]}"
+                    @fis_availability_code attrs="{'invisible': [('xml_id','=',False)]}"
                 @description position='before'
                     ~group
                         ~hr colspan='4'

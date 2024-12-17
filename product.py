@@ -383,7 +383,7 @@ class product_product(xmlid, osv.Model):
         # added fields
         'xml_id': fields.char('FIS ID', size=16, readonly=True),
         'module': fields.char('FIS Module', size=16, readonly=True),
-        'fis_shipping_size': fields.char('Shipped as', size=50, oldname='shipped_as'),
+        'fis_shipping_size': fields.char('Size', size=50, oldname='shipped_as'),
         'fis_availability_code': fields.selection(
             _get_availability_codes,
             'Availability',
