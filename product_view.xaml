@@ -56,7 +56,7 @@
                                 @fis_web_warnings nolabel='1' colspan='2'
                         ~hr
                         ~group
-                            @fis_web_parent_id colspan='2'
+                            @fis_web_parent colspan='2'
                         ~hr
                         ~separator $Labeltime
                         ~group
