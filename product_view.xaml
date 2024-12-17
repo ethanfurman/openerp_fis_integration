@@ -17,6 +17,29 @@
                     ~hr
                     ~label for='fis_related_product_ids' $Related_Products
                     @fis_related_product_ids widget='many2many_kanban'
+                        ~kanban quick_create='false' create='false'
+                            @xml_id
+                            @price
+                            @lst_price
+                            @fis_shipping_size
+                            @fis_availability_code
+                            ~templates
+                                ~t t-name='kanban-box'
+                                    ~div .oe_kanban_vignette style='position: relative'
+                                        ~a type="open"
+                                            ~img t-att-src="kanban_image('product.product', 'image_small', record.id.value)" .oe_kanban_image
+                                        ~div .oe_kanban_details
+                                            ~a t-if='! read_only_mode' type='delete' style='position: absolute; right: 0; padding: 4px; diplay: inline-block': X
+                                            ~div .tags
+                                                ~ul
+                                                    ~li: ~field @xml_id
+                                                    ~li: FIS "A" Price:
+                                                        @lst_price
+                                                    ~li: Unit Price
+                                                        @price
+                                                    ~li: Packaging:
+                                                        @fis_shipping_size
+                                                    ~li: ~field @fis_availability_code
                     ~hr colspan='4'
                     ~div .fnxfs_files
                         ~newline

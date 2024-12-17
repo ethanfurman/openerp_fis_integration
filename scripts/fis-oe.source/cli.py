@@ -546,8 +546,30 @@ def related_products(populate, clear):
     """
     update product's Related Products field
     """
-    products = Table.query("select id, name, fis_related_products_ids from product.product where xml_id != ''")
-    products
+    related = {}
+    cleared = populated = 0
+    if clear:
+        product = oe.get_model('product.product')
+        for item in Table.query("select id, name, fis_related_product_ids from product.product where xml_id != ''"):
+            if item.fis_related_product_ids:
+                product.write(
+                        [item.id],
+                        {'fis_related_product_ids': [(5,ri.id) for ri in item.fis_related_product_ids]},
+                        )
+                cleared += 1
+
+    if populate:
+        for item in Table.query("select id, name, fis_related_product_ids from product.product where xml_id != ''"):
+            print(item, verbose=2)
+            related.setdefault(item.name, set()).add(item)
+        for name, items in related.items():
+            if len(items) < 2:
+                continue
+            for item in items:
+                ids = [i.id for i in items if i.id != item.id and i.id not in item.fis_related_product_ids]
+                Table.query("update product.product set fis_related_product_ids=%s where id=%s" % (''.join(repr(ids).split()), item.id))
+                populated += 1
+    print('cleared:   %5d\npopulated: %5d' % (cleared, populated))
 
 
 # FIS commands
