@@ -548,13 +548,14 @@ def related_products(populate, clear):
     """
     related = {}
     cleared = populated = 0
+    product = oe.get_model('product.product')
     if clear:
-        product = oe.get_model('product.product')
         for item in Table.query("select id, name, fis_related_product_ids from product.product where xml_id != ''"):
             if item.fis_related_product_ids:
                 product.write(
                         [item.id],
                         {'fis_related_product_ids': [(5,ri.id) for ri in item.fis_related_product_ids]},
+                        context={'related product loop':True},
                         )
                 cleared += 1
 
@@ -567,7 +568,11 @@ def related_products(populate, clear):
                 continue
             for item in items:
                 ids = [i.id for i in items if i.id != item.id and i.id not in item.fis_related_product_ids]
-                Table.query("update product.product set fis_related_product_ids=%s where id=%s" % (''.join(repr(ids).split()), item.id))
+                product.write(
+                        [item.id],
+                        {'fis_related_product_ids': [(4,i) for i in ids]},
+                        context={'related product loop':True},
+                        )
                 populated += 1
     print('cleared:   %5d\npopulated: %5d' % (cleared, populated))
 
