@@ -620,6 +620,7 @@ class product_product(xmlid, osv.Model):
         res = super(product_product, self).write(cr, uid, ids, values, context)
         if old_related is None:
             return res
+        context = (context or {}).copy()
         context['related product loop'] = True
         # get the historical assignments
         old_ids = set(ids)
