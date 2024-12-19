@@ -17,7 +17,7 @@
                     ~hr
                     ~label for='fis_related_product_ids' $Related_Products
                     @fis_related_product_ids widget='many2many_kanban'
-                        ~kanban quick_create='false' create='false'
+                        ~kanban quick_create='false' create='true'
                             @xml_id
                             @price
                             @lst_price

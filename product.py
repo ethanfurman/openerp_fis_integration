@@ -609,6 +609,49 @@ class product_product(xmlid, osv.Model):
             'sale_ok': False,
             }
 
+    def write(self, cr, uid, ids, values, context=None):
+        if (context or {}).get('related product loop'):
+            return super(product_product, self).write(cr, uid, ids, values, context)
+        if isinstance(ids, (int, long)):
+            ids = [ids]
+        old_related = None
+        if 'fis_related_product_ids' in values:
+            old_related = self.read(cr, uid, ids, ['id','fis_related_product_ids'], context=context)
+        res = super(product_product, self).write(cr, uid, ids, values, context)
+        if old_related is None:
+            return res
+        context['related product loop'] = True
+        # get the historical assignments
+        old_ids = set(ids)
+        for rec in old_related:         # rec = {'id':xxx, 'fis_related_product_ids':[(xx,'name'), (xx,'name')]}
+            old_ids |= set(rec['fis_related_product_ids'])
+        # get the new assignments
+        new_ids = set(ids)
+        for rec in self.read(cr, uid, ids, ['id','fis_related_product_ids'], context=context):
+            new_ids |= set(rec['fis_related_product_ids'])
+        removed = old_ids - new_ids
+        added = new_ids - old_ids
+        # handle deletions
+        if removed:
+            for r_id in removed:
+                r_rec = self.read(cr, uid, [r_id], ['id','fis_related_product_ids'], context=context)[0]
+                r_ids = [i for i in r_rec['fis_related_product_ids'] if i not in new_ids and i != r_id]
+                self.write(cr, uid, [r_id], {'fis_related_product_ids': [(6, 0, r_ids)]}, context=context)
+            for n_id in new_ids:
+                n_rec = self.read(cr, uid, [n_id], ['id','fis_related_product_ids'], context=context)[0]
+                n_ids = [i for i in n_rec['fis_related_product_ids'] if i not in removed]
+                self.write(cr, uid, [n_id], {'fis_related_product_ids': [(6, 0, n_ids)]}, context=context)
+        # handle additions
+        if added:
+            for a_id in added:
+                a_ids = [i for i in new_ids if i != a_id]
+                self.write(cr, uid, [a_id], {'fis_related_product_ids': [(6, 0, a_ids)]}, context=context)
+            for n_id in new_ids:
+                n_rec = self.read(cr, uid, [n_id], ['id','fis_related_product_ids'], context=context)[0]
+                n_ids = [i for i in new_ids if i != n_id]
+                self.write(cr, uid, [n_id], {'fis_related_product_ids': [(6, 0, n_ids)]}, context=context)
+        return res
+
     def update_trademark_state(self, cr, uid, ids=None, arg=None, context=None):
         if ids is None:
             ids = self.search(cr, uid, [('trademarks','!=',False)], context=context)
