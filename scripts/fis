@@ -27,6 +27,9 @@ virtual_env = os.environ['VIRTUAL_ENV']
 config = OrmFile(Path('%s/config/fnx.ini' % virtual_env), types={'_path':Path})
 env = config.env
 PRODUCT_FORECAST = '/FIS/data/product_forecast.txt'
+PRODUCT_FORECAST_111 = '192.168.11.111:/usr/ftp/OpenERP/product-forecast.txt'
+PRODUCT_LIST = '/FIS/data/item_list.txt'
+PRODUCT_LIST_111 = '192.168.11.111:/usr/ftp/OpenERP/item-list.txt'
 
 # SOURCE = Path('%s/var/fis/production/' % virtual_env)
 # ARCHIVE = Path('%s/var/openerp/archive/production/' % virtual_env)
@@ -340,47 +343,62 @@ def product_description(quick, update, *items):
 
 @Command(
     items=Spec('item number to look up', MULTI, usage='ITEM'),
+    get=Spec('retrieve output from 11.111', OPTION, default=PRODUCT_FORECAST_111),
+    put=Spec('send item list to 11.111', OPTION, default=PRODUCT_LIST_111),
     )
-def product_forecast(*items):
-    "retrieve and save the latest forecast data for ITEMS (default is all)"
-    if not items:
+def product_forecast(get, put, *items):
+    """
+    retrieve the latest forecast data for ITEMS
+    """
+    start = time.time()
+    if items:
+        # get current forecast for individual items
+        items = ViewProgress(
+                (i+'\n' for i in items + ('exit', )),
+                'communicating with 11.111',
+                view_type='bar',
+                total=len(items),
+                )
+        with user_ids(0, 0):
+            result = Execute(
+                    'ssh 192.168.11.111 /usr/local/bin/fis-query forecast',
+                    pty=True,
+                    input=items,
+                    password_timeout=0,
+                    )
+        echo(result.stdout.strip())
+        error(result.stderr.strip())
+    elif get:
+        # retrieve product forecast file
+        with user_ids(0, 0):
+            result = Execute('/usr/bin/rsync %s %s' % (PRODUCT_FORECAST_111, PRODUCT_FORECAST), pty=True)
+        print(result.stdout.strip())
+        error(result.stderr.strip())
+    elif put:
+        # create file of items
         items = []
         nvty = fd.fisData('NVTY1', keymatch="%s101000    101**")   # 135
         for item_rec in ViewProgress(
                 nvty,
                 'getting %d item numbers' % len(nvty),
-                view_type='bar',
             ):
             items.append(item_rec[F135.item_id])
         print('%d items retrieved' % len(items), verbose=2)
+        with codecs.open(PRODUCT_LIST, 'w', encoding='utf8') as f:
+            for item in ViewProgress(items):
+                f.write(item+'\n')
+        # send file
+        with user_ids(0, 0):
+            result = Execute('/usr/bin/rsync %s %s' % (PRODUCT_LIST, PRODUCT_LIST_111), pty=True)
+        print(result.stdout.strip())
+        error(result.stderr.strip())
     else:
-        items = list(items)
-    items = items
-    items = ViewProgress(
-            (i+'\n' for i in items + ['exit']),
-            'communicating with 11.111',
-            view_type='bar',
-            total=len(items),
-            )
-    start = time.time()
-    with user_ids(0, 0):
-        result = Execute(
-                'ssh 192.168.11.111 /usr/local/bin/fis-query forecast',
-                pty=True,
-                input=items,
-                password_timeout=0,
-                )
+        abort('please select one of GET or PUT, or specify one or more item numbers')
+
     stop = time.time()
     minutes, seconds = divmod(stop-start, 60)
     hours, minutes = divmod(minutes, 60)
-    print('time with 11.111: %d:%d:%d' % (hours, minutes, seconds))
-    output = [l for l in result.stdout.strip().split('\n') if len(l.split(':')) == 3]
-    with codecs.open(PRODUCT_FORECAST, 'w', encoding='utf8') as f:
-        for line in ViewProgress(output):
-            f.write(line+'\n')
-    if script_verbosity >= 2:
-        print('\n'.join(output), verbose=2)
-
+    print('time process: %d:%d:%d' % (hours, minutes, seconds))
 
 @Command(
         table=Spec('FIS table to query', type=int),
