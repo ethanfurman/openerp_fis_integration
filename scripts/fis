@@ -275,11 +275,37 @@ def product_description(quick, update, *items):
             with codecs.open(config.network.fis_data_local_path/'product_descriptions.txt', 'w', encoding='utf8') as f:
                 f.write(job.stdout)
             print('data saved')
+    print('reading data')
+    with codecs.open(config.network.fis_data_local_path/'product_descriptions.txt', encoding='utf8') as f:
+        lines = f.read().strip().split('\n')
+    if update:
+        # update product descriptions in product.product
+        print('updating product.product')
+        oe = connect_oe()
+        pp = oe.get_model('product.product')
+        processed = {}
+        dupes = set()
+        for line in ViewProgress(lines, 'Processing $total lines'):
+            match = re.match('(.{40})  \((\d{6})\)  (.*)$', line)
+            if match:
+                fis_desc, item_code, full_desc = match.groups()
+                if not items or item_code in items:
+                    if item_code in processed and full_desc not in processed[item_code]:
+                        dupes.add(item_code)
+                        processed[item_code].append(full_desc)
+                    else:
+
+                        processed[item_code] = [full_desc]
+                        ids = pp.search([('xml_id','=',item_code),('module','=','F135')])
+                        pp.write(ids, {'name':full_desc})
+        if dupes:
+            print('duplicate item numbers with different descriptions:')
+            for item_code in dupes:
+                print(item_code)
+                for desc in processed[item_code]:
+                    print('        ', desc)
     if items:
         # display the requested items
-        print('reading data')
-        with codecs.open(config.network.fis_data_local_path/'product_descriptions.txt', encoding='utf8') as f:
-            lines = f.read().strip().split('\n')
         print('looking for item(s)')
         for line in lines:
             match = re.match('(.{40})  \((\d{6})\)  (.*)$', line)
@@ -287,59 +313,6 @@ def product_description(quick, update, *items):
                 fis_desc, item_code, full_desc = match.groups()
                 if item_code in items:
                     echo('%s:  %s' % (item_code, full_desc))
-    if update:
-        abort('update not currently supported')
-        print('updating -all- cross-reference codes')
-        oe = connect_oe()
-        cross_ref = oe.get_model('fis_integration.customer_product_cross_reference')
-        current_items = dict(
-                (r.fis_code, r.id)
-                for r in get_records(
-                    cross_ref,
-                    domain=[('list_code','=','-all-')],
-                    ))
-        print('  %d existing items' % len(current_items))
-        #
-        # TODO
-        # method of getting saleable items has changed -- this section needs to move
-        # to another function
-        #
-        # get saleable items from OpenERP
-        saleable_items = dict(
-                (r.xml_id, r.id)
-                for r in get_records(
-                    product,
-                    domain=[('sale_ok','=',True),('active','=',True),('fis_availability_code','=','Y')],
-                    fields=['id','xml_id']),
-                    )
-        new = updated = 0
-        for fis_code, product_id in ViewProgress(saleable_items.items()):
-                print('  code: %r' % (fis_code, ), verbose=3)
-                values = {
-                        'key': '-all--%s' % (fis_code, ),
-                        'list_code': '-all-',
-                        'fis_code': fis_code,
-                        'fis_product_id': product_id,
-                        'customer_product_code': fis_code,
-                        'source': 'fis',
-                        }
-                crossref_id = current_items.pop(fis_code, None)
-                if crossref_id is None:
-                    # create it
-                    cross_ref.create(values)
-                    new += 1
-                else:
-                    # update it
-                    cross_ref.write(crossref_id, values)
-                    updated += 1
-        removed = len(current_items)
-        if current_items:
-            print('removing %d cross references' % len(current_items))
-            cross_ref.unlink(current_items.values())
-        print('%d existing/updated items\n%d added items\n%d deleted items' %
-                (updated, new, removed)
-                )
-
 
 @Command(
     items=Spec('item number to look up', MULTI, usage='ITEM'),
