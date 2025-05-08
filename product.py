@@ -33,11 +33,11 @@ with LLC_lock:
     with open(LLC_backup_file) as llc:
         LLC_text = llc.read().strip().split('\n')
 LLC_OVERRIDE = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.override'
-LLC_SOURCE = Path('/mnt/labeltime/Labels/LabelLinkCtl')
+LLC_SOURCE = Path('/mnt/newlabeltimexpvm/xfer/LabelDirectory/LabelLinkCtl')
 LLC_PID_FILE = Path('/opt/openerp/var/run/test_mnt_labeltime.pid')
 
 PRODUCT_LABEL_URL = Path("https://openerp.sunridgefarms.com/fis/product/label/")
-PRODUCT_LABEL_BMP_LOCATION = Path("/mnt/labeltime/Labels/")
+PRODUCT_LABEL_BMP_LOCATION = Path("/mnt/newlabeltimexpvm/xfer/LabelDirectory/")
 PRODUCT_LABEL_PNG_LOCATION = Path("/PNG_labels/")
 IMAGE_ALTERNATES = {'MK': 'CC', 'B': ('PKG', '')}
 
@@ -1304,6 +1304,10 @@ def get_LLC():
                         cat.returncode,
                         cat.stderr and cat.stderr.strip().split('\n')[-1] or 'unknown',
                         )
+                use_cache = True
+                cat = Execute('cat %s' % LLC_SOURCE, timeout=10)
+                if not cat.returncode:
+                    label_link_lines = cat.stdout.strip().split('\n')
         except (AlreadyLocked, TimeoutError):
             use_cache = True
         except Exception:

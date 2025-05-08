@@ -19,7 +19,7 @@ from fnx_script_support import Notify
 from pandaemonium import PidLockFile, AlreadyLocked
 
 PID_FILE = Path('/opt/openerp/var/run/test_mnt_labeltime.pid')
-LLC_FILE = Path('/mnt/labeltime/Labels/LabelLinkCtl')
+LLC_FILE = Path('/mnt/newlabeltimexpvm/xfer/LabelDirectory/LabelLinkCtl')
 CUT_OFF = 6
 
 @Command(

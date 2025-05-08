@@ -9,7 +9,7 @@ import mimetypes
 import werkzeug
 
 _logger = logging.getLogger(__name__)
-bmp_base = Path('/mnt/labeltime/Labels/')
+bmp_base = Path('/mnt/newlabeltimexpvm/xfer/LabelDirectory/')
 png_base = Path('/PNG_labels/')
 
 # work horses
