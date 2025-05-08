@@ -647,7 +647,8 @@ def sql_update(command):
     if where_clause:
         domain, constraints = convert_where(where_clause)
     else:
-        domain = constraints = []
+        # refuse to operate without a where clause
+        abort('WHERE clause required for UPDATE command')
     if constraints:
         abort('constraints not supported in UPDATE command')
     #
@@ -655,7 +656,23 @@ def sql_update(command):
     #
     print('domain: %r' % (domain, ))
     ids = table.search(domain)
-    print('writing\n  %r\nto %s for ids\n%r' % (values, table._name, ids))
+    print('current values: %r' % (values, ))
+    fields = {}
+    for name, value in values.items():
+        if name in table._x2one_fields and not isinstance(value, (int, long)):
+            # find id with record of value
+            value2id = fields.setdefault(name, {})
+            m2o_table = oe.get_model(table._all_columns[name].relation)
+            if value not in value2id:
+                link_ids = m2o_table.search([(m2o_table._rec_name,'=',value)])
+                if not link_ids:
+                    raise ValueError('%r for %r not found' % (value, name))
+                elif len(link_ids) > 1:
+                    raise ValueError('%d matches if %r found for %r' % (len(link_ids), value, name))
+                else:
+                    value2id[value] = link_ids[0]
+            values[name] = value2id[value]
+    print('writing\n  %r\nto %s for ids\n  %r' % (values, table._name, ids))
     table.write(ids, values)
     echo('UPDATE %d' % len(ids))
     return len(ids)
