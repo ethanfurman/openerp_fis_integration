@@ -95,6 +95,8 @@ class report_spec_sheet(report_int):
                     images.append(get_label(url, width, align, header))
                 except (LabelAcquisitionError, MissingImageFile):
                     images.append(ImageLayout(None, width, align, False))
+            if xml_id != '000000':
+                images = images[:3]
             #
             # sort images into rows
             #
