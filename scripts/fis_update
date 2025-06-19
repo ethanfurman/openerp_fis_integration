@@ -408,7 +408,7 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
                     widths, types = calc_widths_types(fields, table_rows, table)
                     return {'rows': rows, 'widths': widths, 'types': types}
                 while table.next_record.action_ == 'delta':
-                    echo(table_display( display_none='!', **process_changes()))
+                    echo(table_display(display_none='!', **process_changes()))
 
 
 class ServiceUnavailable(Exception):
