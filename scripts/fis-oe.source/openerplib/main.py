@@ -60,7 +60,7 @@ from datetime import date, datetime
 from dbf import Date, DateTime
 from .utils import AttrDict, IDEquality, Many2One, XidRec, Phone, Binary, SelectionEnum
 from scription import bytes, integer as baseinteger, basestring, number, str, Var, raise_exc
-from VSS.address import PostalCode
+from fislib.address import PostalCode
 
 try:
     import json

@@ -10,16 +10,16 @@ import warnings
 from abc import ABCMeta, abstractmethod
 from aenum import Enum, Flag, NamedConstant, NamedTuple
 from antipathy import Path
+from BBxXlate.fisData import fisData
 from dbf import Date, DateTime, Time, Table, READ_WRITE
 from dbf import NoneType, NullType, Char, Logical
-from fnx_script_support import grouped_by_column
+from enhlib.itertools import grouped_by_column
 from openerplib import DEFAULT_SERVER_DATE_FORMAT, get_records, get_xid_records, XidRec
 from openerplib import Fault, PropertyNames, IDEquality, ValueEquality, Many2One, SetOnce
 from scription import print, echo, error, ViewProgress, script_verbosity, abort, empty
 from traceback import format_exception
-from VSS.address import cszk, Rise, Sift, AddrCase, BsnsCase, NameCase, PostalCode
-from VSS.BBxXlate.fisData import fisData
-from VSS.utils import all_equal, LazyClassAttr
+from fislib.address import cszk, Rise, Sift, AddrCase, BsnsCase, NameCase, PostalCode
+from fislib.utils import all_equal, LazyClassAttr
 
 virtualenv = os.environ['VIRTUAL_ENV']
 
@@ -2131,24 +2131,24 @@ def get_next_filename(name, limit=99):
 
 
 recipe_sentinels = (
-        'Cooking',
-        'COOKING',
-        'DIRECTIONS',
-        'INSTRUCTIONS',
-        'RECIPE',
-        'SUGGESTED',
+        r'Cooking',
+        r'COOKING',
+        r'DIRECTIONS',
+        r'INSTRUCTIONS',
+        r'RECIPE',
+        r'SUGGESTED',
         )
 
 new_line_sentinels = (
-        'ANTIOXIDANTS',
-        'CONTAINS',
-        'Manufactured',
-        '\(May contain',
-        'CAUTION',
-        'COUNTRY',
-        '[A-Z]+ MAY CONTAIN',
-        'Product processed',
-        '\d\d?%',
+        r'ANTIOXIDANTS',
+        r'CONTAINS',
+        r'Manufactured',
+        r'\(May contain',
+        r'CAUTION',
+        r'COUNTRY',
+        r'[A-Z]+ MAY CONTAIN',
+        r'Product processed',
+        r'\d\d?%',
         
         )
 def usps_street_suffix(word):

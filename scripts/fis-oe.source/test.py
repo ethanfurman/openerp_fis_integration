@@ -1,7 +1,7 @@
 from __future__ import print_function
 from aenum import NamedTuple
-from cli import EMPTY, SQL, convert_where, Join, SQLTableParams, SQLError, Table, FISTable, OpenERPTable, GenericTable
-from cli import oe
+from utils import EMPTY, SQL, convert_where, Join, SQLTableParams, SQLError, Table, FISTable, OpenERPTable, GenericTable
+from utils import oe
 from itertools import izip_longest as zip
 from openerplib.utils import AttrDict
 import sys
@@ -450,6 +450,18 @@ class TestSQL(TestCase):
             new_sq.add_record(values)
         return new_sq
 
+    def test_iteration(self):
+        expected = [
+            ('I-101', 97.01),
+            ('I-103', 11.99),
+            ('I-106', 55.62),
+            ]
+        for rec, exp in zip(
+                SQL("select invoice_id, total from invoice where customer_id='C-001'"),
+                expected,
+                ):
+            self.assertEqual(rec, exp)
+
     def test_joins(self):
         # join
         query = SQL('select c.last, i.invoice_id, i.total from customer c join invoice i on c.customer_id=i.customer_id').execute()
@@ -465,7 +477,7 @@ class TestSQL(TestCase):
                 AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
                 ]
         for res, exp in zip(query, expected):
-            self.assertEqual(res, exp)
+            self.assertEqual(res._asdict(), exp)
         # inner
         query = SQL('select c.last, i.invoice_id, i.total from customer c inner join invoice i on c.customer_id=i.customer_id order by i.invoice_id').execute()
         expected = [
@@ -480,7 +492,7 @@ class TestSQL(TestCase):
                 AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
                 ]
         for res, exp in zip(query, expected):
-            self.assertEqual(res, exp)
+            self.assertEqual(res._asdict(), exp)
         # full
         query = SQL('select c.last, i.invoice_id, i.total from customer c full join invoice i on c.customer_id=i.customer_id order by c.last').execute()
         expected = [
@@ -501,7 +513,7 @@ class TestSQL(TestCase):
                 AttrDict([('c.last','van Sebille'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
                 ]
         for res, exp in zip(query, expected):
-            self.assertEqual(res, exp)
+            self.assertEqual(res._asdict(), exp)
         # outer
         query = SQL('select c.last, i.invoice_id, i.total from customer c outer join invoice i on c.customer_id=i.customer_id order by c.last').execute()
         expected = [
@@ -513,7 +525,7 @@ class TestSQL(TestCase):
                 AttrDict([('c.last','van Sebille'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
                 ]
         for res, exp in zip(query, expected):
-            self.assertEqual(res, exp)
+            self.assertEqual(res._asdict(), exp)
         # left
         query = SQL('select c.last, i.invoice_id, i.total from customer c left join invoice i on c.customer_id=i.customer_id order by c.last').execute()
         expected = [
@@ -533,7 +545,7 @@ class TestSQL(TestCase):
                 AttrDict([('c.last','van Sebille'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
                 ]
         for res, exp in zip(query, expected):
-            self.assertEqual(res, exp)
+            self.assertEqual(res._asdict(), exp)
         # right
         query = SQL('select c.last, i.invoice_id, i.total from customer c right join invoice i on c.customer_id=i.customer_id order by c.last').execute()
         expected = [
@@ -549,7 +561,7 @@ class TestSQL(TestCase):
                 AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
                 ]
         for res, exp in zip(query, expected):
-            self.assertEqual(res, exp)
+            self.assertEqual(res._asdict(), exp)
         # cross
         query = SQL('select a.side as side1, b.side as side2 from d4 as a cross join d4 as b').execute()
         expected = [
@@ -571,7 +583,7 @@ class TestSQL(TestCase):
                 AttrDict(side1=4, side2=4),
                 ]
         for res, exp in zip(query, expected):
-            self.assertEqual(res, exp)
+            self.assertEqual(res._asdict(), exp)
 
     def test_multiple_star(self):
         query = SQL("select * from customer join invoice on customer.customer_id = invoice.customer_id").execute()
@@ -587,7 +599,7 @@ class TestSQL(TestCase):
                 AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
                 ]
         for res, exp in zip(query, expected):
-            self.assertEqual(res, exp)
+            self.assertEqual(res._asdict(), exp)
 
     def test_statements(self):
         for i, s in enumerate(self.statements):
