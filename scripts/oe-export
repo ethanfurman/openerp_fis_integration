@@ -1,6 +1,5 @@
 #!/usr/local/bin/suid-python --virtualenv
 
-# imports
 from __future__ import print_function
 
 import dbf
@@ -11,8 +10,9 @@ from aenum import Enum, auto
 from antipathy import Path
 from ast import literal_eval
 from dbf import Date, DateTime, Time
+from enhlib.csv import CSV
 from fnx_script_support import all_equal, translator
-from openerplib import get_connection, get_records, AttrDict, Binary, Query, Many2One, MissingTable, CSV
+from openerplib import get_connection, get_records, AttrDict, Binary, Query, Many2One, MissingTable
 from scription import *
 
 try:
