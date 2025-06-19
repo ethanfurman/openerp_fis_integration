@@ -117,6 +117,10 @@
                         @label_server_stub nolabel='1' options="{'no_embed': True}"
                     // ~page $Costs groups='fis_integration.purchase_cost'
                     //   @cost_server_stub
+                ~group $Weights position='after'
+                    ~group $Supplier
+                        @fis_supplier_id
+                        @fis_supplier_code
                 ~group @inventory position='inside'
                     ~group $Availability attrs="{'invisible': [('xml_id','=',False)]}"
                         ~div .fis
@@ -275,7 +279,10 @@
                     @trademark_state invisible='1'
                     @federal_trademark_expiry $Federal_Expiry
                     @federal_trademark_no $Federal_Registration
-                    @federal_trademark_renewal $Submission_Date
+                    @federal_trademark_renewal $Federal_Submission_Date
+                    @state_trademark_no $State_Registration
+                    @state_trademark_expiry $State_Expiry
+                    @fis_supplier_code $Supplier_Item
 
         ~record #product_trademark_search model='ir.ui.view'
             @name: Product Trademark Search

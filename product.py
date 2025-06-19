@@ -559,7 +559,8 @@ class product_product(xmlid, osv.Model):
             string='21-day Available',
             help='Qty available in the next 21 days',
             ),
-
+        'fis_supplier_id': fields.many2one('res.partner', string='Supplier'),
+        'fis_supplier_code': fields.char('Supplier Code', size=32),
         'fis_web_active': fields.boolean('Active on Web'),
         'fis_web_ingredients': fields.text('Labeltime Ingredients', help='ingredients from labeltime'),
         'fis_web_tagline': fields.text('Tagline'),

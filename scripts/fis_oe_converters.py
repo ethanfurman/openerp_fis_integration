@@ -1513,6 +1513,7 @@ class NVTY(Synchronize):
             'sale_ok', 'trademarks', 'ean13', 'fis_location',
             'fis_shipping_size', 'categ_id', 'default_code', 'weight',
             'weight_net', 'list_price', 'lst_price', 'price',
+            'fis_supplier_id', 'fis_supplier_code',
             )
     OE_FIELDS_LONG = OE_FIELDS_QUICK + (
             'fis_qty_produced', 'fis_10_day_produced', 'fis_21_day_produced',
@@ -1526,7 +1527,7 @@ class NVTY(Synchronize):
             F135.item_id,
             F135.available_key, F135.sales_cat, F135.trademarkd,
             F135.catalog_location, F135.desc, F135.size, F135.upc_no, F135.primary_location,
-            F135.supplier_id, F135.new_retail, F135.new_per_unit,
+            F135.supplier_id, F135.supl_item, F135.new_retail, F135.new_per_unit,
             F135.net_un_wt, F135.grs_un_wt,
             )
     FIELDS_CHECK_IGNORE = ('name', )
@@ -1624,6 +1625,8 @@ class NVTY(Synchronize):
                 last.insert(0, 'o')
             shipping_size = ('%s %s' % (''.join(first).strip(), ''.join(last).strip())).strip()
         item.fis_shipping_size = shipping_size or None
+        item.fis_supplier_id = POSM_VNMS.Vendor(fis_rec[F135.supplier_id])
+        item.fis_supplier_code = fis_rec[F135.supl_item]
         #
         category_code = fis_rec[F135.sales_cat].strip()
         if len(category_code) == 2 and category_code[0] in 'OIG':
@@ -1722,6 +1725,8 @@ class POSM_VNMS(SynchronizeAddress):
             )
     FIS_SCHEMA = ()
     FIELDS_CHECK_IGNORE = ('active', 'name')
+
+    Vendor = XmlLink
 
     def fis_ignore_record(self, rec):
         key = rec['An$(3,6)']
