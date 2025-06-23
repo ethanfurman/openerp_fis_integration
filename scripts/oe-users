@@ -94,8 +94,8 @@ def create(force, users):
     #
     # temp code until odoo 13 is primary app
     #
-    Execute('/usr/bin/scp %s 192.168.11.160:/opt/odoo/var/openerp/' % dept_file, pty=True, password=config.openerp.pw)
-    Execute('/usr/bin/scp %s 192.168.11.160:/opt/odoo/var/openerp/' % user_file, pty=True, password=config.openerp.pw)
+    # Execute('/usr/bin/scp %s 192.168.11.160:/opt/odoo/var/openerp/' % dept_file, pty=True, password=config.openerp.pw)
+    # Execute('/usr/bin/scp %s 192.168.11.160:/opt/odoo/var/openerp/' % user_file, pty=True, password=config.openerp.pw)
     #
     # end temp code
     #
@@ -191,7 +191,7 @@ def photos(reset, users, ids):
     #
     # temp code until odoo 13 is primary app
     #
-    Execute('/usr/bin/rsync -rtc %s 192.168.11.160:/opt/odoo/var/openerp/headshots/' % (config.users.photo_location % '*'), pty=True, password=config.openerp.pw)
+    # Execute('/usr/bin/rsync -rtc %s 192.168.11.160:/opt/odoo/var/openerp/headshots/' % (config.users.photo_location % '*'), pty=True, password=config.openerp.pw)
     #
     # end temp code
     #
