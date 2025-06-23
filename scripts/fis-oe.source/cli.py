@@ -81,7 +81,7 @@ def main(hostname, database, show_ids, fis_location):
             pass
     LOCAL_FIS = False
     if 'fis_imports' in sections:
-        if fis_location is not 'remote':
+        if fis_location != 'remote':
             utils.init_fis(config.fis_imports.schema)
             LOCAL_FIS = True
     from utils import fd, TableError

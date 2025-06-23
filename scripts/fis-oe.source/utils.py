@@ -1695,7 +1695,7 @@ class OpenERPTable(Table):
         print('WHERE', donde, verbose=2)
         print('ORDER BY', orden, verbose=2)
         print('TO', imprimido, verbose=2)
-        print('CONSTRAINTS', constraints, verbose=2)
+        print('--CONSTRAINTS', constraints, verbose=2)
         #
         # at this point we have the fields, and the table -- hand off to _adhoc()
         #
@@ -1849,7 +1849,7 @@ class GenericTable(Table):
         # get SELECT fields
         #
         seleccion, resto = re.split(r' from ', command, maxsplit=1, flags=re.I)
-        print('0 SELECT: %r   REST: %r' % (seleccion, resto), verbose=3)
+        print('SELECT: %r   REST: %r' % (seleccion, resto), verbose=3)
         seleccion = seleccion.split()[1:]
         if not seleccion:
             raise SQLError('missing fields')
@@ -2478,7 +2478,6 @@ class Join(object):
                 j += 1
         return sq
 
-
     def outer_join(self, left_sq, right_sq, table_by_field, header_mapping):
         sq = left_sq.as_template()
         field1, op, field2 = self.condition_match(self.condition).groups()
@@ -2833,7 +2832,6 @@ class SQL(object):
         star_fields = []
         for tp in self.tables.values():
             results[tp.alias] = r = Table.query(tp.query)
-            print(r.records)
             star_fields.extend(['%s.%s' % (tp.alias, f) for f in tp.fields if f != '*'])
         #
         # fix up field names in case of SELECT *

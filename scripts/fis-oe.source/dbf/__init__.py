@@ -38,7 +38,7 @@ input_decoding = 'ascii'
 
 # make dbf module importabl internally (i.e. from . import dbf)
 import sys as _sys
-dbf = _sys.modules[__package__]
+dbf = _sys.modules[__package__ or __name__]
 
 ## user-defined pql functions  (pql == primitive query language)
 # it is not real sql and won't be for a long time (if ever)

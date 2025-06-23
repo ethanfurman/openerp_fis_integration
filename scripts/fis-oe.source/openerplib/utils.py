@@ -833,6 +833,40 @@ class IDEquality(object):
         else:
             return self.id == other
 
+    def __ge__(self, other):
+        res = self.__eq__(other)
+        if res is NotImplemented:
+            return res
+        if not res:
+            res = not self.__lt__(other)
+        return res
+
+    def __gt__(self, other):
+        res = self.__eq__(other)
+        if res is NotImplemented:
+            return res
+        if not res:
+            res = self.__lt__(other)
+        return not res
+
+    def __le__(self, other):
+        res = self.__eq__(other)
+        if res is NotImplemented:
+            return res
+        if not res:
+            res = self.__lt__(other)
+        return res
+
+    def __lt__(self, other):
+        if self is other:
+            return False
+        elif isinstance(other, self.__class__):
+            return self.id < other.id
+        elif isinstance(other, baseinteger):
+            return self.id < other
+        else:
+            return NotImplemented
+
     def __ne__(self, other):
         return not self.__eq__(other)
 
