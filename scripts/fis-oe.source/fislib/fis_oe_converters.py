@@ -9,8 +9,9 @@ from openerplib import AttrDict, Many2One, XidRec, Phone
 from recipe import ignored_ingredients
 from scription import echo, error, print
 from tools import Synchronize, SynchronizeAddress, XmlLink, ProductLabelDescription, odoo_erp, Odoo13, PsuedoFisTable
-from fislib.address import NameCase, BsnsCase
-from fislib.utils import fix_phone, fix_date
+from VSS.address import NameCase, BsnsCase
+    # from VSS.BBxXlate.fisData import fisData
+from VSS.utils import fix_phone, fix_date
 import math
 import re
 import tools

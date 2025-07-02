@@ -5,6 +5,7 @@ from ast import literal_eval
 from collections import OrderedDict
 from enhlib.itertools import all_equal
 from itertools import cycle
+import openerplib
 from openerplib import get_connection, get_records, AttrDict, Binary, Query, Many2One, CSV
 from scription import OrmFile, Singleton, Var, echo, error, print
 from traceback import print_exc
@@ -1102,6 +1103,7 @@ class FISTable(Table):
     Handle interactions with FIS table.
     """
     def __new__(cls, table_name):
+        print('looking for FIS table %r' % table_name)
         # if self._inited:
         #     return
         # self._inited = True
@@ -1118,7 +1120,7 @@ class FISTable(Table):
             if table not in fd.tables:
                 for desc in fd.tables.values():
                     if table == maybe_lower(desc[source_name]):
-                        table = desc['filenum']
+                        table = desc['filenum'] or desc['name']
                         break
                 else:
                     raise SQLError('table %r not found' % table_name)

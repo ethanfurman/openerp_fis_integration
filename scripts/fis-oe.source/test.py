@@ -1,7 +1,7 @@
 from __future__ import print_function
 from aenum import NamedTuple
-from utils import EMPTY, SQL, convert_where, Join, SQLTableParams, SQLError, Table, FISTable, OpenERPTable, GenericTable
-from utils import oe
+from sql import EMPTY, SQL, convert_where, Join, SQLTableParams, SQLError, Table, FISTable, OpenERPTable, GenericTable
+from sql import oe
 from itertools import izip_longest as zip
 from openerplib.utils import AttrDict
 import sys

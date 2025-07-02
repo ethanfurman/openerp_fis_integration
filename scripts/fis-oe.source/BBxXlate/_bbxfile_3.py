@@ -636,7 +636,7 @@ else:
     from scription import Alias, Command, Spec, echo, MULTI, OPTION, Main
     report = echo
 
-    config = '%s/config/fnx.fis.conf' % os.environ['VIRTUAL_ENV']
+    config = '%s/config/fnx.fis.conf' % os.environ.get('VIRTUAL_ENV', '/opt/openerp')
     ns = {'Path': Path}
     execfile(config, ns)
     DATA = ns['DATA']

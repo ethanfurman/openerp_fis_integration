@@ -13,7 +13,7 @@ from openerplib import get_connection, get_records, AttrDict, Query, MissingTabl
 from SocketServer import ThreadingTCPServer, TCPServer, StreamRequestHandler
 import threading
 from traceback import format_exception
-from utils import ALL_ACTIVE, Fault, FISTable, SQL, SQLError, Table, convert_name, ensure_fis
+from sql import ALL_ACTIVE, Fault, FISTable, SQL, SQLError, Table, convert_name, ensure_fis
 
 import dbf
 import io
@@ -23,7 +23,7 @@ import shutil
 import socket
 import sys
 import time
-import utils
+import sql as sequel
 
 from scription import *
 
@@ -82,13 +82,13 @@ def main(hostname, database, show_ids, fis_location):
     LOCAL_FIS = False
     if 'fis_imports' in sections:
         if fis_location != 'remote':
-            utils.init_fis(config.fis_imports.schema)
+            sequel.init_fis(config.fis_imports.schema)
             LOCAL_FIS = True
-    from utils import fd, TableError
-    utils.oe = oe
-    utils.script_verbosity = script_verbosity
-    utils.SHOW_ID = SHOW_ID
-    utils.ensure_oe = ensure_oe
+    from sql import fd, TableError
+    sequel.oe = oe
+    sequel.script_verbosity = script_verbosity
+    sequel.SHOW_ID = SHOW_ID
+    sequel.ensure_oe = ensure_oe
 
 @Command(
         command=('sql command', REQUIRED),
@@ -151,9 +151,7 @@ def sql(command, separator, wrap, quiet, legacy, sheet):
     command = command.strip(' ;')
     try:
         # get a query object, which has a `records` attribute with all matches
-        if command.upper().startswith(('DESCRIBE ', 'DIFF ')):
-            query = Table.query(command)
-        elif legacy:
+        if legacy or not command.upper().startswith('SELECT '):
             query = Table.query(command)
         else:
             sql = SQL(command)
@@ -171,13 +169,13 @@ def sql(command, separator, wrap, quiet, legacy, sheet):
         query = query
         if to_file:
             if to_file.endswith('.xls'):
-                utils.write_xls(model_name, query, fields, to_file, separator)
+                sequel.write_xls(model_name, query, fields, to_file, separator)
             elif to_file.endswith('.csv'):
-                utils.write_csv(model_name, query, fields, to_file, separator)
+                sequel.write_csv(model_name, query, fields, to_file, separator)
             elif to_file.endswith('.txt') or to_file == '-':
                 for field, length in wrap.items():
                     pass
-                utils.write_txt(model_name, query, fields, to_file, separator, wrap)
+                sequel.write_txt(model_name, query, fields, to_file, separator, wrap)
             else:
                 abort('unknown file type: %r' % to_file)
         echo(query.status)
@@ -798,7 +796,7 @@ def records(filenum, template, code, fields, dbf_name, tabular, regex, test, che
     if template and not code:
         template, code = None, tuple(template.split(','))
     if template is None:
-        filenum, table_name, template = utils.table_keys.get(filenum, (None, None, None))
+        filenum, table_name, template = sequel.table_keys.get(filenum, (None, None, None))
         if template is None:
             # if not isinstance(filenum, int):
             abort('no default template exists for %r' % filenum)
@@ -985,9 +983,9 @@ def tables():
     keys = [k for k in fd.tables.keys() if isinstance(k, (int,long))]
     # template = '%4d: %s%s'
     numerical = True
-    if not keys:
-        # only alpha table names
-        keys = [k for k in fd.tables.keys()]
+    if len(keys) < 10:
+        # go with alpha table names
+        keys = [k for k in fd.tables.keys() if not isinstance(k, (int,long))]
         # template = '%s: %s'
         numerical = False
     keys.sort()

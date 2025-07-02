@@ -8,7 +8,7 @@ from scription import Var, OrmFile
 import re
 import sys
 _logger = logging.getLogger(__name__)
-config = OrmFile(Path('%s/config/fnx.ini' % os.environ['VIRTUAL_ENV']), types={'_path':Path})
+config = OrmFile(Path('%s/config/fnx.ini' % os.environ.get('VIRTUAL_ENV', '/opt/openerp')), types={'_path':Path})
 SELF_TEST = False
 
 CID = config.fis_imports.cid
