@@ -1,3 +1,4 @@
+data = """
 FCUBSQ   -DATA DICTIONARY HEADER RECORD MAINT. & I  ( 1 at start)
      1    FILE NAME                                8    A8$
      2    FRWD PNTR                                4    C8 ####
@@ -6613,3 +6614,4 @@ FCRDEHD  -Order History Detail File  ( 370 at start)
     86    (OPEN)                                   1    XN$
     87    (OPEN)                                   1    YN$
     88    OPEN                                     1    Z$
+""".split("\n")

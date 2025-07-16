@@ -36,9 +36,9 @@ def slicendice(line, *nums):
         start = num
     return tuple(results)
 
-def parse_FIS_Schema(source):
+def parse_FIS_Schema(data):
     iolist = None
-    contents = open(source).readlines()
+    contents = data
     TABLES = {}
     skip_table = False
     duplicates = set()
@@ -206,10 +206,11 @@ def fisData (table, keymatch=None, subset=None, rematch=None, filter=None, data_
         DATACACHE[key] = table, mtime
     return table
 
-def init(schema):
+def init():
     global tables
+    from .schema import data
     try:
-        tables = parse_FIS_Schema(schema)
+        tables = parse_FIS_Schema(data)
     except IOError:
         _logger.error("unable to parse FIS Schema")
         _logger.error("uid: %r, gid: %r, euid: %r, egid: %r" %
@@ -226,6 +227,7 @@ def init(schema):
         tables = tables()
     bbxfile.tables = tables
 
+init()
 # setup('%s/config/fnx.fis.conf' % os.environ['VIRTUAL_ENV'])
 
 #tables['NVTY1']['fields'][77]
@@ -245,7 +247,7 @@ if __name__ == '__main__':
     from antipathy import Path
     from scription import *
     report = echo
-    virtual_env = os.environ.get('VIRTUAL_ENV')
+    virtual_env = os.environ.get('VIRTUAL_ENV', '/opt/openerp')
     print('schema: %s' % (SCHEMA, ))
     print('data:   %s' % (DATA, ))
     print('CID:    %s' % (CID, ))

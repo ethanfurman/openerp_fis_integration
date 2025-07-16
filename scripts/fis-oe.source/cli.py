@@ -9,11 +9,11 @@ from collections import defaultdict
 from enhlib.text import translator
 from fislib import schema as fis_schema
 from fislib.schema import F135
+from fis_oe.sql import ALL_ACTIVE, Fault, FISTable, SQL, SQLError, Table, convert_name, ensure_fis
+from fis_oe import sql as sequel
 from openerplib import get_connection, get_records, AttrDict, Query, MissingTable
-from SocketServer import ThreadingTCPServer, TCPServer, StreamRequestHandler
 import threading
 from traceback import format_exception
-from sql import ALL_ACTIVE, Fault, FISTable, SQL, SQLError, Table, convert_name, ensure_fis
 
 import dbf
 import io
@@ -23,14 +23,12 @@ import shutil
 import socket
 import sys
 import time
-import sql as sequel
 
 from scription import *
 
 
 virtual_env = os.environ.get('VIRTUAL_ENV', '/opt/openerp')
 PRODUCT_FORECAST = Path('/FIS/data/product_forecast.txt')
-SCHEMA = Path('PYZAPP/FIS_SCHEMA')
 oe = None
 
 ## Globals
@@ -82,13 +80,13 @@ def main(hostname, database, show_ids, fis_location):
     LOCAL_FIS = False
     if 'fis_imports' in sections:
         if fis_location != 'remote':
-            sequel.init_fis(config.fis_imports.schema)
             LOCAL_FIS = True
-    from sql import fd, TableError
+    from fis_oe.sql import fd, TableError
     sequel.oe = oe
     sequel.script_verbosity = script_verbosity
     sequel.SHOW_ID = SHOW_ID
     sequel.ensure_oe = ensure_oe
+    sequel.init_fis()
 
 @Command(
         command=('sql command', REQUIRED),
@@ -189,6 +187,112 @@ def serve(ip, port, log_file):
     """
     Run an FIS SQL server on PORT with logging to LOG-FILE
     """
+    try:
+        from SocketServer import ThreadingTCPServer, TCPServer, StreamRequestHandler
+    except ImportError:
+        from socketserver import ThreadingTCPServer, TCPServer, StreamRequestHandler
+
+    class FISSQLServer(ThreadingTCPServer):
+        #
+        allow_reuse_address = 1
+        is_empty_log = False
+        log_name = None
+        log_file = None
+        log_lock = threading.Lock()
+        #
+        def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True, log_file=None, msg_location=None):
+            self.msg_location = msg_location or os.getcwd()
+            self.log_name = log_file
+            self.prep_log_file()
+            self.today = time.localtime(time.time())[:3]
+            TCPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate)
+        #
+        def emit_message(self, msg, timestamp):
+            with self.log_lock:
+                if isinstance(msg, bytes):
+                    msg = msg.decode('utf-8')
+                if self.log_file is None:
+                    stderr.write(msg)
+                else:
+                    # time to rotate the file?
+                    now = time.localtime(timestamp)[:3]
+                    if not self.is_empty_log and self.today != now:
+                        self.log_file.close()
+                        new_name = '%s.%04d%02d%02d' % ((self.log_name, ) + self.today)
+                        dirs, filename = os.path.split(self.log_name)
+                        shutil.move(self.log_name, os.path.join(dirs, new_name))
+                        self.log_file = io.open(self.log_name, 'a', encoding='utf-8')
+                        self.today = now
+                    self.log_file.write(msg)
+                    self.log_file.flush()
+        #
+        def handle_error(self, request, client_address):
+            timestamp = time.time()
+            cls, exc, tb = sys.exc_info()
+            frames = format_exception(cls, exc, tb)
+            keep = False
+            lines = []
+            for f in frames:
+                if keep or 'pulse.pyz' in f:
+                    keep = True
+                    lines.append(f)
+            if self.log_file is not None:
+                error(''.join(lines).strip(), border='box')
+            lines.insert(0, '-'*50+'\n')
+            lines.append('-'*50+'\n')
+            self.emit_message(''.join(lines).strip()+'\n', timestamp)
+        #
+        def prep_log_file(self):
+            if self.log_name is None:
+                return
+            dirs, filename = os.path.split(self.log_name)
+            if not os.path.exists(dirs):
+                os.path.mkdirs(dirs)
+            if not os.path.exists(self.log_name):
+                self.is_empty_log = True
+            self.log_file = io.open(self.log_name, 'a', encoding='utf-8')
+        #
+        def server_bind(self):
+            """Override server_bind to store the server name."""
+            TCPServer.server_bind(self)
+            host, port = self.socket.getsockname()[:2]
+            self.server_name = socket.getfqdn(host)
+            self.server_port = port
+
+    class FISSQLRequestHandler(StreamRequestHandler):
+        """
+        FIS SQL request handler.
+        """
+        server_version = "FISSQL/" + __version__
+        protocol_version = 'CSV/1.0'
+        #
+        def handle(self):
+            command = self.rfile.read()
+            echo(command)
+            self.wfile.write(command + '\n')
+        #
+        def log_message(self, format, *args):
+            """
+            Log an arbitrary message.
+            """
+            timestamp = time.time()
+            message = "%s - - [%s] %s\n" % (
+                    self.client_address[0],
+                    self.log_date_time_string(timestamp),
+                    format % args)
+            self.server.emit_message(message, timestamp)
+        #
+        def log_date_time_string(self, timestamp=None):
+            """
+            Return the current time formatted for logging.
+            """
+            if timestamp is None:
+                timestamp = time.time()
+            year, month, day, hh, mm, ss, x, y, z = time.localtime(timestamp)
+            s = "%02d/%3s/%04d %02d:%02d:%02d" % (
+                    day, self.monthname[month], year, hh, mm, ss)
+            return s
+
     ensure_fis()
     fissql = FISSQLServer(
             (ip, port),
@@ -1052,116 +1156,10 @@ def self_test(*tests):
     #         dict(id=6, name='jillian kuth', age=13, city='ROSALIA'),
     #         ]
     #
-    import test
+    from fis_oe import test
     import unittest
     test
-    unittest.main(module='test', exit=True)
-
-
-## server
-
-class FISSQLServer(ThreadingTCPServer):
-    #
-    allow_reuse_address = 1
-    is_empty_log = False
-    log_name = None
-    log_file = None
-    log_lock = threading.Lock()
-
-    def __init__(self, server_address, RequestHandlerClass, bind_and_activate=True, log_file=None, msg_location=None):
-        self.msg_location = msg_location or os.getcwd()
-        self.log_name = log_file
-        self.prep_log_file()
-        self.today = time.localtime(time.time())[:3]
-        TCPServer.__init__(self, server_address, RequestHandlerClass, bind_and_activate)
-
-    def emit_message(self, msg, timestamp):
-        with self.log_lock:
-            if isinstance(msg, bytes):
-                msg = msg.decode('utf-8')
-            if self.log_file is None:
-                stderr.write(msg)
-            else:
-                # time to rotate the file?
-                now = time.localtime(timestamp)[:3]
-                if not self.is_empty_log and self.today != now:
-                    self.log_file.close()
-                    new_name = '%s.%04d%02d%02d' % ((self.log_name, ) + self.today)
-                    dirs, filename = os.path.split(self.log_name)
-                    shutil.move(self.log_name, os.path.join(dirs, new_name))
-                    self.log_file = io.open(self.log_name, 'a', encoding='utf-8')
-                    self.today = now
-                self.log_file.write(msg)
-                self.log_file.flush()
-
-    def handle_error(self, request, client_address):
-        timestamp = time.time()
-        cls, exc, tb = sys.exc_info()
-        frames = format_exception(cls, exc, tb)
-        keep = False
-        lines = []
-        for f in frames:
-            if keep or 'pulse.pyz' in f:
-                keep = True
-                lines.append(f)
-        if self.log_file is not None:
-            error(''.join(lines).strip(), border='box')
-        lines.insert(0, '-'*50+'\n')
-        lines.append('-'*50+'\n')
-        self.emit_message(''.join(lines).strip()+'\n', timestamp)
-
-    def prep_log_file(self):
-        if self.log_name is None:
-            return
-        dirs, filename = os.path.split(self.log_name)
-        if not os.path.exists(dirs):
-            os.path.mkdirs(dirs)
-        if not os.path.exists(self.log_name):
-            self.is_empty_log = True
-        self.log_file = io.open(self.log_name, 'a', encoding='utf-8')
-
-    def server_bind(self):
-        """Override server_bind to store the server name."""
-        TCPServer.server_bind(self)
-        host, port = self.socket.getsockname()[:2]
-        self.server_name = socket.getfqdn(host)
-        self.server_port = port
-
-
-class FISSQLRequestHandler(StreamRequestHandler):
-    """
-    FIS SQL request handler.
-    """
-
-    server_version = "FISSQL/" + __version__
-    protocol_version = 'CSV/1.0'
-
-    def handle(self):
-        command = self.rfile.read()
-        echo(command)
-        self.wfile.write(command + '\n')
-
-    def log_message(self, format, *args):
-        """
-        Log an arbitrary message.
-        """
-        timestamp = time.time()
-        message = "%s - - [%s] %s\n" % (
-                self.client_address[0],
-                self.log_date_time_string(timestamp),
-                format % args)
-        self.server.emit_message(message, timestamp)
-
-    def log_date_time_string(self, timestamp=None):
-        """
-        Return the current time formatted for logging.
-        """
-        if timestamp is None:
-            timestamp = time.time()
-        year, month, day, hh, mm, ss, x, y, z = time.localtime(timestamp)
-        s = "%02d/%3s/%04d %02d:%02d:%02d" % (
-                day, self.monthname[month], year, hh, mm, ss)
-        return s
+    unittest.main(module='fis_oe.test', exit=True)
 
 
 ## helpers

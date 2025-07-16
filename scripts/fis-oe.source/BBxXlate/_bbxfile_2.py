@@ -137,13 +137,13 @@ class BBxRec(object):
             masks = [r[4] for r in self.fieldlist[ref]]
             single = False
         else:
-            ref = ref.title()
+            ref, old_ref = ref.title(), ref
             for fld in self.fieldlist:
                 if fld[3] == ref:
                     mask = fld[4]
                     break
             else:
-                raise ValueError('%r is not a valid field' % ref)
+                raise ValueError('%r is not a valid field' % old_ref)
             ref = [ref]
             masks = [mask]
             single = True

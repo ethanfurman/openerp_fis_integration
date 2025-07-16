@@ -1,9 +1,11 @@
 from __future__ import print_function, unicode_literals
 
 from aenum import Enum, NamedTuple, StrEnum, auto
+from antipathy import Path
 from ast import literal_eval
 from collections import OrderedDict
 from enhlib.itertools import all_equal
+from enhlib.misc import basestring, baseinteger, ord
 from itertools import cycle
 import openerplib
 from openerplib import get_connection, get_records, AttrDict, Binary, Query, Many2One, CSV
@@ -24,18 +26,32 @@ except ImportError:
 
 fd = TableError = None
 
-def init_fis(fis_schema):
+def init_fis():
     global fd, TableError
     try:
         from BBxXlate import fisData as fd
         from BBxXlate.bbxfile import TableError
-        fd.init(fis_schema)
-    except IOError:
-        pass
+        fd.init()
+    except IOError as e:
+        error(e)
+        fd = TableError = None
 
 class PlainEnum(Enum):
     def __repr__(self):
         return self.name
+
+
+# class BytesEnum(bytes, PlainEnum):
+#     pass
+#
+
+class Char(str, PlainEnum):
+    _order_ = 'SINGLE_QUOTE COMMA BACKSLASH'
+    SINGLE_QUOTE = "'"
+    COMMA = ","
+    BACKSLASH = "\\"
+SINGLE_QUOTE, COMMA, BACKSLASH = Char
+
 
 class SQLState(PlainEnum):
     _order_ = 'START SELECT FROM JOIN ON WHERE ORDER_BY TO'
@@ -52,12 +68,6 @@ class SQLState(PlainEnum):
   SELECT, SELECT_FROM, SELECT_JOIN, SELECT_ON, SELECT_WHERE, SELECT_ORDERBY, SELECT_TO,
   ) = SQLState
 
-class Char(PlainEnum, StrEnum):
-    _order_ = 'SINGLE_QUOTE COMMA BACKSLASH'
-    SINGLE_QUOTE = b"'"
-    COMMA = b","
-    BACKSLASH = b"\\"
-SINGLE_QUOTE, COMMA, BACKSLASH = Char
 
 class Clause(PlainEnum):
     _order_ = 'FIELD OP CONSTANT CONJUNCTION'
@@ -541,8 +551,10 @@ def ensure_fis():
     abort if FIS files missing
     """
     if fd is None:
-        # no files
-        raise RuntimeError('FIS files not available')
+        init_fis()
+        if fd is None:
+            # no files
+            raise RuntimeError('FIS files not available')
 
 
 def ensure_oe():
@@ -1107,6 +1119,7 @@ class FISTable(Table):
         # if self._inited:
         #     return
         # self._inited = True
+        ensure_fis()
         self = object.__new__(FISTable)
         if table_name.isdigit():
             table = int(table_name)
@@ -1323,6 +1336,7 @@ class FISTable(Table):
         # at this point we have the fields, and the table -- get the records
         #
         sq = SimpleQuery(header, aliased=field_verbose, to=imprimido)
+        error(seleccion, field_verbose, donde, constraints, sep='\n')
         sq.records.extend(self._records(seleccion, field_verbose, donde, constraints))
         for o in reversed(orden):
             o = o.split()
