@@ -574,6 +574,7 @@ class product_product(xmlid, osv.Model):
         'fis_web_cert_ingred_panel': fields.boolean('Ingredient Panel Only'),
         'fis_web_cert_fair_trade_usa': fields.boolean('Fair Trade USA'),
         'fis_web_cert_non_gmo': fields.boolean('Non-GMO Project Verified'),
+        'fis_web_cert_rspo': fields.boolean('RSPO', help='Roundtable on Sustainable Palm Oil'),
         'fis_web_ingredients2': fields.text('Ingredients', help='new web ingredients fields'),
         'fis_web_cooking_instructions': fields.text('Cooking Instructions'),
         'fis_web_allergens': fields.text('Allergen Statement'),

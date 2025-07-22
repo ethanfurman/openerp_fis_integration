@@ -64,6 +64,7 @@
                                 @fis_web_cert_ingred_panel
                                 @fis_web_cert_fair_trade_usa
                                 @fis_web_cert_non_gmo
+                                @fis_web_cert_rspo
                         ~group
                             ~group
                                 ~label for='fis_web_ingredients2' colspan='2'
