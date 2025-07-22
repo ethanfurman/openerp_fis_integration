@@ -311,7 +311,7 @@ def convert_set(clausa):
         # e.g. login = 'ethan'
         #      id=201
         #      blah = null, this = 'that'
-        print('set', clausa, verbose=3)
+        print('set', clausa, verbose=4)
         try:
             field, op, value, clausa = re.match(
                     "^"
@@ -327,7 +327,7 @@ def convert_set(clausa):
                     "$",
                     clausa,
                     ).groups()
-            print('\nfield: %r\nop: %r\nvalue: %r\nclausa: %r\n' % (field, op, value, clausa), verbose=2)
+            print('\nfield: %r\nop: %r\nvalue: %r\nclausa: %r\n' % (field, op, value, clausa), verbose=3)
             if not (field and op and value):
                 raise ValueError
         except (ValueError, AttributeError):
@@ -363,9 +363,9 @@ def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False
     Converts the WHERE clause of an SQL command.
     """
     def subquery(match):
-        print('subquery:', match, verbose=2)
+        print('subquery:', match, verbose=3)
         command = match.group()[1:-1]
-        print(command, verbose=2)
+        print(command, verbose=3)
         if not command.upper().startswith(('SELECT ','COUNT ')):
             raise ValueError('subquery must be SELECT or COUNT')
         if command.upper().startswith('COUNT '):
@@ -386,9 +386,9 @@ def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False
                 raise ValueError('only one field can be returned from subqueries')
     if alias is None:
         alias = {}
-    print('subquery: %r,  clausa: %r' % (subquery, clausa), verbose=2)
+    print('subquery: %r,  clausa: %r' % (subquery, clausa), verbose=3)
     clausa = re.sub(r"\(.*\)", subquery, clausa)
-    print('after subquery: %r' % (clausa, ), verbose=2)
+    print('after subquery: %r' % (clausa, ), verbose=3)
 
     std_match = Var(lambda clausa: re.match(
             r"^(\S+)\s*(<=|>=|!=|=|<|>|\bis\s+not\b\b|\bis\b|\bnot\s+in\b|\bin\b|\blike\b|\b=like\b|\bnot\s+like\b|\bilike\b|\b=ilike\b|\bnot\s+ilike\b)\s*('(?:[^'\\]|\\.)*?'|\[[^]]*\]|\S*)\s*(.*?)\s*$",
@@ -413,10 +413,10 @@ def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False
         #      WHERE count(fis_portal_logins) > 1
         #      WHERE 'Warehouse notes' is not null  (future enhancement)
         #      WHERE id in (SELECT res_id FROM ir.model.data WHERE name =like 'F074_%_res_partner')
-        print('clausa: %r' % (clausa, ), verbose=3)
+        print('clausa: %r' % (clausa, ), verbose=4)
         if std_match(clausa):
             field, op, condition, clausa = std_match().groups()
-            print('\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (field, op, condition, clausa), verbose=3)
+            print('\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (field, op, condition, clausa), verbose=4)
             if not (field and op and condition):
                 raise ValueError('std: malformed WHERE clause')
             if op == '==':
@@ -470,7 +470,7 @@ def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False
                 clausa = clausa[4:]
         elif enh_match(clausa):
             function, field, op, condition, clausa = enh_match().groups()
-            print('\nfunction: %r\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (function, field, op, condition, clausa), verbose=3)
+            print('\nfunction: %r\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (function, field, op, condition, clausa), verbose=4)
             if not (function and field and op and condition):
                 raise ValueError('enh: malformed WHERE clause')
             func = function.lower()
@@ -520,10 +520,10 @@ def create_filter(domain, aliased=None):
     stack = [root]
     if aliased is None:
         aliased = {}
-    print('domain:', domain, verbose=2)
+    print('domain:', domain, verbose=3)
     for clause in domain:
-        # print('  stack:', stack, verbose=3)
-        # print('  clause:', clause, verbose=3)
+        # print('  stack:', stack, verbose=4)
+        # print('  clause:', clause, verbose=4)
         current_node = stack[-1]
         if isinstance(clause, tuple) and len(clause) == 3:
             field, op, target = clause
@@ -621,7 +621,7 @@ class ExpandedRow(object):
         #               ),
         #           ],
         #   }
-        print('ExpandedRow.__init__: fields ->', fields, '  record ->', record, verbose=4)
+        print('ExpandedRow.__init__: fields ->', fields, '  record ->', record, verbose=5)
         rows = []
         row = []
         cache = {}
@@ -632,7 +632,7 @@ class ExpandedRow(object):
                 iter_fields.append(fld)
         for k in iter_fields:
             v = record[k]
-            print('checking %s -> %r' % (k, v), verbose=4)
+            print('checking %s -> %r' % (k, v), verbose=5)
             cache[k] = set()
             if any([f.startswith(k+'/') for f in fields]):
                 sub_fields = []
@@ -658,14 +658,14 @@ class ExpandedRow(object):
                         raise TypeError('invalid type: %r [%r]' % (type(v), v))
                 else:
                     sub_row = [[None] * len(sub_fields)]
-                print('adding subrow', sub_row, verbose=4)
+                print('adding subrow', sub_row, verbose=5)
                 row.append(sub_row)
             elif k in fields:
                 # must go after subfield checking
-                print('  adding element ->', k, verbose=4)
+                print('  adding element ->', k, verbose=5)
                 row.append(v)
-            print('intermediate row ->', row, verbose=4)
-        print('final row ->', row, verbose=4)
+            print('intermediate row ->', row, verbose=5)
+        print('final row ->', row, verbose=5)
         for i in counter():
             line = []
             remaining = False
@@ -686,7 +686,7 @@ class ExpandedRow(object):
                             line.extend([None] * len(item))
                         else:
                             line.extend([None])
-            print('processed row ->', line, verbose=4)
+            print('processed row ->', line, verbose=5)
             rows.append(line)
             if not remaining:
                 break
@@ -762,7 +762,7 @@ def normalize_field_names(model, fields):
         model_strings = {}
         model_fields = set()
         for field_name, field_def in model.fields_get().items():
-            print('adding: %r' % (field_name, ), verbose=2)
+            print('adding: %r' % (field_name, ), verbose=3)
             model_fields.add(field_name)
             string = field_def['string'].lower()
             if string in model_strings:
@@ -844,7 +844,7 @@ def write_xls(sheet_name, query, fields, file, separator=False):
     #
     i = 0
     for r in query.records:
-        print(r, verbose=3)
+        print(r, verbose=4)
         if separator:
             i += 1
         er = ExpandedRow(fields, r)
@@ -854,9 +854,9 @@ def write_xls(sheet_name, query, fields, file, separator=False):
             for cell_index, cell_value in enumerate(row):
                 if isinstance(cell_value, Many2One):
                     cell_value = str(cell_value)
-                    # print('skipping m2o', cell_value, verbose=4)
+                    # print('skipping m2o', cell_value, verbose=5)
                 elif isinstance(cell_value, (list, tuple)):
-                    print('cell_value ->', cell_value, verbose=4)
+                    print('cell_value ->', cell_value, verbose=5)
                     for cv in cell_value:
                         if isinstance(cv, Many2One):
                             worksheet.write(i, cell_index+ci_bump, cv)
@@ -887,10 +887,10 @@ def write_xls(sheet_name, query, fields, file, separator=False):
 def write_csv(table, query, fields, file, separator=False):
     lines = []
     line = []
-    print('field count:', len(fields), fields, verbose=3)
+    print('field count:', len(fields), fields, verbose=4)
     for field_name in fields:
         line.append(field_name)
-    print(repr(line), verbose=4)
+    print(repr(line), verbose=5)
     lines.append(','.join(line))
     #
     for r in query.records:
@@ -902,9 +902,9 @@ def write_csv(table, query, fields, file, separator=False):
             for cell_value in row:
                 if isinstance(cell_value, Many2One):
                     cell_value = str(cell_value)
-                    # print('skipping m2o', cell_value, verbose=4)
+                    # print('skipping m2o', cell_value, verbose=5)
                 elif isinstance(cell_value, (list, tuple)):
-                    print('cell_value [sequence] ->', cell_value, verbose=4)
+                    print('cell_value [sequence] ->', cell_value, verbose=5)
                     for cv in cell_value:
                         if cv:
                             if isinstance(cv, basestring):
@@ -926,7 +926,7 @@ def write_csv(table, query, fields, file, separator=False):
                             line.append('')
                     continue
                 elif isinstance(cell_value, basestring):
-                    print('cell_value [basestring] ->', cell_value, verbose=4)
+                    print('cell_value [basestring] ->', cell_value, verbose=5)
                     cell_value = re.sub("\r", r" ", cell_value)
                     cell_value = re.sub(r'"', r'""', cell_value)
                     cell_value = cell_value.replace('\\', '\\\\')
@@ -940,14 +940,14 @@ def write_csv(table, query, fields, file, separator=False):
                     cell_value = ''
                 line.append(str(cell_value))
             lines.append(','.join(line))
-    print('\n'.join([repr(l) for l in lines]), verbose=4)
+    print('\n'.join([repr(l) for l in lines]), verbose=5)
     with open(file, 'wb') as output:
         output.write('\n'.join(lines).encode('utf8'))
 
 def write_txt(table, query, fields, file, separator=False, wrap=None,):
     lines = []
     line = []
-    print('field count:', len(fields), fields, verbose=4)
+    print('field count:', len(fields), fields, verbose=5)
     for field_name in fields:
         field_header = field_name.upper()
         aliased = getattr(query, 'aliases', {})
@@ -960,11 +960,11 @@ def write_txt(table, query, fields, file, separator=False, wrap=None,):
     for r in query.records:
         if separator:
             lines.append(None)
-        print(r, verbose=4)
+        print(r, verbose=5)
         er = ExpandedRow(fields, r)
-        [print(r, verbose=4) for r in er]
+        [print(r, verbose=5) for r in er]
         for row in er:
-            print('post pre-process row ->', row, verbose=4)
+            print('post pre-process row ->', row, verbose=5)
             line = []
             for field_name, (cell_index, cell_value) in zip(fields, enumerate(row)):
                 if isinstance(cell_value, Many2One):
@@ -996,7 +996,7 @@ def write_txt(table, query, fields, file, separator=False, wrap=None,):
                 if field_name in wrap:
                     wrap_value = wrap[field_name]
                     line[-1] = html2text(line[-1], wrap_value)
-            print('post post-process line ->', line, verbose=4)
+            print('post post-process line ->', line, verbose=5)
             lines.append(line)
     if not separator:
         lines.insert(1, None)
@@ -1412,11 +1412,11 @@ class OpenERPTable(Table):
         #
         # have all the info, make the changes
         #
-        print('domain: %r' % (domain, ), verbose=2)
+        print('domain: %r' % (domain, ), verbose=3)
         ids = table.search(domain)
         if not ids:
             echo('no records found matching %r' % (where_clause, ))
-        print('deleting %d records from %s' % (len(ids), table._name), verbose=2)
+        print('deleting %d records from %s' % (len(ids), table._name), verbose=3)
         table.unlink(ids)
         sq = SimpleQuery(('table', 'count'))
         sq.records.append(AttrDict(table=self.table.model_name, count=len(ids)))
@@ -1551,7 +1551,7 @@ class OpenERPTable(Table):
         elif fv_match():
             table, fields, values, verb, key = fv_match.groups()
             fields = [f.strip() for f in fields.split(',') if f != ',']
-            print('%r -- %r -- %r -- %r -- %r' % (table, fields, values, verb, key), verbose=4)
+            print('%r -- %r -- %r -- %r -- %r' % (table, fields, values, verb, key), verbose=5)
             data = [literal_eval(values)]
         elif fl_match():
             table, csv_file, verb, key = fl_match.groups()
@@ -1560,7 +1560,7 @@ class OpenERPTable(Table):
             except (IOError, OSError) as exc:
                 raise ValueError("problem with %r -- <%r>" % (csv_file, repr(exc), ))
             fields = csv.header
-            print('%r -- %r -- %r -- %r' % (table, csv_file, verb, key), verbose=4)
+            print('%r -- %r -- %r -- %r' % (table, csv_file, verb, key), verbose=5)
             data = list(csv)
         if verb and (verb.strip().lower() != 'update on' or not key):
             raise SQLError('invalid UPDATE ON clause')
@@ -1573,7 +1573,7 @@ class OpenERPTable(Table):
                 raise SQLError('unknown table %r' % (table, ))
             raise
         if not all_equal(data, test=lambda r,l=len(fields): len(r) == l):
-            # print('fields: %r\nvalues: %r' % (fields, values), verbose=2)
+            # print('fields: %r\nvalues: %r' % (fields, values), verbose=3)
             raise SQLError('fields/values mismatch')
         # create the record(s)
         insert_count = 0
@@ -1589,7 +1589,7 @@ class OpenERPTable(Table):
                     continue
             # either no key, or record doesn't exist
             try:
-                print('creating', values, verbose=2)
+                print('creating', values, verbose=3)
                 table.create(values)
             except Exception as exc:
                 raise
@@ -1617,9 +1617,9 @@ class OpenERPTable(Table):
         clausa = ''
         donde = []
         distinta = False
-        print('command: %r' % (command, ), verbose=3)
+        print('command: %r' % (command, ), verbose=4)
         command = ' '.join(command.split())
-        print('command: %r' % (command, ), verbose=2)
+        print('command: %r' % (command, ), verbose=3)
         if not re.search(r' from ', command, flags=re.I):
             raise SQLError('FROM not specified')
         if command.split()[-2].lower() == 'to':
@@ -1650,7 +1650,7 @@ class OpenERPTable(Table):
                 header.append(alias)
             else:
                 header.append(field)
-        print('SELECT:', seleccion, verbose=2)
+        print('SELECT:', seleccion, verbose=3)
         #
         #
         # get FROM table
@@ -1693,25 +1693,25 @@ class OpenERPTable(Table):
             fields.remove('id')
             seleccion = ['id'] + sorted(fields)
             header = seleccion[:]
-            print('SELECT:', seleccion, verbose=2)
+            print('SELECT:', seleccion, verbose=3)
         #
         # TODO: now make sure all field names are db and not user
         #
-        print('WHERE', clausa, verbose=2)
-        print('ORDER BY', orden, verbose=2)
-        print('TO', imprimido, verbose=2)
+        print('WHERE', clausa, verbose=3)
+        print('ORDER BY', orden, verbose=3)
+        print('TO', imprimido, verbose=3)
         # normalize_field_names(desde, seleccion, clausa, orden)
-        print('FROM', desde, verbose=2)
+        print('FROM', desde, verbose=3)
         #
         # and get WHERE clause
         #
         donde, constraints = convert_where(clausa, field_verbose)
         if _internal:
             imprimido = ''
-        print('WHERE', donde, verbose=2)
-        print('ORDER BY', orden, verbose=2)
-        print('TO', imprimido, verbose=2)
-        print('--CONSTRAINTS', constraints, verbose=2)
+        print('WHERE', donde, verbose=3)
+        print('ORDER BY', orden, verbose=3)
+        print('TO', imprimido, verbose=3)
+        print('--CONSTRAINTS', constraints, verbose=3)
         #
         # at this point we have the fields, and the table -- hand off to _adhoc()
         #
@@ -1765,7 +1765,7 @@ class OpenERPTable(Table):
                 raise SQLError('malformed command -- missing WHERE parameters')
             where_clause = []
             set_clause = command
-        print('where clause: %r' % (where_clause, ), verbose=2)
+        print('where clause: %r' % (where_clause, ), verbose=3)
         values = convert_set(set_clause)
         if not values:
             raise SQLError('malformed command -- no changes specified')
@@ -1778,9 +1778,9 @@ class OpenERPTable(Table):
         #
         # have all the info, make the changes
         #
-        print('domain: %r' % (domain, ), verbose=2)
+        print('domain: %r' % (domain, ), verbose=3)
         ids = table.search(domain)
-        print('writing\n  %r\nto %s for ids\n%r' % (values, table._name, ids), verbose=2)
+        print('writing\n  %r\nto %s for ids\n%r' % (values, table._name, ids), verbose=3)
         table.write(ids, values)
         sq = SimpleQuery(('table', 'updated'))
         sq.records.append(AttrDict(table=self.table.model_name, updated=len(ids)))
@@ -1795,12 +1795,12 @@ class GenericTable(Table):
         return "ResultsTable(name=%r, fields=%r)" % (self.name, self._fields.keys())
 
     def _records(self, fields, aliased, where, constraints):
-        # print('fields requested: %s' % (fields, ), verbose=2)
-        # print('where: %r' % (where, ), verbose=2)
-        # print('constraints: %r' % (constraints, ), verbose=2)
+        # print('fields requested: %s' % (fields, ), verbose=3)
+        # print('where: %r' % (where, ), verbose=3)
+        # print('constraints: %r' % (constraints, ), verbose=3)
         filter = create_filter(where, aliased)
-        print('filter:', filter, verbose=2)
-        print('aliased:', aliased, verbose=2)
+        print('filter:', filter, verbose=3)
+        print('aliased:', aliased, verbose=3)
         records = []
         for r in self.table:
             if filter(r):
@@ -1865,7 +1865,7 @@ class GenericTable(Table):
         # get SELECT fields
         #
         seleccion, resto = re.split(r' from ', command, maxsplit=1, flags=re.I)
-        print('SELECT: %r   REST: %r' % (seleccion, resto), verbose=3)
+        print('SELECT: %r   REST: %r' % (seleccion, resto), verbose=4)
         seleccion = seleccion.split()[1:]
         if not seleccion:
             raise SQLError('missing fields')
@@ -1892,7 +1892,7 @@ class GenericTable(Table):
             else:
                 field_alias[field] = field
                 header.append(field)
-        print('SELECT:', seleccion, verbose=2)
+        print('SELECT:', seleccion, verbose=3)
         #
         #
         # get FROM table: `res.users` or `res.users u`
@@ -1905,13 +1905,13 @@ class GenericTable(Table):
         else:
             resto = resto.split()
         desde, resto = resto[0], resto[1:]
-        print('0 FROM: %r   REST: %r' % (desde, resto), verbose=3)
+        print('0 FROM: %r   REST: %r' % (desde, resto), verbose=4)
         if desde.upper() in ('', 'WHERE', 'ORDER'):
             raise SQLError('missing table')
         # check for alias
         if resto and resto[0].upper() not in ('', 'WHERE', 'ORDER'):
             alias, resto = resto[0], resto[1:]
-            print('0 ALIAS: %r   REST: %r' % (alias, resto), verbose=3)
+            print('0 ALIAS: %r   REST: %r' % (alias, resto), verbose=4)
             table_alias[alias] = desde
             desde = alias
         # if table_alias.get(desde, desde) not in self.tables:
@@ -1935,27 +1935,27 @@ class GenericTable(Table):
                 resto = []
             if resto:
                 raise SQLError('malformed query [%r]' % (resto, ))
-        print('WHERE', clausa, verbose=2)
-        print('ORDER BY', orden, verbose=2)
-        print('TO', imprimido, verbose=2)
+        print('WHERE', clausa, verbose=3)
+        print('ORDER BY', orden, verbose=3)
+        print('TO', imprimido, verbose=3)
         # normalize_field_names(desde, seleccion, clausa, orden)
-        print('FROM', desde, verbose=2)
+        print('FROM', desde, verbose=3)
         #
         # and get WHERE clause
         #
         donde, constraints = convert_where(clausa)
         if _internal:
             imprimido = ''
-        print('WHERE', donde, verbose=2)
-        print('ORDER BY', orden, verbose=2)
-        print('TO', imprimido, verbose=2)
-        print('CONSTRAINTS', constraints, verbose=2)
-        print('ALIASES', field_alias, verbose=2)
+        print('WHERE', donde, verbose=3)
+        print('ORDER BY', orden, verbose=3)
+        print('TO', imprimido, verbose=3)
+        print('CONSTRAINTS', constraints, verbose=3)
+        print('ALIASES', field_alias, verbose=3)
         #
         # at this point we have the fields, and the table -- get the records
         #
         sq = SimpleQuery(header, aliased=field_alias, to=imprimido)
-        print('getting records', verbose=2)
+        print('getting records', verbose=3)
         sq.records.extend(self._records(seleccion, field_alias, donde, constraints))
         sq.status = "SELECT %s" % len(sq.records)
         return sq
@@ -1988,11 +1988,11 @@ class Node(object):
             raise Exception('too many clauses for %r' % self)
 
     def process(self, record):
-        # print('Node.process: %r' % (record, ), verbose=3)
+        # print('Node.process: %r' % (record, ), verbose=4)
         for i, clause in enumerate(self.clauses, start=1):
             if isinstance(clause, tuple):
                 field, op, target = clause
-                print('looking for %r of %r in %r' % (field, record[field], record), verbose=3)
+                print('looking for %r of %r in %r' % (field, record[field], record), verbose=4)
                 field = record[field]
                 self.result = self.operators[op](field, target)
             elif isinstance(clause, Node):
@@ -2299,8 +2299,8 @@ class Join(object):
     def full_join(self, left_sq, right_sq, table_by_field, header_mapping):
         sq = left_sq.as_template()
         field1, op, field2 = self.condition_match(self.condition).groups()
-        print('table name: %r' % self.table_name)
-        print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=3)
+        print('table name: %r' % self.table_name, verbose=3)
+        print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=4)
         if op != '=':
             raise SQLError('JOIN only allows "=" for joining records')
         if table_by_field.get(field1, None) == self.table_name:
@@ -2316,12 +2316,12 @@ class Join(object):
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
-        print(len(left_sq), len(right_sq), verbose=3)
+        print(len(left_sq), len(right_sq), verbose=4)
         last_left_data = None
         last_left_index = last_right_index = None
         found = False
         while i < len(left_sq) or j < len(right_sq):
-            print('\n0: i=%d  j=%d  lld=%r  lri=%r' % (i, j, last_left_data, last_right_index), verbose=3)
+            print('\n0: i=%d  j=%d  lld=%r  lri=%r' % (i, j, last_left_data, last_right_index), verbose=4)
             if i < len(left_sq):
                 left_data = left_sq.records[i]
             else:
@@ -2334,39 +2334,39 @@ class Join(object):
                 right_data = EMPTY
             left = left_data and left_data[left_name]
             right = right_data and right_data[right_name]
-            print('1: i=%d  j=%d  l=%r  r=%r' % (i, j, left, right), verbose=3)
-            # print('comparing: left[%d] - right[%d]' % (i, j), verbose=3)
+            print('1: i=%d  j=%d  l=%r  r=%r' % (i, j, left, right), verbose=4)
+            # print('comparing: left[%d] - right[%d]' % (i, j), verbose=4)
             if right is EMPTY:
-                print(2, found, verbose=3)
+                print(2, found, verbose=4)
                 i += 1
                 if not found:
                     sq.add_record(left_data)
-                    print('2 adding LEFT', verbose=3)
+                    print('2 adding LEFT', verbose=4)
                 found = False
             elif left is EMPTY:
-                print(3, found, verbose=3)
+                print(3, found, verbose=4)
                 j += 1
                 new_rec = {}
                 for field, value in right_data.items():
                     new_rec[header_mapping[field]] = right_data[field]
                 sq.add_record(new_rec)
-                print('3 adding RIGHT', verbose=3)
+                print('3 adding RIGHT', verbose=4)
             elif left < right:
-                print(4, found, verbose=3)
+                print(4, found, verbose=4)
                 i += 1
                 if not found:
                     sq.add_record(left_data)
-                    print('4 adding LEFT', verbose=3)
+                    print('4 adding LEFT', verbose=4)
                 found = False
             elif left > right:
-                print(5, found, verbose=3)
+                print(5, found, verbose=4)
                 j += 1
                 if not found:
                     new_rec = {}
                     for field, value in right_data.items():
                         new_rec[header_mapping[field]] = right_data[field]
                     sq.add_record(new_rec)
-                    print('5 adding RIGHT', verbose=3)
+                    print('5 adding RIGHT', verbose=4)
                 last_right_index = None
                 found = False
             else:
@@ -2381,7 +2381,7 @@ class Join(object):
                     if field in header_mapping:
                         new_rec[header_mapping[field]] = right_data[field]
                 sq.add_record(new_rec)
-                print('adding BOTH', verbose=3)
+                print('adding BOTH', verbose=4)
                 j += 1
         return sq
 
@@ -2389,8 +2389,8 @@ class Join(object):
         # all records in left_sq will be included, along with any matches in right_sq
         sq = left_sq.as_template()
         field1, op, field2 = self.condition_match(self.condition).groups()
-        print('table name: %r' % self.table_name)
-        print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=3)
+        print('table name: %r' % self.table_name, verbose=3)
+        print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=4)
         if op != '=':
             raise SQLError('JOIN only allows "=" for joining records')
         if table_by_field.get(field1, None) == self.table_name:
@@ -2406,13 +2406,13 @@ class Join(object):
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
-        # print(len(left_sq), len(right_sq), verbose=3)
+        # print(len(left_sq), len(right_sq), verbose=4)
         last_left_data = None
         last_right_index = None
         last_left_index = 0
         found = False
         while i < len(left_sq):
-            # print(last_left_data, last_right_index, verbose=3)
+            # print(last_left_data, last_right_index, verbose=4)
             left_data = left_sq.records[i]
             if i != last_left_index and last_left_data == left_data[left_name] and last_right_index is not None:
                 j = last_right_index
@@ -2420,7 +2420,7 @@ class Join(object):
                 right_data = right_sq.records[j]
             else:
                 right_data = EMPTY
-            print('comparing: left[%d] - right[%d]' % (i, j), verbose=3)
+            print('comparing: left[%d] - right[%d]' % (i, j), verbose=4)
             if right_data is EMPTY or left_data[left_name] < right_data[right_name]:
                 # no right match possible, add left record
                 i += 1
@@ -2468,13 +2468,13 @@ class Join(object):
         last_left_data = None
         last_left_index = last_right_index = None
         while i < len(left_sq) and j < len(right_sq):
-            print(last_left_data, last_right_index, verbose=3)
+            print(last_left_data, last_right_index, verbose=4)
             left_data = left_sq.records[i]
             if i != last_left_index and last_left_data == left_data[left_name]:
                 j = last_right_index
             right_data = right_sq.records[j]
-            print('comparing: left[%d] - right[%d]' % (i, j), verbose=3)
-            print('           %r - %r' % (left_data[left_name], right_data[right_name]), verbose=3)
+            print('comparing: left[%d] - right[%d]' % (i, j), verbose=4)
+            print('           %r - %r' % (left_data[left_name], right_data[right_name]), verbose=4)
             if left_data[left_name] < right_data[right_name]:
                 i += 1
             elif left_data[left_name] > right_data[right_name]:
@@ -2497,8 +2497,8 @@ class Join(object):
     def outer_join(self, left_sq, right_sq, table_by_field, header_mapping):
         sq = left_sq.as_template()
         field1, op, field2 = self.condition_match(self.condition).groups()
-        print('table name: %r' % self.table_name)
-        print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=3)
+        print('table name: %r' % self.table_name, verbose=3)
+        print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=4)
         if op != '=':
             raise SQLError('JOIN only allows "=" for joining records')
         if table_by_field.get(field1, None) == self.table_name:
@@ -2514,12 +2514,12 @@ class Join(object):
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
-        print(len(left_sq), len(right_sq), verbose=3)
+        print(len(left_sq), len(right_sq), verbose=4)
         last_left_data = None
         last_left_index = last_right_index = None
         found = False
         while i < len(left_sq) or j < len(right_sq):
-            print('\n0: i=%d  j=%d  lld=%r  lri=%r' % (i, j, last_left_data, last_right_index), verbose=3)
+            print('\n0: i=%d  j=%d  lld=%r  lri=%r' % (i, j, last_left_data, last_right_index), verbose=4)
             if i < len(left_sq):
                 left_data = left_sq.records[i]
             else:
@@ -2532,39 +2532,39 @@ class Join(object):
                 right_data = EMPTY
             left = left_data and left_data[left_name]
             right = right_data and right_data[right_name]
-            print('1: i=%d  j=%d  l=%r  r=%r' % (i, j, left, right), verbose=3)
-            # print('comparing: left[%d] - right[%d]' % (i, j), verbose=3)
+            print('1: i=%d  j=%d  l=%r  r=%r' % (i, j, left, right), verbose=4)
+            # print('comparing: left[%d] - right[%d]' % (i, j), verbose=4)
             if right is EMPTY:
-                print(2, found, verbose=3)
+                print(2, found, verbose=4)
                 i += 1
                 if not found:
                     sq.add_record(left_data)
-                    print('2 adding LEFT', verbose=3)
+                    print('2 adding LEFT', verbose=4)
                 found = False
             elif left is EMPTY:
-                print(3, found, verbose=3)
+                print(3, found, verbose=4)
                 j += 1
                 new_rec = {}
                 for field, value in right_data.items():
                     new_rec[header_mapping[field]] = right_data[field]
                 sq.add_record(new_rec)
-                print('3 adding RIGHT', verbose=3)
+                print('3 adding RIGHT', verbose=4)
             elif left < right:
-                print(4, found, verbose=3)
+                print(4, found, verbose=4)
                 i += 1
                 if not found:
                     sq.add_record(left_data)
-                    print('4 adding LEFT', verbose=3)
+                    print('4 adding LEFT', verbose=4)
                 found = False
             elif left > right:
-                print(5, found, verbose=3)
+                print(5, found, verbose=4)
                 j += 1
                 if not found:
                     new_rec = {}
                     for field, value in right_data.items():
                         new_rec[header_mapping[field]] = right_data[field]
                     sq.add_record(new_rec)
-                    print('5 adding RIGHT', verbose=3)
+                    print('5 adding RIGHT', verbose=4)
                 last_right_index = None
                 found = False
             else:
@@ -2631,7 +2631,7 @@ class Join(object):
                     new_rec[header_mapping[field]] = right_data[field]
                 sq.add_record(new_rec)
                 j += 1
-        print('FINAL i, j VALUEs: %d, %r' % (i, j), verbose=3)
+        print('FINAL i, j VALUEs: %d, %r' % (i, j), verbose=4)
         return sq
 
 
@@ -2642,7 +2642,7 @@ class SimpleQuery(object):
     def __init__(self, fields, aliased=None, record_layout='row', to='-'):
         # fields: list of final field names (could be aliases)
         # aliased: mapping of above (possibly aliased) field names to actual field names (for verbose mode)
-        print('SQ fields=%r' % (fields, ), verbose=2)
+        print('SQ fields=%r' % (fields, ), verbose=3)
         self.fields = fields
         self.aliases = aliased or {}
         self.to_file = to
@@ -2663,8 +2663,8 @@ class SimpleQuery(object):
                 )
 
     def add_record(self, values):
-        # print('ADDING %r into %r' % (values, self.fields), verbose=3)
-        # print('ALIASES: %r' % self.aliases, verbose=3)
+        # print('ADDING %r into %r' % (values, self.fields), verbose=4)
+        # print('ALIASES: %r' % self.aliases, verbose=4)
         new_record = {}.fromkeys(self.fields, EMPTY)
         new_record.update(values)
         self.records.append(new_record)
@@ -2720,8 +2720,8 @@ class SQL(object):
     are considered to be different fields/tables.
     """
     def __init__(self, statement, debug=False):
-        print('__INIT__', verbose=2)
-        print(repr(statement), verbose=3)
+        print('__INIT__', verbose=3)
+        print(repr(statement), verbose=4)
         self.primary_table = None
         self.header = []                                                            # selected fields for final display
         self.tables = {}                                                            # {'table_alias': SQLTableParams}
@@ -2786,21 +2786,21 @@ class SQL(object):
         raise SQLError('unable to find table from %r or %r' % (term1, term2))
 
     def _parse_where_term(self, word, pair):
-        print('_parse_where_term: %r %r' % (word, pair), verbose=3)
+        print('_parse_where_term: %r %r' % (word, pair), verbose=4)
         skip = False
         if pair.lower() in ("is not","not in","not like","not ilike"):
-            print('lower 2', verbose=3)
+            print('lower 2', verbose=4)
             ct = OP
             skip = True
             word = pair
         elif word.lower() in ("is", "in", "like", "=like", "ilike", "=ilike", "<", ">", "<=", ">=", "=", "!=", "==?", "<|>"):
-            print('lower 1', verbose=3)
+            print('lower 1', verbose=4)
             ct = OP
         elif word.lower() in ('and', 'or'):
-            print('lower 3', verbose=3)
+            print('lower 3', verbose=4)
             ct = CONJUNCTION
         else:
-            print('else 1', verbose=3)
+            print('else 1', verbose=4)
             # field or constant
             #
             # constants are quoted, numeric, or keywords null, true, false
@@ -2823,25 +2823,25 @@ class SQL(object):
                         if table not in self.tables:
                             raise SQLError('unknown table %r in %r' % (table, word))
                         else:
-                            print('1: tables: %r' % self.tables, verbose=3)
+                            print('1: tables: %r' % self.tables, verbose=4)
                             join_tp = self.tables[table]
-                            print('join_tp: %r' %  join_tp, verbose=3)
+                            print('join_tp: %r' %  join_tp, verbose=4)
                             if field not in join_tp.fields.values():
                                 join_tp.fields[field] = field
-                            print('join_tp: %r' %  join_tp, verbose=3)
+                            print('join_tp: %r' %  join_tp, verbose=4)
                         word = '%s.%s' % (table, field)
                 except KeyError:
                     pass
                     # # nope, a constant after all!
                     # ct = CONSTANT
-        print('final type: %r' % ct, verbose=3)
+        print('final type: %r' % ct, verbose=4)
         return ct, word, skip
 
     def execute(self):
         """
         query tables and return result
         """
-        print('EXECUTE', verbose=2)
+        print('EXECUTE', verbose=3)
         #
         # do all the queries
         results = {}
@@ -2865,10 +2865,10 @@ class SQL(object):
         # create mapping of field alias to field name
         field_aliases = {}    # {table_name: {record_name1:header_name1, record_name2:header_name2, ...}}
         for name, table_alias in self.table_by_field_alias.items():
-            print('name: %r' % name, verbose=3)
+            print('name: %r' % name, verbose=4)
             # table_alias = self.table_by_field_alias[name]
             header_sq = results[table_alias]
-            print(header_sq.aliases, verbose=3)
+            print(header_sq.aliases, verbose=4)
             if name == '*':
                 tmp = field_aliases.setdefault(table_alias, {})
                 for n in header_sq.aliases:
@@ -2878,15 +2878,15 @@ class SQL(object):
                 field_alias = split_fn(name)
                 field_aliases.setdefault(table_alias, {})[field_alias] = name
                 sq.aliases[name] = header_sq.aliases.get(field_alias, field_alias)
-        print('field aliases: %r' % field_aliases, verbose=3)
-        print('sq aliases: %r' % sq.aliases, verbose=3)
+        print('field aliases: %r' % field_aliases, verbose=4)
+        print('sq aliases: %r' % sq.aliases, verbose=4)
         #
         # if only one table, process and return
         primary = results[self.primary_table]
         primary_aliases = field_aliases[self.primary_table]
-        # print('primary aliases: %r' % primary_aliases, verbose=3)
+        # print('primary aliases: %r' % primary_aliases, verbose=4)
         for row in primary:
-            # print(row, verbose=3)
+            # print(row, verbose=4)
             values = {}
             for field, value in row.items():
                 if field in primary_aliases:
@@ -2897,17 +2897,17 @@ class SQL(object):
         #
         # merge with joins
         for join in self.joins:
-            print(join, verbose=3)
-            print('records: %d' % len(results[join.table_name]), verbose=3)
+            print(join, verbose=4)
+            print('records: %d' % len(results[join.table_name]), verbose=4)
             sq = join(
                     sq,
                     results[join.table_name],
                     self.table_by_field_alias,
                     field_aliases[join.table_name],
                     )
-        print('sq records after joins: %d' % len(sq), verbose=3)
+        print('sq records after joins: %d' % len(sq), verbose=4)
         # process WHERE
-        print('WHERE: %r' % self.where, verbose=3)
+        print('WHERE: %r' % self.where, verbose=4)
         if self.where and len(self.tables) > 1:
             # if only one table, WHERE clause was included in query
             #
@@ -2921,10 +2921,10 @@ class SQL(object):
                     if all(c(rec) for c in constraints):
                         records.append(rec)
             sq.records = records
-        print('sq records after where: %d' % len(sq), verbose=3)
+        print('sq records after where: %d' % len(sq), verbose=4)
         if self.orders:
-            print('sorting records')
-            # print(sq.records, verbose=3)
+            print('sorting records', verbose=3)
+            # print(sq.records, verbose=4)
             for o in reversed(self.orders):
                 o = o.split()
                 if len(o) == 1:
@@ -2942,7 +2942,7 @@ class SQL(object):
         """
         get next "word" in statement
         """
-        print('PARSE', verbose=2)
+        print('PARSE', verbose=3)
         statement = self.raw_statement
         offset = i = 0
         while True:
@@ -2961,9 +2961,9 @@ class SQL(object):
                         quote = False
                         alpha = False
                     continue
-                elif ch in ' ' and not word:
+                elif ch in ' \t\n' and not word:
                     continue
-                elif ch in ' ' and word:
+                elif ch in ' \t\n' and word:
                     break
                 #
                 if ch == BACKSLASH:
@@ -2993,25 +2993,25 @@ class SQL(object):
             offset += i or 1
             if offset + 1 >= len(self.raw_statement):
                 break
-        print('PARSED: %r' % self.words, verbose=3)
+        print('PARSED: %r' % self.words, verbose=4)
 
     def process(self):
-        print('PROCESS', verbose=2)
-        print(self.statement)
+        print('PROCESS', verbose=3)
+        print(self.statement, verbose=3)
         pt = self.primary_table
-        print('tbfa: %r' % self.table_by_field_alias, verbose=3)
+        print('tbfa: %r' % self.table_by_field_alias, verbose=4)
         for field_name, table_name in self.table_by_field_alias.items():
-            print('fn: %r   -   tn: %r' % (field_name, table_name), verbose=3)
+            print('fn: %r   -   tn: %r' % (field_name, table_name), verbose=4)
             if table_name is None:
                 self.table_by_field_alias[field_name] = pt
-        print('tbfa: %r' % self.table_by_field_alias, verbose=3)
+        print('tbfa: %r' % self.table_by_field_alias, verbose=4)
         # add primary query
         query = ['SELECT']
         if len(self.tables) == 1 and self.distinct:
             query.append('DISTINCT')
         fields = []
         tp = self.tables[pt]
-        print('tp: %r' % tp, verbose=3)
+        print('tp: %r' % tp, verbose=4)
         if '*' in self.table_by_field_alias:
             fields.append('*')
         else:
@@ -3029,8 +3029,8 @@ class SQL(object):
         # elif tp.where:
         #     query.append('WHERE')
         #     query.extend(tp.where)
-        print('main query: %r' % query, verbose=3)
-        print('query already in tp: %r' % tp.query, verbose=3)
+        print('main query: %r' % query, verbose=4)
+        print('query already in tp: %r' % tp.query, verbose=4)
         tp.query = ' '.join(query)
         # now add any other tables
         for alias, tp in self.tables.items():
@@ -3052,26 +3052,26 @@ class SQL(object):
                 raise SQLError('missing full table name for table %r' % tp.alias)
             query.append(tp.table_name)
             # if tp.where:
-            #     print('tp query: %r' % tp.query, verbose=3)
-            #     print('tp where: %r' % tp.where, verbose=3)
+            #     print('tp query: %r' % tp.query, verbose=4)
+            #     print('tp where: %r' % tp.where, verbose=4)
             #     query.append('WHERE')
             #     query.extend(tp.where)
-            print(query, verbose=3)
+            print(query, verbose=4)
             tp.query = ' '.join(query)
-            print('FINAL tp query: %r' % tp.query, verbose=3)
+            print('FINAL tp query: %r' % tp.query, verbose=4)
 
     def q_delete(self):
-        print('Q_DELETE', verbose=2)
+        print('Q_DELETE', verbose=3)
         # not a valid end state as a
         # WHERE clause is required (non-standard)
         i =  0
         for i, word in enumerate(self.words[self.offset+i:], start=i+1):
-            print(i, word, verbose=3)
+            print(i, word, verbose=4)
             self._final_statement.append(word)
             next_word = self.words[self.offset+i:self.offset+i+1]
             next_word = (next_word and next_word[0] or '').upper()
             if word.upper() == 'FROM':
-                print('FROM', verbose=3)
+                print('FROM', verbose=4)
                 self._final_statement[-1] = self._final_statement[-1].upper()
                 break
             else:
@@ -3087,7 +3087,7 @@ class SQL(object):
         """
         Get primary table (possibly only table).
         """
-        print('Q_FROM (peos=%r, from_delete=%r)' % (peos, from_delete), verbose=2)
+        print('Q_FROM (peos=%r, from_delete=%r)' % (peos, from_delete), verbose=3)
         # valid end state
         # oe tables will have periods in them
         self.complete = False
@@ -3104,19 +3104,19 @@ class SQL(object):
             allowed_pairs = ('CROSS JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'OUTER JOIN', 'FULL JOIN', 'ORDER BY')
         i = 0
         for i, word in enumerate(self.words[self.offset:], start=1):
-            print('%d: %r' % (i, word), verbose=3)
+            print('%d: %r' % (i, word), verbose=4)
             self._final_statement.append(word)
             next_word = self.words[self.offset+i:self.offset+i+1]
             next_word = (next_word and next_word[0] or '').upper()
             pair = '%s %s' % (word.upper(), next_word)
             if word.upper() in allowed_words:
-                print('   single: %r' % word, verbose=3)
+                print('   single: %r' % word, verbose=4)
                 self._final_statement[-1] = self._final_statement[-1].upper()
                 if self._final_statement[-1] == 'JOIN':
                     self._final_statement[-1] = 'INNER JOIN'
                 break
             elif pair in allowed_pairs:
-                print('   double: %r' % pair, verbose=3)
+                print('   double: %r' % pair, verbose=4)
                 word = pair.replace(' ','_')
                 self._final_statement[-1] = pair
                 i += 1
@@ -3124,16 +3124,16 @@ class SQL(object):
             if comma_needed and word != COMMA:
                 raise SQLError('comma missing between table definitions')
             elif word == COMMA:
-                print('   comma', verbose=3)
+                print('   comma', verbose=4)
                 if alias:
                     raise SQLError('missing alias for %r' % last_table)
                 raise SQLError('only one table supported in FROM clause')
             elif word.upper() == 'AS':
-                print('   as', verbose=3)
+                print('   as', verbose=4)
                 self._final_statement.pop()
                 alias = True
             elif alias in (None, True):                                             # `alias is None` means two adjacent names without AS
-                print('   alias trigger: %r' % alias, verbose=3)
+                print('   alias trigger: %r' % alias, verbose=4)
                 # `word` is the alias, `last_table` is the actual name
                 if None in tables:
                     tp = tables.pop(None)
@@ -3147,14 +3147,14 @@ class SQL(object):
                 last_table = None
                 comma_needed = True
             else:
-                print('   table: %r' % word, verbose=3)
+                print('   table: %r' % word, verbose=4)
                 # this is a table
                 last_table = word
                 alias = None
                 tables_acquired = True
         else:
             # loop exhausted, only one table given
-            print('   loop exhausted, no break', verbose=3)
+            print('   loop exhausted, no break', verbose=4)
             word = None
 
         # clean up
@@ -3175,14 +3175,14 @@ class SQL(object):
                 self.table_by_field_alias[field] = tp.alias
 
         # more sanity checks
-        print('break seen, word=%r' % word, verbose=3)
+        print('break seen, word=%r' % word, verbose=4)
         self.offset += i
         if alias:
             raise SQLError('missing alias for %r' % last_table)
         if not tables_acquired:
             raise SQLError('no tables in FROM clause')
-        print('4 tbfa: %r' % self.table_by_field_alias, verbose=3)
-        print('5 tables: %r' % tables, verbose=3)
+        print('4 tbfa: %r' % self.table_by_field_alias, verbose=4)
+        print('5 tables: %r' % tables, verbose=4)
         if word is not None:
             if word.endswith('_JOIN'):
                 word = 'JOIN'
@@ -3199,9 +3199,9 @@ class SQL(object):
         # FROM ((Orders
         # INNER JOIN Customers ON Orders.CustomerID = Customers.CustomerID)
         # INNER JOIN Shippers ON Orders.ShipperID = Shippers.ShipperID);
-        print('Q_JOIN', verbose=2)
+        print('Q_JOIN', verbose=3)
         tables = self.tables
-        print('0: tables: %r' % tables, verbose=3)
+        print('0: tables: %r' % tables, verbose=4)
         join_type = self._final_statement[-1]
         self.complete = False
         try:
@@ -3243,23 +3243,23 @@ class SQL(object):
         i = 0
         skip = False
         for i, word in enumerate(self.words[self.offset:], start=1):
-            print('%d: %r' % (i, word), verbose=3)
+            print('%d: %r' % (i, word), verbose=4)
             self._final_statement.append(word)
             if skip:
                 skip = False
-                print('skipping', verbose=3)
+                print('skipping', verbose=4)
                 continue
             next_word = self.words[self.offset+i:self.offset+i+1]
             next_word = (next_word and next_word[0] or '').upper()
             pair = '%s %s' % (word.upper(), next_word)
             if word.upper() in ('WHERE', 'TO', 'JOIN'):
-                print('upper 1', verbose=3)
+                print('upper 1', verbose=4)
                 self._final_statement[-1] = self._final_statement[-1].upper()
                 if self._final_statement[-1] == 'JOIN':
                     self._final_statement[-1] = 'INNER JOIN'
                 break
             elif pair in ('CROSS JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'OUTER JOIN', 'FULL JOIN', 'ORDER BY'):
-                print('upper 2', verbose=3)
+                print('upper 2', verbose=4)
                 word = pair.replace(' ','_')
                 self._final_statement[-1] = pair
                 i += 1
@@ -3283,8 +3283,8 @@ class SQL(object):
                 self.complete = True
 
         # optimization: move constant clauses to appropriate table's WHERE clause
-        print('optimizing %r' % condition, verbose=3)
-        print(condition_type, verbose=3)
+        print('optimizing %r' % condition, verbose=4)
+        print(condition_type, verbose=4)
         new_condition = []
         last_conjunction = None
         last_tp = None
@@ -3296,13 +3296,13 @@ class SQL(object):
                     raise SQLError('%r cannot follow %r' % (ct1, last_conjunction))
                 last_conjunction = condition[j].upper()
                 j += 1
-            print(condition_type[j:j+3], verbose=3)
+            print(condition_type[j:j+3], verbose=4)
             ct1, _, ct2 = condition_type[j:j+3]
             if ct1 is CONSTANT or ct2 is CONSTANT:
                 term1, op, term2 = condition[j:j+3]
                 where_tp = self._get_tp_from(term1, term2)
-                print('where_tp: %r' % where_tp.where, verbose=3)
-                print('condition: %r' % condition[j:j+3], verbose=3)
+                print('where_tp: %r' % where_tp.where, verbose=4)
+                print('condition: %r' % condition[j:j+3], verbose=4)
                 if last_tp is not None and last_conjunction == 'OR' and where_tp != last_tp:
                     raise SQLError('constant conditions from different tables must be separated by OR')
                 if where_tp.where:
@@ -3320,8 +3320,8 @@ class SQL(object):
                 where_tp.where.append(term1)
                 where_tp.where.append(op)
                 where_tp.where.append(term2)
-                print('where_tp: %r' % where_tp.where, verbose=3)
-                print('where_tp: %r' % where_tp.query, verbose=3)
+                print('where_tp: %r' % where_tp.where, verbose=4)
+                print('where_tp: %r' % where_tp.query, verbose=4)
             else:
                 if last_conjunction is not None:
                     new_condition.append(last_conjunction)
@@ -3332,13 +3332,13 @@ class SQL(object):
         condition = new_condition
 
 
-        print('TBFA: %r' % self.table_by_field_alias, verbose=3)
+        print('TBFA: %r' % self.table_by_field_alias, verbose=4)
         self.offset += i
         # sanity checks
         if not condition and join_type != 'CROSS JOIN':
             raise SQLError('no ON condition in JOIN clause')
         self.joins.append(Join(join_type, left_tp.alias, ' '.join(condition)))
-        print('joins: %r' % self.joins, verbose=3)
+        print('joins: %r' % self.joins, verbose=4)
 
         if word is not None:
             if word.endswith('_JOIN'):
@@ -3350,14 +3350,14 @@ class SQL(object):
         """
         Get sorting order for final results.
         """
-        print('Q_ORDER_BY', verbose=2)
+        print('Q_ORDER_BY', verbose=3)
         self.complete = False
         order_acquired = False
         last_field = None
         order_seen = False
         comma_needed = False
         i = 0
-        print(self.words[self.offset:], verbose=2)
+        print(self.words[self.offset:], verbose=3)
         for i, word in enumerate(self.words[self.offset:], start=1):
             self._final_statement.append(word)
             next_word = self.words[self.offset+i:self.offset+i+1]
@@ -3427,7 +3427,7 @@ class SQL(object):
         # - as
         # - comma
         # - star
-        print('Q_SELECT', verbose=2)
+        print('Q_SELECT', verbose=3)
         self.complete = False
         fields_acquired = False
         last_field = None
@@ -3445,12 +3445,12 @@ class SQL(object):
             self.distinct = True
             i += 1
         for i, word in enumerate(self.words[self.offset+i:], start=i+1):
-            print(i, word, verbose=3)
+            print(i, word, verbose=4)
             self._final_statement.append(word)
             next_word = self.words[self.offset+i:self.offset+i+1]
             next_word = (next_word and next_word[0] or '').upper()
             if word.upper() == 'FROM':
-                print('FROM', verbose=3)
+                print('FROM', verbose=4)
                 if last_field is not None:
                     # last_field -> [table.]field_name
                     field_name = split_fn(last_field)
@@ -3465,7 +3465,7 @@ class SQL(object):
             if comma_needed and word != COMMA:
                 raise SQLError('comma missing between field definitions')
             elif word == COMMA:
-                print('COMMA', verbose=3)
+                print('COMMA', verbose=4)
                 if alias:
                     raise SQLError('missing alias for %r' % last_field)
                 if last_field is not None:
@@ -3479,12 +3479,12 @@ class SQL(object):
                 alias = False
                 comma_needed = False
             elif word.upper() == 'AS':
-                print('AS', verbose=3)
+                print('AS', verbose=4)
                 self._final_statement.pop()
                 alias = True
             elif '.' in word:
                 # word should be a table.field pair
-                print('PERIOD', verbose=2)
+                print('PERIOD', verbose=3)
                 if alias in (None, True):
                     raise SQLError('aliases cannot contain periods [%r]' % word)
                 table, field = word.rsplit('.', 1)
@@ -3514,8 +3514,8 @@ class SQL(object):
             elif alias in (None, True):
                 # word -> alias for field
                 # last_field -> [table.]field_name
-                print('alias is %r' % alias, verbose=3)
-                print('1 tbfa: %r' % self.table_by_field_alias, verbose=3)
+                print('alias is %r' % alias, verbose=4)
+                print('1 tbfa: %r' % self.table_by_field_alias, verbose=4)
                 field_name = split_fn(last_field)
                 self.table_by_field_alias[word] = last_table
                 tables[last_table].fields[word] = field_name
@@ -3524,11 +3524,11 @@ class SQL(object):
                 last_field = None
                 last_table = None
                 comma_needed = True
-                print('2 tbfa: %r' % self.table_by_field_alias, verbose=3)
-                print('2 tables: %r' % self.tables, verbose=3)
+                print('2 tbfa: %r' % self.table_by_field_alias, verbose=4)
+                print('2 tables: %r' % self.tables, verbose=4)
             else:
                 # word -> field name
-                print('saving field name %r' % word, verbose=3)
+                print('saving field name %r' % word, verbose=4)
                 if last_table is not None:
                     raise SQLError('cannot mix table.field syntax with plain field syntax')
                 last_field = word
@@ -3546,9 +3546,9 @@ class SQL(object):
         # for tp in tables:
         #     tp.aliases = self._fields[tp.alias]
         #     self.tables[tp.alias] = tp
-        print('3 tables: %r' % tables, verbose=3)
-        print('3 tbfa: %r' % self.table_by_field_alias, verbose=3)
-        print('3 stmnt: %r  %r' % (self.statement, self._final_statement), verbose=3)
+        print('3 tables: %r' % tables, verbose=4)
+        print('3 tbfa: %r' % self.table_by_field_alias, verbose=4)
+        print('3 stmnt: %r  %r' % (self.statement, self._final_statement), verbose=4)
         next_method = getattr(self, 'q_%s' % word.lower())
         next_method(peos=True)
 
@@ -3556,7 +3556,7 @@ class SQL(object):
         """
         Determine command to run.
         """
-        print('Q_START', verbose=2)
+        print('Q_START', verbose=3)
         word = self.words[0]
         self.offset = 1
         if word.upper() not in (
@@ -3572,7 +3572,7 @@ class SQL(object):
         """
         Where to send final results.
         """
-        print('Q_TO', verbose=2)
+        print('Q_TO', verbose=3)
         word = self.words[self.offset:self.offset+1]
         if not word:
             raise SQLError('no TO destination')
@@ -3590,7 +3590,7 @@ class SQL(object):
         """
         Get filter to select records.
         """
-        print('Q_WHERE (tables=%r)' % self.tables, verbose=2)
+        print('Q_WHERE (tables=%r)' % self.tables, verbose=3)
         self.complete = False
         wheres_acquired = False
         wheres_acquired # XXX
@@ -3600,10 +3600,10 @@ class SQL(object):
         i = 0
         skip = False
         for i, word in enumerate(self.words[self.offset:], start=1):
-            print('%d: %r' % (i, word), verbose=3)
+            print('%d: %r' % (i, word), verbose=4)
             if skip:
                 skip = False
-                print('skipping', verbose=3)
+                print('skipping', verbose=4)
                 continue
             self._final_statement.append(word)
             next_word = self.words[self.offset+i:self.offset+i+1]
@@ -3621,7 +3621,7 @@ class SQL(object):
             # must be part of the condition
             # what type is it?
             ct, word, skip = self._parse_where_term(word, pair)
-            print('ct: %r;  word: %r;  skip: %r' % (ct, word, skip), verbose=3)
+            print('ct: %r;  word: %r;  skip: %r' % (ct, word, skip), verbose=4)
             # combine sequential constants
             if condition and ct is CONSTANT and condition_type[-1] is CONSTANT:
                 prev_word = condition.pop()
@@ -3657,7 +3657,7 @@ class SQL(object):
         # done
         self.where = ' '.join(condition)
         self.one_where = ' '.join(one_where)
-        print('self.where: %r' % self.where, verbose=3)
+        print('self.where: %r' % self.where, verbose=4)
         if word is not None:
             next_method = getattr(self, 'q_%s' % word.lower())
             next_method(peos=True)
@@ -3731,141 +3731,6 @@ def split_tbl(field):
     """
     table, field = field.rsplit('.',1)
     return table
-
-
-## tokenizer
-
-# class Token(object):
-#
-#     def __init__(self, name, payload=None):
-#         self.name = name
-#         self.payload = payload
-#
-#     def __repr__(self):
-#         if self.payload is not None:
-#             return "Token(%r, payload=%r)" % (self.name, self.payload)
-#         else:
-#             return "Token(%r)" % self.name
-#
-#     def __str__(self):
-#         if self.payload is not None:
-#             return "%s(%r)" % (self.name, self.payload)
-#         else:
-#             return self.name
-
-
-# for name in (
-#             'COUNT', 'DELETE', 'DESCRIBE', 'DIFF', 'INSERT', 'SELECT', 'UPDATE',
-#             'AS', 'FROM', 'JOIN', 'ON', 'WHERE', 'ORDER BY', 'ASC', 'DESC', 'TO'
-#             'INTO', 'VALUES', 'SET',
-#             ):
-#     module[name] = Token(name)
-
-
-
-# class Parser(object):
-#     pass
-#
-# class Word(Parser):
-#     pass
-#
-#
-# class NoValue(Enum):
-#
-#     def __repr__(self):
-#         return '<%s.%s>' % (self.__class__.__name__, self.name)
-#
-#
-# class Node(object):
-#     "base object"
-#
-#     parent = None
-#     children = []
-#
-#
-# class Select(Node):
-#     fields = []
-#
-#
-# class From(Node):
-#     table = None
-#
-#
-# class Where(Node):
-#     criteria = None
-#
-#
-# class OrderBy(Node):
-#     fields = None
-#
-#
-# class ParseState(NoValue):
-#     SELECT = auto()
-#     FROM = auto()
-#     WHERE = auto()
-#     ORDER_BY = auto()
-#
-#     # def __init__(self, value):
-#     #     if len(self.__class__):
-#     #         # make links
-#     #         all = list(self.__class__)
-#     #         first, previous = all[0], all[-1]
-#     #         first.beats = self
-#     #         self.beats = previous
-#
-#
-#
-# def parse_sql(command):
-#     # get rid of leading/trailing whitespace
-#     command = command.strip()
-#     # state = ParseState.SELECT
-#     words = []
-#     while command:
-#         word, command = next_word(command)
-#         words.append(word)
-#     print(words)
-#
-# whitespace = ' \t\n'
-#
-# def next_word(command):
-#     "a word either has no spaces, or is surrounded by single quotes"
-#     print(command)
-#     word = []
-#     quoted = False
-#     escape = False
-#     end = False
-#     for i, ch in enumerate(command):
-#         if end and ch not in whitespace:
-#             raise ValueError('run-on word after quote')
-#         if escape:
-#             if ch not in "'\\":
-#                 raise ValueError("only ' and \\ can be escaped")
-#             word.append(ch)
-#             escape = False
-#             continue
-#         if ch in whitespace:
-#             break
-#         if ch == '\\':
-#             escape = True
-#             continue
-#         if ch == "'":
-#             if quoted:
-#                 # end of word
-#                 end = True
-#                 word.append(ch)
-#                 continue
-#             if word:
-#                 # embedded not allowed without escaping
-#                 print(repr(word))
-#                 raise ValueError('embedded quotes must be escaped')
-#             word.append(ch)
-#             quoted = True
-#             continue
-#         word.append(ch)
-#     command = command[i+1:].lstrip()
-#     return ''.join(word), command
-
-# Run()
 
 
 ## SQL Query examples
