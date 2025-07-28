@@ -10,18 +10,18 @@ import warnings
 from abc import ABCMeta, abstractmethod
 from aenum import Enum, Flag, NamedConstant, NamedTuple
 from antipathy import Path
+from BBxXlate.fisData import fisData
 from dbf import Date, DateTime, Time, Table, READ_WRITE
 from dbf import NoneType, NullType, Char, Logical
-from fnx_script_support import grouped_by_column
+from enhlib.itertools import grouped_by_column
 from openerplib import DEFAULT_SERVER_DATE_FORMAT, get_records, get_xid_records, XidRec
 from openerplib import Fault, PropertyNames, IDEquality, ValueEquality, Many2One, SetOnce
 from scription import print, echo, error, ViewProgress, script_verbosity, abort, empty
 from traceback import format_exception
-from VSS.address import cszk, Rise, Sift, AddrCase, BsnsCase, NameCase, PostalCode
-from VSS.BBxXlate.fisData import fisData
-from VSS.utils import all_equal, LazyClassAttr
+from fislib.address import cszk, Rise, Sift, AddrCase, BsnsCase, NameCase, PostalCode
+from fislib.utils import all_equal, LazyClassAttr
 
-virtualenv = os.environ['VIRTUAL_ENV']
+virtualenv = os.environ.get('VIRTUAL_ENV', '/opt/openerp')
 
 class K(NamedConstant):
     OE7 = 0
@@ -1990,10 +1990,10 @@ class Model(object):
 
 
 class FISenum(str, Enum):
-
+    #
     _init_ = 'value sequence'
     _order_ = lambda m: m.sequence
-
+    #
     FIS_names = LazyClassAttr(set)
     FIS_sequence = LazyClassAttr(dict)
 
@@ -2014,6 +2014,18 @@ class FISenum(str, Enum):
         cls.FIS_sequence[sequence] = enum
         return enum
 
+    def __init_subclass__(cls):
+        return
+        key, name, number = cls._table_info
+        cls.FISkey = key
+        cls.FISname = name
+        cls.FISnumber = number
+        del cls._table_info
+        if name:
+            FISenum.tables[name] = cls
+        if number:
+            FISenum.tables[number] = cls
+
     def __repr__(self):
         return "<%s.%s>" % (self.__class__.__name__, self._name_)
 
@@ -2023,6 +2035,14 @@ class FISenum(str, Enum):
             return cls.FIS_sequence[sequence]
         except KeyError:
             raise AttributeError('unable to find sequence %r in %r' % (sequence, cls.FIS_sequence))
+
+    class Info(object):
+        def __init__(self, key, name, number=None):
+            self.key = key
+            self.name = name
+            self.number = number
+        def __get__(self):
+            return self.key, self.name, self.number
 
 
 class allow_exception(object):
@@ -2131,24 +2151,24 @@ def get_next_filename(name, limit=99):
 
 
 recipe_sentinels = (
-        'Cooking',
-        'COOKING',
-        'DIRECTIONS',
-        'INSTRUCTIONS',
-        'RECIPE',
-        'SUGGESTED',
+        r'Cooking',
+        r'COOKING',
+        r'DIRECTIONS',
+        r'INSTRUCTIONS',
+        r'RECIPE',
+        r'SUGGESTED',
         )
 
 new_line_sentinels = (
-        'ANTIOXIDANTS',
-        'CONTAINS',
-        'Manufactured',
-        '\(May contain',
-        'CAUTION',
-        'COUNTRY',
-        '[A-Z]+ MAY CONTAIN',
-        'Product processed',
-        '\d\d?%',
+        r'ANTIOXIDANTS',
+        r'CONTAINS',
+        r'Manufactured',
+        r'\(May contain',
+        r'CAUTION',
+        r'COUNTRY',
+        r'[A-Z]+ MAY CONTAIN',
+        r'Product processed',
+        r'\d\d?%',
         
         )
 def usps_street_suffix(word):

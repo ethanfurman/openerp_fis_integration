@@ -669,8 +669,8 @@ class F219(FISenum):
     taxable             = 'Kn$(11,1)',  22     # TAXABLE?
     carrier_id          = 'Kn$(12,2)',  23     # Carrier Code
     voucher_no          = 'Kn$(14,6)',  24     # Voucher Number
-    wrhse               = 'Kn$(20,4)',  25     # WAREHOUSE (I/C)
-    wrhse               = 'Kn$(24,4)',  26     # WAREHOUSE (DEL)
+    wrhse_ic            = 'Kn$(20,4)',  25     # WAREHOUSE (I/C)
+    wrhse_del           = 'Kn$(24,4)',  26     # WAREHOUSE (DEL)
     fob_id              = 'Kn$(28,2)',  27     # FOB CODE
     po_type             = 'Kn$(30,2)',  28     # P/O Type
     used                = 'Kn$(32,1)',  29     # Used

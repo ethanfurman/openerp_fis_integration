@@ -2588,7 +2588,7 @@ class OrmFile(object):
         name = name.strip().lower()
         if not name[0].isalpha():
             raise OrmError('OrmFile %r: names must start with a letter (got %r)' % (self._filename, name, ))
-        if re.sub('\w*', '', name):
+        if re.sub(r'\w*', '', name):
             # illegal characters in name
             raise OrmError('OrmFile %r: names can only contain letters, digits, and the underscore [%r]' % (self._filename, name))
         return name
@@ -2598,7 +2598,7 @@ class OrmFile(object):
         current_section = sections[-1]
         if not current_section[0].isalpha():
             raise OrmError('OrmFile %r: names must start with a letter' % (self._filename, ))
-        if re.sub('\w*', '', current_section):
+        if re.sub(r'\w*', '', current_section):
             # illegal characters in section
             raise OrmError('OrmFile %r: names can only contain letters, digits, and the underscore [%r]' % (self._filename, current_section))
         if current_section in self.__dict__:
@@ -3354,7 +3354,7 @@ def box(message, *style, **kwds):
         border = 'box'
         chars = style
     lines = message.split('\n')
-    width = max([len(re.sub('\x1b\[[\d;]*\w', '', l)) for l in lines])
+    width = max([len(re.sub(r'\x1b\[[\d;]*\w', '', l)) for l in lines])
     if not chars:
         top = bottom = '-'
         left = right = '|'
@@ -3601,7 +3601,7 @@ def print(*values, **kwds):
             for v in values:
                 v = str(v)
                 old_values.append(v)
-                v = re.sub('\x1b\[[\d;]*\w', '', v)
+                v = re.sub(r'\x1b\[[\d;]*\w', '', v)
                 new_values.append(v)
             if not is_tty:
                 values = new_values
@@ -3614,7 +3614,7 @@ def print(*values, **kwds):
                 for v in values:
                     for data in v:
                         if not is_tty:
-                            data = re.sub('\x1b\[[\d;]*\w', '', data)
+                            data = re.sub(r'\x1b\[[\d;]*\w', '', data)
                         _print(data, **kwds)
                         target.flush()
             else:
