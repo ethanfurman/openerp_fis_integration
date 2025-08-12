@@ -4,6 +4,7 @@ import os, logging
 from . import bbxfile
 from .bbxfile import BBxFile, getfilename, TableError
 from antipathy import Path
+from enhlib.misc import basestring, baseinteger
 from scription import Var, OrmFile
 import re
 import sys
@@ -270,10 +271,10 @@ if __name__ == '__main__':
         int_keys = []
         str_keys = []
         target_tables = table
-        for k in sorted(tables.keys()):
+        for k in sorted(tables.keys(), key=lambda k: isinstance(k, baseinteger) and (0, str(k)) or (1, k)):
             if isinstance(k, basestring):
                 str_keys.append(k)
-            elif isinstance(k, (int, long)):
+            elif isinstance(k, baseinteger):
                 int_keys.append(k)
             else:
                 raise ValueError('invalid key type: %r is %r' % (k, type(k)))

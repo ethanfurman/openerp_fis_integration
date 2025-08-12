@@ -5,12 +5,12 @@ from __future__ import print_function
 
 from antipathy import Path
 from collections import OrderedDict
+from enhlib.misc import baseinteger, unicode
 from scription import Var
 from stat import ST_MTIME
 import logging
 import os
 import re
-import string
 import warnings
 
 _logger = logging.getLogger('BBx')
@@ -27,15 +27,14 @@ class MissingTableError(TableError):
 
 
 def asc(strval):                    ##USED in bbxfile
+    if isinstance(strval, baseinteger):
+        return strval
     if len(strval) == 0:
         return 0
     elif len(strval) == 1:
-        try:
-            return ord(strval)
-        except:
-            return long(ord(strval))
+        return strval[0]
     else:
-        return 256*(asc(strval[:-1]))+ord(strval[-1])
+        return 256*(asc(strval[:-1]))+strval[-1]
 
 # injected from fisData
 tables = None
@@ -49,7 +48,7 @@ def applyfieldmap(record, fieldmap):
     fieldmapkeys = fieldmap.keys()
     fieldmapkeys.sort()
     for item in fieldmapkeys:
-        fieldparams = string.split(item,".")
+        fieldparams = item.split(".")
         field = int(fieldparams[0])
         startpos = endpos = ''
         if len(fieldparams) > 1:
@@ -61,20 +60,20 @@ def applyfieldmap(record, fieldmap):
     return retval
 
 
-def unicode_strip(text=u''):
-    return unicode(text).strip()
+def unicode_strip(text=b''):
+    return text.decode('ascii').strip()
 
-def Int(text=''):
+def Int(text=b''):
     if not text.strip():
         return 0
     return int(float(text))
 
-def Float(text=''):
+def Float(text=b''):
     if not text.strip():
         return 0.0
     return float(text)
 
-def IntFloat(text=''):
+def IntFloat(text=b''):
     if not text.strip():
         return 0
     try:
@@ -127,7 +126,7 @@ class BBxRec(object):
         return NotImplemented
 
     def __getitem__(self, ref):
-        if isinstance(ref, (int, long)):
+        if isinstance(ref, baseinteger):
             ref, mask = self.fieldlist[ref][3:5]
             ref = [ref]
             masks = [mask]
@@ -299,16 +298,19 @@ class BBxFile(object):
                     fixedLengthFields.add(name)
             corrupted = 0
             for ky, rec in getfile(srcefile, nulls_only=nulls_only).items():
+                # incoming parameters (datamap, fieldlist, etc.) are in unicode
+                # except rectype[0] which is bytes; ky and rec are also bytes
+                ky = ky.decode('ascii')
                 if not raw:
                     if nulls_only:
                         if not acceptable(ky):
-                        # if rectype and ky[start:stop] not in tokens:
                             continue
                     else:
                         try:
                             if len(ky) != fieldlengths[0] or not acceptable(ky):
                                 continue    # record is not a match for this table
                         except TypeError:
+                            raise
                             continue
                         except:
                             raise UnknownTableError()
@@ -318,7 +320,7 @@ class BBxFile(object):
                     records[ky] = rec
                     continue
                 # verify ky is present in record
-                if ky != rec.rec[0]:
+                if ky != rec.rec[0].decode('ascii'):
                     corrupted += 1
                     continue
                 if filter:
@@ -522,25 +524,25 @@ def getfile(filename, fieldmap=None, nulls_only=False):
     blocksize = 512
     reclen = int(asc(data[13:15]))
     reccount = int(asc(data[9:13]))
-    keylen = ord(data[8])
-    filetype = ord(data[7])
+    keylen = asc(data[8])
+    filetype = asc(data[7])
     report('filetype: %r' % (filetype, ))
     empty_records = 0
     keychainkeycount = 0
     keychainkeys = {}
     if filetype == 6:           # MKEYED
-        ord(data[116])
+        asc(data[116])
         for fblock in range(0,len(data),blocksize):         # sniff out a key block...
             if data[fblock] != '\0' \
               and data[fblock+1] == '\0' \
               and data[fblock+5] != '\0':
-                keysinthiskeyblock = ord(data[fblock])      # ... then parse and follow the links to the records
+                keysinthiskeyblock = asc(data[fblock])      # ... then parse and follow the links to the records
                 keychainkeycount = keychainkeycount + keysinthiskeyblock
                 for thiskey in range(fblock+5,fblock+5+keysinthiskeyblock*(keylen+8),keylen+8):
-                    keychainkey =  string.split(data[thiskey:thiskey+keylen],'\0',1)[0]
-                    keychainrecblkptr = int(asc(data[thiskey+keylen:thiskey+keylen+3]) / 2)
-                    keychainrecbyteptr = int(256*(asc(data[thiskey+keylen:thiskey+keylen+3]) % 2) + ord(data[thiskey+keylen+3]))
-                    keychainrec = string.split(data[keychainrecblkptr*512+keychainrecbyteptr:keychainrecblkptr*512+keychainrecbyteptr+reclen],'\n')
+                    keychainkey =  data[thiskey:thiskey+keylen].split(b'\0',1)[0]
+                    keychainrecblkptr = int(asc(data[thiskey+keylen:thiskey+keylen+3]) // 2)
+                    keychainrecbyteptr = int(256*(asc(data[thiskey+keylen:thiskey+keylen+3]) % 2) + asc(data[thiskey+keylen+3]))
+                    keychainrec = data[keychainrecblkptr*512+keychainrecbyteptr:keychainrecblkptr*512+keychainrecbyteptr+reclen].split(b'\n')
                     tail = keychainrec[-1]
                     if tail != '\x00' * len(tail):
                         lost_data[filename] = tail
@@ -559,12 +561,12 @@ def getfile(filename, fieldmap=None, nulls_only=False):
                         keychainkeys[keychainkey] = keychainrec
     elif filetype == 2:         # DIRECT
         seen_keys = set()
-        keysperblock = ord(data[62])
+        keysperblock = asc(data[62])
         report('keys per block: %r' % keysperblock)
-        #x#keyareaoffset = ord(data[50])+1
+        #x#keyareaoffset = asc(data[50])+1
         keyareaoffset = int(asc(data[49:51]))+1
         report('key area offset: %r' % keyareaoffset)
-        keyptrsize = ord(data[56])
+        keyptrsize = asc(data[56])
         report('key ptr size: %r' % keyptrsize)
         nextkeyptr = int(asc(data[24:27]))
         report('next key ptr: %r' % nextkeyptr)
@@ -572,7 +574,7 @@ def getfile(filename, fieldmap=None, nulls_only=False):
         report('net key len: %r' % netkeylen)
         keylen = netkeylen + 3*keyptrsize
         report('key len: %r' % keylen)
-        dataareaoffset = keyareaoffset + reccount / keysperblock + 1
+        dataareaoffset = keyareaoffset + reccount // keysperblock + 1
         report('data area offset: %r' % dataareaoffset)
         while nextkeyptr > 0:
             if nextkeyptr in seen_keys:
@@ -581,10 +583,10 @@ def getfile(filename, fieldmap=None, nulls_only=False):
             else:
                 seen_keys.add(nextkeyptr)
             lastkeyinblock = not(nextkeyptr % keysperblock)
-            thiskeyptr = (keyareaoffset + (nextkeyptr/keysperblock) - lastkeyinblock)*blocksize + (((nextkeyptr % keysperblock)+(lastkeyinblock*keysperblock))-1)*keylen
-            keychainkey = string.split(data[thiskeyptr:thiskeyptr+netkeylen],'\0',1)[0]
+            thiskeyptr = (keyareaoffset + (nextkeyptr//keysperblock) - lastkeyinblock)*blocksize + (((nextkeyptr % keysperblock)+(lastkeyinblock*keysperblock))-1)*keylen
+            keychainkey = data[thiskeyptr:thiskeyptr+netkeylen].split(b'\0',1)[0]
             thisdataptr = dataareaoffset*blocksize + (nextkeyptr-1)*reclen
-            keychainrec = string.split(data[thisdataptr:thisdataptr+reclen],'\n')
+            keychainrec = data[thisdataptr:thisdataptr+reclen].split(b'\n')
             tail = keychainrec[-1]
             if tail != '\x00' * len(tail):
                 lost_data[filename] = tail
@@ -605,21 +607,21 @@ def getfile(filename, fieldmap=None, nulls_only=False):
             keychainkeycount = keychainkeycount + 1
     elif filetype == 0:         # INDEXED
         for i in range(15, reccount*reclen, reclen):
-            keychainrec = string.split(data[i:i+reclen],'\n')[:-1]
+            keychainrec = data[i:i+reclen].split(b'\n')[:-1]
             keychainrec = applyfieldmap(keychainrec, fieldmap)
             keychainkeys[keychainkeycount] = keychainrec
             keychainkeycount = keychainkeycount + 1
     else:
         #hexdump(data)
         raise UnknownFileTypeError(filetype)
-    report('%d records expected' % reccount)
+    report('%d records expected/available' % reccount)
     report('%d useful records found' % len(keychainkeys))
     report('%d empty records found' % empty_records)
     report('------------------------\n%d total records\n------------------------' % (len(keychainkeys)+empty_records))
     if updated_data:
-        report('%d records with updated keys  (e.g. %r)' % (len(updated_data), updated_data.values()[0]))
+        report('%d records with updated keys  (e.g. %r)' % (len(updated_data), list(updated_data.values())[0]))
     if lost_data:
-        report('%d records with lost data  (e.g. %r)' % (len(lost_data), lost_data.values()[0]))
+        report('%d records with lost data  (e.g. %r)' % (len(lost_data), list(lost_data.values())[0]))
 
     return keychainkeys
 
@@ -638,7 +640,7 @@ else:
 
     config = '%s/config/fnx.fis.conf' % os.environ.get('VIRTUAL_ENV', '/opt/openerp')
     ns = {'Path': Path}
-    execfile(config, ns)
+    exec(open(config).read(), ns)
     DATA = ns['DATA']
     CID = ns['CID']
 
@@ -646,7 +648,7 @@ else:
             file=Spec('file file(s) to examine', MULTI, type=unicode.upper),
             type=Spec('storage type to process', OPTION, type=int),
             )
-    @Alias('bbxfile.py')
+    @Alias('_bbxfile_3.py')
     def self_test(file, type):
         "display info about selected files"
         if file:
