@@ -24,7 +24,7 @@ script_verbosity = 0
 def get_script_mapping():
     FIS_mapping = defaultdict(list)
     # load the files and extract the mappings
-    candidates = [p for p in Path(__file__).dirname.glob('*_mapping.py')]
+    candidates = [p for p in Path(__file__).dirname.glob('*mapping.py')]
     print('potential info files: %s' % ', '.join(candidates), verbose=2)
     for data in candidates:
         info = {}

@@ -3,7 +3,7 @@
 srf:
 	# copy schema and related files
 	echo data = \"\"\" > fis-oe.source/BBxXlate/schema.py
-	cat /opt/FIS/Falcon_FIS_SCHEMA >> fis-oe.source/BBxXlate/schema.py
+	cat /opt/falcon/Falcon_FIS_SCHEMA >> fis-oe.source/BBxXlate/schema.py
 	echo \"\"\".split\(\"'\\n'\"\) >> fis-oe.source/BBxXlate/schema.py
 	cp ./fis_oe_converters.py fis-oe.source/fislib/fis_oe_converters.py
 	cp ./fis_schema.py fis-oe.source/fislib/schema.py
@@ -26,13 +26,13 @@ srf:
 whc:
 	# copy schema and related files
 	echo data = \"\"\" > fis-oe.source/BBxXlate/schema.py
-	cat /opt/FIS/WholeHerb_FIS_SCHEMA >> fis-oe.source/BBxXlate/schema.py
+	cat /opt/whc/WholeHerb_FIS_SCHEMA >> fis-oe.source/BBxXlate/schema.py
 	echo \"\"\".split\(\"'\\n'\"\) >> fis-oe.source/BBxXlate/schema.py
 	cp /opt/whc/openerp/addons/wholeherb_integration/scripts/fis_oe_converters.py fis-oe.source/fislib/fis_oe_converters.py
 	cp /opt/whc/openerp/addons/wholeherb_integration/scripts/fis_schema.py fis-oe.source/fislib/schema.py
 	cp /opt/whc/openerp/addons/wholeherb_integration/scripts/updates.py fis-oe.source/fislib/__init__.py
 	cp /opt/whc/openerp/addons/wholeherb_integration/scripts/updates_mapping.py fis-oe.source/fislib/mapping.py
-	rm fis-oe.source/fislib/recipe.py
+	rm fis-oe.source/fislib/recipe.py || true
 	# copy python2 pytz package
 	rm -rf fis-oe.source/pytz
 	rsync --archive fis-oe.mixins/pytz2/* fis-oe.source/pytz
@@ -43,7 +43,7 @@ whc:
 	rm -rf fis-oe.source/pytz
 	rsync --archive fis-oe.mixins/pytz3/* fis-oe.source/pytz
 	# create new version
-	/usr/local/bin/pyzapp create fis-oe.source --force --output fis-oe2 --shebang "/usr/bin/env python3"
+	/usr/local/bin/pyzapp create fis-oe.source --force --output fis-oe3 --shebang "/usr/bin/env python3"
 
 
 install-srf:
@@ -54,8 +54,11 @@ install-srf:
 
 install-whc:
 	# whc-oe
-	scp fis-oe2 root@whc-oe:/usr/local/bin/fis-oe
+	sudo cp fis-oe /usr/local/bin/whc-fis-oe
+	sudo cp fis-oe3 /usr/local/bin/whc-fis-oe3
+	scp fis-oe root@whc-oe:/usr/local/bin/fis-oe2
+	scp fis-oe3 root@whc-oe:/usr/local/bin/fis-oe
 	# whc-fis
-	scp fis-oe2 root@192.168.2.2:/usr/local/bin/fis-oe
-	scp fis-oe3 root@192.168.2.2:/usr/local/bin/fis-oe3
+	# scp fis-oe2 root@192.168.2.2:/usr/local/bin/fis-oe
+	# scp fis-oe3 root@192.168.2.2:/usr/local/bin/fis-oe3
 
