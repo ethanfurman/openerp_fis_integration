@@ -7,9 +7,10 @@ from antipathy import Path
 from ast import literal_eval
 from collections import defaultdict
 from enhlib.text import translator
+from enhlib.misc import baseinteger, basestring
 from fislib import schema as fis_schema
 from fislib.schema import F135
-from fis_oe.sql import ALL_ACTIVE, Fault, FISTable, SQL, SQLError, Table, convert_name, ensure_fis
+from fis_oe.sql import ALL_ACTIVE, Fault, FISTable, SQL, SQLError, Table, convert_name, ensure_fis, init_fis
 from fis_oe import sql as sequel
 from openerplib import get_connection, get_records, AttrDict, Query, MissingTable
 import threading
@@ -81,12 +82,12 @@ def main(hostname, database, show_ids, fis_location):
     if 'fis_imports' in sections:
         if fis_location != 'remote':
             LOCAL_FIS = True
-    from fis_oe.sql import fd, TableError
+    sequel.init_fis()
     sequel.oe = oe
     sequel.script_verbosity = script_verbosity
     sequel.SHOW_ID = SHOW_ID
     sequel.ensure_oe = ensure_oe
-    sequel.init_fis()
+    from fis_oe.sql import fd, TableError
 
 @Command(
         command=('sql command', REQUIRED),
@@ -96,7 +97,7 @@ def main(hostname, database, show_ids, fis_location):
         legacy=Spec('use use original code', FLAG),
         sheet=Spec('sheet name if writing excel file', OPTION, None),
         )
-@Alias('fis-oe')
+@Alias('fis-oe','whc-fis-oe3','whc-fis-oe','fis-oe3')
 def sql(command, separator, wrap, quiet, legacy, sheet):
     """
      Query FIS/OpenERP databases.
@@ -701,7 +702,7 @@ def field_check(filenum, which):
             filenum = int(filenum)
         files = [filenum]
     else:
-        files = [k for k in fd.tables if isinstance(k, (int, long))]
+        files = [k for k in fd.tables if isinstance(k, baseinteger)]
     for filenum in files:
         print('file: %s' % (filenum,), end=' ', verbose=0)
         try:
@@ -918,7 +919,7 @@ def records(filenum, template, code, fields, dbf_name, tabular, regex, test, che
         records = fis_table.get_rekey(code) or []
     else:
         fis_table = fd.fisData(filenum, subset=template, data_path=target_path)
-        print('using subset and file', fis_table.filename, 'in', target_path or config.network.fis_data_local_path)
+        print('using subset %r and file %r in %r' % (template, fis_table.filename, target_path or config.network.fis_data_local_path))
         records = [v for k, v in fis_table.get_subset(code)]
     if test:
         try:
@@ -1084,12 +1085,12 @@ def tables():
     """
     FIS: list tables.
     """
-    keys = [k for k in fd.tables.keys() if isinstance(k, (int,long))]
+    keys = [k for k in fd.tables.keys() if isinstance(k, baseinteger)]
     # template = '%4d: %s%s'
     numerical = True
     if len(keys) < 10:
         # go with alpha table names
-        keys = [k for k in fd.tables.keys() if not isinstance(k, (int,long))]
+        keys = [k for k in fd.tables.keys() if not isinstance(k, baseinteger)]
         # template = '%s: %s'
         numerical = False
     keys.sort()
