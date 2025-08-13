@@ -230,6 +230,9 @@ table_keys = {
         'nvty'  : (135, 'NVTY', r'(......)101000    101\*\*'),   # products
         'posm'  : (163, 'POSM', r'10(......)'),                  # vendors
         'vnms'  : ( 65, 'VNMS', r'10(......)'),                  # purchasers
+        # 'rderh' : ('RDERH', 'RDERH', r'10(......)..0000'),          # order header part 1
+        # 'rderi' : ('RDERI', 'RDERI', r'10(......)..0001'),          # order header part 2
+        # 'rderd' : ('RDERD', 'RDERD', r'10(......)..1   '),          # order detail
         }
 
 ## functions
@@ -246,6 +249,8 @@ def convert_name(name, max_len, existing_names=()):
     if '(' in name:
         name = name.split('(')[0]
     name = name.replace('.', '')
+    if not name:
+        return name
     for text in (' code', ' codes'):
         if name.endswith(text):
             name = name[:-len(text)+1] + 'id' + ('', 's')[text[-1] == 's']
@@ -261,6 +266,18 @@ def convert_name(name, max_len, existing_names=()):
         name = 'key type'
     members = []
     # name substitution
+    if name.endswith('%'):
+        if name[-2:-1] == ' ':
+            name = name[:-1] + 'percent'
+        else:
+            name = name[:-1] + '_percent'
+    elif name.startswith('%'):
+        if name[1:2] == ' ':
+            name = 'percent' % name[1:]
+        else:
+            name = 'percent_' % name[1:]
+    elif '%' in name:
+        name = name.replace('%', 'percent')
     for i, piece in enumerate(re.sub('\W+', ' ', name).split()):
         if i == 0 and piece[0].isdigit():
             piece = numbers.get(piece, piece)
@@ -292,13 +309,17 @@ def convert_name(name, max_len, existing_names=()):
         if name not in existing_names:
             break
         else:
-            suffix = str(suffix)
-            name = name[:-1] + suffix
+            suffix = '_%s' % suffix
+            if name[-1].isdigit():
+                name = name[:-1]
+            if name[-1] == '_':
+                name = name[:-1]
+            name += suffix
     else:
         # name still taken
         raise Exception(
-                'unable to convert %r\nexisting names: '
-                % (original_name, ', '.join(existing_names)
+                'unable to convert %r (final attempt: %r)\nexisting names: %r'
+                % (original_name, name, ', '.join(existing_names)
                 ))
     return name
 
@@ -1146,7 +1167,7 @@ class FISTable(Table):
             #     if spec.startswith('An$'):
             #         count += int(spec.split(',')[1].strip(')'))
             # self.pat = '.' * count
-        self.table = fd.fisData(self.num)
+        self.table = fd.fisData(self.num or self.name)
         # get human-usable field names
         fields_by_name = {}
         fields_by_number = {}
@@ -1154,7 +1175,7 @@ class FISTable(Table):
         for i, field in enumerate(self.table.fieldlist, start=1):
             name, spec = field[1:4:2]
             comment = name
-            name = convert_name(name, 50)
+            name = convert_name(name, 50, fields_by_name)
             fields_by_name[name] = i, name, spec, comment
             fields_by_number[i] = i, name, spec, comment
             fields_and_alias[name] = spec
@@ -1216,7 +1237,7 @@ class FISTable(Table):
                 index = 0
             else:
                 raise SQLError('unknown ORDER BY: %r' % order)
-        defs = sorted(self._fields_by_name.values(), key=lambda t: t[index])
+        defs = sorted(self._fields_by_number.values(), key=lambda t: t[index])
         sq = SimpleQuery(('index', 'name','spec','comment'))
         for d in defs:
             sq.records.append(AttrDict(*zip(('index','name','spec','comment'), d)))
@@ -1336,7 +1357,6 @@ class FISTable(Table):
         # at this point we have the fields, and the table -- get the records
         #
         sq = SimpleQuery(header, aliased=field_verbose, to=imprimido)
-        error(seleccion, field_verbose, donde, constraints, sep='\n')
         sq.records.extend(self._records(seleccion, field_verbose, donde, constraints))
         for o in reversed(orden):
             o = o.split()
@@ -2274,12 +2294,11 @@ class Join(object):
             return NotImplemented
         return self.type != other.type or self.table_name != other.table_name or self.condition != other.condition
 
-    condition_match = staticmethod(
-            Var(lambda condition: re.match(
+    condition_match = Var(lambda self, condition: re.match(
                 r"^(\S+)\s*(is not|is|not in|in|like|=like|not like|ilike|=ilike|not ilike|<=|>=|!=|=)\s*(\S+)$",
                 condition,
                 flags=re.I
-                )))
+                ))
 
     def add_condition(self, condition):
         pass
