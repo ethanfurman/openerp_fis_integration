@@ -29,8 +29,8 @@ fd = TableError = None
 def init_fis():
     global fd, TableError
     try:
-        from BBxXlate import fisData as fd
-        from BBxXlate.bbxfile import TableError
+        from fislib.BBxXlate import fisData as fd
+        from fislib.BBxXlate.bbxfile import TableError
         fd.init()
     except IOError as e:
         error(e)
@@ -230,9 +230,9 @@ table_keys = {
         'nvty'  : (135, 'NVTY', r'(......)101000    101\*\*'),   # products
         'posm'  : (163, 'POSM', r'10(......)'),                  # vendors
         'vnms'  : ( 65, 'VNMS', r'10(......)'),                  # purchasers
-        # 'rderh' : ('RDERH', 'RDERH', r'10(......)..0000'),          # order header part 1
-        # 'rderi' : ('RDERI', 'RDERI', r'10(......)..0001'),          # order header part 2
-        # 'rderd' : ('RDERD', 'RDERD', r'10(......)..1   '),          # order detail
+        'rderh' : ('RDERH', 'RDERH', r'10(......)..0000'),       # order header part 1
+        'rderi' : ('RDERI', 'RDERI', r'10(......)..0001'),       # order header part 2
+        'rderd' : ('RDERD', 'RDERD', r'10(......)..1...'),       # order detail
         }
 
 ## functions
