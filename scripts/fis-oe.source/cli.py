@@ -885,8 +885,9 @@ def product_forecast(*items):
         test=Spec('output in format usable by test_scripts', FLAG, abbrev=None),
         check_old=Spec('use older version of data files', FLAG, None),
         table=Spec('show output in a table', FLAG, None),
+        show_raw=Spec('show raw record', FLAG, None),
         )
-def records(filenum, template, code, fields, dbf_name, tabular, regex, test, check_old, table):
+def records(filenum, template, code, fields, dbf_name, tabular, regex, test, check_old, table, show_raw):
     """
     FIS: display complete records according to criteria.
     """
@@ -919,22 +920,22 @@ def records(filenum, template, code, fields, dbf_name, tabular, regex, test, che
         records = fis_table.get_rekey(code) or []
     else:
         fis_table = fd.fisData(filenum, subset=template, data_path=target_path)
-        print('using subset %r and file %r in %r' % (template, fis_table.filename, target_path or config.network.fis_data_local_path))
+        print('using subset %r and file %r' % (template, fis_table.filename))
         records = [v for k, v in fis_table.get_subset(code)]
     if test:
         try:
             enum = getattr(fis_schema, 'F%d' % fis_table.number)
         except AttributeError:
             abort('Table %r has no file number, unable to generate test output' % fis_table.filename)
-    print('  found %d records' % (len(records), ))
+    print('found %d records' % (len(records), ))
     used_fields = []
     table_names = []
     if records:
         # get field defs now, may be needed for dbf creation
         record = records[0]
         print('widths:', record._widths, verbose=2)
+        max_value_width = max(record._widths)
         # max_data_width = record._width
-        max_spec_width = 0
         field_widths = []
         dbf_types = []
         dbf_names = []
@@ -943,15 +944,10 @@ def records(filenum, template, code, fields, dbf_name, tabular, regex, test, che
         else:
             fis_fields = list(enumerate(record.fieldlist))
         for i, row in fis_fields:
-            # j = i + 1
-            print('checking for %d' % (i, ), end='... ', verbose=2)
-            # if not fields or i in fields:
-            print('keeping', end='', verbose=2)
             name, spec = row[1:4:2]
             if not name.strip() or name.strip().lower() == '(open)':
                 continue
             table_names.append(name)
-            max_spec_width = max(max_spec_width, len(spec.strip()))
             width = fis_table.field_widths[i]
             field_widths.append(width)
             field_name = convert_name(name, 10, dbf_names)
@@ -963,7 +959,6 @@ def records(filenum, template, code, fields, dbf_name, tabular, regex, test, che
             else:
                 dbf_types.append('%s N(17,5)' % field_name)
                 used_fields.append((i, float))
-            print(verbose=2)
         if dbf_name:
             print('dbf fields:\n  ', '\n   '.join(dbf_types))
             table = dbf.Table(dbf_name, dbf_types).open(dbf.READ_WRITE)
@@ -975,11 +970,13 @@ def records(filenum, template, code, fields, dbf_name, tabular, regex, test, che
             field_data = tuple(record[i] for i in fields)
             output.append(field_data)
             # for i, row in enumerate(fis_fields):
-            lines = format_record(record, fields)
+            lines = format_record(record, fields, max_value_width)
             if test:
                 for i, datum in zip(fields, field_data):
                     echo('%s: %s,' % (enum[i-1], repr(datum).strip('u')))
             elif not dbf_name and not tabular and not show_table and not test and lines:
+                if show_raw:
+                    echo(record.rec, '\n')
                 echo('\n'.join(lines))
                 try:
                     ans = input('[Continue|Quit]', default='continue')
@@ -1181,12 +1178,12 @@ def ensure_oe():
     if oe is None:
         abort('OpenERP is not running; only FIS functions/tables available.')
 
-def format_record(record, fields=None):
+def format_record(record, fields=None, max_width=None):
     # record: the fis record to format
     # fields: list of ints, or list of (int, record)s
     lines = []
     name_width = 11
-    value_width = 40
+    value_width = max_width or 40
     mask_width = 0
     fieldlist = record.fieldlist
     if not fields:
