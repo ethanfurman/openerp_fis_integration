@@ -2,19 +2,19 @@ from __future__ import print_function
 
 from aenum import Enum, NamedTuple
 from dbf import Date, DateTime, Time
-from schema import F8, F11, F27, F33, F34, F47, F65, F74, F97, F135
-from schema import F163, F192, F257, F262, F320, F322, F328, F329, F341
+from fislib.address import NameCase, BsnsCase
+from fislib.utils import fix_phone, fix_date
 from openerplib import local_to_utc
 from openerplib import AttrDict, Many2One, XidRec, Phone
-from recipe import ignored_ingredients
-from scription import echo, error, print
-from tools import Synchronize, SynchronizeAddress, XmlLink, ProductLabelDescription, odoo_erp, Odoo13, PsuedoFisTable
-from VSS.address import NameCase, BsnsCase
-    # from VSS.BBxXlate.fisData import fisData
-from VSS.utils import fix_phone, fix_date
+from .recipe import ignored_ingredients
+from .schema import F8, F11, F27, F33, F34, F47, F65, F74, F97, F135
+from .schema import F163, F192, F257, F262, F320, F322, F328, F329, F341
+from .tools import Synchronize, SynchronizeAddress, XmlLink, ProductLabelDescription, odoo_erp, Odoo13, PsuedoFisTable
+from . import tools
 import math
 import re
-import tools
+
+from scription import echo, error, print
 
 __all__ = [
         'ARCI',
