@@ -686,7 +686,7 @@ def merge(main_model, selection, primary, duplicates):
             echo('\n\n')
         elif not error:
             print("  deleting", rec, verbose=2)
-            main_model.unlink(rec.id)
+            main_model.unlink([rec.id])
     return errors
 
 def pick_one(records, prefer):
