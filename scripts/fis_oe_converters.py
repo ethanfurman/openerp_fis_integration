@@ -1598,7 +1598,7 @@ class NVTY(Synchronize):
         item.fis_availability_code = fis_rec[F135.available_key] or None
         # sale_ok actually tracks whether item is in the catalog with a Y, P, or W code
         item.sale_ok = self.in_catalog(fis_rec)
-        item.fis_date_first_sold = fis_rec[F135.first_sale_dt] or None
+        item.fis_date_first_sold = fix_date(fis_rec[F135.first_sale_dt], format='ymd')
         item.trademarks = fis_rec[F135.trademarkd] or None
         item.ean13 = sanitize_ean13(fis_rec[F135.upc_no]) or None
         item.fis_location = fis_rec[F135.primary_location] or None
