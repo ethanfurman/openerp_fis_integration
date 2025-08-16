@@ -1522,13 +1522,14 @@ class NVTY(Synchronize):
             'fis_qty_sold', 'fis_10_day_sold', 'fis_21_day_sold',
             'fis_qty_available', 'fis_10_day_available', 'fis_21_day_available',
             'fis_web_ingredients', 'fis_web_prep_instructions',
+            'fis_date_first_sold',
             )
     FIS_SCHEMA = (
             F135.item_id,
             F135.available_key, F135.sales_cat, F135.trademarkd,
             F135.catalog_location, F135.desc, F135.size, F135.upc_no, F135.primary_location,
             F135.supplier_id, F135.supl_item, F135.new_retail, F135.new_per_unit,
-            F135.net_un_wt, F135.grs_un_wt,
+            F135.net_un_wt, F135.grs_un_wt, F135.first_sale_dt,
             )
     FIELDS_CHECK_IGNORE = ('name', )
     #
@@ -1597,6 +1598,7 @@ class NVTY(Synchronize):
         item.fis_availability_code = fis_rec[F135.available_key] or None
         # sale_ok actually tracks whether item is in the catalog with a Y, P, or W code
         item.sale_ok = self.in_catalog(fis_rec)
+        item.fis_date_first_sold = fis_rec[F135.first_sale_dt] or None
         item.trademarks = fis_rec[F135.trademarkd] or None
         item.ean13 = sanitize_ean13(fis_rec[F135.upc_no]) or None
         item.fis_location = fis_rec[F135.primary_location] or None

@@ -198,6 +198,7 @@
                 @default_code position='after'
                     @xml_id attrs="{'invisible': [('xml_id','=',False)]}"
                     @fis_name readonly='1' attrs="{'invisible': [('xml_id','=',False)]}"
+                    @fis_date_first_sold readonly='1' attrs="{'invisible': [('xml_id','=',False)]}"
                     @trademarks readonly='1' attrs="{'invisible': [('xml_id','=',False)]}"
 
         ~record #product_product_tree_view_xml_id model='ir.ui.view'

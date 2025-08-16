@@ -496,6 +496,7 @@ class product_product(xmlid, osv.Model):
                     10,
                 )},
             ),
+        'fis_date_first_sold': fields.date('Date first sold'),
         'fis_qty_produced': fields.float(
             string='Quantity Produced Today',
             ),
@@ -592,10 +593,6 @@ class product_product(xmlid, osv.Model):
                 string='Related Products',
                 help="same item, different packaging",
                 ),
-
-
-
-
         'fnxfs_files': files('general', string='Available Files'),
         'prop65': fields.selection(Prop65, string='Req. Prop 65 warning'),
         'prop65_info': fields.text('Addl. Prop 65 info'),
