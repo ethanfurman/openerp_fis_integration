@@ -3300,6 +3300,8 @@ def wrap_line(text, max, indent=0, primary=0, secondary=0):
     for line in text:
         if indent or primary:
             line = ' '*(indent+primary) + line
+        # consider an empty line to have one space
+        line = line or ' '
         while line:
             if len(line) <= max:
                 lines.append(line.rstrip())
