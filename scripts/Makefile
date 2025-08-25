@@ -42,7 +42,7 @@ whc:
 
 install-srf:
 	# fal-oe
-	scp fis-oe2 root@fal-oe:/usr/local/bin/fis-oe
+	scp fis-oe root@fal-oe:/usr/local/bin/fis-oe
 	scp fis-oe3 root@fal-oe:/usr/local/bin/fis-oe3
 	scp fis-oe3 root@192.168.11.177:/usr/local/bin/fis-oe3
 
@@ -53,6 +53,6 @@ install-whc:
 	scp fis-oe root@whc-oe:/usr/local/bin/fis-oe2
 	scp fis-oe3 root@whc-oe:/usr/local/bin/fis-oe
 	# whc-fis
-	scp fis-oe2 root@192.168.2.2:/usr/local/bin/fis-oe
+	scp fis-oe root@192.168.2.2:/usr/local/bin/fis-oe
 	scp fis-oe3 root@192.168.2.2:/usr/local/bin/fis-oe3
 
