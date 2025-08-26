@@ -1347,10 +1347,13 @@ def get_LLC():
 def add_timestamp(file, use_cache):
     "adds timestamp to filename portion of file"
     src_file = Path(file)
-    _labeltime_sync = requests.get(
-            'http://192.168.11.12:9000/labelutils',
-            params={'opt':'s_label', 'prodCd':src_file.stem[:6]},
-            )
+    try:
+        _labeltime_sync = requests.get(
+                'http://192.168.11.12:9000/labelutils',
+                params={'opt':'s_label', 'prodCd':src_file.stem[:6]},
+                )
+    except requests.RequestException:
+        pass
     possibles = [src_file]
     last_suffix = src_file.stem[6:]
     target_png_file = PRODUCT_LABEL_PNG_LOCATION / src_file.stem + '.png'
