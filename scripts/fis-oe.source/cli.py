@@ -57,16 +57,11 @@ def main(hostname, database, show_ids, fis_location):
     #
     global oe, SHOW_ID, LOCAL_FIS, config, fd, TableError
     SHOW_ID = show_ids
-    for p in (
-            '%s/config/fnx.ini' % virtual_env,
-            '/etc/openerp/fnx.ini',
-        ):
-        p = Path(p)
-        if p.exists():
-            config = OrmFile(p, types={'_path':Path})
-            break
-        else:
-            abort('unable to find config file')
+    config = Path('%s/config/fnx.ini' % virtual_env)
+    if config.exists():
+        config = OrmFile(config, types={'_path':Path})
+    else:
+        abort('unable to find config file')
     sections = [s[0] for s in config]
     if 'openerp' in sections:
         try:

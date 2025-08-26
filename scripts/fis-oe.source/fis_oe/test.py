@@ -43,8 +43,8 @@ def ensure_oe(test):
 class TestTables(TestCase):
 
     def test_FIS(self):
-        FISTable.query("select employee_no from 74")
-        Table.query("select employee_no from 74")
+        FISTable.query("select employee_no from EMP1")
+        Table.query("select employee_no from EMP1")
 
     @ensure_oe
     def test_OpenERP(self):
@@ -478,8 +478,36 @@ class TestSQL(TestCase):
                 ]
         for res, exp in zip(query, expected):
             self.assertEqual(res._asdict(), exp)
+        query = SQL('select c.last, i.invoice_id, i.total from invoice i join customer c on i.customer_id=c.customer_id').execute()
+        expected = [
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
+                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
+                ]
+        for res, exp in zip(query, expected):
+            self.assertEqual(res._asdict(), exp)
         # inner
         query = SQL('select c.last, i.invoice_id, i.total from customer c inner join invoice i on c.customer_id=i.customer_id order by i.invoice_id').execute()
+        expected = [
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
+                ]
+        for res, exp in zip(query, expected):
+            self.assertEqual(res._asdict(), exp)
+        query = SQL('select c.last, i.invoice_id, i.total from invoice i inner join customer c on i.customer_id=c.customer_id order by i.invoice_id').execute()
         expected = [
                 AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
                 AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
@@ -514,8 +542,39 @@ class TestSQL(TestCase):
                 ]
         for res, exp in zip(query, expected):
             self.assertEqual(res._asdict(), exp)
+        query = SQL('select c.last, i.invoice_id, i.total from invoice i full join customer c on c.customer_id=i.customer_id order by c.last').execute()
+        expected = [
+                AttrDict([('c.last',EMPTY), ('i.invoice_id','I-110'), ('i.total',8.97)]),
+                AttrDict([('c.last','Cordosa'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Giannini'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Godshall'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
+                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last','Winchester'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','van Sebille'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                ]
+        for res, exp in zip(query, expected):
+            self.assertEqual(res._asdict(), exp)
         # outer
         query = SQL('select c.last, i.invoice_id, i.total from customer c outer join invoice i on c.customer_id=i.customer_id order by c.last').execute()
+        expected = [
+                AttrDict([('c.last',EMPTY), ('i.invoice_id','I-110'), ('i.total',8.97)]),
+                AttrDict([('c.last','Cordosa'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Giannini'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Godshall'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Winchester'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','van Sebille'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                ]
+        for res, exp in zip(query, expected):
+            self.assertEqual(res._asdict(), exp)
+        query = SQL('select c.last, i.invoice_id, i.total from invoice i outer join customer c on c.customer_id=i.customer_id order by c.last').execute()
         expected = [
                 AttrDict([('c.last',EMPTY), ('i.invoice_id','I-110'), ('i.total',8.97)]),
                 AttrDict([('c.last','Cordosa'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
@@ -546,19 +605,53 @@ class TestSQL(TestCase):
                 ]
         for res, exp in zip(query, expected):
             self.assertEqual(res._asdict(), exp)
-        # right
-        query = SQL('select c.last, i.invoice_id, i.total from customer c right join invoice i on c.customer_id=i.customer_id order by c.last').execute()
+        query = SQL('select c.last, i.invoice_id, i.total from invoice i left join customer c on c.customer_id=i.customer_id order by i.invoice_id').execute()
         expected = [
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
                 AttrDict([('c.last',EMPTY), ('i.invoice_id','I-110'), ('i.total',8.97)]),
+                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
+                ]
+        for res, exp in zip(query, expected):
+            self.assertEqual(res._asdict(), exp)
+        # right
+        query = SQL('select c.last, i.invoice_id, i.total from customer c right join invoice i on c.customer_id=i.customer_id order by i.invoice_id').execute()
+        expected = [
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last',EMPTY), ('i.invoice_id','I-110'), ('i.total',8.97)]),
+                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
+                ]
+        for res, exp in zip(query, expected):
+            self.assertEqual(res._asdict(), exp)
+        query = SQL('select c.last, i.invoice_id, i.total from invoice i right join customer c on c.customer_id=i.customer_id order by c.last').execute()
+        expected = [
+                AttrDict([('c.last','Cordosa'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
                 AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
                 AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
                 AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Giannini'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Godshall'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
                 AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
                 AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
                 AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
                 AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
                 AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
                 AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last','Winchester'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','van Sebille'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
                 ]
         for res, exp in zip(query, expected):
             self.assertEqual(res._asdict(), exp)

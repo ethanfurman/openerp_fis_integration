@@ -6,6 +6,7 @@ from ast import literal_eval
 from collections import OrderedDict
 from enhlib.itertools import all_equal
 from enhlib.misc import basestring, baseinteger, ord
+from fislib.utils import fix_date
 from itertools import cycle
 import openerplib
 from openerplib import get_connection, get_records, AttrDict, Binary, Query, Many2One, CSV
@@ -46,11 +47,13 @@ class PlainEnum(Enum):
 #
 
 class Char(str, PlainEnum):
-    _order_ = 'SINGLE_QUOTE COMMA BACKSLASH'
+    _order_ = 'SINGLE_QUOTE COMMA BACKSLASH LPAREN RPAREN'
     SINGLE_QUOTE = "'"
     COMMA = ","
     BACKSLASH = "\\"
-SINGLE_QUOTE, COMMA, BACKSLASH = Char
+    LPAREN = '('
+    RPAREN = ')'
+SINGLE_QUOTE, COMMA, BACKSLASH, LPAREN, RPAREN = Char
 
 
 class SQLState(PlainEnum):
@@ -191,48 +194,48 @@ uncommon = {
     }
 
 table_keys = {
-          8: (  8, 'CNVZD0', r'D010(.)'),                        # customer terms
-         11: ( 11, 'CNVZas', r'as10(..)'),                       # product category
-         33: ( 33, 'CSMS', r'10(......) '),                      # customer
-         34: ( 34, 'CSMSS', r'10(......)1....'),                 # customer ship-to
-         27: ( 27, 'CNVZSV', r'SV10(..)'),                       # carrier
-         47: ( 47, 'CNVZZ', r'Z(...)'),                          # sales rep
-         74: ( 74, 'EMP1', r'10(.....)'),                        # employee
-         65: ( 65, 'VNMS', r'10(......)'),                       # purchasers
-         97: ( 97, 'CNVZaa', r'aa10(.)'),                        # product location
-        135: (135, 'NVTY', r'(......)101000    101\*\*'),        # products
-        163: (163, 'POSM', r'10(......)'),                       # vendors
-        192: (192, 'CNVZO1', r'O110(......)'),                   # transmitter number
-        257: (257, 'CNVZK', r'K(....)'),                         # sales rep
-        262: (262, 'ARCI', r'10(......)......'),                 # customer product list
-        320: (320, 'IFMS', r'10(..........).....0'),             # product formula
-        322: (322, 'IFDT', r'10(..........).....0...'),          # product ingredients
-        328: (328, 'IFPP0', r'10(......)000010000'),             # production order formula
-        329: (329, 'IFPP1', r'10(......)000011...'),             # production order ingredients
-        341: (341, 'CNVZf', r'f10(..)'),                         # production lines
+          8: (  8, 'CNVZD0', br'D010(.)'),                        # customer terms
+         11: ( 11, 'CNVZas', br'as10(..)'),                       # product category
+         33: ( 33, 'CSMS', br'10(......) '),                      # customer
+         34: ( 34, 'CSMSS', br'10(......)1....'),                 # customer ship-to
+         27: ( 27, 'CNVZSV', br'SV10(..)'),                       # carrier
+         47: ( 47, 'CNVZZ', br'Z(...)'),                          # sales rep
+         74: ( 74, 'EMP1', br'10(.....)'),                        # employee
+         65: ( 65, 'VNMS', br'10(......)'),                       # purchasers
+         97: ( 97, 'CNVZaa', br'aa10(.)'),                        # product location
+        135: (135, 'NVTY', br'(......)101000    101\*\*'),        # products
+        163: (163, 'POSM', br'10(......)'),                       # vendors
+        192: (192, 'CNVZO1', br'O110(......)'),                   # transmitter number
+        257: (257, 'CNVZK', br'K(....)'),                         # sales rep
+        262: (262, 'ARCI', br'10(......)......'),                 # customer product list
+        320: (320, 'IFMS', br'10(..........).....0'),             # product formula
+        322: (322, 'IFDT', br'10(..........).....0...'),          # product ingredients
+        328: (328, 'IFPP0', br'10(......)000010000'),             # production order formula
+        329: (329, 'IFPP1', br'10(......)000011...'),             # production order ingredients
+        341: (341, 'CNVZf', br'f10(..)'),                         # production lines
 
-        'arci'  : (262, 'ARCI', r'10(......)......'),            # customer product list
-        'cnvzaa': ( 97, 'CNVZaa', r'aa10(.)'),                   # product location
-        'cnvzas': ( 11, 'CNVZas', r'as10(..)'),                  # product category
-        'cnvzd0': (  8, 'CNVZD0', r'D010(.)'),                   # customer terms
-        'cnvzf' : (341, 'CNVZf', r'f10(..)'),                    # production lines
-        'cnvzo1': (192, 'CNVZO1', r'O110(......)'),              # transmitter number
-        'cnvzsv': ( 27, 'CNVZSV', r'SV10(..)'),                  # carrier
-        'cnvzk' : (257, 'CNVZK', r'K(....)'),                    # sales rep
-        'cnvzz' : ( 47, 'CNVZZ', r'Z(...)'),                     # sales rep
-        'csms'  : ( 33, 'CSMS', r'10(......) '),                 # customer
-        'csmss' : ( 34, 'CSMSS', r'10(......)1....'),            # customer ship-to
-        'emp1'  : ( 74, 'EMP1', r'10(.....)'),                   # employee
-        'ifms'  : (320, 'IFMS', r'10(..........).....0'),        # product formula
-        'ifdt'  : (322, 'IFDT', r'10(..........).....0...'),     # product ingredients
-        'ifpp0' : (328, 'IFPP0', r'10(......)000010000'),        # production order formula
-        'ifpp1' : (329, 'IFPP1', r'10(......)000011...'),        # production order ingredients
-        'nvty'  : (135, 'NVTY', r'(......)101000    101\*\*'),   # products
-        'posm'  : (163, 'POSM', r'10(......)'),                  # vendors
-        'vnms'  : ( 65, 'VNMS', r'10(......)'),                  # purchasers
-        'rderh' : ('RDERH', 'RDERH', r'10(......)..0000'),       # order header part 1
-        'rderi' : ('RDERI', 'RDERI', r'10(......)..0001'),       # order header part 2
-        'rderd' : ('RDERD', 'RDERD', r'10(......)..1...'),       # order detail
+        'arci'  : (262, 'ARCI', br'10(......)......'),            # customer product list
+        'cnvzaa': ( 97, 'CNVZaa', br'aa10(.)'),                   # product location
+        'cnvzas': ( 11, 'CNVZas', br'as10(..)'),                  # product category
+        'cnvzd0': (  8, 'CNVZD0', br'D010(.)'),                   # customer terms
+        'cnvzf' : (341, 'CNVZf', br'f10(..)'),                    # production lines
+        'cnvzo1': (192, 'CNVZO1', br'O110(......)'),              # transmitter number
+        'cnvzsv': ( 27, 'CNVZSV', br'SV10(..)'),                  # carrier
+        'cnvzk' : (257, 'CNVZK', br'K(....)'),                    # sales rep
+        'cnvzz' : ( 47, 'CNVZZ', br'Z(...)'),                     # sales rep
+        'csms'  : ( 33, 'CSMS', br'10(......) '),                 # customer
+        'csmss' : ( 34, 'CSMSS', br'10(......)1....'),            # customer ship-to
+        'emp1'  : ( 74, 'EMP1', br'10(.....)'),                   # employee
+        'ifms'  : (320, 'IFMS', br'10(..........).....0'),        # product formula
+        'ifdt'  : (322, 'IFDT', br'10(..........).....0...'),     # product ingredients
+        'ifpp0' : (328, 'IFPP0', br'10(......)000010000'),        # production order formula
+        'ifpp1' : (329, 'IFPP1', br'10(......)000011...'),        # production order ingredients
+        'nvty'  : (135, 'NVTY', br'(......)101000    101\*\*'),   # products
+        'posm'  : (163, 'POSM', br'10(......)'),                  # vendors
+        'vnms'  : ( 65, 'VNMS', br'10(......)'),                  # purchasers
+        'rderh' : ('RDERH', 'RDERH', br'10(......)..0000'),       # order header part 1
+        'rderi' : ('RDERI', 'RDERI', br'10(......)..0001'),       # order header part 2
+        'rderd' : ('RDERD', 'RDERD', br'10(......)..1...'),       # order detail
         }
 
 ## functions
@@ -1168,6 +1171,10 @@ class FISTable(Table):
             #         count += int(spec.split(',')[1].strip(')'))
             # self.pat = '.' * count
         self.table = fd.fisData(self.num or self.name)
+        print('   found %s with %d records using pattern %r'
+                % (self.table.filename, len(self.table), self.pat),
+                verbose=2,
+                )
         # get human-usable field names
         fields_by_name = {}
         fields_by_number = {}
@@ -1241,7 +1248,7 @@ class FISTable(Table):
         sq = SimpleQuery(('index', 'name','spec','comment'))
         for d in defs:
             sq.records.append(AttrDict(*zip(('index','name','spec','comment'), d)))
-        sq.status = "DESCRIBE 1"
+        sq.status = "DESCRIBE %s%s" % (self.name, self.table.desc)
         return sq
 
     def sql_diff(self, command):
@@ -2294,7 +2301,7 @@ class Join(object):
             return NotImplemented
         return self.type != other.type or self.table_name != other.table_name or self.condition != other.condition
 
-    condition_match = Var(lambda self, condition: re.match(
+    condition_match = Var(lambda condition: re.match(
                 r"^(\S+)\s*(is not|is|not in|in|like|=like|not like|ilike|=ilike|not ilike|<=|>=|!=|=)\s*(\S+)$",
                 condition,
                 flags=re.I
@@ -2306,16 +2313,19 @@ class Join(object):
 
     def cross_join(self, left_sq, right_sq, table_by_field, header_mapping):
         sq = left_sq.as_template()
-        for left_data in left_sq:
-            for right_data in right_sq:
-                new_rec = left_data.copy()
-                for field, value in right_data.items():
+        for left_rec in left_sq:
+            for right_rec in right_sq:
+                new_rec = left_rec.copy()
+                for field, value in right_rec.items():
                     if field in header_mapping:
-                        new_rec[header_mapping[field]] = right_data[field]
+                        new_rec[header_mapping[field]] = right_rec[field]
                 sq.add_record(new_rec)
         return sq
 
     def full_join(self, left_sq, right_sq, table_by_field, header_mapping):
+        """
+        keep every merged record
+        """
         sq = left_sq.as_template()
         field1, op, field2 = self.condition_match(self.condition).groups()
         print('table name: %r' % self.table_name, verbose=3)
@@ -2335,77 +2345,67 @@ class Join(object):
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
-        print(len(left_sq), len(right_sq), verbose=4)
-        last_left_data = None
+        last_left_rec = None
         last_left_index = last_right_index = None
         found = False
         while i < len(left_sq) or j < len(right_sq):
-            print('\n0: i=%d  j=%d  lld=%r  lri=%r' % (i, j, last_left_data, last_right_index), verbose=4)
             if i < len(left_sq):
-                left_data = left_sq.records[i]
+                left_rec = left_sq.records[i]
             else:
-                left_data = EMPTY
-            if i != last_left_index and last_left_data == left_data[left_name]:
+                left_rec = EMPTY
+            if i != last_left_index and last_left_rec == left_rec[left_name]:
                 j = last_right_index
             if j < len(right_sq):
-                right_data = right_sq.records[j]
+                right_rec = right_sq.records[j]
             else:
-                right_data = EMPTY
-            left = left_data and left_data[left_name]
-            right = right_data and right_data[right_name]
-            print('1: i=%d  j=%d  l=%r  r=%r' % (i, j, left, right), verbose=4)
-            # print('comparing: left[%d] - right[%d]' % (i, j), verbose=4)
-            if right is EMPTY:
-                print(2, found, verbose=4)
+                right_rec = EMPTY
+            left_data = left_rec and left_rec[left_name]
+            right_data = right_rec and right_rec[right_name]
+            if right_data is EMPTY:
                 i += 1
                 if not found:
-                    sq.add_record(left_data)
-                    print('2 adding LEFT', verbose=4)
+                    sq.add_record(left_rec)
                 found = False
-            elif left is EMPTY:
-                print(3, found, verbose=4)
+            elif left_data is EMPTY:
                 j += 1
                 new_rec = {}
-                for field, value in right_data.items():
-                    new_rec[header_mapping[field]] = right_data[field]
+                for field, value in right_rec.items():
+                    new_rec[header_mapping[field]] = right_rec[field]
                 sq.add_record(new_rec)
-                print('3 adding RIGHT', verbose=4)
-            elif left < right:
-                print(4, found, verbose=4)
+            elif left_data < right_data:
                 i += 1
                 if not found:
-                    sq.add_record(left_data)
-                    print('4 adding LEFT', verbose=4)
+                    sq.add_record(left_rec)
                 found = False
-            elif left > right:
-                print(5, found, verbose=4)
+            elif left_data > right_data:
                 j += 1
                 if not found:
                     new_rec = {}
-                    for field, value in right_data.items():
-                        new_rec[header_mapping[field]] = right_data[field]
+                    for field, value in right_rec.items():
+                        new_rec[header_mapping[field]] = right_rec[field]
                     sq.add_record(new_rec)
-                    print('5 adding RIGHT', verbose=4)
                 last_right_index = None
                 found = False
             else:
                 # they are equal
                 found = True
                 last_left_index = i
-                last_left_data = left_data[left_name]
-                if last_right_index is None:
+                # if last_right_index is None:
+                if last_left_rec != left_data:
                     last_right_index = j
-                new_rec = left_data.copy()
-                for field, value in right_data.items():
+                last_left_rec = left_rec[left_name]
+                new_rec = left_rec.copy()
+                for field, value in right_rec.items():
                     if field in header_mapping:
-                        new_rec[header_mapping[field]] = right_data[field]
+                        new_rec[header_mapping[field]] = right_rec[field]
                 sq.add_record(new_rec)
-                print('adding BOTH', verbose=4)
                 j += 1
         return sq
 
     def left_join(self, left_sq, right_sq, table_by_field, header_mapping):
-        # all records in left_sq will be included, along with any matches in right_sq
+        """
+        all records in left_sq will be included, along with any matches in right_sq
+        """
         sq = left_sq.as_template()
         field1, op, field2 = self.condition_match(self.condition).groups()
         print('table name: %r' % self.table_name, verbose=3)
@@ -2425,28 +2425,25 @@ class Join(object):
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
-        # print(len(left_sq), len(right_sq), verbose=4)
-        last_left_data = None
+        last_left_rec = None
         last_right_index = None
         last_left_index = 0
         found = False
         while i < len(left_sq):
-            # print(last_left_data, last_right_index, verbose=4)
-            left_data = left_sq.records[i]
-            if i != last_left_index and last_left_data == left_data[left_name] and last_right_index is not None:
+            left_rec = left_sq.records[i]
+            if i != last_left_index and last_left_rec == left_rec[left_name] and last_right_index is not None:
                 j = last_right_index
             if j < len(right_sq):
-                right_data = right_sq.records[j]
+                right_rec = right_sq.records[j]
             else:
-                right_data = EMPTY
-            print('comparing: left[%d] - right[%d]' % (i, j), verbose=4)
-            if right_data is EMPTY or left_data[left_name] < right_data[right_name]:
+                right_rec = EMPTY
+            if right_rec is EMPTY or left_rec[left_name] < right_rec[right_name]:
                 # no right match possible, add left record
                 i += 1
                 if not found:
-                    sq.add_record(left_data)
+                    sq.add_record(left_rec)
                 found = False
-            elif left_data[left_name] > right_data[right_name]:
+            elif left_rec[left_name] > right_rec[right_name]:
                 j += 1
                 last_right_index = None
                 found = False
@@ -2454,19 +2451,22 @@ class Join(object):
                 # they are equal
                 found = True
                 last_left_index = i
-                last_left_data = left_data[left_name]
+                last_left_rec = left_rec[left_name]
                 if last_right_index is None:
                     last_right_index = j
-                new_rec = left_data.copy()
-                for field, value in right_data.items():
+                new_rec = left_rec.copy()
+                for field, value in right_rec.items():
                     # XXX keep following test?
                     if field in header_mapping:
-                        new_rec[header_mapping[field]] = right_data[field]
+                        new_rec[header_mapping[field]] = right_rec[field]
                 sq.add_record(new_rec)
                 j += 1
         return sq
 
     def inner_join(self, left_sq, right_sq, table_by_field, header_mapping):
+        """
+        keep all merged records that have data from both tables
+        """
         sq = left_sq.as_template()
         field1, op, field2 = self.condition_match(self.condition).groups()
         if op != '=':
@@ -2484,36 +2484,56 @@ class Join(object):
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
-        last_left_data = None
+        last_left_rec = None
         last_left_index = last_right_index = None
-        while i < len(left_sq) and j < len(right_sq):
-            print(last_left_data, last_right_index, verbose=4)
-            left_data = left_sq.records[i]
-            if i != last_left_index and last_left_data == left_data[left_name]:
-                j = last_right_index
-            right_data = right_sq.records[j]
-            print('comparing: left[%d] - right[%d]' % (i, j), verbose=4)
-            print('           %r - %r' % (left_data[left_name], right_data[right_name]), verbose=4)
-            if left_data[left_name] < right_data[right_name]:
+        while i < len(left_sq):
+            left_rec = left_sq.records[i]
+            right_rec = right_sq.records[j]
+            if left_rec[left_name] < right_rec[right_name]:
                 i += 1
-            elif left_data[left_name] > right_data[right_name]:
-                j += 1
-                last_right_index = None
+                if last_right_index is not None:
+                    j = last_right_index
+            elif left_rec[left_name] > right_rec[right_name]:
+                if last_left_index is None:
+                    # haven't found a match yet
+                    j += 1
+                elif i == last_left_index + 1:
+                    # only one match on left side
+                    j += 1
+                    last_left_index = last_right_index = None
+                elif last_right_index is not None:
+                    # left record is same as previous left record and matched right record
+                    i = last_left_index + 1  # record after first match on left
+                    j = last_right_index     # record of first match on right
+                else:
+                    pass
+
             else:
                 # they are equal
                 last_left_index = i
-                last_left_data = left_data[left_name]
+                last_left_rec = left_rec[left_name]
                 if last_right_index is None:
                     last_right_index = j
-                new_rec = left_data.copy()
-                for field, value in right_data.items():
+                new_rec = left_rec.copy()
+                for field, value in right_rec.items():
                     if field in header_mapping:
-                        new_rec[header_mapping[field]] = right_data[field]
+                        new_rec[header_mapping[field]] = right_rec[field]
                 sq.add_record(new_rec)
                 j += 1
+                # check if right_rec is worn out; if yes, increment i instead
+                if j == len(right_sq):
+                    j -= 1
+                    i += 1
         return sq
 
     def outer_join(self, left_sq, right_sq, table_by_field, header_mapping):
+        """
+        keep merged records with no match from the other table
+        """
+        def next_ne(records, index, field, target):
+            while index < len(records) and records[index][field] == target:
+                index += 1
+            return index
         sq = left_sq.as_template()
         field1, op, field2 = self.condition_match(self.condition).groups()
         print('table name: %r' % self.table_name, verbose=3)
@@ -2533,71 +2553,51 @@ class Join(object):
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
-        print(len(left_sq), len(right_sq), verbose=4)
-        last_left_data = None
-        last_left_index = last_right_index = None
-        found = False
         while i < len(left_sq) or j < len(right_sq):
-            print('\n0: i=%d  j=%d  lld=%r  lri=%r' % (i, j, last_left_data, last_right_index), verbose=4)
             if i < len(left_sq):
-                left_data = left_sq.records[i]
+                left_rec = left_sq.records[i]
             else:
-                left_data = EMPTY
-            if i != last_left_index and last_left_data == left_data[left_name]:
-                j = last_right_index
+                left_rec = EMPTY
             if j < len(right_sq):
-                right_data = right_sq.records[j]
+                right_rec = right_sq.records[j]
             else:
-                right_data = EMPTY
-            left = left_data and left_data[left_name]
-            right = right_data and right_data[right_name]
-            print('1: i=%d  j=%d  l=%r  r=%r' % (i, j, left, right), verbose=4)
-            # print('comparing: left[%d] - right[%d]' % (i, j), verbose=4)
-            if right is EMPTY:
-                print(2, found, verbose=4)
+                right_rec = EMPTY
+            left_data = left_rec and left_rec[left_name]
+            right_data = right_rec and right_rec[right_name]
+            if right_data is EMPTY:
+                print('2 adding LEFT', verbose=4)
+                sq.add_record(left_rec)
                 i += 1
-                if not found:
-                    sq.add_record(left_data)
-                    print('2 adding LEFT', verbose=4)
-                found = False
-            elif left is EMPTY:
-                print(3, found, verbose=4)
-                j += 1
-                new_rec = {}
-                for field, value in right_data.items():
-                    new_rec[header_mapping[field]] = right_data[field]
-                sq.add_record(new_rec)
+            elif left_data is EMPTY:
                 print('3 adding RIGHT', verbose=4)
-            elif left < right:
-                print(4, found, verbose=4)
+                new_rec = {}
+                for field, value in right_rec.items():
+                    new_rec[header_mapping[field]] = right_rec[field]
+                sq.add_record(new_rec)
+                j += 1
+            elif left_data < right_data:
+                print('4 adding LEFT', verbose=4)
+                sq.add_record(left_rec)
                 i += 1
-                if not found:
-                    sq.add_record(left_data)
-                    print('4 adding LEFT', verbose=4)
-                found = False
-            elif left > right:
-                print(5, found, verbose=4)
+            elif left_data > right_data:
+                print('5 adding RIGHT', verbose=4)
+                new_rec = {}
+                for field, value in right_rec.items():
+                    new_rec[header_mapping[field]] = right_rec[field]
+                sq.add_record(new_rec)
                 j += 1
-                if not found:
-                    new_rec = {}
-                    for field, value in right_data.items():
-                        new_rec[header_mapping[field]] = right_data[field]
-                    sq.add_record(new_rec)
-                    print('5 adding RIGHT', verbose=4)
-                last_right_index = None
-                found = False
             else:
-                # they are equal
-                found = True
-                last_left_index = i
-                last_left_data = left_data[left_name]
-                if last_right_index is None:
-                    last_right_index = j
-                j += 1
+                # they are equal, skip 'em
+                print('6 skipping  i=%r  j=%r' % (i, j), verbose=4)
+                i = next_ne(left_sq.records, i, left_name, left_data)
+                j = next_ne(right_sq.records, j, right_name, right_data)
+                print('            i=%r j=%r' % (i, j), verbose=4)
         return sq
 
     def right_join(self, left_sq, right_sq, table_by_field, header_mapping):
-        # all records in right_sq will be included, along with any matches in left_sq
+        """
+        all records in right_sq will be included, along with any matches in left_sq
+        """
         sq = left_sq.as_template()
         field1, op, field2 = self.condition_match(self.condition).groups()
         if op != '=':
@@ -2615,39 +2615,39 @@ class Join(object):
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
-        last_right_data = None
+        last_right_rec = None
         last_left_index = None
         last_right_index = 0
         found = False
         while i < len(right_sq):
-            right_data = right_sq.records[i]
-            if i != last_right_index and last_right_data == right_data[right_name] and last_left_index is not None:
+            right_rec = right_sq.records[i]
+            if i != last_right_index and last_right_rec == right_rec[right_name] and last_left_index is not None:
                 j = last_left_index
             if j < len(left_sq):
-                left_data = left_sq.records[j]
+                left_rec = left_sq.records[j]
             else:
-                left_data = EMPTY
-            if left_data is EMPTY or right_data[right_name] < left_data[left_name]:
+                left_rec = EMPTY
+            if left_rec is EMPTY or right_rec[right_name] < left_rec[left_name]:
                 i += 1
                 if not found:
                     new_rec = {}
-                    for field, value in right_data.items():
-                        new_rec[header_mapping[field]] = right_data[field]
+                    for field, value in right_rec.items():
+                        new_rec[header_mapping[field]] = right_rec[field]
                     sq.add_record(new_rec)
                 found = False
-            elif right_data[right_name] > left_data[left_name]:
+            elif right_rec[right_name] > left_rec[left_name]:
                 j += 1
                 last_left_index = None
                 found = False
             else:
                 found = True
                 last_right_index = i
-                last_right_data = right_data[right_name]
+                last_right_rec = right_rec[right_name]
                 if last_left_index is None:
                     last_left_index = j
-                new_rec = left_data.copy()
-                for field, value in right_data.items():
-                    new_rec[header_mapping[field]] = right_data[field]
+                new_rec = left_rec.copy()
+                for field, value in right_rec.items():
+                    new_rec[header_mapping[field]] = right_rec[field]
                 sq.add_record(new_rec)
                 j += 1
         print('FINAL i, j VALUEs: %d, %r' % (i, j), verbose=4)
@@ -2662,6 +2662,8 @@ class SimpleQuery(object):
         # fields: list of final field names (could be aliases)
         # aliased: mapping of above (possibly aliased) field names to actual field names (for verbose mode)
         print('SQ fields=%r' % (fields, ), verbose=3)
+        if not isinstance(fields, list):
+            raise ValueError('fields should be a list')
         self.fields = fields
         self.aliases = aliased or {}
         self.to_file = to
@@ -2738,6 +2740,9 @@ class SQL(object):
     NB: Both fields and tables can have multiple aliases, in which case they
     are considered to be different fields/tables.
     """
+    transforms = {
+            'date': lambda t: fix_date(t, format='ymd'),
+            }
     def __init__(self, statement, debug=False):
         print('__INIT__', verbose=3)
         print(repr(statement), verbose=4)
@@ -2868,10 +2873,14 @@ class SQL(object):
         for tp in self.tables.values():
             results[tp.alias] = r = Table.query(tp.query)
             star_fields.extend(['%s.%s' % (tp.alias, f) for f in tp.fields if f != '*'])
+            for field, transform in tp.transforms.items():
+                field = split_fn(field)                     # remove table specifier if present
+                for rec in r:
+                    rec[field] = self.transforms[transform](rec[field])
         #
         # fix up field names in case of SELECT *
         if '*' not in self.table_by_field_alias:
-            sq_fields = self.table_by_field_alias.keys()
+            sq_fields = list(self.table_by_field_alias.keys())
         else:
             sq_fields = star_fields
         # elif len(self.tables) == 1:
@@ -2965,7 +2974,7 @@ class SQL(object):
         statement = self.raw_statement
         offset = i = 0
         while True:
-            alpha = None
+            alpha = False
             esc = False
             quote = False
             word = []
@@ -2979,11 +2988,17 @@ class SQL(object):
                     if ch == SINGLE_QUOTE:
                         quote = False
                         alpha = False
+                        self.words.append(''.join(word))
+                        word = []
                     continue
                 elif ch in ' \t\n' and not word:
                     continue
                 elif ch in ' \t\n' and word:
                     break
+                elif word and word[-1] == RPAREN:
+                    alpha = False
+                    self.words.append(''.join(word))
+                    word = []
                 #
                 if ch == BACKSLASH:
                     esc = True
@@ -2994,7 +3009,7 @@ class SQL(object):
                         word = []
                     word.append(ch)
                     quote = True
-                    alpha = True
+                    alpha = ch.isalnum() or ch in '._'
                     continue
                 #
                 if word:
@@ -3008,7 +3023,8 @@ class SQL(object):
                 else:
                     word.append(ch)
                     alpha = ch.isalnum() or ch in '._'
-            self.words.append(''.join(word))
+            if ''.join(word).strip():
+                self.words.append(''.join(word))
             offset += i or 1
             if offset + 1 >= len(self.raw_statement):
                 break
@@ -3497,6 +3513,17 @@ class SQL(object):
                 last_table = None
                 alias = False
                 comma_needed = False
+            elif word == LPAREN:
+                print('LPAREN', verbose=4)
+                print('moving %r from field to func' % last_field, verbose=4)
+                func = last_field
+                last_field = None
+                alias = False
+            elif word == RPAREN:
+                print('RPAREN', verbose=4)
+                print('saving %s(%s)' % (func, last_field), verbose=4)
+                tp.transforms[last_field] = func
+                func = None
             elif word.upper() == 'AS':
                 print('AS', verbose=4)
                 self._final_statement.pop()
@@ -3539,6 +3566,11 @@ class SQL(object):
                 self.table_by_field_alias[word] = last_table
                 tables[last_table].fields[word] = field_name
                 self.header.append(word)
+                # update functions, if any
+                if last_field in tp.transforms:
+                    tpt = tp.transforms
+                    print('renaming %r parameter from %r to %r' % (tpt[last_field], last_field, word), verbose=4)
+                    tp.transforms[word] = tp.transforms.pop(last_field)
                 alias = False
                 last_field = None
                 last_table = None
@@ -3546,9 +3578,9 @@ class SQL(object):
                 print('2 tbfa: %r' % self.table_by_field_alias, verbose=4)
                 print('2 tables: %r' % self.tables, verbose=4)
             else:
-                # word -> field name
-                print('saving field name %r' % word, verbose=4)
-                if last_table is not None:
+                # word -> field name or function
+                print('saving name %r' % word, verbose=4)
+                if last_table is not None and func is None:
                     raise SQLError('cannot mix table.field syntax with plain field syntax')
                 last_field = word
                 alias = None
@@ -3685,13 +3717,14 @@ class SQLTableParams(object):
     """
     contains everything needed to query one table
     """
-    def __init__(self, alias, table_name=None, fields=None, conditions=None, query=None):
+    def __init__(self, alias, table_name=None, fields=None, conditions=None, query=None, transforms=None):
         self.alias = alias                                                          # plain text name (might be actual)
         self.table_name = table_name                                                # real name (could be same as .alias)
         self.fields = fields or OrderedDict()                                       # fields to fetch `{alias:field}`
         self.conditions = conditions or []                                          # record filters
         self._query = query
         self.where = []
+        self.transforms = transforms or {}
 
     def __repr__(self):
         if self.alias == self.table_name:
@@ -3707,6 +3740,7 @@ class SQLTableParams(object):
             if self.fields != other.fields: not_equal.append('f: %r != %r' % (self.fields, other.fields))
             if self.conditions != other.conditions: not_equal.append('c: %r != %r' % (self.conditions, other.conditions))
             if self.query != other.query: not_equal.append('q: %r != %r' % (self.query, other.query))
+            if self.transforms != other.transforms: not_equal.append('q: %r != %r' % (self.transforms, other.transforms))
             if not_equal:
                 raise Exception('  -  '.join(not_equal))
             return (
@@ -3715,6 +3749,7 @@ class SQLTableParams(object):
                 and self.fields == other.fields
                 and self.conditions == other.conditions
                 and self.query == other.query
+                and self.transforms == other.transforms
                 )
         else:
             return False
