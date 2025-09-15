@@ -8,3 +8,8 @@
 *.old
 .pytype/
 temp/
+scripts/fis-oe
+scripts/fis-oe.source/fislib/
+scripts/fis-oe.source/pytz/
+scripts/fis-oe3
+

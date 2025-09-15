@@ -1,10 +1,11 @@
 from __future__ import division, print_function
 
 from .collections import AttrDict
-from .dbf import Date, DateTime, Time
-from .datetime import date, datetime, time
-
 import codecs
+import datetime
+from .misc import basestring, unicode
+import re
+
 
 enums = ()
 try:
@@ -18,24 +19,47 @@ try:
 except ImportError:
     pass
 
-dates = date, Date
-times = time, Time
-datetimes = datetime, DateTime
-moments = dates + times + datetimes
+
+class CSVError(Exception):
+    """
+    generic csv error
+    """
 
 class CSV(object):
     """
     represents a .csv file
     """
+    _str = unicode
+    _date = datetime.date
+    _time = datetime.time
+    _datetime = datetime.datetime
+    _bool = bool
+    _float = float
+    _int = int
+    _none = lambda s: None
 
-    def __init__(self, filename, mode='r', header=True, default_type=None, null=None):
+    def __init__(self, filename, mode='r', header=True, types={}, default_type=None, custom_types=None):
+        """
+        filename: name of csv file to either read or write
+        mode: open mode to use with file; defaults to `'r'`
+        header: first line of read file is header?  default is `True`
+        types: types to use for std data types
+        default_type: type to use if known types fail; default is raise an exception
+        custom_types: tuple of `(test(text), convert(col#, text))` functions
+        """
         if mode not in ('r','w'):
             raise ValueError("mode must be 'r' or 'w', not %r" % (mode, ))
+        for n, t in types.items():
+            if n not in (
+                    'bool', 'float', 'int', 'str',
+                    'date', 'time', 'datetime',
+                    ):
+                raise TypeError('CSV: data type invalid-> %r' % (n, ))
+            setattr(self, '_'+n, t)
         self.filename = filename
         self.mode = mode
         self.default_type = default_type
-        self.null = null
-        self.use_header = header
+        self.custom_types = custom_types or ()
         if mode == 'r':
             with codecs.open(filename, mode='r', encoding='utf-8') as csv:
                 raw_data = csv.read().split('\n')
@@ -89,7 +113,7 @@ class CSV(object):
             print(line)
             print(values)
             print(new_values)
-            raise ValueError
+            raise ValueError("%r != %r" % (values, new_values))
         self.data.append(line)
 
     def from_csv(self, line):
@@ -170,29 +194,55 @@ class CSV(object):
         for i, field in enumerate(fields):
             try:
                 if not field:
-                    final.append(self.null)
-                elif field[0] == field[-1] == '"':
-                    # simple string
-                    final.append(field[1:-1])
-                elif field.lower() in ('true','yes','on','t'):
-                    final.append(True)
-                elif field.lower() in ('false','no','off','f'):
-                    final.append(False)
-                elif '-' in field and ':' in field:
-                    final.append(dates.str_to_datetime(field, localtime=False))
-                elif '-' in field:
-                    final.append(Date.strptime(field, '%Y-%m-%d'))
-                elif ':' in field:
-                    final.append(Time.strptime(field, '%H:%M:%S'))
-                elif 'Many2One' in field:
-                    final.append(eval(field))
-                elif 'Phone' in field:
-                    final.append(eval(field))
+                    final.append(self._none)
+                    continue
+                for test, convert in self.custom_types:
+                    if test(field):
+                        final.append(convert(i, field))
+                        break
                 else:
-                    try:
-                        final.append(int(field))
-                    except ValueError:
-                        final.append(float(field))
+                    if field[0] == field[-1] and field[0] in ('"',"'"):
+                        # simple string
+                        final.append(self._str(field[1:-1]))
+                    elif field.lower() in ('true','yes','on','t'):
+                        final.append(self._bool(True))
+                    elif field.lower() in ('false','no','off','f'):
+                        final.append(self._bool(False))
+                    elif '-' in field and ':' in field:
+                        # TODO: use a re instead and support time zones
+                        try:
+                            year, month, day, hour, minute, second = map(
+                                    int,
+                                    re.match(r'^(\d+)-(\d+)-(\d+).(\d+):(\d+):(\d+)$', field).groups()
+                                    )
+                            final.append(self._datetime(year, month, day, hour, minute, second))
+                        except Exception:
+                            raise CSVError('invalid datetime value: %r' % (field, ))
+                    elif '-' in field:
+                        # final.append(self._date.strptime(field, '%Y-%m-%d'))
+                        try:
+                            year, month, day, = map(
+                                    int,
+                                    re.match(r'^(\d+)-(\d+)-(\d+)$', field).groups()
+                                    )
+                            final.append(self._date(year, month, day))
+                        except Exception:
+                            raise CSVError('invalid date value: %r' % (field, ))
+                    elif ':' in field:
+                        # final.append(self._time.strptime(field, '%H:%M:%S'))
+                        try:
+                            year, month, day, = map(
+                                    int,
+                                    re.match(r'^(\d+):(\d+):(\d+)$', field).groups()
+                                    )
+                            final.append(self._date(year, month, day))
+                        except Exception:
+                            raise CSVError('invalid time value: %r' % (field, ))
+                    else:
+                        try:
+                            final.append(self._int(field))
+                        except ValueError:
+                            final.append(self._float(field))
             except ValueError:
                 if self.default_type is not None:
                     final.append(self.default_type(field))
@@ -222,7 +272,7 @@ class CSV(object):
 
     def to_csv(self, *data):
         """
-        convert data to text and add to CSV.data
+        convert data to text and add to CSV
 
         supported types:
 
@@ -237,19 +287,17 @@ class CSV(object):
         for datum in data:
             if datum is None or datum == '':
                 line.append('')
-            elif isinstance(datum, unicode):
+            elif isinstance(datum, basestring):
                 datum = datum.replace('"','""').replace('\\','\\\\').replace('\n',r'\n')
                 line.append('"%s"' % datum)
-            elif isinstance(datum, dates.dates):
+            elif isinstance(datum, (datetime.datetime, self._datetime)):
+                line.append(datum.strftime('%Y-%m-%d %H:%M:%S'))
+            elif isinstance(datum, (datetime.date, self._date)):
                 line.append(datum.strftime('%Y-%m-%d'))
-            elif isinstance(datum, dates.datetimes):
-                line.append(dates.datetime_to_str(datum))
-            elif isinstance(datum, dates.times):
+            elif isinstance(datum, (datetime.time, self._time)):
                 line.append(datum.strftime('%H:%M:%S'))
-            elif isinstance(datum, bool):
+            elif isinstance(datum, (bool, self._bool)):
                 line.append('ft'[datum])
-            elif isinstance(datum, SelectionEnum):
-                line.append(repr(datum.db))
             elif isinstance(datum, enums):
                 line.append(repr(datum.value))
             else:

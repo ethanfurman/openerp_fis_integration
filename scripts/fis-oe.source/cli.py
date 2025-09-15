@@ -92,7 +92,7 @@ def main(hostname, database, show_ids, fis_location):
         legacy=Spec('use use original code', FLAG),
         sheet=Spec('sheet name if writing excel file', OPTION, None),
         )
-@Alias('fis-oe','whc-fis-oe3','whc-fis-oe','fis-oe3')
+@Alias('fis-oe','fis-oe2','fis-oe3')
 def sql(command, separator, wrap, quiet, legacy, sheet):
     """
      Query FIS/OpenERP databases.

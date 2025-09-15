@@ -1,8 +1,13 @@
 from .stdlib.datetime import date, time, datetime
-from .dbf import Date, Time, DateTime
 
-dates = date, Date
-times = time, Time
-datetimes = datetime, DateTime
+try:
+    from dbf import Date, Time, DateTime
+    dates = Date, date
+    times = Time, time
+    datetimes = DateTime, datetime
+except ImportError:
+    dates = date,
+    times = time,
+    datetimes = datetime,
 
 moments = dates + times + datetimes

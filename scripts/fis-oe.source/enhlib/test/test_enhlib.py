@@ -1,15 +1,26 @@
 from __future__ import print_function
 
 from ..contextlib import suppress
+from ..csv import CSV
 from ..itertools import all_equal, xrange
+from ..misc import zip
 from ..text import translator
 import datetime
+import re
 import unittest
 
 try:
     from string import letters, digits, lowercase, uppercase
 except ImportError:
     from string import ascii_letters as letters, digits, ascii_lowercase as lowercase, ascii_uppercase as uppercase
+
+try:
+    from enum import Enum
+except ImportError:
+    try:
+        from aenum import Enum
+    except ImportError:
+        Enum = None
 
 ## globals
 
@@ -313,9 +324,35 @@ class Test_contextlib(TestCase):
 
 class Test_csv(TestCase):
     #
-    def test_basics(self):
-        from .. import csv
-        csv.CSV
+    def test_plain_data_types(self):
+        csv = CSV('test.csv', mode='w')
+        data_line = True, False, 7.9, 'hello!', datetime.date(2025, 5, 20)
+        csv_line = csv.to_csv(*data_line)
+        self.assertEqual(csv_line, """t,f,7.9,"hello!",2025-05-20""")
+        self.assertEqual(csv.from_csv(csv_line), data_line)
+
+    def test_custom_data_types(self):
+        class Custom(object):
+            def __init__(self, value):
+                self.value = value
+            def __repr__(self):
+                return ('Custom(%r)' % self.value)
+            def __eq__(self, other):
+                if isinstance(other, self.__class__):
+                    return self.value == other.value
+                return NotImplemented
+        #
+        def test_custom(text):
+            return bool(re.match(r'^Custom[(][^)]*[)]$', text))
+        def convert_custom(row, text):
+            value ,= re.match(r'^Custom[(]([^)]*)[)]$', text).groups()
+            return Custom(eval(value))
+        #
+        csv = CSV('test.csv', mode='w', custom_types=((test_custom, convert_custom), ))
+        data_line = True, False, Custom(7.9), 'hello!', datetime.date(2025, 5, 20)
+        csv_line = csv.to_csv(*data_line)
+        self.assertEqual(csv_line, """t,f,Custom(7.9),"hello!",2025-05-20""")
+        self.assertEqual(csv.from_csv(csv_line), data_line)
 
 
 class Test_functools(TestCase):
@@ -353,6 +390,50 @@ class Test_types(TestCase):
     def test_basics(self):
         from .. import types
         types.MISSING
+
+
+class TestZip(TestCase):
+    #
+    def test_equal_2(self):
+        self.assertEqual(
+                list(zip(range(5), range(5, 10))),
+                [(0, 5), (1, 6), (2, 7), (3, 8), (4, 9)],
+                )
+    #
+    def test_equal_3(self):
+        self.assertEqual(
+                list(zip(range(5), range(5, 10), range(10, 15))),
+                [(0, 5, 10), (1, 6, 11), (2, 7, 12), (3, 8, 13), (4, 9, 14)],
+                )
+    #
+    def test_no_valueerror(self):
+        self.assertEqual(
+                list(zip(range(4), range(5, 10))),
+                [(0, 5), (1, 6), (2, 7), (3, 8)],
+                )
+    #
+    def test_valueerror(self):
+        with self.assertRaisesRegex(ValueError, 'zip argument 1 is too short'):
+            list(zip(range(4), range(5, 10), strict=True))
+    #
+    def test_fill(self):
+        self.assertEqual(
+                list(zip(range(5), range(5, 10), fillvalue=0)),
+                [(0, 5), (1, 6), (2, 7), (3, 8), (4, 9)],
+                )
+        self.assertEqual(
+                list(zip(range(5), range(5, 10), range(10, 15), fillvalue=0)),
+                [(0, 5, 10), (1, 6, 11), (2, 7, 12), (3, 8, 13), (4, 9, 14)],
+                )
+        self.assertEqual(
+                list(zip(range(5), range(5, 8), fillvalue=0)),
+                [(0, 5), (1, 6), (2, 7), (3, 0), (4, 0)],
+                )
+        self.assertEqual(
+                list(zip(range(5), range(5, 8), range(10, 11), fillvalue=0)),
+                [(0, 5, 10), (1, 6, 0), (2, 7, 0), (3, 0, 0), (4, 0, 0)],
+                )
+
 
 
 if __name__ == '__main__':

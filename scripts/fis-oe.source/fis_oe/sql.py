@@ -6,6 +6,7 @@ from ast import literal_eval
 from collections import OrderedDict
 from enhlib.itertools import all_equal
 from enhlib.misc import basestring, baseinteger, ord
+from fislib.BBxXlate.schema import table_keys
 from fislib.utils import fix_date
 from itertools import cycle
 import openerplib
@@ -192,51 +193,6 @@ uncommon = {
     'other':        'oth',
     'total':        'ttl',
     }
-
-table_keys = {
-          8: (  8, 'CNVZD0', br'D010(.)'),                        # customer terms
-         11: ( 11, 'CNVZas', br'as10(..)'),                       # product category
-         33: ( 33, 'CSMS', br'10(......) '),                      # customer
-         34: ( 34, 'CSMSS', br'10(......)1....'),                 # customer ship-to
-         27: ( 27, 'CNVZSV', br'SV10(..)'),                       # carrier
-         47: ( 47, 'CNVZZ', br'Z(...)'),                          # sales rep
-         74: ( 74, 'EMP1', br'10(.....)'),                        # employee
-         65: ( 65, 'VNMS', br'10(......)'),                       # purchasers
-         97: ( 97, 'CNVZaa', br'aa10(.)'),                        # product location
-        135: (135, 'NVTY', br'(......)101000    101\*\*'),        # products
-        163: (163, 'POSM', br'10(......)'),                       # vendors
-        192: (192, 'CNVZO1', br'O110(......)'),                   # transmitter number
-        257: (257, 'CNVZK', br'K(....)'),                         # sales rep
-        262: (262, 'ARCI', br'10(......)......'),                 # customer product list
-        320: (320, 'IFMS', br'10(..........).....0'),             # product formula
-        322: (322, 'IFDT', br'10(..........).....0...'),          # product ingredients
-        328: (328, 'IFPP0', br'10(......)000010000'),             # production order formula
-        329: (329, 'IFPP1', br'10(......)000011...'),             # production order ingredients
-        341: (341, 'CNVZf', br'f10(..)'),                         # production lines
-
-        'arci'  : (262, 'ARCI', br'10(......)......'),            # customer product list
-        'cnvzaa': ( 97, 'CNVZaa', br'aa10(.)'),                   # product location
-        'cnvzas': ( 11, 'CNVZas', br'as10(..)'),                  # product category
-        'cnvzd0': (  8, 'CNVZD0', br'D010(.)'),                   # customer terms
-        'cnvzf' : (341, 'CNVZf', br'f10(..)'),                    # production lines
-        'cnvzo1': (192, 'CNVZO1', br'O110(......)'),              # transmitter number
-        'cnvzsv': ( 27, 'CNVZSV', br'SV10(..)'),                  # carrier
-        'cnvzk' : (257, 'CNVZK', br'K(....)'),                    # sales rep
-        'cnvzz' : ( 47, 'CNVZZ', br'Z(...)'),                     # sales rep
-        'csms'  : ( 33, 'CSMS', br'10(......) '),                 # customer
-        'csmss' : ( 34, 'CSMSS', br'10(......)1....'),            # customer ship-to
-        'emp1'  : ( 74, 'EMP1', br'10(.....)'),                   # employee
-        'ifms'  : (320, 'IFMS', br'10(..........).....0'),        # product formula
-        'ifdt'  : (322, 'IFDT', br'10(..........).....0...'),     # product ingredients
-        'ifpp0' : (328, 'IFPP0', br'10(......)000010000'),        # production order formula
-        'ifpp1' : (329, 'IFPP1', br'10(......)000011...'),        # production order ingredients
-        'nvty'  : (135, 'NVTY', br'(......)101000    101\*\*'),   # products
-        'posm'  : (163, 'POSM', br'10(......)'),                  # vendors
-        'vnms'  : ( 65, 'VNMS', br'10(......)'),                  # purchasers
-        'rderh' : ('RDERH', 'RDERH', br'10(......)..0000'),       # order header part 1
-        'rderi' : ('RDERI', 'RDERI', br'10(......)..0001'),       # order header part 2
-        'rderd' : ('RDERD', 'RDERD', br'10(......)..1...'),       # order detail
-        }
 
 ## functions
 
@@ -2662,8 +2618,10 @@ class SimpleQuery(object):
         # fields: list of final field names (could be aliases)
         # aliased: mapping of above (possibly aliased) field names to actual field names (for verbose mode)
         print('SQ fields=%r' % (fields, ), verbose=3)
+        if isinstance(fields, tuple):
+            fields = list(fields)
         if not isinstance(fields, list):
-            raise ValueError('fields should be a list')
+            raise ValueError('fields should be a list, not %r' % (fields, ))
         self.fields = fields
         self.aliases = aliased or {}
         self.to_file = to
@@ -2874,6 +2832,8 @@ class SQL(object):
             results[tp.alias] = r = Table.query(tp.query)
             star_fields.extend(['%s.%s' % (tp.alias, f) for f in tp.fields if f != '*'])
             for field, transform in tp.transforms.items():
+                if transform not in self.transforms:
+                    raise SQLError('unknown function: %r' % (transform, ))
                 field = split_fn(field)                     # remove table specifier if present
                 for rec in r:
                     rec[field] = self.transforms[transform](rec[field])
