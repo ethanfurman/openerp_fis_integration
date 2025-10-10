@@ -3,14 +3,16 @@ Pseudo-SQL system to interogate FIS and OpenERP.
 """
 from __future__ import print_function, unicode_literals
 
+from scription import *
+
 from antipathy import Path
 from ast import literal_eval
 from collections import defaultdict
 from enhlib.text import translator
-from enhlib.misc import baseinteger, basestring
+from enhlib.misc import baseinteger
 from fislib import schema as fis_schema
 from fislib.schema import F135
-from fis_oe.sql import ALL_ACTIVE, Fault, FISTable, SQL, SQLError, Table, convert_name, ensure_fis, init_fis
+from fis_oe.sql import ALL_ACTIVE, Fault, FISTable, SQL, SQLError, Table, convert_name
 from fis_oe import sql as sequel
 from openerplib import get_connection, get_records, AttrDict, Query, MissingTable
 import threading
@@ -24,8 +26,6 @@ import shutil
 import socket
 import sys
 import time
-
-from scription import *
 
 
 virtual_env = os.environ.get('VIRTUAL_ENV', '/opt/openerp')
@@ -64,6 +64,7 @@ def main(hostname, database, show_ids, fis_location):
         abort('unable to find config file')
     sections = [s[0] for s in config]
     if 'openerp' in sections:
+        print('using config %r' % (config, ))
         try:
             oe = get_connection(
                     hostname=hostname or config.openerp.host,
@@ -72,6 +73,10 @@ def main(hostname, database, show_ids, fis_location):
                     password=config.openerp.pw,
                     )
         except socket.error:
+            print('unable to establish connection with %r:%r' % (
+                    hostname or config.openerp.host,
+                    database or config.openerp.db,
+                    ))
             pass
     LOCAL_FIS = False
     if 'fis_imports' in sections:
@@ -91,9 +96,10 @@ def main(hostname, database, show_ids, fis_location):
         quiet=Spec('do not display output', FLAG),
         legacy=Spec('use use original code', FLAG),
         sheet=Spec('sheet name if writing excel file', OPTION, None),
+        dbfs=Spec('dbf tables to use (alias=/path/to/table.dbf', MULTI),
         )
 @Alias('fis-oe','fis-oe2','fis-oe3')
-def sql(command, separator, wrap, quiet, legacy, sheet):
+def sql(command, separator, wrap, quiet, legacy, sheet, **dbfs):
     """
      Query FIS/OpenERP databases.
 
@@ -143,6 +149,9 @@ def sql(command, separator, wrap, quiet, legacy, sheet):
             for k, v in (item.split(':'), )
             ])
     command = command.strip(' ;')
+    for dbf_name, dbf_filename in dbfs.items():
+        Table.from_data(dbf_name, data=dbf_filename)
+    print('dbf tables: %r' % sequel.Table.tables)
     try:
         # get a query object, which has a `records` attribute with all matches
         if legacy or not command.upper().startswith('SELECT '):
@@ -169,6 +178,7 @@ def sql(command, separator, wrap, quiet, legacy, sheet):
             elif to_file.endswith('.txt') or to_file == '-':
                 for field, length in wrap.items():
                     pass
+                print('model: %r  query: %r  fields: %r' % (model_name, query, fields))
                 sequel.write_txt(model_name, query, fields, to_file, separator, wrap)
             else:
                 abort('unknown file type: %r' % to_file)
@@ -289,7 +299,7 @@ def serve(ip, port, log_file):
                     day, self.monthname[month], year, hh, mm, ss)
             return s
 
-    ensure_fis()
+    sequel.ensure_fis()
     fissql = FISSQLServer(
             (ip, port),
             FISSQLRequestHandler,
@@ -1217,5 +1227,4 @@ def format_record(record, fields=None, max_width=None):
         else:
             lines.append('%5d | %*s | %*s | %*s | %s' % (i+1, -name_width, row[3], mask_width, fieldlist[i][4], value_width, value, row[1]))
     return lines
-
 

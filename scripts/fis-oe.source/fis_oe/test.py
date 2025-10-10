@@ -1,10 +1,15 @@
 from __future__ import print_function
 from aenum import NamedTuple
-from .sql import EMPTY, SQL, convert_where, Join, SQLTableParams, SQLError, Table, FISTable, OpenERPTable, GenericTable
+from antipathy import Path
+import dbf
+from .sql import EMPTY, SQL, convert_where, Join, SQLTableParams, SQLError
+from .sql import Table, FISTable, OpenERPTable, GenericTable, DbfTable
 from .sql import oe
 from enhlib.misc import zip
 from openerplib.utils import AttrDict
+import os
 import sys
+import tempfile
 import unittest
 
 # globals
@@ -52,12 +57,49 @@ class TestTables(TestCase):
         Table.query("select id, name from res.users where login='admin' order by name")
 
     def test_Generic(self):
-        GenericTable.query('select * from customer order by name')
-        Table.query('select * from customer order by name')
+        GenericTable.query('select * from customer order by last')
+        Table.query('select * from customer order by last')
+
+    def test_DBF(self):
+        with PrepDBF('customer'):
+            DbfTable.query('select * from dbf_customer order by last')
+            Table.query('select * from dbf_customer order by last')
 
     def test_SQL(self):
         SQL("select xml_id, name, fis_name from product.product where xml_id = '' order by name")
         SQL("select xml_id, name, fis_name from product.product p where xml_id = '' order by name")
+
+
+class PrepDBF(object):
+    def __enter__(self):
+        return self
+    def __exit__(self, *args):
+        self.filename.unlink()
+    def __init__(self, source):
+        # get temp name for dbf table
+        fh, fn = tempfile.mkstemp(suffix='.dbf')
+        os.close(fh)
+        self.filename = Path(fn)
+        # construct field layout for dbf table
+        fields = []
+        src_table = Table.tables[source]
+        for fn, ft in src_table.types.items():
+            if ft in ('str','unicode'):
+                fd = 'C(32)'
+            elif ft == 'int':
+                fd = 'N(3,0'
+            elif ft == 'float':
+                fd = 'N(7,3)'
+            else:
+                raise ValueError('unknown type: %r' % ft)
+            fields.append('%s %s' % (fn, fd))
+        dst_table = dbf.Table(self.filename, fields).open(dbf.READ_WRITE)
+        # copy data into dbf table
+        for row in src_table:
+            dst_table.append(row)
+        dst_table.close()
+        # and load into Table.tables
+        Table.from_data('dbf_%s'%source, data=self.filename)
 
 
 # Tests
@@ -65,7 +107,7 @@ class TestTables(TestCase):
 
 # class Test(TestCase):
 #     def test_multiple_star(self):
-#         query = SQL("select * from customer join invoice on customer.customer_id = invoice.customer_id").execute()
+#         query = SQL("select * from customer join invoice on customer.cust_id = invoice.cust_id").execute()
 #         for row in query:
 #             print(row)
 
@@ -382,7 +424,7 @@ class TestSQL(TestCase):
                 primary_table = 'product.product',
                 table_by_field_alias = {'xml_id':'product.product', 'name':'product.product', 'fis_name':'product.product'},
                 ),
-            # SQLParams(  # xx
+            # SQLParams(  # 15
             #     input="select n.item, p.formula, d.item ingred from 135 n left join "
             #             "(322 p left join 323 d on d.formula_id=p.formula_id) "
             #             "on n.item_id=p.formula_id and n.item_id like '1000' "
@@ -392,7 +434,8 @@ class TestSQL(TestCase):
             #             "ON n.item_id = p.formula_id and n.item_id like '1000' "
             #             "ORDER BY n.item, p.formula DESC, ingred",
             #     header=['n.item', 'p.formula', 'ingred'],
-            #     tables={'n': SQLTableParams(
+            #     tables={
+            #             'n': SQLTableParams(
             #                                     alias='n',
             #                                     table_name='135',
             #                                     fields={'item':'item', 'item_id':'item_id'},
@@ -457,7 +500,7 @@ class TestSQL(TestCase):
             ('I-106', 55.62),
             ]
         for rec, exp in zip(
-                SQL("select invoice_id, total from invoice where customer_id='C-001'"),
+                SQL("select inv_id, total from invoice where cust_id='C-001'"),
                 expected,
                 fillvalue=None
                 ):
@@ -465,194 +508,194 @@ class TestSQL(TestCase):
 
     def test_joins(self):
         # join
-        query = SQL('select c.last, i.invoice_id, i.total from customer c join invoice i on c.customer_id=i.customer_id').execute()
+        query = SQL('select c.last, i.inv_id, i.total from customer c join invoice i on c.cust_id=i.cust_id').execute()
         expected = [
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
-                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
-                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Joleson'), ('i.inv_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.inv_id','I-117'), ('i.total',0.0)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-108'), ('i.total',74.08)]),
                 ]
         for res, exp in zip(query, expected, fillvalue=None):
             self.assertEqual(res._asdict(), exp)
-        query = SQL('select c.last, i.invoice_id, i.total from invoice i join customer c on i.customer_id=c.customer_id').execute()
+        query = SQL('select c.last, i.inv_id, i.total from invoice i join customer c on i.cust_id=c.cust_id').execute()
         expected = [
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
-                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
-                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Joleson'), ('i.inv_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.inv_id','I-117'), ('i.total',0.0)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-108'), ('i.total',74.08)]),
                 ]
         for res, exp in zip(query, expected, fillvalue=None):
             self.assertEqual(res._asdict(), exp)
         # inner
-        query = SQL('select c.last, i.invoice_id, i.total from customer c inner join invoice i on c.customer_id=i.customer_id order by i.invoice_id').execute()
+        query = SQL('select c.last, i.inv_id, i.total from customer c inner join invoice i on c.cust_id=i.cust_id order by i.inv_id').execute()
         expected = [
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
-                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
-                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Joleson'), ('i.inv_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.inv_id','I-117'), ('i.total',0.0)]),
                 ]
         for res, exp in zip(query, expected, fillvalue=None):
             self.assertEqual(res._asdict(), exp)
-        query = SQL('select c.last, i.invoice_id, i.total from invoice i inner join customer c on i.customer_id=c.customer_id order by i.invoice_id').execute()
+        query = SQL('select c.last, i.inv_id, i.total from invoice i inner join customer c on i.cust_id=c.cust_id order by i.inv_id').execute()
         expected = [
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
-                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
-                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Joleson'), ('i.inv_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.inv_id','I-117'), ('i.total',0.0)]),
                 ]
         for res, exp in zip(query, expected, fillvalue=None):
             self.assertEqual(res._asdict(), exp)
         # full
-        query = SQL('select c.last, i.invoice_id, i.total from customer c full join invoice i on c.customer_id=i.customer_id order by c.last').execute()
+        query = SQL('select c.last, i.inv_id, i.total from customer c full join invoice i on c.cust_id=i.cust_id order by c.last').execute()
         expected = [
-                AttrDict([('c.last',EMPTY), ('i.invoice_id','I-110'), ('i.total',8.97)]),
-                AttrDict([('c.last','Cordosa'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
-                AttrDict([('c.last','Giannini'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Godshall'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
-                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
-                AttrDict([('c.last','Winchester'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','van Sebille'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last',EMPTY), ('i.inv_id','I-110'), ('i.total',8.97)]),
+                AttrDict([('c.last','Cordosa'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Giannini'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Godshall'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Joleson'), ('i.inv_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.inv_id','I-117'), ('i.total',0.0)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last','Winchester'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','van Sebille'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
                 ]
         for res, exp in zip(query, expected, fillvalue=None):
             self.assertEqual(res._asdict(), exp)
-        query = SQL('select c.last, i.invoice_id, i.total from invoice i full join customer c on c.customer_id=i.customer_id order by c.last').execute()
+        query = SQL('select c.last, i.inv_id, i.total from invoice i full join customer c on c.cust_id=i.cust_id order by c.last').execute()
         expected = [
-                AttrDict([('c.last',EMPTY), ('i.invoice_id','I-110'), ('i.total',8.97)]),
-                AttrDict([('c.last','Cordosa'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
-                AttrDict([('c.last','Giannini'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Godshall'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
-                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
-                AttrDict([('c.last','Winchester'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','van Sebille'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last',EMPTY), ('i.inv_id','I-110'), ('i.total',8.97)]),
+                AttrDict([('c.last','Cordosa'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Giannini'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Godshall'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Joleson'), ('i.inv_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.inv_id','I-117'), ('i.total',0.0)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last','Winchester'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','van Sebille'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
                 ]
         for res, exp in zip(query, expected, fillvalue=None):
             self.assertEqual(res._asdict(), exp)
         # outer
-        query = SQL('select c.last, i.invoice_id, i.total from customer c outer join invoice i on c.customer_id=i.customer_id order by c.last').execute()
+        query = SQL('select c.last, i.inv_id, i.total from customer c outer join invoice i on c.cust_id=i.cust_id order by c.last').execute()
         expected = [
-                AttrDict([('c.last',EMPTY), ('i.invoice_id','I-110'), ('i.total',8.97)]),
-                AttrDict([('c.last','Cordosa'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Giannini'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Godshall'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Winchester'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','van Sebille'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last',EMPTY), ('i.inv_id','I-110'), ('i.total',8.97)]),
+                AttrDict([('c.last','Cordosa'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Giannini'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Godshall'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Winchester'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','van Sebille'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
                 ]
         for res, exp in zip(query, expected, fillvalue=None):
             self.assertEqual(res._asdict(), exp)
-        query = SQL('select c.last, i.invoice_id, i.total from invoice i outer join customer c on c.customer_id=i.customer_id order by c.last').execute()
+        query = SQL('select c.last, i.inv_id, i.total from invoice i outer join customer c on c.cust_id=i.cust_id order by c.last').execute()
         expected = [
-                AttrDict([('c.last',EMPTY), ('i.invoice_id','I-110'), ('i.total',8.97)]),
-                AttrDict([('c.last','Cordosa'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Giannini'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Godshall'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Winchester'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','van Sebille'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last',EMPTY), ('i.inv_id','I-110'), ('i.total',8.97)]),
+                AttrDict([('c.last','Cordosa'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Giannini'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Godshall'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Winchester'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','van Sebille'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
                 ]
         for res, exp in zip(query, expected, fillvalue=None):
             self.assertEqual(res._asdict(), exp)
         # left
-        query = SQL('select c.last, i.invoice_id, i.total from customer c left join invoice i on c.customer_id=i.customer_id order by c.last').execute()
+        query = SQL('select c.last, i.inv_id, i.total from customer c left join invoice i on c.cust_id=i.cust_id order by c.last').execute()
         expected = [
-                AttrDict([('c.last','Cordosa'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
-                AttrDict([('c.last','Giannini'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Godshall'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
-                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
-                AttrDict([('c.last','Winchester'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','van Sebille'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Cordosa'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Giannini'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Godshall'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Joleson'), ('i.inv_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.inv_id','I-117'), ('i.total',0.0)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last','Winchester'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','van Sebille'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
                 ]
         for res, exp in zip(query, expected, fillvalue=None):
             self.assertEqual(res._asdict(), exp)
-        query = SQL('select c.last, i.invoice_id, i.total from invoice i left join customer c on c.customer_id=i.customer_id order by i.invoice_id').execute()
+        query = SQL('select c.last, i.inv_id, i.total from invoice i left join customer c on c.cust_id=i.cust_id order by i.inv_id').execute()
         expected = [
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
-                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
-                AttrDict([('c.last',EMPTY), ('i.invoice_id','I-110'), ('i.total',8.97)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
-                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Joleson'), ('i.inv_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last',EMPTY), ('i.inv_id','I-110'), ('i.total',8.97)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.inv_id','I-117'), ('i.total',0.0)]),
                 ]
         for res, exp in zip(query, expected, fillvalue=None):
             self.assertEqual(res._asdict(), exp)
         # right
-        query = SQL('select c.last, i.invoice_id, i.total from customer c right join invoice i on c.customer_id=i.customer_id order by i.invoice_id').execute()
+        query = SQL('select c.last, i.inv_id, i.total from customer c right join invoice i on c.cust_id=i.cust_id order by i.inv_id').execute()
         expected = [
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
-                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
-                AttrDict([('c.last',EMPTY), ('i.invoice_id','I-110'), ('i.total',8.97)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
-                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Joleson'), ('i.inv_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last',EMPTY), ('i.inv_id','I-110'), ('i.total',8.97)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.inv_id','I-117'), ('i.total',0.0)]),
                 ]
         for res, exp in zip(query, expected, fillvalue=None):
             self.assertEqual(res._asdict(), exp)
-        query = SQL('select c.last, i.invoice_id, i.total from invoice i right join customer c on c.customer_id=i.customer_id order by c.last').execute()
+        query = SQL('select c.last, i.inv_id, i.total from invoice i right join customer c on c.cust_id=i.cust_id order by c.last').execute()
         expected = [
-                AttrDict([('c.last','Cordosa'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
-                AttrDict([('c.last','Giannini'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Godshall'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
-                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
-                AttrDict([('c.last','Winchester'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
-                AttrDict([('c.last','van Sebille'), ('i.invoice_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Cordosa'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-101'), ('i.total',97.01)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-103'), ('i.total',11.99)]),
+                AttrDict([('c.last','Furman'), ('i.inv_id','I-106'), ('i.total',55.62)]),
+                AttrDict([('c.last','Giannini'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Godshall'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','Joleson'), ('i.inv_id','I-102'), ('i.total',133.79)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-111'), ('i.total',99.53)]),
+                AttrDict([('c.last','Longsworth'), ('i.inv_id','I-113'), ('i.total',116.45)]),
+                AttrDict([('c.last','Rodriguez'), ('i.inv_id','I-117'), ('i.total',0.0)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-104'), ('i.total',12.34)]),
+                AttrDict([('c.last','Tolstoy'), ('i.inv_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.last','Winchester'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
+                AttrDict([('c.last','van Sebille'), ('i.inv_id',EMPTY), ('i.total',EMPTY)]),
                 ]
         for res, exp in zip(query, expected, fillvalue=None):
             self.assertEqual(res._asdict(), exp)
@@ -680,17 +723,34 @@ class TestSQL(TestCase):
             self.assertEqual(res._asdict(), exp)
 
     def test_multiple_star(self):
-        query = SQL("select * from customer join invoice on customer.customer_id = invoice.customer_id").execute()
+        query = SQL("select * from customer c join invoice i on c.cust_id = i.cust_id").execute()
         expected = [
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-101'), ('i.total',97.01)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-103'), ('i.total',11.99)]),
-                AttrDict([('c.last','Furman'), ('i.invoice_id','I-106'), ('i.total',55.62)]),
-                AttrDict([('c.last','Joleson'), ('i.invoice_id','I-102'), ('i.total',133.79)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-111'), ('i.total',99.53)]),
-                AttrDict([('c.last','Longsworth'), ('i.invoice_id','I-113'), ('i.total',116.45)]),
-                AttrDict([('c.last','Rodriguez'), ('i.invoice_id','I-117'), ('i.total',0.0)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-104'), ('i.total',12.34)]),
-                AttrDict([('c.last','Tolstoy'), ('i.invoice_id','I-108'), ('i.total',74.08)]),
+                AttrDict([('c.middle', 'A'), ('c.last', 'Furman'), ('c.cust_id', 'C-001'), ('c.first', 'Ethan'), ('i.total', 97.01), ('i.cust_id', 'C-001'), ('i.inv_id', 'I-101'), ('i.purch_date', '2024-01-05')]),
+                AttrDict([('i.total', 11.99), ('i.cust_id', 'C-001'), ('i.inv_id', 'I-103'), ('i.purch_date', '2024-05-20'), ('c.middle', 'A'), ('c.last', 'Furman'), ('c.cust_id', 'C-001'), ('c.first', 'Ethan')]),
+                AttrDict([('i.total', 55.62), ('i.cust_id', 'C-001'), ('i.inv_id', 'I-106'), ('i.purch_date', '2024-05-20'), ('c.middle', 'A'), ('c.last', 'Furman'), ('c.cust_id', 'C-001'), ('c.first', 'Ethan')]),
+                AttrDict([('i.total', 133.79), ('i.cust_id', 'C-007'), ('i.inv_id', 'I-102'), ('i.purch_date', '2024-02-01'), ('c.middle', 'Dee'), ('c.last', 'Joleson'), ('c.cust_id', 'C-007'), ('c.first', 'Jonathan')]),
+                AttrDict([('i.total', 99.53), ('i.cust_id', 'C-008'), ('i.inv_id', 'I-111'), ('i.purch_date', '2024-07-31'), ('c.middle', 'Mario'), ('c.last', 'Longsworth'), ('c.cust_id', 'C-008'), ('c.first', 'William')]),
+                AttrDict([('i.total', 116.45), ('i.cust_id', 'C-008'), ('i.inv_id', 'I-113'), ('i.purch_date', '2024-10-12'), ('c.middle', 'Mario'), ('c.last', 'Longsworth'), ('c.cust_id', 'C-008'), ('c.first', 'William')]),
+                AttrDict([('i.total', 0.0), ('i.cust_id', 'C-012'), ('i.inv_id', 'I-117'), ('i.purch_date', '2024-12-13'), ('c.middle', 'Espinosa'), ('c.last', 'Rodriguez'), ('c.cust_id', 'C-012'), ('c.first', 'Yolanda')]),
+                AttrDict([('i.total', 12.34), ('i.cust_id', 'C-013'), ('i.inv_id', 'I-104'), ('i.purch_date', '2024-03-16'), ('c.middle', 'K'), ('c.last', 'Tolstoy'), ('c.cust_id', 'C-013'), ('c.first', 'Arnesto')]),
+                AttrDict([('i.total', 74.08), ('i.cust_id', 'C-013'), ('i.inv_id', 'I-108'), ('i.purch_date', '2024-07-31'), ('c.middle', 'K'), ('c.last', 'Tolstoy'), ('c.cust_id', 'C-013'), ('c.first', 'Arnesto')]),
+                ]
+        for res, exp in zip(query, expected, fillvalue=None):
+            self.assertEqual(res._asdict(), exp)
+
+    def test_single_star(self):
+        query = SQL("select * from customer").execute()
+        expected = [
+                AttrDict([('middle', 'A'), ('last', 'Furman'), ('cust_id', 'C-001'), ('first', 'Ethan')]),
+                AttrDict([('middle', 'B'), ('last', 'Cordosa'), ('cust_id', 'C-002'), ('first', 'Alyssa')]),
+                AttrDict([('middle', 'C'), ('last', 'Godshall'), ('cust_id', 'C-004'), ('first', 'Tony')]),
+                AttrDict([('middle', ''), ('last', 'van Sebille'), ('cust_id', 'C-005'), ('first', 'Emile')]),
+                AttrDict([('middle', ''), ('last', 'Giannini'), ('cust_id', 'C-006'), ('first', 'Ron')]),
+                AttrDict([('middle', 'Dee'), ('last', 'Joleson'), ('cust_id', 'C-007'), ('first', 'Jonathan')]),
+                AttrDict([('middle', 'Mario'), ('last', 'Longsworth'), ('cust_id', 'C-008'), ('first', 'William')]),
+                AttrDict([('middle', 'Nathanial'), ('last', 'Winchester'), ('cust_id', 'C-010'), ('first', 'Charlie')]),
+                AttrDict([('middle', 'Espinosa'), ('last', 'Rodriguez'), ('cust_id', 'C-012'), ('first', 'Yolanda')]),
+                AttrDict([('middle', 'K'), ('last', 'Tolstoy'), ('cust_id', 'C-013'), ('first', 'Arnesto')]),
                 ]
         for res, exp in zip(query, expected, fillvalue=None):
             self.assertEqual(res._asdict(), exp)
@@ -753,91 +813,93 @@ class TestMisc(TestCase):
                 )
 
 
+## generic test table data
+
 Table.from_data(
         name='customer',
-        fields=['first','middle','last','customer_id'],
+        fields=['cust_id','first','middle','last'],
         data=[
-            dict(first='Ethan', middle='A', last='Furman', customer_id='C-001'),
-            dict(first='Alyssa', middle='B', last='Cordosa', customer_id='C-002'),
-            dict(first='Tony', middle='C', last='Godshall', customer_id='C-004'),
-            dict(first='Emile', middle='', last='van Sebille', customer_id='C-005'),
-            dict(first='Ron', middle='', last='Giannini', customer_id='C-006'),
-            dict(first='Jonathan', middle='Dee', last='Joleson', customer_id='C-007'),
-            dict(first='William', middle='Mario', last='Longsworth', customer_id='C-008'),
-            dict(first='Charlie', middle='Nathanial', last='Winchester', customer_id='C-010'),
-            dict(first='Yolanda', middle='Espinosa', last='Rodriguez', customer_id='C-012'),
-            dict(first='Arnesto', middle='K', last='Tolstoy', customer_id='C-013'),
+            dict(first='Ethan', middle='A', last='Furman', cust_id='C-001'),
+            dict(first='Alyssa', middle='B', last='Cordosa', cust_id='C-002'),
+            dict(first='Tony', middle='C', last='Godshall', cust_id='C-004'),
+            dict(first='Emile', middle='', last='van Sebille', cust_id='C-005'),
+            dict(first='Ron', middle='', last='Giannini', cust_id='C-006'),
+            dict(first='Jonathan', middle='Dee', last='Joleson', cust_id='C-007'),
+            dict(first='William', middle='Mario', last='Longsworth', cust_id='C-008'),
+            dict(first='Charlie', middle='Nathanial', last='Winchester', cust_id='C-010'),
+            dict(first='Yolanda', middle='Espinosa', last='Rodriguez', cust_id='C-012'),
+            dict(first='Arnesto', middle='K', last='Tolstoy', cust_id='C-013'),
             ])
 
 Table.from_data(
         name='address',
-        fields=['customer_id','street','city','state','zip'],
+        fields=['cust_id','street','city','state','zip'],
         data=[
-            dict(customer_id='', street='123 Main St', city='Anytown', state='AK', zip='99991'),
-            dict(customer_id='C-001', street='814 Cedaroak St', city='Saint Helens', state='OR', zip='98225'),
-            dict(customer_id='C-001', street='1014 S Summit Ave', city='Rosalia', state='WA', zip='99170'),
-            dict(customer_id='C-003', street='456 Primary Blvd', city='Everytown', state='RI', zip='00001'),
-            dict(customer_id='C-006', street='423 Salinas Rd', city='Royal Oaks', state='', zip=''),
-            dict(customer_id='C-007', street='8192 Secondary Lp', city='Circlet', state='MI', zip='32166'),
-            dict(customer_id='C-008', street='700 Elevenses Ln', city='Doublee', state='SD', zip='71942'),
-            dict(customer_id='C-009', street='513 NE 7th Way', city='St Louis', state='OK', zip='44267'),
-            dict(customer_id='C-012', street='', city='Albaqurque', state='NM', zip=''),
-            dict(customer_id='C-013', street='34345 S Dickey Prairie Rd', city='', state='', zip='98123'),
+            dict(cust_id='', street='123 Main St', city='Anytown', state='AK', zip='99991'),
+            dict(cust_id='C-001', street='814 Cedaroak St', city='Saint Helens', state='OR', zip='98225'),
+            dict(cust_id='C-001', street='1014 S Summit Ave', city='Rosalia', state='WA', zip='99170'),
+            dict(cust_id='C-003', street='456 Primary Blvd', city='Everytown', state='RI', zip='00001'),
+            dict(cust_id='C-006', street='423 Salinas Rd', city='Royal Oaks', state='', zip=''),
+            dict(cust_id='C-007', street='8192 Secondary Lp', city='Circlet', state='MI', zip='32166'),
+            dict(cust_id='C-008', street='700 Elevenses Ln', city='Doublee', state='SD', zip='71942'),
+            dict(cust_id='C-009', street='513 NE 7th Way', city='St Louis', state='OK', zip='44267'),
+            dict(cust_id='C-012', street='', city='Albaqurque', state='NM', zip=''),
+            dict(cust_id='C-013', street='34345 S Dickey Prairie Rd', city='', state='', zip='98123'),
             ])
 
 Table.from_data(
         name='invoice',
-        fields=['invoice_id','customer_id','purchase_date','total'],
+        fields=['inv_id','cust_id','purch_date','total'],
         data=[
-            dict(invoice_id='I-101', customer_id='C-001', purchase_date='2024-01-05', total=97.01),
-            dict(invoice_id='I-102', customer_id='C-007', purchase_date='2024-02-01', total=133.79),
-            dict(invoice_id='I-103', customer_id='C-001', purchase_date='2024-05-20', total=11.99),
-            dict(invoice_id='I-104', customer_id='C-013', purchase_date='2024-03-16', total=12.34),
-            dict(invoice_id='I-106', customer_id='C-001', purchase_date='2024-05-20', total=55.62),
-            dict(invoice_id='I-108', customer_id='C-013', purchase_date='2024-07-31', total=74.08),
-            dict(invoice_id='I-110', customer_id='C-003', purchase_date='2024-05-20', total=8.97),
-            dict(invoice_id='I-111', customer_id='C-008', purchase_date='2024-07-31', total=99.53),
-            dict(invoice_id='I-113', customer_id='C-008', purchase_date='2024-10-12', total=116.45),
-            dict(invoice_id='I-117', customer_id='C-012', purchase_date='2024-12-13', total=0.00),
+            dict(inv_id='I-101', cust_id='C-001', purch_date='2024-01-05', total=97.01),
+            dict(inv_id='I-102', cust_id='C-007', purch_date='2024-02-01', total=133.79),
+            dict(inv_id='I-103', cust_id='C-001', purch_date='2024-05-20', total=11.99),
+            dict(inv_id='I-104', cust_id='C-013', purch_date='2024-03-16', total=12.34),
+            dict(inv_id='I-106', cust_id='C-001', purch_date='2024-05-20', total=55.62),
+            dict(inv_id='I-108', cust_id='C-013', purch_date='2024-07-31', total=74.08),
+            dict(inv_id='I-110', cust_id='C-003', purch_date='2024-05-20', total=8.97),
+            dict(inv_id='I-111', cust_id='C-008', purch_date='2024-07-31', total=99.53),
+            dict(inv_id='I-113', cust_id='C-008', purch_date='2024-10-12', total=116.45),
+            dict(inv_id='I-117', cust_id='C-012', purch_date='2024-12-13', total=0.00),
             ])
 
 Table.from_data(
         name='invoice_line',
-        fields=['invoice_id','product_id','qty','cost','total'],
+        fields=['inv_id','product_id','qty','cost','total'],
         data=[
-            dict(invoice_id='I-101', product_id='14FW', qty=3, cost=0.25, total=0.75),
-            dict(invoice_id='I-101', product_id='38LW', qty=6, cost=0.31, total=1.86),
-            dict(invoice_id='I-102', product_id='4BLT', qty=9, cost=0.44, total=3.96),
-            dict(invoice_id='I-103', product_id='248CDR', qty=11, cost=4.23, total=46.53),
-            dict(invoice_id='I-104', product_id='1GP', qty=2, cost=27.89, total=55.78),
-            dict(invoice_id='I-105', product_id='PBR', qty=1, cost=4.99, total=4.99),
-            dict(invoice_id='I-106', product_id='SP', qty=10, cost=0.99, total=9.90),
-            dict(invoice_id='I-106', product_id='DC', qty=1, cost=13.39, total=13.39),
-            dict(invoice_id='I-106', product_id='WAX', qty=2, cost=12.99, total=25.98),
-            dict(invoice_id='I-108', product_id='OIL', qty=5, cost=17.99, total=89.95),
-            dict(invoice_id='I-108', product_id='1GP', qty=3, cost=27.89, total=83.67),
-            dict(invoice_id='I-110', product_id='OIL', qty=1, cost=17.99, total=17.99),
-            dict(invoice_id='I-111', product_id='DC', qty=2, cost=13.39, total=26.78),
-            dict(invoice_id='I-113', product_id='PBR', qty=5, cost=4.99, total=24.95),
-            dict(invoice_id='I-117', product_id='WAX', qty=3, cost=12.99, total=38.97),
-            dict(invoice_id='I-117', product_id='OIL', qty=9, cost=17.99, total=161.91),
-            dict(invoice_id='I-117', product_id='PBR', qty=1, cost=4.99, total=4.99),
+            dict(inv_id='I-101', product_id='14FW', qty=3, cost=0.25, total=0.75),
+            dict(inv_id='I-101', product_id='38LW', qty=6, cost=0.31, total=1.86),
+            dict(inv_id='I-102', product_id='4BLT', qty=9, cost=0.44, total=3.96),
+            dict(inv_id='I-103', product_id='248CDR', qty=11, cost=4.23, total=46.53),
+            dict(inv_id='I-104', product_id='1GP', qty=2, cost=27.89, total=55.78),
+            dict(inv_id='I-105', product_id='PBR', qty=1, cost=4.99, total=4.99),
+            dict(inv_id='I-106', product_id='SP', qty=10, cost=0.99, total=9.90),
+            dict(inv_id='I-106', product_id='DC', qty=1, cost=13.39, total=13.39),
+            dict(inv_id='I-106', product_id='WAX', qty=2, cost=12.99, total=25.98),
+            dict(inv_id='I-108', product_id='OIL', qty=5, cost=17.99, total=89.95),
+            dict(inv_id='I-108', product_id='1GP', qty=3, cost=27.89, total=83.67),
+            dict(inv_id='I-110', product_id='OIL', qty=1, cost=17.99, total=17.99),
+            dict(inv_id='I-111', product_id='DC', qty=2, cost=13.39, total=26.78),
+            dict(inv_id='I-113', product_id='PBR', qty=5, cost=4.99, total=24.95),
+            dict(inv_id='I-117', product_id='WAX', qty=3, cost=12.99, total=38.97),
+            dict(inv_id='I-117', product_id='OIL', qty=9, cost=17.99, total=161.91),
+            dict(inv_id='I-117', product_id='PBR', qty=1, cost=4.99, total=4.99),
             ])
 
 Table.from_data(
         name='product',
-        fields=['product_id','description','price'],
+        fields=['product_id','desc','price'],
         data=[
-            dict(description='1/4" flat washer', product_id='14FW', price=0.25),
-            dict(description='3/8" lock washer', product_id='38LW', price=0.31),
-            dict(description='4" bolt', product_id='4BLT', price=0.44),
-            dict(description='2" x 4" x 8\' cedar', product_id='248CDR', price=4.23),
-            dict(description='1 gallon paint', product_id='1GP', price=27.89),
-            dict(description='paint brush roll', product_id='PBR', price=4.99),
-            dict(description='sand paper', product_id='SP', price=0.99),
-            dict(description='drop cloth', product_id='DC', price=13.39),
-            dict(description='wax', product_id='WAX', price=12.99),
-            dict(description='oil', product_id='OIL', price=17.99),
+            dict(desc='1/4" flat washer', product_id='14FW', price=0.25),
+            dict(desc='3/8" lock washer', product_id='38LW', price=0.31),
+            dict(desc='4" bolt', product_id='4BLT', price=0.44),
+            dict(desc='2" x 4" x 8\' cedar', product_id='248CDR', price=4.23),
+            dict(desc='1 gallon paint', product_id='1GP', price=27.89),
+            dict(desc='paint brush roll', product_id='PBR', price=4.99),
+            dict(desc='sand paper', product_id='SP', price=0.99),
+            dict(desc='drop cloth', product_id='DC', price=13.39),
+            dict(desc='wax', product_id='WAX', price=12.99),
+            dict(desc='oil', product_id='OIL', price=17.99),
             ])
 
 Table.from_data(
@@ -849,3 +911,5 @@ Table.from_data(
             dict(side=3),
             dict(side=4),
             ])
+
+

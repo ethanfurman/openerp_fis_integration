@@ -1,20 +1,20 @@
 from __future__ import print_function, unicode_literals
 
-from aenum import Enum, NamedTuple, StrEnum, auto
+from aenum import Enum, NamedTuple, auto
 from antipathy import Path
 from ast import literal_eval
 from collections import OrderedDict
 from enhlib.itertools import all_equal
-from enhlib.misc import basestring, baseinteger, ord
+from enhlib.misc import basestring, str, zip
 from fislib.BBxXlate.schema import table_keys
 from fislib.utils import fix_date
 from itertools import cycle
-import openerplib
 from openerplib import get_connection, get_records, AttrDict, Binary, Query, Many2One, CSV
 from scription import OrmFile, Singleton, Var, echo, error, print
 from traceback import print_exc
 
 import dbf
+import os
 import pprint
 import re
 import socket
@@ -27,6 +27,7 @@ except ImportError:
 ## globals
 
 fd = TableError = None
+virtual_env = Path(os.environ.get('VIRTUAL_ENV', '/opt/openerp'))
 
 def init_fis():
     global fd, TableError
@@ -543,8 +544,11 @@ def ensure_oe():
     """
     global oe
     if oe is None:
-        # assume being called outside of cli; look in /etc for the config
-        config = OrmFile(Path('/etc/fnx.ini'), types={'_path':Path})
+        if virtual_env.exists('config/fnx.ini'):
+            config = OrmFile(virtual_env/'config/fnx.ini', types={'_path':Path})
+        else:
+            # assume being called outside of cli; look in /etc for the config
+            config = OrmFile('/etc/fnx.ini', types={'_path':Path})
         try:
             oe = get_connection(
                     hostname=config.openerp.host,
@@ -1022,6 +1026,10 @@ class Table(object):
         """
         return getattr(self.table, name)
 
+    def __iter__(self):
+        for row in self.table:
+            yield row
+
     @property
     def fields(self):
         """
@@ -1030,26 +1038,48 @@ class Table(object):
         return self._fields.copy()
 
     @classmethod
-    def from_data(cls, name, fields=None, data=None):
-        if name in cls.tables:
-            raise NameError('table %r already exists' % name)
-        # if rows in data are simple tuples, header must be specified
-        # otherwise, rows must be namedtuples, attrdicts, or something else supporting getitem access
-        if fields is None:
-            if data is None:
-                raise ValueError('fields must be given when table is empty')
-            fields = list(data.keys())
-        if isinstance(fields, (list, tuple)):
-            fields = dict([(k, k) for k in data[0].keys()])
-        if data and type(data[0]) is tuple:
-            old_data, data = data, []
-            for row in old_data:
-                data.append(dict(zip(fields, row)))
-        table = object.__new__(GenericTable)
+    def from_data(cls, name, fields=None, types=None, data=None):
+        print('name: %r  fields: %r  data: %r' % (name, fields, data), verbose=4)
+        if isinstance(data, (str, Path)) and data.endswith('.dbf'):
+            print(0, verbose=4)
+            data = dbf.Table(data, default_data_types='enhanced').open(dbf.READ_ONLY)
+            fields = dict([(k, k) for k in data.field_names])
+            print('fields: %r' % (fields, ), verbose=4)
+            table = object.__new__(DbfTable)
+        else:
+            print(1, verbose=4)
+            if name in cls.tables:
+                raise NameError('table %r already exists' % name)
+            # if rows in data are simple tuples, header must be specified
+            # otherwise, rows must be namedtuples, attrdicts, or something else supporting getitem access
+            if fields is None:
+                if data is None:
+                    raise ValueError('fields must be given when table is empty')
+                fields = list(data.keys())
+            if isinstance(fields, (list, tuple)):
+                fields = OrderedDict([(k, k) for k in fields])
+            if data and type(data[0]) is tuple:
+                old_data, data = data, []
+                for row in old_data:
+                    data.append(dict(zip(fields, row)))
+            table = object.__new__(GenericTable)
+        if types is None and data:
+            types = OrderedDict.fromkeys(fields.keys(), str)
+            undef = set(fields.keys())
+            for rec in data:
+                for f in list(undef):
+                    if rec[f] is not None:
+                        types[f] = type(rec[f]).__name__
+                        undef.remove(f)
+                if not undef:
+                    break
+            for f in undef:
+                # use dummy value for missing types
+                types[f] = ''
         table.name = name
         table._fields = fields
         table.table = data
-        # table._inited = True
+        table.types = types
         cls.tables[name] = table
         return table
 
@@ -1062,7 +1092,9 @@ class Table(object):
             cmd, table_name = re.match(cls.command_table_pat, command, re.I).groups()
         except AttributeError:
             raise SQLError('command and/or table missing from query')
+        print('%r  %r' % (cmd, table_name))
         table = cls(table_name)
+        print(repr(table))
         method = getattr(table, 'sql_%s' % cmd.lower().split()[0])
         q = method(command)
         if not isinstance(q, (Query, SimpleQuery)):
@@ -1772,10 +1804,10 @@ class OpenERPTable(Table):
 
 class GenericTable(Table):
     """
-    Results table
+    Generic table
     """
     def __repr__(self):
-        return "ResultsTable(name=%r, fields=%r)" % (self.name, self._fields.keys())
+        return "GenericTable(name=%r, fields=%r)" % (self.name, self._fields.keys())
 
     def _records(self, fields, aliased, where, constraints):
         # print('fields requested: %s' % (fields, ), verbose=3)
@@ -1793,7 +1825,7 @@ class GenericTable(Table):
                         if f == 'id' and 'id' not in aliased:
                             continue
                         row.append(r[aliased.get(f,f)])
-                    records.append(dict(zip(fields, row)))
+                    records.append(OrderedDict(zip(fields, row)))
         return records
 
     def sql_count(self, command):
@@ -1803,7 +1835,7 @@ class GenericTable(Table):
             command = ' '.join(temp)
         query = self.sql_select(command, _internal=True)
         sq = SimpleQuery(('table', 'count'))
-        sq.records.append(AttrDict(table=self.table.name, count=len(query)))
+        sq.records.append(AttrDict(table=self.name, count=len(query)))
         sq.status = "COUNT %s" % len(query)
         return sq
 
@@ -1811,6 +1843,18 @@ class GenericTable(Table):
         """
         DESCRIBE table
         """
+        if self.types is None and self.table:
+            undef = set(self.fields.keys())
+            for rec in self.table:
+                for f in undef:
+                    if rec[f] is not None:
+                        self.types[f] = type(rec[f]).__name__
+                        undef.remove(f)
+                if not undef:
+                    break
+            for f in undef:
+                # use dummy value for missing types
+                self.types[f] = ''
         index = 0
         defs = sorted(self.fields.values(), key=lambda t: t[index])
         sq = SimpleQuery(('index', 'name','spec','comment'))
@@ -1860,7 +1904,7 @@ class GenericTable(Table):
             raise SQLError('missing fields')
         # get field names if * specified
         if seleccion == ['*']:
-            seleccion = sorted(fields)
+            seleccion = fields
         else:
             seleccion = [s.strip() for s in ' '.join(seleccion).split(',')]
         for i, field in enumerate(seleccion):
@@ -1942,6 +1986,25 @@ class GenericTable(Table):
         sq.records.extend(self._records(seleccion, field_alias, donde, constraints))
         sq.status = "SELECT %s" % len(sq.records)
         return sq
+
+class DbfTable(GenericTable):
+    """
+    dbf.Table wrapper
+    """
+    def __repr__(self):
+        return "DbfTable(name=%r, fields=%r)" % (self.name, self.table.field_names)
+
+    def sql_describe(self, command, _internal=''):
+        """
+        DESCRIBE table
+        """
+        defs = [dfn.split(' ', 1)[1] for dfn in self.table.structure()]
+        sq = SimpleQuery(('index', 'name','spec','comment'))
+        for i, (fn, dfn) in enumerate(zip(self.table.field_names, defs)):
+            sq.records.append(AttrDict(index=i, name=fn, spec=dfn, comment=None))
+        sq.status = "DESCRIBE 1"
+        return sq
+
 
 class Node(object):
     #
@@ -2437,14 +2500,15 @@ class Join(object):
             right_name = split_fn(field2)
         else:
             raise SQLError('1 - invalid JOIN condition: %r' % self.condition)
+        print('left field: %r   right field: %r' % (left_name, right_name), verbose=3)
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
-        last_left_rec = None
         last_left_index = last_right_index = None
         while i < len(left_sq):
             left_rec = left_sq.records[i]
             right_rec = right_sq.records[j]
+            print('%r  vs  %r' % (left_rec, right_rec), verbose=4)
             if left_rec[left_name] < right_rec[right_name]:
                 i += 1
                 if last_right_index is not None:
@@ -2467,7 +2531,6 @@ class Join(object):
             else:
                 # they are equal
                 last_left_index = i
-                last_left_rec = left_rec[left_name]
                 if last_right_index is None:
                     last_right_index = j
                 new_rec = left_rec.copy()
@@ -2657,6 +2720,7 @@ class SimpleQuery(object):
         """
         recreate each row with only the specified fields as a NamedTuple
         """
+        print('finalizing %r with %r' % (self.fields, fields), verbose=4)
         nt = NamedTuple('record', ((f, i, '', EMPTY) for i, f in enumerate(fields)))
         if fields != self.fields:
             self.fields = fields
@@ -2700,13 +2764,14 @@ class SQL(object):
     """
     transforms = {
             'date': lambda t: fix_date(t, format='ymd'),
+            'strip_html': lambda t: '\n'.join(re.sub('<.+?>', '', t).split()),
             }
     def __init__(self, statement, debug=False):
         print('__INIT__', verbose=3)
         print(repr(statement), verbose=4)
         self.primary_table = None
         self.header = []                                                            # selected fields for final display
-        self.tables = {}                                                            # {'table_alias': SQLTableParams}
+        self.tables = OrderedDict()                                                 # {'table_alias': SQLTableParams}
         self.fields = {}                                                            # {'field_alias': 'field_name'}
         self.joins = []
         self.where = ''
@@ -2746,7 +2811,7 @@ class SQL(object):
                 "Statement: %r" % ' '.join(self._final_statement),
                 "Tables:    %r" % self.tables,
                 "Fields:    %r" % self.fields,
-                "Queries:   %s" % '\n           '.join([repr(q) for q in self.queries]),
+                "Queries:   %s" % '\n           '.join([repr(tp.query) for tp in self.tables.values()]),
                 "Joins:     %s" % '\n           '.join([repr(j) for j in self.joins]),
                 "TbFA:      %r" % self.table_by_field_alias,
                 ])
@@ -2824,13 +2889,24 @@ class SQL(object):
         query tables and return result
         """
         print('EXECUTE', verbose=3)
+        print(self, verbose=3)
+        # pull state into local vars
+        tbfa = self.table_by_field_alias.copy()
         #
         # do all the queries
         results = {}
         star_fields = []
+        multi_tables = len(self.tables) > 1
         for tp in self.tables.values():
             results[tp.alias] = r = Table.query(tp.query)
-            star_fields.extend(['%s.%s' % (tp.alias, f) for f in tp.fields if f != '*'])
+            print('r: %r' % r, verbose=4)
+            print('r.aliases: %r' % r.aliases, verbose=4)
+            print('r.fields: %r' % r.fields, verbose=4)
+            if multi_tables:
+                star_fields.extend(['%s.%s' % (tp.alias, f) for f in r.fields])
+            else:
+                star_fields.extend(['%s' % (f, ) for f in r.fields])
+            print('star fields: %r' % star_fields, verbose=4)
             for field, transform in tp.transforms.items():
                 if transform not in self.transforms:
                     raise SQLError('unknown function: %r' % (transform, ))
@@ -2839,30 +2915,34 @@ class SQL(object):
                     rec[field] = self.transforms[transform](rec[field])
         #
         # fix up field names in case of SELECT *
-        if '*' not in self.table_by_field_alias:
-            sq_fields = list(self.table_by_field_alias.keys())
+        if '*' in tbfa:
+            sq_fields = self.header = star_fields
         else:
-            sq_fields = star_fields
-        # elif len(self.tables) == 1:
-        #     # easier if only one table
-        #     sq_fields = self.header = rtp.fields
-        # else:
-        #     raise NotImplementedError
+            sq_fields = list(tbfa.keys())
         sq = SimpleQuery(sq_fields, to=self.to)
         #
         # create mapping of field alias to field name
         field_aliases = {}    # {table_name: {record_name1:header_name1, record_name2:header_name2, ...}}
-        for name, table_alias in self.table_by_field_alias.items():
-            print('name: %r' % name, verbose=4)
-            # table_alias = self.table_by_field_alias[name]
-            header_sq = results[table_alias]
-            print(header_sq.aliases, verbose=4)
-            if name == '*':
-                tmp = field_aliases.setdefault(table_alias, {})
-                for n in header_sq.aliases:
-                    tmp[n] = n
-                    sq.aliases[n] = header_sq.aliases[n]
-            else:
+                              # {
+                              #  'customer': {'last': 'customer.last', 'cust_id': 'customer.cust_id'},
+                              #  'invoice': {'total': 'invoice.total', 'cust_id': u'invoice.cust_id', u'inv_id': u'invoice.inv_id'}
+                              # }
+        if '*' in tbfa:
+            for table_alias, table_query in results.items():
+                print('table alias: %r\ntable query: %r' % (table_alias, table_query), verbose=4)
+                field_aliases[table_alias] = fa = {}
+                for f in table_query.fields:
+                    if multi_tables:
+                        fa[f] = '%s.%s' % (table_alias, f)
+                        sq.aliases['%s.%s' % (table_alias, f)] = f
+                    else:
+                        fa[f] = '%s' % f
+                        sq.aliases['%s' % f] = f
+        else:
+            for name, table_alias in tbfa.items():
+                print('name: %r' % name, verbose=4)
+                header_sq = results[table_alias]
+                print('header aliases:', header_sq.aliases, verbose=4)
                 field_alias = split_fn(name)
                 field_aliases.setdefault(table_alias, {})[field_alias] = name
                 sq.aliases[name] = header_sq.aliases.get(field_alias, field_alias)
@@ -2890,7 +2970,7 @@ class SQL(object):
             sq = join(
                     sq,
                     results[join.table_name],
-                    self.table_by_field_alias,
+                    tbfa,
                     field_aliases[join.table_name],
                     )
         print('sq records after joins: %d' % len(sq), verbose=4)
@@ -3746,6 +3826,13 @@ def split_tbl(field):
     table, field = field.rsplit('.',1)
     return table
 
+def split_tbl_fn(field):
+    """
+    field -> table.field
+    """
+    table, field = field.rsplit('.',1)
+    return table, field
+
 
 ## SQL Query examples
 #
@@ -3766,5 +3853,4 @@ def split_tbl(field):
 #      LEFT JOIN (
 #          Department INNER JOIN Employee ON Department.ID = Employee.DepartmentID
 #      ) ON Company.ID = Department.CompanyID AND Department.Name LIKE '%X%'
-
 
