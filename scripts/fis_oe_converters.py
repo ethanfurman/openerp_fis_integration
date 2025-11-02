@@ -1521,7 +1521,6 @@ class NVTY(Synchronize):
             'fis_qty_purchased', 'fis_10_day_purchased', 'fis_21_day_purchased',
             'fis_qty_sold', 'fis_10_day_sold', 'fis_21_day_sold',
             'fis_qty_available', 'fis_10_day_available', 'fis_21_day_available',
-            'fis_web_ingredients', 'fis_web_prep_instructions',
             'fis_date_first_sold',
             )
     FIS_SCHEMA = (
@@ -1655,9 +1654,6 @@ class NVTY(Synchronize):
                 rec.categ_id = self.INVALID_CATEGORY
             #
             if method == 'full':
-                label_data = ProductLabelDescription(fis_id)
-                rec.fis_web_ingredients = label_data.ingredients_text or None
-                rec.fis_web_prep_instructions = label_data.recipe_text or None
                 #
                 forecast = forecast_data.get(fis_id)
                 rec.fis_qty_produced = 0
