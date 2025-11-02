@@ -411,6 +411,24 @@ def check_log(fis_file, key, type, last, today, all, date, location, info):
                     echo(table_display(display_none='!', **process_changes()))
 
 
+@Command(
+        items=Spec('item # to check', ),
+        )
+@Alias('pld')
+def product_label_description(*items):
+    """
+    show current spl contents, and which one would be chosen
+    """
+    from fislib.tools import ProductLabelDescription
+    report = [('type','recipe','ingredients')]
+    for item in items:
+        ld = ProductLabelDescription(item)
+        if ld.label_type is not None:
+            report.append(None)
+            report.append((ld.label_type, ld.recipe_text, ld.ingredients_text))
+    echo(report, border='table', table_specs=(('t','t','t'),(4, 40, 40)))
+
+
 class ServiceUnavailable(Exception):
     "presented when unable to communicate with OpenERP server"
 
