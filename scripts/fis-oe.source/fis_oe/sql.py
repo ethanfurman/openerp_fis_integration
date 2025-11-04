@@ -91,6 +91,9 @@ class EMPTY(object):
     def __bool__(self):
         return False
     __nonzero__ = __bool__
+    def __add__(self, other):
+        return other
+    __radd__ = __add__
 
 TEST = [
         'xml_id',
@@ -1086,15 +1089,15 @@ class Table(object):
     @classmethod
     def query(cls, command):
         """
-        Extract command and primary table, then call cls.query to process.
+        Extract command and primary table, then call cls.sql_* to process.
         """
         try:
             cmd, table_name = re.match(cls.command_table_pat, command, re.I).groups()
         except AttributeError:
             raise SQLError('command and/or table missing from query')
-        print('%r  %r' % (cmd, table_name))
+        print('%r  %r' % (cmd, table_name), verbose=3)
         table = cls(table_name)
-        print(repr(table))
+        print(repr(table), verbose=5)
         method = getattr(table, 'sql_%s' % cmd.lower().split()[0])
         q = method(command)
         if not isinstance(q, (Query, SimpleQuery)):
@@ -1127,7 +1130,7 @@ class FISTable(Table):
     Handle interactions with FIS table.
     """
     def __new__(cls, table_name):
-        print('looking for FIS table %r' % table_name)
+        print('looking for FIS table %r' % table_name, verbose=2)
         # if self._inited:
         #     return
         # self._inited = True
@@ -1370,9 +1373,6 @@ class OpenERPTable(Table):
     Handle interactions with OpenERP model.
     """
     def __new__(cls, table_name):
-        # if self._inited:
-        #     return
-        # self._inited = True
         ensure_oe()
         self = object.__new__(OpenERPTable)
         self.table = oe.get_model(table_name)
@@ -1731,9 +1731,6 @@ class OpenERPTable(Table):
         # at this point we have the fields, and the table -- hand off to _adhoc()
         #
         fields = list(seleccion)
-        # echo(header)
-        # echo(fields)
-        # echo(donde)
 
         query = Query(
                 self.table,
@@ -2326,9 +2323,18 @@ class Join(object):
                 flags=re.I
                 ))
 
-    def add_condition(self, condition):
-        pass
-        # self.condition += ' ' + condition
+    def _left_right(self, table_by_field, field1, field2):
+        if table_by_field.get(field1, None) == self.table_name:
+            left_name = field2
+            right_name = field1
+            if table_by_field.get(field2, None) == self.table_name:
+                raise SQLError('0 - invalid JOIN condition: %r' % self.condition)
+        elif table_by_field.get(field2, None) == self.table_name:
+            left_name = field1
+            right_name = field2
+        else:
+            raise SQLError('1 - invalid JOIN condition: %r' % self.condition)
+        return left_name, right_name
 
     def cross_join(self, left_sq, right_sq, table_by_field, header_mapping):
         sq = left_sq.as_template()
@@ -2336,8 +2342,7 @@ class Join(object):
             for right_rec in right_sq:
                 new_rec = left_rec.copy()
                 for field, value in right_rec.items():
-                    if field in header_mapping:
-                        new_rec[header_mapping[field]] = right_rec[field]
+                    new_rec[field] = value
                 sq.add_record(new_rec)
         return sq
 
@@ -2351,16 +2356,7 @@ class Join(object):
         print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=4)
         if op != '=':
             raise SQLError('JOIN only allows "=" for joining records')
-        if table_by_field.get(field1, None) == self.table_name:
-            left_name = field2
-            right_name = split_fn(field1)
-            if table_by_field.get(field2, None) == self.table_name:
-                raise SQLError('0 - invalid JOIN condition: %r' % self.condition)
-        elif table_by_field.get(field2, None) == self.table_name:
-            left_name = field1
-            right_name = split_fn(field2)
-        else:
-            raise SQLError('1 - invalid JOIN condition: %r' % self.condition)
+        left_name, right_name = self._left_right(table_by_field, field1, field2)
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
@@ -2389,7 +2385,7 @@ class Join(object):
                 j += 1
                 new_rec = {}
                 for field, value in right_rec.items():
-                    new_rec[header_mapping[field]] = right_rec[field]
+                    new_rec[field] = value
                 sq.add_record(new_rec)
             elif left_data < right_data:
                 i += 1
@@ -2401,7 +2397,7 @@ class Join(object):
                 if not found:
                     new_rec = {}
                     for field, value in right_rec.items():
-                        new_rec[header_mapping[field]] = right_rec[field]
+                        new_rec[field] = value
                     sq.add_record(new_rec)
                 last_right_index = None
                 found = False
@@ -2415,8 +2411,7 @@ class Join(object):
                 last_left_rec = left_rec[left_name]
                 new_rec = left_rec.copy()
                 for field, value in right_rec.items():
-                    if field in header_mapping:
-                        new_rec[header_mapping[field]] = right_rec[field]
+                    new_rec[field] = value
                 sq.add_record(new_rec)
                 j += 1
         return sq
@@ -2431,16 +2426,7 @@ class Join(object):
         print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=4)
         if op != '=':
             raise SQLError('JOIN only allows "=" for joining records')
-        if table_by_field.get(field1, None) == self.table_name:
-            left_name = field2
-            right_name = split_fn(field1)
-            if table_by_field.get(field2, None) == self.table_name:
-                raise SQLError('0 - invalid JOIN condition: %r' % self.condition)
-        elif table_by_field.get(field2, None) == self.table_name:
-            left_name = field1
-            right_name = split_fn(field2)
-        else:
-            raise SQLError('1 - invalid JOIN condition: %r' % self.condition)
+        left_name, right_name = self._left_right(table_by_field, field1, field2)
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
@@ -2475,9 +2461,7 @@ class Join(object):
                     last_right_index = j
                 new_rec = left_rec.copy()
                 for field, value in right_rec.items():
-                    # XXX keep following test?
-                    if field in header_mapping:
-                        new_rec[header_mapping[field]] = right_rec[field]
+                    new_rec[field] = value
                 sq.add_record(new_rec)
                 j += 1
         return sq
@@ -2490,16 +2474,7 @@ class Join(object):
         field1, op, field2 = self.condition_match(self.condition).groups()
         if op != '=':
             raise SQLError('JOIN only allows "=" for joining records')
-        if table_by_field.get(field1, None) == self.table_name:
-            left_name = field2
-            right_name = split_fn(field1)
-            if table_by_field.get(field2, None) == self.table_name:
-                raise SQLError('0 - invalid JOIN condition: %r' % self.condition)
-        elif table_by_field.get(field2, None) == self.table_name:
-            left_name = field1
-            right_name = split_fn(field2)
-        else:
-            raise SQLError('1 - invalid JOIN condition: %r' % self.condition)
+        left_name, right_name = self._left_right(table_by_field, field1, field2)
         print('left field: %r   right field: %r' % (left_name, right_name), verbose=3)
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
@@ -2535,8 +2510,7 @@ class Join(object):
                     last_right_index = j
                 new_rec = left_rec.copy()
                 for field, value in right_rec.items():
-                    if field in header_mapping:
-                        new_rec[header_mapping[field]] = right_rec[field]
+                    new_rec[field] = value
                 sq.add_record(new_rec)
                 j += 1
                 # check if right_rec is worn out; if yes, increment i instead
@@ -2559,16 +2533,7 @@ class Join(object):
         print(' - '.join([repr(t) for t in (field1, op, field2)]), verbose=4)
         if op != '=':
             raise SQLError('JOIN only allows "=" for joining records')
-        if table_by_field.get(field1, None) == self.table_name:
-            left_name = field2
-            right_name = split_fn(field1)
-            if table_by_field.get(field2, None) == self.table_name:
-                raise SQLError('0 - invalid JOIN condition: %r' % self.condition)
-        elif table_by_field.get(field2, None) == self.table_name:
-            left_name = field1
-            right_name = split_fn(field2)
-        else:
-            raise SQLError('1 - invalid JOIN condition: %r' % self.condition)
+        left_name, right_name = self._left_right(table_by_field, field1, field2)
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
@@ -2591,7 +2556,7 @@ class Join(object):
                 print('3 adding RIGHT', verbose=4)
                 new_rec = {}
                 for field, value in right_rec.items():
-                    new_rec[header_mapping[field]] = right_rec[field]
+                    new_rec[field] = value
                 sq.add_record(new_rec)
                 j += 1
             elif left_data < right_data:
@@ -2602,7 +2567,7 @@ class Join(object):
                 print('5 adding RIGHT', verbose=4)
                 new_rec = {}
                 for field, value in right_rec.items():
-                    new_rec[header_mapping[field]] = right_rec[field]
+                    new_rec[field] = value
                 sq.add_record(new_rec)
                 j += 1
             else:
@@ -2621,16 +2586,7 @@ class Join(object):
         field1, op, field2 = self.condition_match(self.condition).groups()
         if op != '=':
             raise SQLError('JOIN only allows "=" for joining records')
-        if table_by_field.get(field1, None) == self.table_name:
-            left_name = field2
-            right_name = split_fn(field1)
-            if table_by_field.get(field2, None) == self.table_name:
-                raise SQLError('0 - invalid JOIN condition: %r' % self.condition)
-        elif table_by_field.get(field2, None) == self.table_name:
-            left_name = field1
-            right_name = split_fn(field2)
-        else:
-            raise SQLError('1 - invalid JOIN condition: %r' % self.condition)
+        left_name, right_name = self._left_right(table_by_field, field1, field2)
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
         i = j = 0
@@ -2651,7 +2607,7 @@ class Join(object):
                 if not found:
                     new_rec = {}
                     for field, value in right_rec.items():
-                        new_rec[header_mapping[field]] = right_rec[field]
+                        new_rec[field] = value
                     sq.add_record(new_rec)
                 found = False
             elif right_rec[right_name] > left_rec[left_name]:
@@ -2666,7 +2622,7 @@ class Join(object):
                     last_left_index = j
                 new_rec = left_rec.copy()
                 for field, value in right_rec.items():
-                    new_rec[header_mapping[field]] = right_rec[field]
+                    new_rec[field] = value
                 sq.add_record(new_rec)
                 j += 1
         print('FINAL i, j VALUEs: %d, %r' % (i, j), verbose=4)
@@ -2679,7 +2635,7 @@ class SimpleQuery(object):
     """
     def __init__(self, fields, aliased=None, record_layout='row', to='-'):
         # fields: list of final field names (could be aliases)
-        # aliased: mapping of above (possibly aliased) field names to actual field names (for verbose mode)
+        # aliased: complete table/field name, along with any functions used
         print('SQ fields=%r' % (fields, ), verbose=3)
         if isinstance(fields, tuple):
             fields = list(fields)
@@ -2699,28 +2655,25 @@ class SimpleQuery(object):
         return len(self.records)
 
     def __repr__(self):
-        return "SimpleQuery(fields=%r, aliased=%r)" % (
+        return "SimpleQuery(fields=%r, aliases=%r)" % (
                 self.fields,
                 self.aliases,
                 )
 
     def add_record(self, values):
-        # print('ADDING %r into %r' % (values, self.fields), verbose=4)
-        # print('ALIASES: %r' % self.aliases, verbose=4)
+        print('ADDING %r into %r' % (values, self.fields), verbose=4)
         new_record = {}.fromkeys(self.fields, EMPTY)
         new_record.update(values)
         self.records.append(new_record)
 
     def as_template(self):
-        new_sq = self.__class__(self.fields[:], self.aliases.copy(), self.orientation)
-        new_sq.to_file = self.to_file
+        new_sq = self.__class__(self.fields[:], self.aliases.copy(), self.orientation, self.to_file)
         return new_sq
 
     def finalize(self, fields):
         """
         recreate each row with only the specified fields as a NamedTuple
         """
-        print('finalizing %r with %r' % (self.fields, fields), verbose=4)
         nt = NamedTuple('record', ((f, i, '', EMPTY) for i, f in enumerate(fields)))
         if fields != self.fields:
             self.fields = fields
@@ -2756,6 +2709,7 @@ class SQL(object):
       - where conditions "some_field = some_value"
     - fields/aliases mapping to tables  {'n.alias': SQLTableParams('n')}
     - joins  (Join(type=..., left_table=..., level=..., conditions=...))
+    - group by
     - order
     - output
 
@@ -2763,8 +2717,16 @@ class SQL(object):
     are considered to be different fields/tables.
     """
     transforms = {
-            'date': lambda t: fix_date(t, format='ymd'),
+            'date':       lambda t: fix_date(t, format='ymd'),
             'strip_html': lambda t: '\n'.join(re.sub('<.+?>', '', t).split()),
+            }
+    aggregates = {
+            'avg':   lambda field, records: (sum([r[field] for r in records]) / len(records)) if records else None,
+            'count': lambda field, records: len(records) if field == '*' else sum([bool(r[field]) for r in records]),
+            'list':  lambda field, records: '\n'.join([str(r[field]) for r in records if r[field]]),
+            'max':   lambda field, records: max([r[field] for r in records]),
+            'min':   lambda field, records: min([r[field] for r in records]),
+            'sum':   lambda field, records: sum([r[field] for r in records]),
             }
     def __init__(self, statement, debug=False):
         print('__INIT__', verbose=3)
@@ -2772,12 +2734,14 @@ class SQL(object):
         self.primary_table = None
         self.header = []                                                            # selected fields for final display
         self.tables = OrderedDict()                                                 # {'table_alias': SQLTableParams}
-        self.fields = {}                                                            # {'field_alias': 'field_name'}
+        self.fields = set()                                                         # {'field_name': ['alias1','alias2',...]}
+        self.field_aliases = {}                                                     # {'alias':'field', 'alias':field', ...}
         self.joins = []
         self.where = ''
         self.one_where = ''                                                         # the where if only one table in query
         self.distinct = False
         self.orders = []
+        self.groups = []
         self.to = '-'
         self.conditions = []                                                        # how tables are linked together
         self.strict_fields = False                                                  # whether table prefixes are required
@@ -2788,6 +2752,7 @@ class SQL(object):
         self.offset = 0
         self.complete = False
         self.command = None
+        self.final = False                                                          # if final changes have been made in self.execute()
         try:
             self.parse()
             self.q_start()
@@ -2864,7 +2829,7 @@ class SQL(object):
                         table = self.table_by_field_alias[field]
                     else:
                         # get aliased names for both table and field
-                        table, field = word.rsplit('.', 1)
+                        table, field = split_tbl_fn(word)
                         if word not in self.table_by_field_alias:
                             self.table_by_field_alias[word] = table
                         if table not in self.tables:
@@ -2873,16 +2838,56 @@ class SQL(object):
                             print('1: tables: %r' % self.tables, verbose=4)
                             join_tp = self.tables[table]
                             print('join_tp: %r' %  join_tp, verbose=4)
-                            if field not in join_tp.fields.values():
-                                join_tp.fields[field] = field
+                            print('SQL.fields: %r' % self.fields)
+                            if word not in self.fields:
+                                join_tp.fields.setdefault(field, []).append(word)
+                                self.fields.add(word)
+                            field_dests = join_tp.fields[split_fn(word)]
+                            if word not in field_dests:
+                                field_dests.append(word)
                             print('join_tp: %r' %  join_tp, verbose=4)
                         word = '%s.%s' % (table, field)
                 except KeyError:
                     pass
-                    # # nope, a constant after all!
+                    # nope, a constant after all!
                     # ct = CONSTANT
         print('final type: %r' % ct, verbose=4)
         return ct, word, skip
+
+    def _register_field(self, name, table=None):
+        # name could be a simple field or a dotted-field/alias
+        use_table = False
+        alias, field = name, self.field_aliases.get(name, name)
+        # get matching table and param structure
+        if '.' in field:
+            table = split_tbl(field)
+            use_table = True
+        elif field in self.table_by_field_alias:
+            table = self.table_by_field_alias[field]
+        elif table is not None:
+            pass
+        elif table is None:
+            assert len(self.tables) == 1, "table not specified, and more than one"
+            table = list(self.tables)[0]
+        else:
+            assert False, "hmmm..."
+        fn = split_fn(field)
+        tp = self.tables[table]
+        a = fn
+        if use_table:
+            a = '%s.%s' % (tp.alias, fn)
+        # check alias, then field
+        for f in (alias, field):
+            if f in self.fields:
+                break
+        else:
+            # nothing found, add original name (possibly with table prefix)
+            self.fields.add(a)
+        # make sure original name is recorded in field destination list
+        field_dests = tp.fields.setdefault(fn, [])
+        if name not in field_dests:
+            field_dests.append(name)
+        self.table_by_field_alias[name] = table
 
     def execute(self):
         """
@@ -2891,87 +2896,74 @@ class SQL(object):
         print('EXECUTE', verbose=3)
         print(self, verbose=3)
         # pull state into local vars
-        tbfa = self.table_by_field_alias.copy()
+        starred = '*' in self.table_by_field_alias
+        multi_tables = len(self.tables) > 1
         #
         # do all the queries
         results = {}
+        sq_fields = []
         star_fields = []
-        multi_tables = len(self.tables) > 1
+        header_aliases = {}
         for tp in self.tables.values():
-            results[tp.alias] = r = Table.query(tp.query)
+
+            r = Table.query(tp.query)
+            if starred:
+                table = ''
+                if multi_tables:
+                    table = tp.alias + '.'
+                star_fields.extend(['%s%s' % (table, f) for f in r.fields])
+                new_fields = []
+                for f in r.fields:
+                    name = '%s%s' % (table, f)
+                    full_name = '%s.%s' % (tp.alias, f)
+                    new_fields.append(name)
+                    header_aliases[name] = full_name
+                    self._register_field(name, tp.alias)
+            else:
+                new_fields = []
+                for field, aliases in tp.fields.items():
+                    new_fields.extend(aliases)
+                    sq_fields.extend(aliases)
+                    for a in aliases:
+                        header_aliases[a] = '%s.%s' % (tp.alias, field)
+            new_sq = SimpleQuery(new_fields)
+            for rec in r:
+                new_rec = {}
+                for field, aliases in tp.fields.items():
+                    if field == '*':
+                        continue
+                    for a in aliases:
+                        new_rec[a] = rec[field]
+                new_sq.add_record(new_rec)
+            r = new_sq
+            results[tp.alias] = r
+
             print('r: %r' % r, verbose=4)
             print('r.aliases: %r' % r.aliases, verbose=4)
             print('r.fields: %r' % r.fields, verbose=4)
-            if multi_tables:
-                star_fields.extend(['%s.%s' % (tp.alias, f) for f in r.fields])
-            else:
-                star_fields.extend(['%s' % (f, ) for f in r.fields])
             print('star fields: %r' % star_fields, verbose=4)
             for field, transform in tp.transforms.items():
                 if transform not in self.transforms:
                     raise SQLError('unknown function: %r' % (transform, ))
-                field = split_fn(field)                     # remove table specifier if present
                 for rec in r:
                     rec[field] = self.transforms[transform](rec[field])
+        if starred:
+            self.header = star_fields
         #
-        # fix up field names in case of SELECT *
-        if '*' in tbfa:
-            sq_fields = self.header = star_fields
-        else:
-            sq_fields = list(tbfa.keys())
-        sq = SimpleQuery(sq_fields, to=self.to)
+        sq = SimpleQuery(star_fields or sq_fields, header_aliases, to=self.to)
         #
-        # create mapping of field alias to field name
-        field_aliases = {}    # {table_name: {record_name1:header_name1, record_name2:header_name2, ...}}
-                              # {
-                              #  'customer': {'last': 'customer.last', 'cust_id': 'customer.cust_id'},
-                              #  'invoice': {'total': 'invoice.total', 'cust_id': u'invoice.cust_id', u'inv_id': u'invoice.inv_id'}
-                              # }
-        if '*' in tbfa:
-            for table_alias, table_query in results.items():
-                print('table alias: %r\ntable query: %r' % (table_alias, table_query), verbose=4)
-                field_aliases[table_alias] = fa = {}
-                for f in table_query.fields:
-                    if multi_tables:
-                        fa[f] = '%s.%s' % (table_alias, f)
-                        sq.aliases['%s.%s' % (table_alias, f)] = f
-                    else:
-                        fa[f] = '%s' % f
-                        sq.aliases['%s' % f] = f
-        else:
-            for name, table_alias in tbfa.items():
-                print('name: %r' % name, verbose=4)
-                header_sq = results[table_alias]
-                print('header aliases:', header_sq.aliases, verbose=4)
-                field_alias = split_fn(name)
-                field_aliases.setdefault(table_alias, {})[field_alias] = name
-                sq.aliases[name] = header_sq.aliases.get(field_alias, field_alias)
-        print('field aliases: %r' % field_aliases, verbose=4)
-        print('sq aliases: %r' % sq.aliases, verbose=4)
-        #
-        # if only one table, process and return
+        # process primary table
         primary = results[self.primary_table]
-        primary_aliases = field_aliases[self.primary_table]
-        # print('primary aliases: %r' % primary_aliases, verbose=4)
         for row in primary:
-            # print(row, verbose=4)
-            values = {}
-            for field, value in row.items():
-                if field in primary_aliases:
-                    values[primary_aliases[field]] = row[field]
-
-            sq.add_record(values)
-            # return sq
+            sq.add_record(row)
         #
         # merge with joins
         for join in self.joins:
-            print(join, verbose=4)
-            print('records: %d' % len(results[join.table_name]), verbose=4)
             sq = join(
                     sq,
                     results[join.table_name],
-                    tbfa,
-                    field_aliases[join.table_name],
+                    self.table_by_field_alias,
+                    header_aliases,
                     )
         print('sq records after joins: %d' % len(sq), verbose=4)
         # process WHERE
@@ -2990,9 +2982,28 @@ class SQL(object):
                         records.append(rec)
             sq.records = records
         print('sq records after where: %d' % len(sq), verbose=4)
+        # process GROUP BY
+        print('GROUP BY: %r' % self.groups, verbose=4)
+        if self.groups:
+            all_aggs = {}
+            for tp in self.tables.values():
+                all_aggs.update(tp.aggregates)
+            key = self.make_key(self.groups)
+            groups = {}
+            for rec in sq.records:
+                current = key(rec)
+                groups.setdefault(current, []).append(rec)
+            # pick one record from each group
+            sq.records = []
+            for recs in groups.values():
+                final_rec = recs[0]
+                for field, agg in all_aggs.items():
+                    final_rec[field] = self.aggregates[agg](field, recs)
+                sq.records.append(final_rec)
+        # process ORDER BY
+        print('ORDER BY: %r' % self.orders, verbose=1)
         if self.orders:
-            print('sorting records', verbose=3)
-            # print(sq.records, verbose=4)
+            print('sorting records', verbose=1)
             for o in reversed(self.orders):
                 o = o.split()
                 if len(o) == 1:
@@ -3005,6 +3016,17 @@ class SQL(object):
         sq.finalize(self.header)
         sq.status = "%s %d" % (self.command, len(sq.records))
         return sq
+
+    def make_key(self, fields):
+        """
+        make a sorting key using the fields provided
+        """
+        def key(rec):
+            ans = ()
+            for f in fields:
+                ans += rec[f],
+            return ans
+        return key
 
     def parse(self):
         """
@@ -3090,20 +3112,13 @@ class SQL(object):
         if '*' in self.table_by_field_alias:
             fields.append('*')
         else:
-            for alias, field in tp.fields.items():
-                if alias == field:
-                    fields.append(field)
-                else:
-                    fields.append('%s as %s' % (field, alias))
+            fields.extend(list(tp.fields))
         query.append(', '.join(fields))
         query.append('FROM')
         query.append(tp.table_name)
         if len(self.tables) == 1 and self.one_where:
             query.append('WHERE')
             query.append(self.one_where)
-        # elif tp.where:
-        #     query.append('WHERE')
-        #     query.extend(tp.where)
         print('main query: %r' % query, verbose=4)
         print('query already in tp: %r' % tp.query, verbose=4)
         tp.query = ' '.join(query)
@@ -3116,21 +3131,12 @@ class SQL(object):
             if '*' in self.table_by_field_alias:
                 fields.append('*')
             else:
-                for fa, fn in tp.fields.items():
-                    if fa == fn:
-                        fields.append(fn)
-                    else:
-                        fields.append('%s as %s' % (fn, fa))
+                fields.extend(list(tp.fields))
             query.append(', '.join(fields))
             query.append('FROM')
             if tp.table_name is None:
                 raise SQLError('missing full table name for table %r' % tp.alias)
             query.append(tp.table_name)
-            # if tp.where:
-            #     print('tp query: %r' % tp.query, verbose=4)
-            #     print('tp where: %r' % tp.where, verbose=4)
-            #     query.append('WHERE')
-            #     query.extend(tp.where)
             print(query, verbose=4)
             tp.query = ' '.join(query)
             print('FINAL tp query: %r' % tp.query, verbose=4)
@@ -3176,7 +3182,7 @@ class SQL(object):
             allowed_pairs = ()
         else:
             allowed_words = ('JOIN', 'WHERE', 'TO')
-            allowed_pairs = ('CROSS JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'OUTER JOIN', 'FULL JOIN', 'ORDER BY')
+            allowed_pairs = ('CROSS JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'OUTER JOIN', 'FULL JOIN', 'ORDER BY', 'GROUP BY')
         i = 0
         for i, word in enumerate(self.words[self.offset:], start=1):
             print('%d: %r' % (i, word), verbose=4)
@@ -3266,6 +3272,61 @@ class SQL(object):
         else:
             self.complete = True
 
+    def q_group_by(self, peos):
+        """
+        randomly return one record for each group
+        """
+        print('Q_GROUP_BY (peos=%r)' % peos, verbose=3)
+        self.complete = False
+        group_acquired = False
+        last_field = None
+        comma_needed = False
+        i = 0
+        print(self.words[self.offset:], verbose=3)
+        allowed_words = ('HAVING', )
+        allowed_pairs = ('ORDER BY', )
+        for i, word in enumerate(self.words[self.offset:], start=1):
+            self._final_statement.append(word)
+            next_word = self.words[self.offset+i:self.offset+i+1]
+            next_word = (next_word and next_word[0] or '').upper()
+            pair = '%s %s' % (word.upper(), next_word)
+            if word.upper() in allowed_words:
+                print('   single: %r' % word, verbose=4)
+                self._final_statement[-1] = self._final_statement[-1].upper()
+                break
+            elif pair in allowed_pairs:
+                print('   double: %r' % pair, verbose=4)
+                word = pair.replace(' ','_')
+                self._final_statement[-1] = pair
+                i += 1
+                break
+            if comma_needed and word != COMMA:
+                raise SQLError('comma missing between group by specifications [next word: %r]' % word)
+            elif word == COMMA:
+                last_field = None
+                comma_needed = False
+            elif last_field is not None:
+                raise SQLError('comma missing between group by specifications [next word: %r]' % word)
+            else:
+                last_field = word
+                self._register_field(last_field)
+                self.groups.append(last_field)
+                group_acquired = True
+        else:
+            # loop exhausted, no other clauses after group by
+            word = None
+            if not peos:
+                raise SQLError('incomplete SQL statement')
+            else:
+                self.complete = True
+        self.offset += i
+        # sanity checks
+        if not group_acquired:
+            raise SQLError('no GROUP BY fields in clause')
+        if word is not None:
+            next_method = getattr(self, 'q_%s' % word.lower())
+            next_method(peos=True)
+
     def q_join(self, peos):
         """
         Get linked tables.
@@ -3314,7 +3375,6 @@ class SQL(object):
         # self.offset should now be pointing to the word after ON
         condition = []
         condition_type = []
-        # last_ct = None
         i = 0
         skip = False
         for i, word in enumerate(self.words[self.offset:], start=1):
@@ -3333,7 +3393,7 @@ class SQL(object):
                 if self._final_statement[-1] == 'JOIN':
                     self._final_statement[-1] = 'INNER JOIN'
                 break
-            elif pair in ('CROSS JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'OUTER JOIN', 'FULL JOIN', 'ORDER BY'):
+            elif pair in ('CROSS JOIN', 'INNER JOIN', 'LEFT JOIN', 'RIGHT JOIN', 'OUTER JOIN', 'FULL JOIN', 'ORDER BY', 'GROUP BY'):
                 print('upper 2', verbose=4)
                 word = pair.replace(' ','_')
                 self._final_statement[-1] = pair
@@ -3382,7 +3442,6 @@ class SQL(object):
                     raise SQLError('constant conditions from different tables must be separated by OR')
                 if where_tp.where:
                     where_tp.where.append(last_conjunction)
-                # where_tp.where.extend(condition[j:j+3])
                 if ct1 is FIELD:
                     if term1 not in self.table_by_field_alias:
                         # field has not already been added via SELECT, it had better include the table
@@ -3460,20 +3519,9 @@ class SQL(object):
             elif last_field is not None:
                 raise SQLError('comma missing between order specifications [next word: %r]' % word)
             else:
-                last_field = field_name = word
+                last_field = word
+                self._register_field(last_field)
                 self.orders.append(last_field)
-                if '.' in word:
-                    table, field_name = word.rsplit('.', 1)
-                    tp = self.tables[table]
-                elif word in self.table_by_field_alias:
-                    table = self.table_by_field_alias[word]
-                    tp = self.tables[table]
-                else:
-                    table = self.primary_table
-                    tp = self.tables[table]
-                if field_name not in tp.fields:
-                    tp.fields[field_name] = field_name
-                self.table_by_field_alias[word] = table
                 order_acquired = True
         else:
             # loop exhausted, nothing after order
@@ -3484,7 +3532,6 @@ class SQL(object):
                 self.complete = True
 
         self.offset += i
-        # echo('order by:', self.orders)
         # sanity checks
         if not order_acquired:
             raise SQLError('no ORDER BY fields in clause')
@@ -3509,9 +3556,6 @@ class SQL(object):
         last_table = None
         alias = False
         comma_needed = False
-        # star_seen = False
-        # tables = []
-        # tables.append(SQLTableParams(None))
         tables = self.tables
         tables[None] = tp = SQLTableParams(None)
         i = 0
@@ -3529,7 +3573,8 @@ class SQL(object):
                 if last_field is not None:
                     # last_field -> [table.]field_name
                     field_name = split_fn(last_field)
-                    tables[last_table].fields[field_name] = field_name
+                    tables[last_table].fields.setdefault(field_name, []).append(last_field)
+                    self.fields.add(last_field)
                     if last_table is None:
                         if tp.alias is not None:
                             raise ValueError("tp.alias should be None (%r)" % tp)
@@ -3545,8 +3590,10 @@ class SQL(object):
                     raise SQLError('missing alias for %r' % last_field)
                 if last_field is not None:
                     # last_field -> [table.]field_name
+
                     field_name = split_fn(last_field)
-                    tables[last_table].fields[field_name] = field_name
+                    tables[last_table].fields.setdefault(field_name, []).append(last_field)
+                    self.fields.add(last_field)
                     self.table_by_field_alias[last_field] = last_table
                     self.header.append(last_field)
                 last_field = None
@@ -3562,7 +3609,12 @@ class SQL(object):
             elif word == RPAREN:
                 print('RPAREN', verbose=4)
                 print('saving %s(%s)' % (func, last_field), verbose=4)
-                tp.transforms[last_field] = func
+                if func in self.transforms:
+                    tp.transforms[last_field] = func
+                elif func in self.aggregates:
+                    tp.aggregates[last_field] = func
+                else:
+                    raise SQLError('unknown function: %r' % (func, ))
                 func = None
             elif word.upper() == 'AS':
                 print('AS', verbose=4)
@@ -3591,7 +3643,6 @@ class SQL(object):
                         tp = SQLTableParams(table)
                         tables[table] = tp
                 # tp is the current (not-None) table
-                # self.table_by_field_alias[word] = tp.alias
                 last_field = word   # use alias
                 last_table = table
                 alias = None
@@ -3604,13 +3655,19 @@ class SQL(object):
                 print('1 tbfa: %r' % self.table_by_field_alias, verbose=4)
                 field_name = split_fn(last_field)
                 self.table_by_field_alias[word] = last_table
-                tables[last_table].fields[word] = field_name
+                tables[last_table].fields.setdefault(field_name, []).append(word)
+                self.fields.add(last_field)
+                self.field_aliases[word] = last_field
                 self.header.append(word)
                 # update functions, if any
                 if last_field in tp.transforms:
                     tpt = tp.transforms
                     print('renaming %r parameter from %r to %r' % (tpt[last_field], last_field, word), verbose=4)
-                    tp.transforms[word] = tp.transforms.pop(last_field)
+                    tpt[word] = tpt.pop(last_field)
+                elif last_field in tp.aggregates:
+                    agg = tp.aggregates
+                    print('renaming %r parameter from %r to %r' % (agg[last_field], last_field, word), verbose=4)
+                    agg[word] = agg.pop(last_field)
                 alias = False
                 last_field = None
                 last_table = None
@@ -3634,9 +3691,6 @@ class SQL(object):
             raise SQLError('missing alias for %r' % last_field)
         if not fields_acquired:
             raise SQLError('no fields specified')
-        # for tp in tables:
-        #     tp.aliases = self._fields[tp.alias]
-        #     self.tables[tp.alias] = tp
         print('3 tables: %r' % tables, verbose=4)
         print('3 tbfa: %r' % self.table_by_field_alias, verbose=4)
         print('3 stmnt: %r  %r' % (self.statement, self._final_statement), verbose=4)
@@ -3703,7 +3757,7 @@ class SQL(object):
             if word.upper() == 'TO':
                 self._final_statement[-1] = self._final_statement[-1].upper()
                 break
-            elif pair.upper() == 'ORDER BY':
+            elif pair.upper() in ('ORDER BY', 'GROUP BY'):
                 word = pair.replace(' ','_')
                 self._final_statement[-1] = pair.upper()
                 i += 1
@@ -3757,7 +3811,7 @@ class SQLTableParams(object):
     """
     contains everything needed to query one table
     """
-    def __init__(self, alias, table_name=None, fields=None, conditions=None, query=None, transforms=None):
+    def __init__(self, alias, table_name=None, fields=None, conditions=None, query=None, transforms=None, aggregates=None):
         self.alias = alias                                                          # plain text name (might be actual)
         self.table_name = table_name                                                # real name (could be same as .alias)
         self.fields = fields or OrderedDict()                                       # fields to fetch `{alias:field}`
@@ -3765,6 +3819,8 @@ class SQLTableParams(object):
         self._query = query
         self.where = []
         self.transforms = transforms or {}
+        self.aggregates = aggregates or {}
+        self.having = []
 
     def __repr__(self):
         if self.alias == self.table_name:
@@ -3808,10 +3864,6 @@ class SQLTableParams(object):
     def query(self, value):
         self._query = value
 
-    # @property.setter
-    # def where(self, value):
-    #     self._where = value
-
 
 def split_fn(field):
     """
@@ -3853,4 +3905,5 @@ def split_tbl_fn(field):
 #      LEFT JOIN (
 #          Department INNER JOIN Employee ON Department.ID = Employee.DepartmentID
 #      ) ON Company.ID = Department.CompanyID AND Department.Name LIKE '%X%'
-
+#
+#

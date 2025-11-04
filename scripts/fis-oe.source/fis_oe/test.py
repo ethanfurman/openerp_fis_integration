@@ -25,6 +25,8 @@ class SQLParams(NamedTuple):
     to = 7, "where to send output", '-'
     primary_table = 8, "main/first table in SQL query"
     table_by_field_alias = 9, "get table by looking up alias"
+    group_by = 10, "any aggregates used", []
+    having = 11, "filters applied after group by", []
 
 
 class TestCase(unittest.TestCase):
@@ -102,7 +104,7 @@ class PrepDBF(object):
         Table.from_data('dbf_%s'%source, data=self.filename)
 
 
-# Tests
+## Tests
 
 
 # class Test(TestCase):
@@ -110,9 +112,9 @@ class PrepDBF(object):
 #         query = SQL("select * from customer join invoice on customer.cust_id = invoice.cust_id").execute()
 #         for row in query:
 #             print(row)
-
-
 class TestSQL(TestCase):
+    #
+    maxDiff = None
     #
     statements = (
             SQLParams(  # 0
@@ -122,7 +124,7 @@ class TestSQL(TestCase):
                 tables={'res.users': SQLTableParams(
                                                     alias='res.users',
                                                     table_name='res.users',
-                                                    fields={'*': '*'},
+                                                    fields={'*': ['*']},
                                                     query='SELECT * FROM res.users',
                                                     )},
                 to='-',
@@ -136,8 +138,8 @@ class TestSQL(TestCase):
                 tables={'NVTY': SQLTableParams(
                                                     alias='NVTY',
                                                     table_name='NVTY',
-                                                    fields={'desc':'name'},
-                                                    query='SELECT name as desc FROM NVTY',
+                                                    fields={'name':['desc']},
+                                                    query='SELECT name FROM NVTY',
                                                     )},
                 primary_table = 'NVTY',
                 table_by_field_alias = {'desc': 'NVTY'},
@@ -149,7 +151,7 @@ class TestSQL(TestCase):
                 tables={'NVTY': SQLTableParams(
                                                     alias='NVTY',
                                                     table_name='NVTY',
-                                                    fields={'desc':'desc', 'name':'name'},
+                                                    fields={'desc':['desc'], 'name':['name']},
                                                     query='SELECT name, desc FROM NVTY',
                                                     )},
                 primary_table = 'NVTY',
@@ -162,7 +164,7 @@ class TestSQL(TestCase):
                 tables={'135': SQLTableParams(
                                                 alias='135',
                                                 table_name='135',
-                                                fields={'item_id':'item_id'},
+                                                fields={'item_id':['item_id']},
                                                 query="SELECT item_id FROM 135 WHERE item_id like '1000'",
                                                 )},
                 where="item_id like '1000'",
@@ -176,8 +178,8 @@ class TestSQL(TestCase):
                 tables={'inv': SQLTableParams(
                                                 alias='inv',
                                                 table_name='nvty',
-                                                fields={'n':'name', 'desc':'desc', 'item_no':'item_no'},
-                                                query='SELECT name as n, desc, item_no FROM nvty',
+                                                fields={'name':['n'], 'desc':['desc'], 'item_no':['item_no']},
+                                                query='SELECT name, desc, item_no FROM nvty',
                                                 )},
                 orders=['item_no'],
                 to='-',
@@ -191,7 +193,7 @@ class TestSQL(TestCase):
                 tables={'order': SQLTableParams(
                                                 alias='order',
                                                 table_name='order',
-                                                fields={'*':'*'},
+                                                fields={'*':['*']},
                                                 query='SELECT * FROM order',
                                                 )},
                 primary_table = 'order',
@@ -204,14 +206,14 @@ class TestSQL(TestCase):
                 tables={'n':SQLTableParams(
                                                 alias='n',
                                                 table_name='nvty',
-                                                fields={'item_id':'item_id'},
+                                                fields={'item_id':['n.item_id']},
                                                 query='SELECT item_id FROM nvty',
                                                 ),
                         'p':SQLTableParams(
                                                 alias='p',
                                                 table_name='product',
-                                                fields={'that':'that_id', 'this':'this_id', 'item_id':'item_id'},
-                                                query='SELECT that_id as that, this_id as this, item_id FROM product',
+                                                fields={'that_id':['that'], 'this_id':['this'], 'item_id':['p.item_id']},
+                                                query='SELECT that_id, this_id, item_id FROM product',
                                                 ),
                         },
                 joins=[Join('INNER JOIN', 'p', 'n.item_id = p.item_id')],
@@ -226,13 +228,13 @@ class TestSQL(TestCase):
                 tables={'n':SQLTableParams(
                                                 alias='n',
                                                 table_name='nvty',
-                                                fields={'item_id':'item_id', 'item':'item'},
+                                                fields={'item_id':['n.item_id'], 'item':['n.item']},
                                                 query='SELECT item_id, item FROM nvty',
                                                 ),
                         'p':SQLTableParams(
                                                 alias='p',
                                                 table_name='product',
-                                                fields={'that_id':'that_id', 'item_id':'item_id'},
+                                                fields={'that_id':['p.that_id'], 'item_id':['p.item_id']},
                                                 query='SELECT that_id, item_id FROM product',
                                                 ),
                         },
@@ -248,7 +250,7 @@ class TestSQL(TestCase):
                 tables={'NVTY':SQLTableParams(
                                                 alias='NVTY',
                                                 table_name='NVTY',
-                                                fields={'name':'name', 'desc':'desc'},
+                                                fields={'name':['name'], 'desc':['desc']},
                                                 query='SELECT name, desc FROM NVTY',
                                                 ),
                         },
@@ -273,15 +275,14 @@ class TestSQL(TestCase):
                 tables={'n':SQLTableParams(
                                                 alias='n',
                                                 table_name='inventory',
-                                                fields={'item':'item', 'product_cost':'cost', 'shipping':'shipping_meth'},
-                                                query="SELECT item, cost as product_cost, shipping_meth as shipping "
-                                                      "FROM inventory",
+                                                fields={'item':['item'], 'cost':['product_cost'], 'shipping_meth':['shipping']},
+                                                query="SELECT item, cost, shipping_meth FROM inventory",
                                                 ),
                         's':SQLTableParams(
                                                 alias='s',
                                                 table_name='shipping',
-                                                fields={'shipping_cost':'cost', 'shipping_method':'shipping_method'},
-                                                query='SELECT cost as shipping_cost, shipping_method FROM shipping',
+                                                fields={'cost':['shipping_cost'], 'shipping_method':['s.shipping_method']},
+                                                query='SELECT cost, shipping_method FROM shipping',
                                                 ),
                         },
                 joins=[Join('INNER JOIN', 's', 'shipping = s.shipping_method')],
@@ -308,15 +309,15 @@ class TestSQL(TestCase):
                 tables={'n':SQLTableParams(
                                                 alias='n',
                                                 table_name='inventory',
-                                                fields={'item':'item', 'product_cost':'cost', 'shipping':'shipping_meth', 'warehouse_id':'warehouse_id'},
-                                                query="SELECT item, cost as product_cost, shipping_meth as shipping, warehouse_id "
+                                                fields={'item':['item'], 'cost':['product_cost'], 'shipping_meth':['shipping','n.shipping_meth'], 'warehouse_id':['n.warehouse_id']},
+                                                query="SELECT item, cost, shipping_meth, warehouse_id "
                                                       "FROM inventory WHERE warehouse_id = '1000'"
                                                 ),
                         's':SQLTableParams(
                                                 alias='s',
                                                 table_name='shipping',
-                                                fields={'shipping_cost':'cost', 'shipping_method':'shipping_method'},
-                                                query="SELECT cost as shipping_cost, shipping_method FROM shipping",
+                                                fields={'cost':['shipping_cost'], 'shipping_method':['s.shipping_method']},
+                                                query="SELECT cost, shipping_method FROM shipping",
                                                 ),
                         },
                 joins=[Join('INNER JOIN', 's', 'n.shipping_meth = s.shipping_method')],
@@ -338,14 +339,14 @@ class TestSQL(TestCase):
                 tables={'res.users':SQLTableParams(
                                                 alias='res.users',
                                                 table_name='res.users',
-                                                fields={'user_id':'xml_id'},
-                                                query="SELECT xml_id as user_id FROM res.users",
+                                                fields={'xml_id':['user_id']},
+                                                query="SELECT xml_id FROM res.users",
                                                 ),
                         'hr.employee':SQLTableParams(
                                                 alias='hr.employee',
                                                 table_name='hr.employee',
-                                                fields={'emp_id':'xml_id', 'name':'name'},
-                                                query="SELECT xml_id as emp_id, name FROM hr.employee",
+                                                fields={'xml_id':['emp_id'], 'name':['hr.employee.name']},
+                                                query="SELECT xml_id, name FROM hr.employee",
                                                 ),
                         },
                 joins=[Join('INNER JOIN', 'hr.employee', 'user_id = emp_id')],
@@ -369,20 +370,20 @@ class TestSQL(TestCase):
                 tables={'n': SQLTableParams(
                                                 alias='n',
                                                 table_name='135',
-                                                fields={'item':'item', 'item_id':'item_id'},
+                                                fields={'item':['n.item'], 'item_id':['n.item_id']},
                                                 query="SELECT item, item_id FROM 135",
                                                 ),
                         'p': SQLTableParams(
                                                 alias='p',
                                                 table_name='322',
-                                                fields={'formula':'formula', 'formula_id':'formula_id'},
+                                                fields={'formula':['p.formula'], 'formula_id':['p.formula_id']},
                                                 query="SELECT formula, formula_id FROM 322",
                                                 ),
                         'd': SQLTableParams(
                                                 alias='d',
                                                 table_name='323',
-                                                fields={'ingred':'item', 'formula_id':'formula_id'},
-                                                query="SELECT item as ingred, formula_id FROM 323",
+                                                fields={'item':['ingred'], 'formula_id':['d.formula_id']},
+                                                query="SELECT item, formula_id FROM 323",
                                                 ),
                         },
                 joins=[
@@ -403,7 +404,7 @@ class TestSQL(TestCase):
                 tables={'n': SQLTableParams(
                                                     alias='n',
                                                     table_name='NVTY',
-                                                    fields={'desc':'desc', 'name':'name'},
+                                                    fields={'desc':['n.desc'], 'name':['n.name']},
                                                     query='SELECT name, desc FROM NVTY',
                                                     )},
                 primary_table = 'n',
@@ -416,7 +417,7 @@ class TestSQL(TestCase):
                 tables={'product.product': SQLTableParams(
                                                     alias='product.product',
                                                     table_name='product.product',
-                                                    fields={'xml_id':'xml_id', 'name':'name', 'fis_name':'fis_name'},
+                                                    fields={'xml_id':['xml_id'], 'name':['name'], 'fis_name':['fis_name']},
                                                     query="SELECT xml_id, name, fis_name FROM product.product WHERE xml_id != ''",
                                                     )},
                 where="xml_id != ''",
@@ -438,20 +439,20 @@ class TestSQL(TestCase):
             #             'n': SQLTableParams(
             #                                     alias='n',
             #                                     table_name='135',
-            #                                     fields={'item':'item', 'item_id':'item_id'},
+            #                                     fields={'item':['item'], 'item_id':['item_id']},
             #                                     query="SELECT item, item_id FROM 135",
             #                                     ),
             #             'p': SQLTableParams(
             #                                     alias='p',
             #                                     table_name='322',
-            #                                     fields={'formula':'formula', 'formula_id':'formula_id'},
+            #                                     fields={'formula':['formula'], 'formula_id':['formula_id']},
             #                                     query="SELECT formula, formula_id FROM 322",
             #                                     ),
             #             'd': SQLTableParams(
             #                                     alias='d',
             #                                     table_name='323',
-            #                                     fields={'ingred':'item', 'formula_id':'formula_id'},
-            #                                     query="SELECT item as ingred, formula_id FROM 323",
+            #                                     fields={'ingred':['item'], 'formula_id':['formula_id']},
+            #                                     query="SELECT item, formula_id FROM 323",
             #                                     ),
             #             },
             #     joins=[
@@ -505,6 +506,80 @@ class TestSQL(TestCase):
                 fillvalue=None
                 ):
             self.assertEqual(rec, exp)
+
+    def test_group_by(self):
+        #
+        query = SQL('select * from customer group by first order by cust_id')
+        self.assertEqual(query.groups, ['first'])
+        expected = [
+            AttrDict(first='Ethan', middle='A', last='Furman', cust_id='C-001'),
+            AttrDict(first='Alyssa', middle='B', last='Cordosa', cust_id='C-002'),
+            AttrDict(first='Tony', middle='C', last='Godshall', cust_id='C-004'),
+            AttrDict(first='Emile', middle='', last='van Sebille', cust_id='C-005'),
+            AttrDict(first='Ron', middle='', last='Giannini', cust_id='C-006'),
+            AttrDict(first='Jonathan', middle='Dee', last='Joleson', cust_id='C-007'),
+            AttrDict(first='William', middle='Mario', last='Longsworth', cust_id='C-008'),
+            AttrDict(first='Charlie', middle='Nathanial', last='Winchester', cust_id='C-010'),
+            AttrDict(first='Yolanda', middle='Espinosa', last='Rodriguez', cust_id='C-012'),
+            AttrDict(first='Arnesto', middle='K', last='Tolstoy', cust_id='C-013'),
+            ]
+        for res, exp in zip(query.execute(), expected, fillvalue=None):
+            self.assertEqual(res._asdict(), exp)
+        #
+        query = SQL('select cust_id from address group by cust_id order by cust_id')
+        self.assertEqual(query.groups, ['cust_id'])
+        expected = [
+            AttrDict(cust_id=''),
+            AttrDict(cust_id='C-001', ),
+            AttrDict(cust_id='C-003', ),
+            AttrDict(cust_id='C-006', ),
+            AttrDict(cust_id='C-007', ),
+            AttrDict(cust_id='C-008', ),
+            AttrDict(cust_id='C-009', ),
+            AttrDict(cust_id='C-012', ),
+            AttrDict(cust_id='C-013', ),
+            ]
+        for res, exp in zip(query.execute(), expected, fillvalue=None):
+            self.assertEqual(res._asdict(), exp)
+        #
+        query = SQL('select cust_id, list(street) from address group by cust_id order by cust_id')
+        self.assertEqual(query.groups, ['cust_id'])
+        expected = [
+            AttrDict(cust_id='', street='123 Main St'),
+            AttrDict(cust_id='C-001', street='814 Cedaroak St\n1014 S Summit Ave'),
+            AttrDict(cust_id='C-003', street='456 Primary Blvd'),
+            AttrDict(cust_id='C-006', street='423 Salinas Rd'),
+            AttrDict(cust_id='C-007', street='8192 Secondary Lp'),
+            AttrDict(cust_id='C-008', street='700 Elevenses Ln'),
+            AttrDict(cust_id='C-009', street='513 NE 7th Way'),
+            AttrDict(cust_id='C-012', street=''),
+            AttrDict(cust_id='C-013', street='34345 S Dickey Prairie Rd'),
+            ]
+        for res, exp in zip(query.execute(), expected, fillvalue=None):
+            self.assertEqual(res._asdict(), exp)
+        #
+        query = SQL("""
+                SELECT i.inv_id invoice, c.last last, c.first first, c.middle middle, i.purch_date purchased, sum(il.total) total
+                FROM invoice i
+                JOIN customer c ON i.cust_id=c.cust_id
+                JOIN invoice_line il on i.inv_id=il.inv_id
+                GROUP BY i.inv_id
+                ORDER BY c.last
+                """)
+        self.assertEqual(query.groups, ['i.inv_id'])
+        expected = [
+            AttrDict(invoice=u'I-101', first=u'Ethan', middle='A', last=u'Furman', purchased=u'2024-01-05', total=2.6100000000000003),
+            AttrDict(invoice=u'I-106', first=u'Ethan', middle='A', last=u'Furman', purchased=u'2024-05-20', total=49.269999999999996),
+            AttrDict(invoice=u'I-103', first=u'Ethan', middle='A', last=u'Furman', purchased=u'2024-05-20', total=46.53),
+            AttrDict(invoice=u'I-102', first=u'Jonathan', middle='Dee', last=u'Joleson', purchased=u'2024-02-01', total=3.96),
+            AttrDict(invoice=u'I-111', first=u'William', middle='Mario', last=u'Longsworth', purchased=u'2024-07-31', total=26.78),
+            AttrDict(invoice=u'I-113', first=u'William', middle='Mario', last=u'Longsworth', purchased=u'2024-10-12', total=24.95),
+            AttrDict(invoice=u'I-117', first=u'Yolanda', middle='Espinosa', last=u'Rodriguez', purchased=u'2024-12-13', total=205.87),
+            AttrDict(invoice=u'I-104', first=u'Arnesto', middle='K', last=u'Tolstoy', purchased=u'2024-03-16', total=55.78),
+            AttrDict(invoice=u'I-108', first=u'Arnesto', middle='K', last=u'Tolstoy', purchased=u'2024-07-31', total=173.62),
+            ]
+        for res, exp in zip(query.execute(), expected, fillvalue=None):
+            self.assertEqual(res._asdict(), exp)
 
     def test_joins(self):
         # join
@@ -761,7 +836,9 @@ class TestSQL(TestCase):
                 self._test_creation(s)
             except Exception:
                 t, e, tb = sys.exc_info()
-                raise t('%s  (failed on iteration %d)' % (e, i), None, tb)
+                t = t('%s  (failed on iteration %d)' % (e, i))
+                t.__traceback__ = tb
+                raise t
 
     def test_statement_errors(self):
         self.assertRaisesRegex(
@@ -911,5 +988,4 @@ Table.from_data(
             dict(side=3),
             dict(side=4),
             ])
-
 
