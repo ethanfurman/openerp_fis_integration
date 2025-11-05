@@ -4,6 +4,7 @@ from antipathy import Path
 from dbf import Date, DateTime
 from fnx_fs.fields import files
 from scription import Execute, OrmFile, TimeoutError
+from fislib.tools import ProductLabelDescription
 from fnx import date
 from fnx.oe import dynamic_page_stub
 from .xid import xmlid
@@ -326,7 +327,7 @@ class product_product(xmlid, osv.Model):
         xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
         result = {}.fromkeys(ids)
         try:
-            LabelLinks, use_cache = get_LLC()
+            LabelLinks, cache_only = get_LLC()
         except Exception:
             _logger.exception('error fetching/processing LabelLinkCtl')
             # use the hard-coded display links
@@ -343,13 +344,13 @@ class product_product(xmlid, osv.Model):
                 link = Path(link)
                 if link.count('%s') == 1:
                     link %= '%s/%s' % (xml_id, xml_id)
-                    ts_link = add_timestamp(link, use_cache)
+                    ts_link = add_timestamp(link, cache_only)
                     if ts_link is None:
                         continue
                     remote_link = PRODUCT_LABEL_URL + ts_link
                 elif link.count('%s') == 0:
                     header = 'oe_header'
-                    ts_link = add_timestamp(link, use_cache)
+                    ts_link = add_timestamp(link, cache_only)
                     if ts_link is None:
                         continue
                     remote_link = PRODUCT_LABEL_URL + ts_link
@@ -360,7 +361,16 @@ class product_product(xmlid, osv.Model):
             width_rows = calc_width(raw_rows)
             doc = Xaml(LabelLinkTab).document.pages[0]
             tab = doc.string(rows = width_rows)
-            result[id] = tab
+            result[id] = {'label_server_stub':tab}
+        # update web recipe and ingredient fields from spl files
+        if not cache_only:
+            # update the cache so we can use those files
+            for xml_id, id in xml_ids.items():
+                ProductLabelDescription.update(xml_id, PRODUCT_LABEL_BMP_LOCATION, PRODUCT_LABEL_PNG_LOCATION)
+        for xml_id, id in xml_ids.items():
+            pld = ProductLabelDescription(xml_id, PRODUCT_LABEL_PNG_LOCATION)
+            result[id]['fis_web_ingredients'] = pld.ingredients_text
+            result[id]['fis_web_prep_instructions'] = pld.recipe_text
         return result
 
     def _get_availability_codes(self, cr, uid, context=None):
@@ -1283,14 +1293,14 @@ def get_LLC():
     # if TEST_LLC is set, use testing copy below
     global LLC_text
     llc_override = False
-    use_cache = False
+    cache_only = False
     label_link_lines = LLC_text     # default
     if LLC_OVERRIDE.exists():
         llc_override = True
         with open(LLC_OVERRIDE) as llc:
             label_link_lines = llc.read().strip().split('\n')
     elif LLC_PID_FILE.exists():
-        use_cache = True
+        cache_only = True
     else:
         # attempt to get LabelLinkCtl from labeltime
         try:
@@ -1304,12 +1314,12 @@ def get_LLC():
                         cat.returncode,
                         cat.stderr and cat.stderr.strip().split('\n')[-1] or 'unknown',
                         )
-                use_cache = True
+                cache_only = True
                 cat = Execute('cat %s' % LLC_SOURCE, timeout=10)
                 if not cat.returncode:
                     label_link_lines = cat.stdout.strip().split('\n')
         except (AlreadyLocked, TimeoutError):
-            use_cache = True
+            cache_only = True
         except Exception:
             _logger.exception('failed to read %r', LLC_SOURCE)
     # validate LabelLinkCtl file
@@ -1342,13 +1352,13 @@ def get_LLC():
             except:
                 _logger.exception('failed to update LabelLinkCtl cached file')
             LLC_lock.release()
-    return LabelLinks, use_cache
+    return LabelLinks, cache_only
 
-def add_timestamp(file, use_cache):
+def add_timestamp(file, cache_only):
     "adds timestamp to filename portion of file"
     src_file = Path(file)
     try:
-        _labeltime_sync = requests.get(
+        requests.get(
                 'http://192.168.11.12:9000/labelutils',
                 params={'opt':'s_label', 'prodCd':src_file.stem[:6]},
                 )
@@ -1370,8 +1380,8 @@ def add_timestamp(file, use_cache):
     with NamedLock(target_png_file):
         timestamp = None
         for src_file in possibles:
-            if use_cache:
-                _logger.debug('using cache, aborting search')
+            if cache_only:
+                _logger.debug('network unavailable, aborting search')
                 # this can only happen the first time through
                 break
             target_bmp_file = PRODUCT_LABEL_BMP_LOCATION / src_file
