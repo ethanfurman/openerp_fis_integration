@@ -1385,8 +1385,15 @@ def add_timestamp(file, cache_only):
                 # this can only happen the first time through
                 break
             target_bmp_file = PRODUCT_LABEL_BMP_LOCATION / src_file
+            _logger.debug(
+                    '.bmp file: %r, exists: %r, isfile: %r, size: %r',
+                    target_bmp_file.exists(),
+                    target_bmp_file.exists() and target_bmp_file.isfile() or 'n/a',
+                    target_bmp_file.exists() and target_bmp_file.isfile() and target_bmp_file.stat().st_size or 'n/a',
+                    )
             if target_bmp_file.exists() and target_bmp_file.isfile() and target_bmp_file.stat().st_size:
                 src_ts = target_bmp_file.stat().st_mtime
+                _logger.debug('bmp time: %r, png time: %r', src_ts, tgt_ts)
                 if not tgt_ts or tgt_ts < src_ts:
                     try:
                         copy_image(target_bmp_file, target_png_file)
