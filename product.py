@@ -35,11 +35,11 @@ with LLC_lock:
     with open(LLC_backup_file) as llc:
         LLC_text = llc.read().strip().split('\n')
 LLC_OVERRIDE = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.override'
-LLC_SOURCE = Path('/mnt/newlabeltimexpvm/xfer/LabelDirectory/LabelLinkCtl')
+LLC_SOURCE = Path('/home/openerp/mnt/newlabeltimexpvm/xfer/LabelDirectory/LabelLinkCtl')
 LLC_PID_FILE = Path('/opt/openerp/var/run/test_mnt_labeltime.pid')
 
 PRODUCT_LABEL_URL = Path("https://openerp.sunridgefarms.com/fis/product/label/")
-PRODUCT_LABEL_BMP_LOCATION = Path("/mnt/newlabeltimexpvm/xfer/LabelDirectory/")
+PRODUCT_LABEL_BMP_LOCATION = Path("/home/openerp/mnt/newlabeltimexpvm/xfer/LabelDirectory/")
 PRODUCT_LABEL_PNG_LOCATION = Path("/PNG_labels/")
 IMAGE_ALTERNATES = {'MK': 'CC', 'B': ('PKG', '')}
 
