@@ -45,6 +45,16 @@ IMAGE_ALTERNATES = {'MK': 'CC', 'B': ('PKG', '')}
 
 NamedLock = NamedLock()
 
+# labeltime links
+#
+# Packaged - http://labeltime:9000/Lbls/000001/000001.bmp
+# Bulk - http://labeltime:9000/Lbls/000001/000001B.bmp
+# Case - http://labeltime:9000/Lbls/000001/000001CC.bmp
+# Markem - http://labeltime:9000/Lbls/000001/000001MK.bmp
+# Nutritional - http://labeltime:9000/Lbls/000001/000001N1.bmp
+#
+# http://labeltime:9000/labelutils?opt=ingred&prodCd=000001
+
 class Prop65(fields.SelectionEnum):
     _order_ = 'none reproductive cancer both'
     none = 'N - free of / below trigger level'
