@@ -1,5 +1,9 @@
 !!!xml1.0
 
+-view = 'ir.ui.view'
+-action = 'ir.actions.act_window'
+-wiki = 'product.wiki'
+
 ~openerp
     ~data
 
@@ -554,6 +558,62 @@
                     ~div attrs="{'invisible': [('id','=',False)]}"
                         ~h2: Order has been placed.
                         ~button $Close special="cancel"
+
+        // Wiki
+
+        ~record model=view #view_product_wiki_tree
+            @name: product.wiki.tree
+            @model: = wiki
+            @arch type='xml'
+                ~tree $Wiki_Pages
+                    @name
+
+        ~record model=view #view_product_wiki_form
+            @name: product.wiki.form
+            @model: = wiki
+            @arch type='xml'
+                ~form $Wiki_Document version='7.0'
+                    ~div
+                        ~h1
+                            @name
+                        ~group
+                            @source_type .oe_edit_only widget='radio' options="{'horizontal': 1}"
+                            @top_level .oe_edit_only
+                        ~div attrs="{'invisible': [('source_type','!=','txt')]}"
+                            @source_doc .oe_edit_only placeholder="wiki document..."
+                            @wiki_doc .oe_view_only
+                        ~div attrs="{'invisible': [('source_type','!=','img')]}"
+                            @source_img widget='image' .oe_edit_only
+                            @wiki_img widget='image' .oe_view_only
+                        ~div
+                            ~hr
+                            @reverse_links .oe_view_only widget='many2many_tags'
+
+        ~record model=view #view_product_wiki_search
+            @name: product.wiki.search
+            @model: product.wiki
+            @arch type='xml'
+                ~search $Wiki_Page
+                    ~filter $Top_Level_Pages @type_top_level domain="[('top_level','=',True)]"
+                    ~separator
+                    ~filter $Documents @type_document domain="[('source_type','=','txt')]"
+                    ~filter $Images @type_images domain="[('source_type','=','img')]"
+                    ~separator
+                    ~filter $Empty @type_empty domain="[('is_empty','=',True)]"
+                    ~filter $Not_Empty @type_not_empty domain="[('is_empty','=',False)]"
+
+        ~record model=action #action_product_wiki
+            @name: Wiki
+            @res_model: = wiki
+            @view_type: form
+            @view_id ref='view_product_wiki_tree'
+            @search_view_id ref='view_product_wiki_search'
+            @view_mode: tree,form
+            @context: {'search_default_type_top_level':'1'}
+
+
+        ~menuitem @Wiki #menu_product_wiki parent='base.menu_product' action='action_product_wiki'
+
 
     ~data noupdate='1'
 

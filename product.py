@@ -640,6 +640,7 @@ class product_product(xmlid, osv.Model):
             string='Orderable',
             type='boolean',
             ),
+	'wiki_note': fields.many2one('product.wiki', string='Notes')
         }
 
     _defaults = {
@@ -793,6 +794,16 @@ class product_product(xmlid, osv.Model):
             _21_day = ForecastDetail(prod_in, purch, prod_out, sold)
             res[item_code] = Forecast(item_code, _10_day, _21_day)
         return res
+
+class product_wiki_note(osv.Model):
+    "Product Item Note"
+    _name = 'product.wiki'
+    _inherit = 'wiki.page'
+    _description = 'Product Item Note'
+
+    _defaults = {
+            'wiki_key': 'product.wiki',
+            }
 
 class production_line(xmlid, osv.Model):
     "production line"
