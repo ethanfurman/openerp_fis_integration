@@ -356,14 +356,14 @@ class product_product(xmlid, osv.Model):
                 header = False
                 link = Path(link)
                 if link.count('%s') == 1:
-                    link %= '%s/%s' % (xml_id, xml_id)
-                    ts_link = add_timestamp(link, cache_only)
+                    link %= '%s' % (xml_id, )
+                    link, ts_link = add_timestamp(link.filename)
                     if ts_link is None:
                         continue
                     remote_link = PRODUCT_LABEL_URL + ts_link
                 elif link.count('%s') == 0:
                     header = 'oe_header'
-                    ts_link = add_timestamp(link, cache_only)
+                    link, ts_link = add_timestamp(link)
                     if ts_link is None:
                         continue
                     remote_link = PRODUCT_LABEL_URL + ts_link
@@ -375,12 +375,7 @@ class product_product(xmlid, osv.Model):
             doc = Xaml(LabelLinkTab).document.pages[0]
             tab = doc.string(rows = width_rows)
             result[id] = {'label_server_stub':tab}
-        # update web recipe and ingredient fields from spl files
-        if not cache_only:
-            # update the cache so we can use those files
-            for xml_id, id in xml_ids.items():
-                ProductLabelDescription.update(xml_id, PRODUCT_LABEL_BMP_LOCATION, PRODUCT_LABEL_PNG_LOCATION)
-        for xml_id, id in xml_ids.items():
+            # update web recipe and ingredient fields from spl files
             pld = ProductLabelDescription(xml_id, PRODUCT_LABEL_PNG_LOCATION)
             result[id]['fis_web_ingredients'] = pld.ingredients_text
             result[id]['fis_web_prep_instructions'] = pld.recipe_text
@@ -1342,7 +1337,7 @@ def get_LLC():
         try:
             llc = requests.get(LABELTIME/'LabelLinkCtl')
             if llc.status_code == 200:
-                label_link_lines = llc.text
+                label_link_lines = llc.text.strip().split('\n')
             else:
                 _logger.error('code %r retrieving LabelLinkCtl, using cache', llc.status_code)
                 cache_only = True
@@ -1383,7 +1378,7 @@ def get_LLC():
 
 def add_timestamp(file):
     "adds timestamp to filename portion of file"
-    file = Path(file).stripext() + '.png'
+    file = Path(file).strip_ext() + '.png'
     possibles = [PRODUCT_LABEL_PNG_LOCATION/file]
     last_suffix = file.stem[6:]
     for orig, repl in IMAGE_ALTERNATES.items():
@@ -1399,9 +1394,9 @@ def add_timestamp(file):
             timestamp = '-' + DateTime.fromtimestamp(file.stat().st_mtime).strftime('%Y-%m-%dT%H:%M:%S')
             break
     if timestamp is None:
-        return None
+        return file, None
     ts_file = file.stem + timestamp + file.ext
-    return ts_file
+    return file, ts_file
 
 def copy_image(source, target):
     # img = Image.open(target_bmp_file).save(target_png_file)
@@ -1444,7 +1439,8 @@ def calc_width(src_rows):
                         scale = 1200.0 / image.height
                         new_width = scale * image.width
                         percent = min(int(new_width / 1800 * 100), 100)
-            except IOError:
+            except IOError as exc:
+                _logger.exception('problem with %r', link)
                 percent = 0
             row.append((remote_link, '%s%%' % percent, align, header))
         res.append(row)
@@ -1481,9 +1477,9 @@ def update_files(xml_id):
     r = requests.get(LABELTIME/xml_id)
     canonical_files = {}
     next_line = 'file'
-    for line in r.text:
+    for line in r.text.strip().split('\n'):
         if next_line == 'file':
-            found = re.search(r'>(%s[^<]*)<' % xml_id)
+            found = re.search(r'>(%s[^<]*)<' % xml_id, line)
             if not found:
                 continue
             filename = found.groups()[0]
@@ -1493,12 +1489,12 @@ def update_files(xml_id):
                 filename = filename[:-4] + '.img'
             next_line = 'time'
         elif next_line == 'time':
-            timestamp = re.search(r'<tt>(.*)</tt>').groups()[0]
-            timestamp = DateTime.strptime('%H:%M:%S %Y%m%d')
+            timestamp = re.search(r'<tt>(.*)</tt>', line).groups()[0]
+            timestamp = DateTime.strptime(timestamp, '%H:%M:%S %Y/%m/%d')
             next_line = 'size'
         elif next_line == 'size':
-            size = re.search(r'<tt>(.*)</tt>').groups()[0]
-            canonical_files[file] = timestamp, size
+            size = re.search(r'<tt>(.*)</tt>', line).groups()[0]
+            canonical_files[filename] = timestamp, size
             next_line = 'file'
     # then, get all cached files
     cached_files = {}
@@ -1517,23 +1513,27 @@ def update_files(xml_id):
             ):
             if file.endswith('.img'):
                 file = file[:-4] + '.png'
-            PRODUCT_LABEL_PNG_LOCATION.unlink(file)
+            try:
+                PRODUCT_LABEL_PNG_LOCATION.unlink(file)
+            except OSError:
+                _logger.error('unable to remove %r', file)
         elif (
             file not in cached_files or
             cache_ts < can_ts and can_size != '0 bytes'
             ):
             if file.endswith('.spl'):
                 # used as-is, copy it over
-                spl = requests.get(LABELTIME/xml_id/file).text
+                spl = requests.get(LABELTIME/xml_id/file).content
                 with open(PRODUCT_LABEL_PNG_LOCATION/file, 'wb') as fh:
                     fh.write(spl)
             elif file.endswith('.img'):
                 src_file = file[:-4] + '.bmp'
-                dst_file = file[:-4] + '.png'
-                bmp = requests.get(LABELTIME/xml_id/src_file).text
+                dst_file = PRODUCT_LABEL_PNG_LOCATION/file[:-4] + '.png'
+                bmp = requests.get(LABELTIME/xml_id/src_file).content
                 copy_image(BytesIO(bmp), dst_file)
                 dst_file.chmod(0o666)
-                dst_file.touch(times=(can_ts, can_ts))
+                ts = int(can_ts.strftime('%s'))
+                dst_file.touch(times=(ts, ts))
             else:
                 _logger.error('unknown file type %r', file)
 
