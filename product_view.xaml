@@ -122,6 +122,10 @@
                         @label_server_stub nolabel='1' options="{'no_embed': True}"
                     // ~page $Costs groups='fis_integration.purchase_cost'
                     //   @cost_server_stub
+                    ~page $Notes
+                        @wiki_id invisible='1'
+                        @wiki_note_source .oe_edit_only
+                        @wiki_note_doc .oe_view_only
                 ~group $Weights position='after'
                     ~group $Supplier
                         @fis_supplier_id

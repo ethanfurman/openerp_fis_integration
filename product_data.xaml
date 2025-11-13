@@ -6,3 +6,9 @@
             @parent_id ref='product.product_category_all'
             @name: Invalid/Missing FIS ID
 
+    ~data noupdate='1'
+
+        ~record #product_wiki_key model='wiki.key'
+                @name: product.wiki
+                @private eval='True'
+
