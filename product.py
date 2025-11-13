@@ -336,7 +336,7 @@ class product_product(xmlid, osv.Model):
 
     def _label_links(self, cr, uid, ids, field_name, arg, context=None):
         xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
-        result = {}.fromkeys(ids)
+        result = {}.fromkeys(ids, {})
         try:
             LabelLinks, cache_only = get_LLC()
         except Exception:
@@ -635,17 +635,44 @@ class product_product(xmlid, osv.Model):
             string='Orderable',
             type='boolean',
             ),
+        'wiki_id': fields.many2many(
+                'product.wiki',
+                'product_wiki_rel', 'product_id', 'wiki_id',
+                string='Notes'),
+        'wiki_note_doc': fields.related(
+                'wiki_id', 'wiki_doc',
+                string='Wiki Note',
+                type='html',
+                ),
+        'wiki_note_source': fields.related(
+                'wiki_id', 'source_doc',
+                string='Wiki Note (text)',
+                type='text',
+                ),
         }
 
     _defaults = {
             'sale_ok': False,
             }
 
+    def create(self, cr, uid, values, context=None):
+        wiki_note = values.pop('wiki_note_source', None)
+        if wiki_note:
+            xml_id = values.get('xml_id')
+            name = values.get('name')
+            if xml_id:
+                name = '[%s] %s' % (xml_id, name)
+            values['wiki_id'] = [(0, 0, {'name':name, 'source_doc':wiki_note, 'top_level':True})]
+        return super(product_product, self).create(cr, uid, values, context=context)
+
     def write(self, cr, uid, ids, values, context=None):
         if (context or {}).get('related product loop'):
             return super(product_product, self).write(cr, uid, ids, values, context)
         if isinstance(ids, (int, long)):
             ids = [ids]
+        #
+        self._set_wiki_note(cr, uid, ids, values, context)
+        #
         old_related = None
         if 'fis_related_product_ids' in values:
             old_related = self.read(cr, uid, ids, ['id','fis_related_product_ids'], context=context)
@@ -788,6 +815,44 @@ class product_product(xmlid, osv.Model):
             _21_day = ForecastDetail(prod_in, purch, prod_out, sold)
             res[item_code] = Forecast(item_code, _10_day, _21_day)
         return res
+
+    def _set_wiki_note(self, cr, uid, ids, values, context=None):
+        wiki_note = values.pop('wiki_note_source', None)
+        if wiki_note is None:
+            return
+        # are we removing, changing, or adding?
+        if not wiki_note:
+            # removing
+            note_ids = [
+                    item.wiki_id[0].id
+                    for item in self.browse(cr, uid, ids, context=context)
+                    if item.wiki_id
+                    ]
+            values['wiki_id'] = [(2, wiki_id) for wiki_id in note_ids]
+            return
+        elif len(ids) > 1:
+            raise ERPError('Too many records', 'Notes must be provided one record at a time')
+        # did a note already exist?
+        item = self.browse(cr, uid, ids[0], context=context)
+        if item.wiki_id:
+            # changing
+            values['wiki_id'] = [(1, item.wiki_id[0].id, {'source_doc':wiki_note})]
+        else:
+            # adding
+            name = item.name
+            if item.xml_id:
+                name = '[%s] %s' % (item.xml_id, name)
+            values['wiki_id'] = [(0, 0, {'name':name, 'source_doc':wiki_note, 'top_level':True})]
+
+class product_wiki_note(osv.Model):
+    "Product Item Note"
+    _name = 'product.wiki'
+    _inherit = 'wiki.page'
+    _description = 'Product Item Note'
+
+    _defaults = {
+            'wiki_key': 'product.wiki',
+            }
 
 class production_line(xmlid, osv.Model):
     "production line"
@@ -1331,7 +1396,7 @@ def get_LLC():
                 _logger.error('code %r retrieving LabelLinkCtl, using cache', llc.status_code)
                 cache_only = True
         except Exception:
-            _logger.exception('unable to access LABELTIME')
+            _logger.error('unable to access LABELTIME')
             cache_only = True
     # validate LabelLinkCtl file
     LabelLinks = []
@@ -1428,7 +1493,7 @@ def calc_width(src_rows):
                         scale = 1200.0 / image.height
                         new_width = scale * image.width
                         percent = min(int(new_width / 1800 * 100), 100)
-            except IOError as exc:
+            except IOError:
                 _logger.exception('problem with %r', link)
                 percent = 0
             row.append((remote_link, '%s%%' % percent, align, header))
