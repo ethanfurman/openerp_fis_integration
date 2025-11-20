@@ -1451,7 +1451,7 @@ def get_LLC(method):
                 pieces[3] = int(pieces[-1].strip('%'))
             LabelLinks.append(pieces)
         except ValueError:
-            _logger.error('bad LabelLinkCtl format; should be "row#, file-pattern, left|right|center, [%width]"'
+            _logger.error('bad LabelLinkCtl format; should be "row#, file-pattern, left|right|center, [%width]"')
             llc_override = True
             LabelLinks = (
                 ("1","%sB.bmp","left"),
