@@ -11,7 +11,19 @@ class fis_integration_config_settings(osv.osv_memory):
                 string='Traffic Report Auto-Followers',
                 relation='res.users',
                 ),
-    }
+            'product_label_source': fields.related(
+                'company_id', 'product_label_source',
+                selection=(
+                    ('labeltime_url', 'LabelTime via http'),
+                    ('labeltime_mnt', 'LabelTime via /mnt'),
+                    ('lumiere_mnt', 'Lumiere via /mnt'),
+                    ('cache_only', 'cache only'),
+                    ),
+                sort_order='definition',
+                type='selection',
+                string='Product Label Source',
+                )
+            }
 
     def create(self, cr, uid, values, context=None):
         id = super(fis_integration_config_settings, self).create(cr, uid, values, context)
@@ -39,6 +51,6 @@ class fis_integration_config_settings(osv.osv_memory):
             company = self.pool.get('res.company').browse(cr, uid, company_id, context=context)
             values = {
                 'traffic_followers': [r.id for r in company.traffic_followers_ids],
-            }
+                'product_label_source': company.product_label_source,
+                }
         return {'value': values}
-

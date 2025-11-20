@@ -10,7 +10,7 @@ scripts/updates_fis_integration updates/fis_integration --suid openerp
 scripts/check_active_products --suid openerp
 scripts/process_openerp_orders /usr/local/bin/process_openerp_orders
 scripts/check_git_repo /usr/local/bin/check_git_repo
-scripts/check_labeltime_connection /usr/local/bin/check_labeltime_connection
+scripts/check_LabelLinkCtl /usr/local/bin/check_labellinkctl
 scripts/check_11-111_connection /usr/local/bin/check_11-111_connection
 scripts/fis_oe_converters.py $fislib/fis_oe_converters.py
 scripts/fis_schema.py $fislib/schema.py

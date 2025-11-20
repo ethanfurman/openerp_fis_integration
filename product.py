@@ -3,7 +3,7 @@ from aenum import NamedTuple
 from antipathy import Path
 from dbf import Date, DateTime
 from fnx_fs.fields import files
-from scription import Execute, OrmFile
+from scription import Execute, OrmFile, TimeoutError
 from fislib.tools import ProductLabelDescription
 from fnx import date
 from fnx.oe import dynamic_page_stub
@@ -14,6 +14,7 @@ from openerp.exceptions import ERPError
 from openerp.tools import DEFAULT_SERVER_DATE_FORMAT, Period, self_ids, self_uid, NamedLock, get_ids
 import os
 from osv import osv, fields
+from pandaemonium import PidLockFile, AlreadyLocked
 from PIL import Image, ImageOps
 from xaml import Xaml
 import logging
@@ -26,7 +27,7 @@ _logger = logging.getLogger(__name__)
 OWN_STOCK = 12  # Physical Locations / Your Company / Stock
 
 LLC_lock = threading.Lock()
-LLC_backup_file = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.txt'
+LLC_backup_file = Path('/PNG_labels/LabelLinkCtl')
 with LLC_lock:
     if not LLC_backup_file.dirs.exists():
         LLC_backup_file.dirs.mkdir()
@@ -34,25 +35,29 @@ with LLC_lock:
         open(LLC_backup_file, 'w').close()
     with open(LLC_backup_file) as llc:
         LLC_text = llc.read().strip().split('\n')
+        LLC_links = None
 LLC_OVERRIDE = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.override'
-LLC_SOURCE = Path('/home/openerp/mnt/newlabeltimexpvm/xfer/LabelDirectory/LabelLinkCtl')
-LLC_PID_FILE = Path('/opt/openerp/var/run/test_mnt_labeltime.pid')
+LABELTIME_PID_FILE = Path('/opt/openerp/var/run/test_mnt_labeltime.pid')
+LUMIERE_PID_FILE = Path('/opt/openerp/var/run/test_mnt_lumiere.pid')
 
-LABELTIME = Path('http://labeltime:9000/Lbls')
+CACHE_LOCATION = Path("/PNG_labels/")
+LABELTIME_HTTP = Path('http://labeltime:9000/Lbls')
+LUMIERE_HTTP = Path('http://labeltime:9000/V_lum-e-lbls')
+LABELTIME_MNT = Path("/home/openerp/mnt/newlabeltimexpvm/xfer/LabelDirectory/")
+LUMIERE_MNT = Path("/mnt/smb/lumiere-e-labels/")
 PRODUCT_LABEL_URL = Path("https://openerp.sunridgefarms.com/fis/product/label/")
-PRODUCT_LABEL_BMP_LOCATION = Path("/home/openerp/mnt/newlabeltimexpvm/xfer/LabelDirectory/")
-PRODUCT_LABEL_PNG_LOCATION = Path("/PNG_labels/")
 IMAGE_ALTERNATES = {'MK':('CC', ), 'B': ('PKG', '')}
 
 NamedLock = NamedLock()
 
-# labeltime links
+# labeltime file types
 #
-# Packaged - http://labeltime:9000/Lbls/000001/000001.bmp
-# Bulk - http://labeltime:9000/Lbls/000001/000001B.bmp
-# Case - http://labeltime:9000/Lbls/000001/000001CC.bmp
-# Markem - http://labeltime:9000/Lbls/000001/000001MK.bmp
-# Nutritional - http://labeltime:9000/Lbls/000001/000001N1.bmp
+#    - Packaged
+# B  - Bulk
+# TT - Bulk bin
+# CC - Case
+# MK - Markem
+# N1 - Nutritional / NFP
 #
 # http://labeltime:9000/labelutils?opt=ingred&prodCd=000001
 
@@ -337,10 +342,12 @@ class product_product(xmlid, osv.Model):
     def _label_links(self, cr, uid, ids, field_name, arg, context=None):
         xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
         result = {}.fromkeys(ids, {})
+        user = self.pool.get('res.users').browse(cr, uid, uid, context=context)
         try:
-            LabelLinks, cache_only = get_LLC()
+            LabelLinks, cache_only = get_LLC(method=user.company_id.product_label_source)
         except Exception:
             _logger.exception('error fetching/processing LabelLinkCtl')
+            cache_only = True
             # use the hard-coded display links
             LabelLinks = (
                 ("1","%sB.bmp","left"),
@@ -350,7 +357,7 @@ class product_product(xmlid, osv.Model):
         # group images by rows
         for xml_id, id in xml_ids.items():
             if not cache_only:
-                update_files(xml_id)
+                update_files(xml_id, method=user.company_id.product_label_source)
             raw_rows = defaultdict(list)
             for row, link, align, width in LabelLinks:
                 header = False
@@ -376,7 +383,7 @@ class product_product(xmlid, osv.Model):
             tab = doc.string(rows = width_rows)
             result[id] = {'label_server_stub':tab}
             # update web recipe and ingredient fields from spl files
-            pld = ProductLabelDescription(xml_id, PRODUCT_LABEL_PNG_LOCATION)
+            pld = ProductLabelDescription(xml_id, CACHE_LOCATION)
             result[id]['fis_web_ingredients'] = pld.ingredients_text
             result[id]['fis_web_prep_instructions'] = pld.recipe_text
         return result
@@ -1375,29 +1382,64 @@ class product_keywords(osv.Model):
             ),
         }
 
-def get_LLC():
+def get_LLC(method):
     "retrieve LLC file and update local cache"
     # if TEST_LLC is set, use testing copy below
-    global LLC_text
+    global LLC_text, LLC_links
     llc_override = False
-    cache_only = False
-    label_link_lines = LLC_text     # default
+    cache_only = method == 'cache_only'
     if LLC_OVERRIDE.exists():
         llc_override = True
         with open(LLC_OVERRIDE) as llc:
             label_link_lines = llc.read().strip().split('\n')
     else:
-        # attempt to get LabelLinkCtl from labeltime
-        try:
-            llc = requests.get(LABELTIME/'LabelLinkCtl')
-            if llc.status_code == 200:
-                label_link_lines = llc.text.strip().split('\n')
-            else:
-                _logger.error('code %r retrieving LabelLinkCtl, using cache', llc.status_code)
+        # attempt to get LabelLinkCtl from ...
+        if method == 'cache_only':
+            with open(LLC_backup_file) as llc:
+                label_link_lines = llc.read().strip().split('\n')
+        elif method == 'labeltime_url':
+            try:
+                llc = requests.get(LABELTIME_HTTP/'LabelLinkCtl')
+                if llc.status_code == 200:
+                    label_link_lines = llc.text.strip().split('\n')
+                else:
+                    _logger.error('code %r retrieving LabelLinkCtl, using cache', llc.status_code)
+                    cache_only = True
+            except Exception:
+                _logger.error('unable to access LABELTIME')
                 cache_only = True
-        except Exception:
-            _logger.error('unable to access LABELTIME')
-            cache_only = True
+        else: # a /mnt method is being used
+            if method == 'lumiere_mnt':
+                pid_file = LUMIERE_PID_FILE
+                llc_file = LUMIERE_MNT/'LabelLinkCtl'
+            elif method == 'labeltime_mnt':
+                pid_file = LABELTIME_PID_FILE
+                llc_file = LABELTIME_MNT/'LabelLinkCtl'
+            else:
+                _logger.error('unknown label source %r', method)
+                return [], True
+            if pid_file.exists():
+                cache_only = True
+            else:
+                try:
+                    with PidLockFile(pid_file, timeout=1):
+                        cat = Execute('cat %s' % llc_file, timeout=10)
+                    if not cat.returncode:
+                        label_link_lines = cat.stdout.strip().split('\n')
+                    else:
+                        _logger.warning('attempt to read %r failed with %r and %r',
+                                llc_file,
+                                cat.returncode,
+                                cat.stderr and cat.stderr.strip().split('\n')[-1] or '<unknown>',
+                                )
+                        cache_only = True
+                except (AlreadyLocked, TimeoutError):
+                    cache_only = True
+                except Exception as exc:
+                    _logger.error('failed to read %r (%s)', llc_file, exc)
+                    cache_only = True
+    if label_link_lines == LLC_text and LLC_links is not None:
+        return LLC_links, cache_only
     # validate LabelLinkCtl file
     LabelLinks = []
     for link_line in label_link_lines:
@@ -1433,13 +1475,13 @@ def get_LLC():
 def add_timestamp(file):
     "adds timestamp to filename portion of file"
     file = Path(file).strip_ext() + '.png'
-    possibles = [PRODUCT_LABEL_PNG_LOCATION/file]
+    possibles = [CACHE_LOCATION/file]
     last_suffix = file.stem[6:]
     for orig, repl in IMAGE_ALTERNATES.items():
         if file.base.upper().endswith(orig):
             for new_suffix in repl:
                 file = file.dirname / re.sub(last_suffix+'$', new_suffix, file.base) + file.ext
-                possibles.append(PRODUCT_LABEL_PNG_LOCATION/file)
+                possibles.append(CACHE_LOCATION/file)
                 last_suffix = new_suffix
             break
     timestamp = None
@@ -1489,7 +1531,7 @@ def calc_width(src_rows):
                 if width is not None:
                     percent = width
                 else:
-                    with Image.open(PRODUCT_LABEL_PNG_LOCATION / link.stem + '.png') as image:
+                    with Image.open(CACHE_LOCATION / link.stem + '.png') as image:
                         scale = 1200.0 / image.height
                         new_width = scale * image.width
                         percent = min(int(new_width / 1800 * 100), 100)
@@ -1515,81 +1557,143 @@ def open_next_file(filename):
     else:
         raise ERPError('File Conflicts', 'unable to create order file')
 
-def update_files(xml_id):
+def update_files(xml_id, method):
     """
     update 11.16:/PNG_labels cache from LABELTIME
     """
-    # make sure labeltime has most recent images
-    try:
-        requests.get(
-                'http://192.168.11.12:9000/labelutils',
-                params={'opt':'s_label', 'prodCd':xml_id},
-                )
-    except requests.RequestException:
-        pass
-    # get all the files we care about
-    r = requests.get(LABELTIME/xml_id)
-    canonical_files = {}
-    next_line = 'file'
-    for line in r.text.strip().split('\n'):
-        if next_line == 'file':
-            found = re.search(r'>(%s[^<]*)<' % xml_id, line)
-            if not found:
+    #
+    def url(xml_id, source):
+        # make sure labeltime has most recent images
+        # try:
+        #     requests.get(
+        #             'http://192.168.11.12:9000/labelutils',
+        #             params={'opt':'s_label', 'prodCd':xml_id},
+        #             )
+        # except requests.RequestException:
+        #     pass
+        # get all the files we care about
+        url = {
+                'labeltime': LABELTIME_HTTP,
+                'lumiere': LUMIERE_HTTP,
+                }[source]
+        r = requests.get(url/xml_id)
+        canonical_files = {}
+        next_line = 'file'
+        for line in r.text.strip().split('\n'):
+            if next_line == 'file':
+                found = re.search(r'>(%s[^<]*)<' % xml_id, line)
+                if not found:
+                    continue
+                filename = found.groups()[0]
+                if '_' in filename or filename[-4:] not in ('.bmp','.spl'):
+                    continue
+                if filename.endswith('.bmp'):
+                    filename = filename[:-4] + '.img'
+                next_line = 'time'
+            elif next_line == 'time':
+                timestamp = re.search(r'<tt>(.*)</tt>', line).groups()[0]
+                timestamp = DateTime.strptime(timestamp, '%H:%M:%S %Y/%m/%d')
+                next_line = 'size'
+            elif next_line == 'size':
+                size = re.search(r'<tt>(.*)</tt>', line).groups()[0]
+                canonical_files[filename] = timestamp, size
+                next_line = 'file'
+        # then, get all cached files
+        cached_files = {}
+        for file in CACHE_LOCATION.glob(xml_id+'*'):
+            fn = file.filename
+            if fn.endswith('.png'):
+                fn = fn[:-4] + '.img'
+            cached_files[fn] = DateTime.fromtimestamp(file.stat().st_mtime), file.stat().st_size
+        # then, compare and update
+        for file in set(list(canonical_files) + list(cached_files)):
+            cache_ts, cache_size = cached_files.get(file, (None, None))
+            can_ts, can_size = canonical_files.get(file, (None, None))
+            if (
+                file not in canonical_files or
+                file in cached_files and can_size == '0 bytes'
+                ):
+                if file.endswith('.img'):
+                    file = file[:-4] + '.png'
+                try:
+                    CACHE_LOCATION.unlink(file)
+                except OSError:
+                    _logger.error('unable to remove %r', file)
+            elif (
+                file not in cached_files or
+                cache_ts < can_ts and can_size != '0 bytes'
+                ):
+                if file.endswith('.spl'):
+                    # used as-is, copy it over
+                    spl = requests.get(url/xml_id/file).content
+                    with open(CACHE_LOCATION/file, 'wb') as fh:
+                        fh.write(spl)
+                elif file.endswith('.img'):
+                    src_file = file[:-4] + '.bmp'
+                    dst_file = CACHE_LOCATION/file[:-4] + '.png'
+                    bmp = requests.get(url/xml_id/src_file).content
+                    copy_image(BytesIO(bmp), dst_file)
+                    dst_file.chmod(0o666)
+                    ts = int(can_ts.strftime('%s'))
+                    dst_file.touch(times=(ts, ts))
+                else:
+                    _logger.error('unknown file type %r', file)
+    #
+    def mnt(xml_id, source):
+        loc = {
+                'labeltime': LABELTIME_MNT,
+                'lumiere': LUMIERE_MNT,
+                }[source]
+        # get all the files we care about
+        canonical_files = {}
+        for pn in loc.glob('*'):
+            if '_' in pn.filename or pn.ext not in ('.bmp', '.spl'):
                 continue
-            filename = found.groups()[0]
-            if '_' in filename or filename[-4:] not in ('.bmp','.spl'):
-                continue
-            if filename.endswith('.bmp'):
-                filename = filename[:-4] + '.img'
-            next_line = 'time'
-        elif next_line == 'time':
-            timestamp = re.search(r'<tt>(.*)</tt>', line).groups()[0]
-            timestamp = DateTime.strptime(timestamp, '%H:%M:%S %Y/%m/%d')
-            next_line = 'size'
-        elif next_line == 'size':
-            size = re.search(r'<tt>(.*)</tt>', line).groups()[0]
-            canonical_files[filename] = timestamp, size
-            next_line = 'file'
-    # then, get all cached files
-    cached_files = {}
-    for file in PRODUCT_LABEL_PNG_LOCATION.glob(xml_id+'*'):
-        fn = file.filename
-        if fn.endswith('.png'):
-            fn = fn[:-4] + '.img'
-        cached_files[fn] = DateTime.fromtimestamp(file.stat().st_mtime), file.stat().st_size
-    # then, compare and update
-    for file in list(canonical_files) + list(cached_files):
-        cache_ts, cache_size = cached_files.get(file, (None, None))
-        can_ts, can_size = canonical_files.get(file, (None, None))
-        if (
-            file not in canonical_files or
-            file in cached_files and can_size == '0 bytes'
-            ):
-            if file.endswith('.img'):
-                file = file[:-4] + '.png'
-            try:
-                PRODUCT_LABEL_PNG_LOCATION.unlink(file)
-            except OSError:
-                _logger.error('unable to remove %r', file)
-        elif (
-            file not in cached_files or
-            cache_ts < can_ts and can_size != '0 bytes'
-            ):
-            if file.endswith('.spl'):
-                # used as-is, copy it over
-                spl = requests.get(LABELTIME/xml_id/file).content
-                with open(PRODUCT_LABEL_PNG_LOCATION/file, 'wb') as fh:
-                    fh.write(spl)
-            elif file.endswith('.img'):
-                src_file = file[:-4] + '.bmp'
-                dst_file = PRODUCT_LABEL_PNG_LOCATION/file[:-4] + '.png'
-                bmp = requests.get(LABELTIME/xml_id/src_file).content
-                copy_image(BytesIO(bmp), dst_file)
-                dst_file.chmod(0o666)
-                ts = int(can_ts.strftime('%s'))
-                dst_file.touch(times=(ts, ts))
-            else:
-                _logger.error('unknown file type %r', file)
+            file = pn.filename
+            if file.ext == '.bmp':
+                file = file.strip_ext() + '.img'
+            canonical_files[file] = DateTime.fromtimestamp(file.stat().st_mtime), file.stat().st_size
+        # then, get all cached files
+        cached_files = {}
+        for file in CACHE_LOCATION.glob(xml_id+'*'):
+            fn = file.filename
+            if fn.endswith('.png'):
+                fn = fn[:-4] + '.img'
+            cached_files[fn] = DateTime.fromtimestamp(file.stat().st_mtime), file.stat().st_size
+        # then, compare and update
+        for file in set(list(canonical_files) + list(cached_files)):
+            cache_ts, cache_size = cached_files.get(file, (None, None))
+            can_ts, can_size = canonical_files.get(file, (None, None))
+            if (
+                file not in canonical_files or
+                file in cached_files and can_size == 0
+                ):
+                if file.endswith('.img'):
+                    file = file[:-4] + '.png'
+                try:
+                    CACHE_LOCATION.unlink(file)
+                except OSError:
+                    _logger.error('unable to remove %r', file)
+            elif (
+                file not in cached_files or
+                cache_ts < can_ts and can_size != 0
+                ):
+                if file.endswith('.spl'):
+                    # used as-is, copy it over
+                    loc.copy(file, CACHE_LOCATION)
+                elif file.endswith('.img'):
+                    src_file = file[:-4] + '.bmp'
+                    dst_file = CACHE_LOCATION/file[:-4] + '.png'
+                    with open(loc/src_file, 'b') as fh:
+                        bmp = fh.read()
+                    copy_image(BytesIO(bmp), dst_file)
+                    dst_file.chmod(0o666)
+                    dst_file.touch(reference=loc/src_file)
+                else:
+                    _logger.error('unknown file type %r', file)
+    #
+    conn_source, conn_type = method.split('_')                                      # e.g. labeltime_url or lumiere_mnt
+    locals()[conn_type](xml_id, conn_source)
 
 
 LabelLinkTab = """\

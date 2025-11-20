@@ -15,12 +15,16 @@
                         ~div
                             ~label $Select_Company for='company_id'
                             @company_id .oe_inline on_change='onchange_company_id(company_id, context)' widget='selection'
-                    ~separator $Auto_Followers_for_Traffic_Report
                     ~group col='4'
                         ~div
+                            ~hr
                             ~div
                                 ~label for='traffic_followers'
                                 @traffic_followers
+                            ~hr
+                            ~group cols='2'
+                                @product_label_source
+                            ~separator cols='2'
 
         ~record model='ir.actions.act_window' #action_fis_integration_config
             @name: Configure FIS Integration
