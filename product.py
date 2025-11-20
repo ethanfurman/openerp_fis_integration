@@ -343,17 +343,7 @@ class product_product(xmlid, osv.Model):
         xml_ids = self.get_xml_id_map(cr, uid, module='F135', ids=ids, context=context)
         result = {}.fromkeys(ids, {})
         user = self.pool.get('res.users').browse(cr, uid, uid, context=context)
-        try:
-            LabelLinks, cache_only = get_LLC(method=user.company_id.product_label_source)
-        except Exception:
-            _logger.exception('error fetching/processing LabelLinkCtl')
-            cache_only = True
-            # use the hard-coded display links
-            LabelLinks = (
-                ("1","%sB.bmp","left"),
-                ("1","%sNI.bmp","right"),
-                ("2","%sMK.bmp","center"),
-                )
+        LabelLinks, cache_only = get_LLC(method=user.company_id.product_label_source)
         # group images by rows
         for xml_id, id in xml_ids.items():
             if not cache_only:
@@ -1388,77 +1378,86 @@ def get_LLC(method):
     global LLC_text, LLC_links
     llc_override = False
     cache_only = method == 'cache_only'
+    # attempt to get LabelLinkCtl from ...
+    if cache_only:
+        pass
+    elif method == 'labeltime_url':
+        try:
+            llc = requests.get(LABELTIME_HTTP/'LabelLinkCtl')
+            if llc.status_code == 200:
+                label_link_lines = llc.text.strip().split('\n')
+            else:
+                _logger.error('code %r retrieving LabelLinkCtl, using cache', llc.status_code)
+                cache_only = True
+        except Exception:
+            _logger.error('unable to access LABELTIME')
+            cache_only = True
+    else: # a /mnt method is being used
+        if method == 'lumiere_mnt':
+            pid_file = LUMIERE_PID_FILE
+            llc_file = LUMIERE_MNT/'LabelLinkCtl'
+        elif method == 'labeltime_mnt':
+            pid_file = LABELTIME_PID_FILE
+            llc_file = LABELTIME_MNT/'LabelLinkCtl'
+        else:
+            _logger.error('unknown label source %r', method)
+            return [], True
+        if pid_file.exists():
+            cache_only = True
+        else:
+            try:
+                with PidLockFile(pid_file, timeout=1):
+                    cat = Execute('cat %s' % llc_file, timeout=10)
+                if not cat.returncode:
+                    label_link_lines = cat.stdout.strip().split('\n')
+                else:
+                    _logger.warning('attempt to read %r failed with %r and %r',
+                            llc_file,
+                            cat.returncode,
+                            cat.stderr and cat.stderr.strip().split('\n')[-1] or '<unknown>',
+                            )
+                    cache_only = True
+            except (AlreadyLocked, TimeoutError):
+                cache_only = True
+            except Exception as exc:
+                _logger.error('failed to read %r (%s)', llc_file, exc)
+                cache_only = True
     if LLC_OVERRIDE.exists():
         llc_override = True
         with open(LLC_OVERRIDE) as llc:
             label_link_lines = llc.read().strip().split('\n')
-    else:
-        # attempt to get LabelLinkCtl from ...
-        if method == 'cache_only':
-            with open(LLC_backup_file) as llc:
-                label_link_lines = llc.read().strip().split('\n')
-        elif method == 'labeltime_url':
-            try:
-                llc = requests.get(LABELTIME_HTTP/'LabelLinkCtl')
-                if llc.status_code == 200:
-                    label_link_lines = llc.text.strip().split('\n')
-                else:
-                    _logger.error('code %r retrieving LabelLinkCtl, using cache', llc.status_code)
-                    cache_only = True
-            except Exception:
-                _logger.error('unable to access LABELTIME')
-                cache_only = True
-        else: # a /mnt method is being used
-            if method == 'lumiere_mnt':
-                pid_file = LUMIERE_PID_FILE
-                llc_file = LUMIERE_MNT/'LabelLinkCtl'
-            elif method == 'labeltime_mnt':
-                pid_file = LABELTIME_PID_FILE
-                llc_file = LABELTIME_MNT/'LabelLinkCtl'
-            else:
-                _logger.error('unknown label source %r', method)
-                return [], True
-            if pid_file.exists():
-                cache_only = True
-            else:
-                try:
-                    with PidLockFile(pid_file, timeout=1):
-                        cat = Execute('cat %s' % llc_file, timeout=10)
-                    if not cat.returncode:
-                        label_link_lines = cat.stdout.strip().split('\n')
-                    else:
-                        _logger.warning('attempt to read %r failed with %r and %r',
-                                llc_file,
-                                cat.returncode,
-                                cat.stderr and cat.stderr.strip().split('\n')[-1] or '<unknown>',
-                                )
-                        cache_only = True
-                except (AlreadyLocked, TimeoutError):
-                    cache_only = True
-                except Exception as exc:
-                    _logger.error('failed to read %r (%s)', llc_file, exc)
-                    cache_only = True
+    elif cache_only:
+        with open(LLC_backup_file) as llc:
+            label_link_lines = llc.read().strip().split('\n')
     if label_link_lines == LLC_text and LLC_links is not None:
         return LLC_links, cache_only
     # validate LabelLinkCtl file
+    # should be:
+    #     row #,  file-pattern, horizontal-location, %-width
+    # i.e.    1, [%s/]%sMK.bmp,                left,      35
     LabelLinks = []
     for link_line in label_link_lines:
         pieces = [piece.strip() for piece in link_line.split(",")]
         pieces = (pieces + [None])[:4]
-        if pieces[-1] is not None:
-            try:
-                pieces[-1] = int(pieces[-1].strip('%'))
-            except ValueError:
-                _logger.error('unable to convert width of %r in %r', pieces[-1], link_line)
-                pieces[-1] = None
-        link = pieces[0].replace('Plone/LabelDirectory/', '')
-        if link.count('%s') == 2:
-            # abort with exception if this fails
-            link % ('a', 'test')
-            if link.startswith('%s/'):
-                link = link[3:]
-        pieces[0] = link
-        LabelLinks.append(pieces)
+        try:
+            pieces[0] = int(pieces[0])
+            if pieces[1].count('%') == 2:
+                pieces[1] % ('a', 'test')
+                if pieces[1].startswith('%s/'):
+                    pieces[1] = pieces[1][3:]
+            if pieces[2] not in ('left','right','center'):
+                raise ValueError
+            if pieces[3] is not None:
+                pieces[3] = int(pieces[-1].strip('%'))
+            LabelLinks.append(pieces)
+        except ValueError:
+            _logger.error('bad LabelLinkCtl format; should be "row#, file-pattern, left|right|center, [%width]"'
+            llc_override = True
+            LabelLinks = (
+                ("1","%sB.bmp","left"),
+                ("1","%sNI.bmp","right"),
+                ("2","%sMK.bmp","center"),
+                )
     if label_link_lines != LLC_text and not llc_override:
         # store current lines at module level
         LLC_text = label_link_lines
@@ -1643,10 +1642,11 @@ def update_files(xml_id, method):
         loc = {
                 'labeltime': LABELTIME_MNT,
                 'lumiere': LUMIERE_MNT,
+                'cache': CACHE_LOCATION,
                 }[source]
         # get all the files we care about
         canonical_files = {}
-        for pn in loc.glob('*'):
+        for pn in loc.glob('%s/*'%xml_id):
             if '_' in pn.filename or pn.ext not in ('.bmp', '.spl'):
                 continue
             file = pn.filename

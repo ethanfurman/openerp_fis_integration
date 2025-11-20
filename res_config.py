@@ -14,10 +14,10 @@ class fis_integration_config_settings(osv.osv_memory):
             'product_label_source': fields.related(
                 'company_id', 'product_label_source',
                 selection=(
-                    ('labeltime_url', 'LabelTime via http'),
-                    ('labeltime_mnt', 'LabelTime via /mnt'),
-                    ('lumiere_mnt', 'Lumiere via /mnt'),
-                    ('cache_only', 'cache only'),
+                    ('labeltime_url', 'LabelTime via http://labeltime:9000/Lbls'),
+                    ('labeltime_mnt', 'LabelTime via /home/openerp/mnt/newlabeltimexpvm/xfer/LabelDirectory/'),
+                    ('lumiere_mnt', 'Lumiere via /mnt/smb/lumiere-e-labels/'),
+		    ('cache_mnt', 'cache only (11.16:/PNG_labels)'),
                     ),
                 sort_order='definition',
                 type='selection',
