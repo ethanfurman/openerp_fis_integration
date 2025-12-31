@@ -39,12 +39,14 @@ with LLC_lock:
 LLC_OVERRIDE = Path(ROOT_DIR)/'var/openerp/fis_integration.LabelLinkCtl.override'
 LABELTIME_PID_FILE = Path('/opt/openerp/var/run/test_mnt_labeltime.pid')
 LUMIERE_PID_FILE = Path('/opt/openerp/var/run/test_mnt_lumiere.pid')
+CACHE_PID_FILE = Path('/opt/openerp/var/run/test_mnt_cache.pid')
 
 CACHE_LOCATION = Path("/PNG_labels/")
 LABELTIME_HTTP = Path('http://labeltime:9000/Lbls')
 LUMIERE_HTTP = Path('http://labeltime:9000/V_lum-e-lbls')
 LABELTIME_MNT = Path("/home/openerp/mnt/newlabeltimexpvm/xfer/LabelDirectory/")
 LUMIERE_MNT = Path("/mnt/smb/lumiere-e-labels/")
+CACHE_MNT = Path("/PNG_labels/")
 PRODUCT_LABEL_URL = Path("https://openerp.sunridgefarms.com/fis/product/label/")
 IMAGE_ALTERNATES = {'MK':('CC', ), 'B': ('PKG', '')}
 
@@ -1399,6 +1401,9 @@ def get_LLC(method):
         elif method == 'labeltime_mnt':
             pid_file = LABELTIME_PID_FILE
             llc_file = LABELTIME_MNT/'LabelLinkCtl'
+        elif method == 'cache_mnt':
+            pid_file = CACHE_PID_FILE
+            llc_file = CACHE_MNT/'LabelLinkCtl'
         else:
             _logger.error('unknown label source %r', method)
             return [], True
@@ -1495,24 +1500,31 @@ def add_timestamp(file):
 
 def copy_image(source, target):
     # img = Image.open(target_bmp_file).save(target_png_file)
-    img = Image.open(source)
     #
-    if img.format == 'BMP':
-        width, height = img.size
-        b = height
-        bands = img.getbands()
-        if bands == ('P', ):
-            # band ('P', ) means 0 = white, 1 = black, so
-            # getbbox will work as-is
-            l, t, r, b = img.crop(box=(0, 0, width, height-10)).getbbox()
-        elif bands == ('R', 'G', 'B'):
-            # (0, 0, 0) = black, (255, 255, 255) = white -- need to
-            # invert to get good numbers from getbbox
-            l, t, r, b = ImageOps.invert(img).crop(box=(0, 0, width, height-10)).getbbox()
-        if b < height-36:   # save at least 1/2"
-            img = img.crop(box=(0, 0, width, b))
-    #
-    img.save(target)
+    try:
+        img = Image.open(source)
+        if img.format == 'BMP':
+            width, height = img.size
+            b = height
+            bands = img.getbands()
+            if bands == ('P', ):
+                # band ('P', ) means 0 = white, 1 = black, so
+                # getbbox will work as-is
+                l, t, r, b = img.crop(box=(0, 0, width, height-10)).getbbox()
+            elif bands == ('R', 'G', 'B'):
+                # (0, 0, 0) = black, (255, 255, 255) = white -- need to
+                # invert to get good numbers from getbbox
+                l, t, r, b = ImageOps.invert(img).crop(box=(0, 0, width, height-10)).getbbox()
+            if b < height-36:   # save at least 1/2"
+                img = img.crop(box=(0, 0, width, b))
+        #
+        img.save(target)
+        return True
+    except IOError:
+        _logger.exception('skipping corrupted image: %r', source)
+        if target.exists():
+            target.unlink()
+        return False
 
 def calc_width(src_rows):
     "return tuple of rows (target, width, align, header)"
@@ -1560,7 +1572,6 @@ def update_files(xml_id, method):
     """
     update 11.16:/PNG_labels cache from LABELTIME
     """
-    #
     def url(xml_id, source):
         # make sure labeltime has most recent images
         # try:
@@ -1631,10 +1642,10 @@ def update_files(xml_id, method):
                     src_file = file[:-4] + '.bmp'
                     dst_file = CACHE_LOCATION/file[:-4] + '.png'
                     bmp = requests.get(url/xml_id/src_file).content
-                    copy_image(BytesIO(bmp), dst_file)
-                    dst_file.chmod(0o666)
-                    ts = int(can_ts.strftime('%s'))
-                    dst_file.touch(times=(ts, ts))
+                    if copy_image(BytesIO(bmp), dst_file):
+                        dst_file.chmod(0o666)
+                        ts = int(can_ts.strftime('%s'))
+                        dst_file.touch(times=(ts, ts))
                 else:
                     _logger.error('unknown file type %r', file)
     #
@@ -1652,7 +1663,7 @@ def update_files(xml_id, method):
             file = pn.filename
             if file.ext == '.bmp':
                 file = file.strip_ext() + '.img'
-            canonical_files[file] = DateTime.fromtimestamp(file.stat().st_mtime), file.stat().st_size
+            canonical_files[file] = DateTime.fromtimestamp(pn.stat().st_mtime), pn.stat().st_size
         # then, get all cached files
         cached_files = {}
         for file in CACHE_LOCATION.glob(xml_id+'*'):
@@ -1665,8 +1676,8 @@ def update_files(xml_id, method):
             cache_ts, cache_size = cached_files.get(file, (None, None))
             can_ts, can_size = canonical_files.get(file, (None, None))
             if (
-                file not in canonical_files or
-                file in cached_files and can_size == 0
+                source != 'cache' and
+                (file not in canonical_files or file in cached_files and can_size == 0)
                 ):
                 if file.endswith('.img'):
                     file = file[:-4] + '.png'
@@ -1675,22 +1686,23 @@ def update_files(xml_id, method):
                 except OSError:
                     _logger.error('unable to remove %r', file)
             elif (
-                file not in cached_files or
-                cache_ts < can_ts and can_size != 0
+                (file not in cached_files or cache_ts < can_ts)
+                and can_size != 0
                 ):
                 if file.endswith('.spl'):
                     # used as-is, copy it over
-                    loc.copy(file, CACHE_LOCATION)
+                    loc.copy(xml_id/file, CACHE_LOCATION)
                 elif file.endswith('.img'):
                     src_file = file[:-4] + '.bmp'
                     dst_file = CACHE_LOCATION/file[:-4] + '.png'
-                    with open(loc/src_file, 'b') as fh:
+                    with open(loc/xml_id/src_file, 'rb') as fh:
                         bmp = fh.read()
                     copy_image(BytesIO(bmp), dst_file)
                     dst_file.chmod(0o666)
-                    dst_file.touch(reference=loc/src_file)
+                    dst_file.touch(reference=loc/xml_id/src_file)
                 else:
                     _logger.error('unknown file type %r', file)
+            else:
     #
     conn_source, conn_type = method.split('_')                                      # e.g. labeltime_url or lumiere_mnt
     locals()[conn_type](xml_id, conn_source)
