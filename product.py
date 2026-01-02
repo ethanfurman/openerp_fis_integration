@@ -1702,7 +1702,6 @@ def update_files(xml_id, method):
                     dst_file.touch(reference=loc/xml_id/src_file)
                 else:
                     _logger.error('unknown file type %r', file)
-            else:
     #
     conn_source, conn_type = method.split('_')                                      # e.g. labeltime_url or lumiere_mnt
     locals()[conn_type](xml_id, conn_source)
