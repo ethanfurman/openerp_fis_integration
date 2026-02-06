@@ -511,6 +511,7 @@
                     @show_po_number invisible='1'
                     @show_req_ship_date invisible='1'
                     @portal_customer invisible='1'
+                    @order_blackout invisible='1'
                     ~div attrs="{'invisible': [('id','!=',False)]}"
                         ~group
                             ~group
@@ -521,7 +522,9 @@
                                 @transmitter_no readonly='1' attrs="{'invisible': [('portal_customer','=',False)]}"
                                 @partner_crossref_list $Product_list_for readonly='1'
                                 @restricted invisible='1'
-                        ~group attrs="{'invisible': [('partner_crossref_list','=',False)]}"
+                        ~group attrs="{'invisible': [('order_blackout','=',False)]}"
+                            ~h2: Ordering disabled until end-of-business Wednesday.
+                        ~group attrs="{'invisible': ['|',('partner_crossref_list','=',False),('order_blackout','=',True)]}"
                             // HEB and other restricted accounts
                             ~label for='item_ids' string='Items by customer code' attrs="{'invisible': ['|',('portal_customer','=',True),('restricted','=',False)]}"
                             @item_ids colspan='4'
@@ -558,7 +561,7 @@
                                     @product_desc invisible='1'
                         ~button @button_place_order $Place_Order
                          | type='object' .oe_highlight
-                         | attrs="{'invisible': ['|',('partner_crossref_list','=',False),('id','!=',False)]}"
+                         | attrs="{'invisible': ['|','|',('partner_crossref_list','=',False),('id','!=',False),('order_blackout','=',True)]}"
                     ~div attrs="{'invisible': [('id','=',False)]}"
                         ~h2: Order has been placed.
                         ~button $Close special="cancel"

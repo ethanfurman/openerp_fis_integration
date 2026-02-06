@@ -2,6 +2,7 @@ from collections import defaultdict
 from aenum import NamedTuple
 from antipathy import Path
 from dbf import Date, DateTime
+from dbf.constants import IsoDay
 from fnx_fs.fields import files
 from scription import Execute, OrmFile, TimeoutError
 from fislib.tools import ProductLabelDescription
@@ -1110,6 +1111,31 @@ class product_fis2customer(osv.Model):
 class product_online_order(osv.Model):
     _name = 'fis_integration.online_order'
 
+    def _calc_order_blackout(self, cr, uid, ids, field, unknown_none, context=None):
+        res = {}.fromkeys(ids, False)
+        return res
+
+    def _calc_default_order_blackout(self, cr, uid, ids, context=None):
+        now = fields.datetime.now(self, cr, localtime=True, as_datetime=True)
+        _logger.warning('current time is %r', now)
+        user, type = self.user_and_type(cr, uid, context=context)
+        _logger.warning('user %r is %r', user, type)
+        if type in ('sales', 'other'):
+            _logger.warning('  skipping', user, type)
+            return False
+        _logger.warning('transmitter #: %r', user.fis_transmitter_id.transmitter_no)
+        if (user.fis_transmitter_id.transmitter_no or '')[:3] == '150':
+            # Healthy Living transmitter number;
+            # is the current time between Tue 12pm CST and Wed EOD PST?
+            day = IsoDay(now.isoweekday())
+            if (
+                    (day is IsoDay.TUESDAY and now.hour >= 10)
+                    or (day is IsoDay.WEDNESDAY and now.hour < 17)
+                ):
+                _logger.warning('  disabling')
+                return True
+        return False
+
     _columns = {
         'partner_id': fields.many2one('res.partner', 'Customer'),
         'partner_xml_id': fields.char('FIS ID', size=11),
@@ -1144,10 +1170,16 @@ class product_online_order(osv.Model):
         'po_number': fields.char('PO #', size=10),
         'portal_customer': fields.boolean('Portal customer order', help='False if order placed by sales person'),
         'restricted': fields.boolean('Restricted Ordering'),
+        'order_blackout': fields.function(
+            _calc_order_blackout,
+            string='Ordering disabled',
+            type='boolean',
+            ),
         }
 
     _defaults = {
         'user_id': self_uid,
+        'order_blackout': _calc_default_order_blackout
         }
 
     def create(self, cr, uid, vals, context=None):
