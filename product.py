@@ -1130,7 +1130,7 @@ class product_online_order(osv.Model):
             day = IsoDay(now.isoweekday())
             if (
                     (day is IsoDay.TUESDAY and now.hour >= 10)
-                    or (day is IsoDay.WEDNESDAY and now.hour < 17)
+                    or day in (IsoDay.WEDNESDAY, IsoDay.Thursday)
                 ):
                 _logger.warning('  disabling')
                 return True
