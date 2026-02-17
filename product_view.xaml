@@ -512,6 +512,7 @@
                     @show_req_ship_date invisible='1'
                     @portal_customer invisible='1'
                     @order_blackout invisible='1'
+                    @order_blackout_warning invisible='1'
                     ~div attrs="{'invisible': [('id','!=',False)]}"
                         ~group
                             ~group
@@ -524,6 +525,8 @@
                                 @restricted invisible='1'
                         ~group attrs="{'invisible': [('order_blackout','=',False)]}"
                             ~h2: Ordering disabled until Friday.
+                        ~group attrs="{'invisible': [('order_blackout_warning','=',False)]}"
+                            ~h2: Order must be submitted by 12:15 CST.
                         ~group attrs="{'invisible': ['|',('partner_crossref_list','=',False),('order_blackout','=',True)]}"
                             // HEB and other restricted accounts
                             ~label for='item_ids' string='Items by customer code' attrs="{'invisible': ['|',('portal_customer','=',True),('restricted','=',False)]}"

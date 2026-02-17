@@ -1112,7 +1112,7 @@ class product_online_order(osv.Model):
     _name = 'fis_integration.online_order'
 
     def _calc_order_blackout(self, cr, uid, ids, field, unknown_none, context=None):
-        res = {}.fromkeys(ids, False)
+        res = {}.fromkeys(ids, {'order_blackout':False, 'order_blackout_warning':False})
         return res
 
     def _calc_default_order_blackout(self, cr, uid, ids, context=None):
@@ -1130,9 +1130,27 @@ class product_online_order(osv.Model):
             day = IsoDay(now.isoweekday())
             if (
                     (day is IsoDay.TUESDAY and now.hour >= 10)
-                    or day in (IsoDay.WEDNESDAY, IsoDay.Thursday)
+                    or day in (IsoDay.WEDNESDAY, IsoDay.THURSDAY)
                 ):
                 _logger.warning('  disabling')
+                return True
+        return False
+
+    def _calc_default_order_blackout_warning(self, cr, uid, ids, context=None):
+        now = fields.datetime.now(self, cr, localtime=True, as_datetime=True)
+        _logger.warning('current time is %r', now)
+        user, type = self.user_and_type(cr, uid, context=context)
+        _logger.warning('user %r is %r', user, type)
+        if type in ('sales', 'other'):
+            _logger.warning('  skipping', user, type)
+            return False
+        _logger.warning('transmitter #: %r', user.fis_transmitter_id.transmitter_no)
+        if (user.fis_transmitter_id.transmitter_no or '')[:3] == '150':
+            # Healthy Living transmitter number;
+            # is the current time close to Tue 12pm CST?
+            day = IsoDay(now.isoweekday())
+            if day is IsoDay.TUESDAY and now.hour == 9 and now.minute >= 45:
+                _logger.warning('  enabling blackout warning')
                 return True
         return False
 
@@ -1174,12 +1192,20 @@ class product_online_order(osv.Model):
             _calc_order_blackout,
             string='Ordering disabled',
             type='boolean',
+            multi='blackout',
+            ),
+        'order_blackout_warning': fields.function(
+            _calc_order_blackout,
+            string='Ordering disabled warning',
+            type='boolean',
+            multi='blackout',
             ),
         }
 
     _defaults = {
         'user_id': self_uid,
-        'order_blackout': _calc_default_order_blackout
+        'order_blackout': _calc_default_order_blackout,
+        'order_blackout_warning': _calc_default_order_blackout_warning,
         }
 
     def create(self, cr, uid, vals, context=None):
@@ -1197,6 +1223,16 @@ class product_online_order(osv.Model):
                     'System Error',
                     'please notify tech support',
                     )
+        if (user.fis_transmitter_id.transmitter_no or '')[:3] == '150':
+            # Healthy Living transmitter number;
+            # is the current time close to Tue 12pm CST?
+            now = fields.datetime.now(self, cr, localtime=True, as_datetime=True)
+            day = IsoDay(now.isoweekday())
+            if day is IsoDay.TUESDAY and ((now.hour == 10 and now.minute >= 17) or now.hour >= 11):
+                raise ERPError(
+                        'Order Refused',
+                        'Orders must be placed by 12:15 CST.\nPlease try again on Friday.',
+                        )
         item_ids = vals.get('item_ids', [])
         item_ids.extend(vals.get('new_item_ids', []))
         valid_item_ids = []
