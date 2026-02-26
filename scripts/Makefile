@@ -43,15 +43,19 @@ whc:
 
 
 install-srf:
+	# local
+	sudo cp fis-oe /usr/local/bin/fis-oe
+	sudo cp fis-oe3 /usr/local/bin/fis-oe3
 	# fal-oe
 	scp fis-oe root@fal-oe:/usr/local/bin/fis-oe
 	scp fis-oe3 root@fal-oe:/usr/local/bin/fis-oe3
 	scp fis-oe3 root@192.168.11.177:/usr/local/bin/fis-oe3
 
 install-whc:
-	# whc-oe
+	# local
 	sudo cp fis-oe /usr/local/bin/whc-fis-oe
 	sudo cp fis-oe3 /usr/local/bin/whc-fis-oe3
+	# whc-oe
 	scp fis-oe root@whc-oe:/usr/local/bin/fis-oe2
 	scp fis-oe3 root@whc-oe:/usr/local/bin/fis-oe
 	# whc-fis
