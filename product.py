@@ -1200,6 +1200,13 @@ class product_online_order(osv.Model):
             type='boolean',
             multi='blackout',
             ),
+        # when the order was created in OpenERP
+        'create_date': fields.datetime('Created', readonly=True),
+        # the names/timestamps of the *archived* files
+        'erp_file_name': fields.char('openerp file name', size=24),
+        'erp_file_date': fields.datetime('openerp file timestamp'),
+        'eoe_file_name': fields.char('eoe file name', size=24),
+        'eoe_file_date': fields.datetime('eoe file timestamp'),
         }
 
     _defaults = {
@@ -1289,6 +1296,7 @@ class product_online_order(osv.Model):
         new_id = super(product_online_order, self).create(cr, uid, vals, context=context)
         filename = '/home/openerp/sandbox/openerp/var/fis_integration/orders/%s.txt' % new_id
         Path(f.name).move(filename)
+        self.write(cr, SU, [new_id], {'erp_file_name': '%s.txt' % new_id}, context=context)
         return new_id
 
     def onchange_transmitter_id(self, cr, uid, ids, transmitter_id, context=None):
