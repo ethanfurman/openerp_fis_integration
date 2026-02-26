@@ -264,7 +264,12 @@ class res_partner(xmlid, osv.Model):
         'warehouse_comment': fields.text('Warehouse Notes'),
         'fuel_surcharge': fields.boolean('Fuel surcharge'),
         'department': fields.char('Department', size=128),
-        'email2': fields.char('Alt. Email', size=240),
+        'email2': fields.char(
+            'Alt. Email',
+            size=240,
+            track_visibility='onchange',
+            track_subtype='fis_integration.mt_fis_integration_contact',
+            )
         'facebook': fields.char('Facebook', size=240),
         'twitter': fields.char('Twitter', size=240),
         'is_bulk': fields.boolean('Bulk Sets', help='This partner has a bulk set installation.'),
