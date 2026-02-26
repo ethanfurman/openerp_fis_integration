@@ -269,7 +269,7 @@ class res_partner(xmlid, osv.Model):
             size=240,
             track_visibility='onchange',
             track_subtype='fis_integration.mt_fis_integration_contact',
-            )
+            ),
         'facebook': fields.char('Facebook', size=240),
         'twitter': fields.char('Twitter', size=240),
         'is_bulk': fields.boolean('Bulk Sets', help='This partner has a bulk set installation.'),
