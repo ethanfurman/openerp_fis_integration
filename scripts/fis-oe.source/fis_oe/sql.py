@@ -2,8 +2,10 @@ from __future__ import print_function, unicode_literals
 
 from aenum import Enum, NamedTuple, auto
 from antipathy import Path
-from ast import literal_eval
+from ast import literal_eval as eval
 from collections import OrderedDict
+from dbf import Date, DateTime, Time
+from dbf.bridge import execute
 from enhlib.itertools import all_equal
 from enhlib.misc import basestring, str, zip
 from fislib.BBxXlate.schema import table_keys
@@ -295,7 +297,9 @@ def convert_set(clausa):
         # e.g. login = 'ethan'
         #      id=201
         #      blah = null, this = 'that'
+        #      file = id + '.txt'
         print('set', clausa, verbose=4)
+        need_func = False
         try:
             field, op, value, clausa = re.match(
                     "^"
@@ -317,6 +321,7 @@ def convert_set(clausa):
         except (ValueError, AttributeError):
             raise ValueError('malformed SET clause')
         else:
+            value = value.rstrip(',')
             lval = value.lower()
             if (
                     value[0] == value[-1] == '"'
@@ -331,18 +336,56 @@ def convert_set(clausa):
                 value = False
             elif lval == 'null':
                 value = False
+            elif ':' in value and '-' in value:
+                # datetime
+                try:
+                    date = map(int, value[:10].split('-'))
+                    time = map(int, value[11:].split(':'))
+                    value = DateTime(*(date+time))
+                except ValueError:
+                    raise ValueError('invalid datetime value: %r' % value)
+            elif '-' in value:
+                # date
+                try:
+                    date = map(int, value.split('-'))
+                    value = Date(date)
+                except ValueError:
+                    raise ValueError('invalid date value: %r' % value)
+            elif ':' in value:
+                # time
+                try:
+                    time = map(int, value.split(':'))
+                    value = Time(*time)
+                except ValueError:
+                    raise ValueError('invalid time value: %r' % value)
             else:
                 try:
-                    oval = value
                     value = eval(value)
                 except Exception:
-                    raise ValueError('cannot use/convert data: %r' % (oval, ))
+                    need_func = True
+                    # raise ValueError('cannot use/convert data: %r' % (oval, ))
             values[field] = value
             if clausa.startswith(','):
                 clausa = clausa[1:].lstrip()
-    return values
+    if need_func:
+        func = (
+            "def get_updates(**rec):\n"
+            "    globals().update(rec)\n"
+            "    values = {}\n"
+            "    \n"
+            "    %s\n"
+            "    \n"
+            "    return values\n"
+            ) % '\n    '.join(["values[%r] = %s" % (k, [repr, str][isinstance(v, str)](v)) for k, v in values.items()])
+        print(func, verbose=3)
+        g = dict(Date=Date, DateTime=DateTime, Time=Time)
+        g.update(SQL.transforms)
+        execute(func, g)
+        return g['get_updates'], func
+    else:
+        return values
 
-def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False):
+def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False, openerp=False):
     """
     Converts the WHERE clause of an SQL command.
     """
@@ -375,7 +418,7 @@ def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False
     print('after subquery: %r' % (clausa, ), verbose=3)
 
     std_match = Var(lambda clausa: re.match(
-            r"^(\S+)\s*(<=|>=|!=|=|<|>|\bis\s+not\b\b|\bis\b|\bnot\s+in\b|\bin\b|\blike\b|\b=like\b|\bnot\s+like\b|\bilike\b|\b=ilike\b|\bnot\s+ilike\b)\s*('(?:[^'\\]|\\.)*?'|\[[^]]*\]|\S*)\s*(.*?)\s*$",
+            r"^(\S+)\s*(\bis\s+not\b\b|\bis\b|\bnot\s+in\b|\bin\b|\blike\b|\belike\b|\bnot\s+like\b|\bilike\b|\beilike\b|\bnot\s+ilike\b|<=|>=|!=|=|<|>)\s*('(?:[^'\\]|\\.)*?'|\[[^]]*\]|\S*)\s*(.*?)\s*$",
             clausa,
             flags=re.I
             ))
@@ -405,6 +448,8 @@ def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False
                 raise ValueError('std: malformed WHERE clause')
             if op == '==':
                 op = '='
+            elif openerp and op in ('elike', 'eilike'):
+                op = '=' + op[1:]
             lop = op.lower()
             lcond = condition.lower()
             if (
@@ -422,7 +467,7 @@ def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False
             elif lcond == 'null':
                 pass
             elif lcond[0] == '[' and lcond[-1] == ']':
-                condition = literal_eval(condition)
+                condition = eval(condition)
             elif date_match(lcond):
                 condition = lcond.replace('-','')
             else:
@@ -565,7 +610,7 @@ def ensure_oe():
 class ExpandedRow(object):
     "converts an ordered dict into an ordered list of lists"
 
-    def __init__(self, fields, record):
+    def __init__(self, fields, record, orientation='row'):
         # fields = [
         #   'xml_id',
         #   'hr_insurance_choice_ids/year_month',
@@ -611,17 +656,17 @@ class ExpandedRow(object):
         print('ExpandedRow.__init__: fields ->', fields, '  record ->', record, verbose=5)
         rows = []
         row = []
-        cache = {}
-        iter_fields = []
-        for fld in fields:
-            fld = fld.split('/',1)[0]
-            if fld not in iter_fields:
-                iter_fields.append(fld)
+        iter_fields = range(len(fields))    # assuming orientation='column'
+        if orientation == 'row':
+            iter_fields = []
+            for fld in fields:
+                fld = fld.split('/',1)[0]
+                if fld not in iter_fields:
+                    iter_fields.append(fld)
         for k in iter_fields:
             v = record[k]
             print('checking %s -> %r' % (k, v), verbose=5)
-            cache[k] = set()
-            if any([f.startswith(k+'/') for f in fields]):
+            if orientation == 'row' and any([f.startswith(k+'/') for f in fields]):
                 sub_fields = []
                 for f in fields:
                     if f == k:
@@ -647,7 +692,7 @@ class ExpandedRow(object):
                     sub_row = [[None] * len(sub_fields)]
                 print('adding subrow', sub_row, verbose=5)
                 row.append(sub_row)
-            elif k in fields:
+            elif isinstance(k, int) or k in fields:
                 # must go after subfield checking
                 print('  adding element ->', k, verbose=5)
                 row.append(v)
@@ -936,7 +981,7 @@ def write_txt(table, query, fields, file, separator=False, wrap=None,):
     line = []
     print('field count:', len(fields), fields, verbose=5)
     for field_name in fields:
-        field_header = field_name.upper()
+        field_header = str(field_name).upper()
         aliased = getattr(query, 'aliases', {})
         if script_verbosity:
             field_header += "\n%s" % aliased.get(field_name, field_name)
@@ -945,10 +990,12 @@ def write_txt(table, query, fields, file, separator=False, wrap=None,):
     lines.append(line)
     #
     for r in query.records:
+        print(r, verbose=5)
+    for r in query.records:
         if separator:
             lines.append(None)
         print(r, verbose=5)
-        er = ExpandedRow(fields, r)
+        er = ExpandedRow(fields, r, query.orientation)
         [print(r, verbose=5) for r in er]
         for row in er:
             print('post pre-process row ->', row, verbose=5)
@@ -1477,12 +1524,12 @@ class OpenERPTable(Table):
                 domain = desc.get('domain')
                 if domain:
                     if isinstance(domain, (bytes, str)):
-                        domain = literal_eval(domain)
+                        domain = eval(domain)
                     details.append('domain: %s' % '\n        '.join([str(d) for d in domain]))
                 context = desc.get('context')
                 if context:
                     if isinstance(context, (bytes, str)):
-                        context = literal_eval(context)
+                        context = eval(context)
                     details.append('context: %s' % '\n         '.join(['%s=%r' % (k, v) for k, v in context.items()]))
             for info in ('digits', 'selection', 'size', 'states'):
                 data = desc.get(info)
@@ -1548,7 +1595,7 @@ class OpenERPTable(Table):
                     final_row.append('\n'.join(new_value))
                 else:
                     final_row.append(cell_value)
-            final_row.insert(0, '%s %s' % ('^ '[no_diff], field))
+            final_row.insert(0, '%s %s' % ('^ '[no_diff or changed_only], field))
             sq.records.append(final_row)
         sq.status = "DIFF %s" % (len(sq.records)-1)
         return sq
@@ -1567,7 +1614,7 @@ class OpenERPTable(Table):
             table, fields, values, verb, key = fv_match.groups()
             fields = [f.strip() for f in fields.split(',') if f != ',']
             print('%r -- %r -- %r -- %r -- %r' % (table, fields, values, verb, key), verbose=5)
-            data = [literal_eval(values)]
+            data = [eval(values)]
         elif fl_match():
             table, csv_file, verb, key = fl_match.groups()
             try:
@@ -1720,7 +1767,7 @@ class OpenERPTable(Table):
         #
         # and get WHERE clause
         #
-        donde, constraints = convert_where(clausa, field_verbose)
+        donde, constraints = convert_where(clausa, field_verbose, openerp=True)
         if _internal:
             imprimido = ''
         print('WHERE', donde, verbose=3)
@@ -1779,7 +1826,7 @@ class OpenERPTable(Table):
             set_clause = command
         print('where clause: %r' % (where_clause, ), verbose=3)
         values = convert_set(set_clause)
-        if not values:
+        if isinstance(values, dict) and not values:
             raise SQLError('malformed command -- no changes specified')
         if where_clause:
             domain, constraints = convert_where(where_clause)
@@ -1792,8 +1839,15 @@ class OpenERPTable(Table):
         #
         print('domain: %r' % (domain, ), verbose=3)
         ids = table.search(domain)
-        print('writing\n  %r\nto %s for ids\n%r' % (values, table._name, ids), verbose=3)
-        table.write(ids, values)
+        if isinstance(values, dict):
+            print('writing\n  %r\nto %s for ids\n%r' % (values, table._name, ids), verbose=3)
+            table.write(ids, values)
+        else:
+            func, desc = values
+            print('using\n\n%s\n\nto %s for ids\n%r' % (desc, table._name, ids), verbose=3)
+            for rec_id in ids:
+                record = table.read(rec_id)
+                table.write(rec_id, func(**record))
         sq = SimpleQuery(('table', 'updated'))
         sq.records.append(AttrDict(table=self.table.model_name, updated=len(ids)))
         sq.status = 'UPDATE %d' % len(ids)
@@ -2236,8 +2290,10 @@ class Node(object):
             'not like': _not_like.__func__,
             'ilike':    _ilike.__func__,
             'not ilike':_not_ilike.__func__,
-            '=like':    _equals_like.__func__,
-            '=ilike':   _equals_ilike.__func__,
+            'elike':    _equals_like.__func__,
+            'not elike': lambda field, target, f=_equals_like.__func__: not f(field, target),
+            'eilike':   _equals_ilike.__func__,
+            'not eilike': lambda field, target, f=_equals_ilike.__func__: not f(field, target),
             }
 
 
@@ -2318,7 +2374,7 @@ class Join(object):
         return self.type != other.type or self.table_name != other.table_name or self.condition != other.condition
 
     condition_match = Var(lambda condition: re.match(
-                r"^(\S+)\s*(is not|is|not in|in|like|=like|not like|ilike|=ilike|not ilike|<=|>=|!=|=)\s*(\S+)$",
+                r"^(\S+)\s*(is not|is|not in|in|like|elike|not like|ilike|eilike|not ilike|<=|>=|!=|=)\s*(\S+)$",
                 condition,
                 flags=re.I
                 ))
@@ -2805,7 +2861,7 @@ class SQL(object):
             ct = OP
             skip = True
             word = pair
-        elif word.lower() in ("is", "in", "like", "=like", "ilike", "=ilike", "<", ">", "<=", ">=", "=", "!=", "==?", "<|>"):
+        elif word.lower() in ("is", "in", "like", "elike", "ilike", "eilike", "<", ">", "<=", ">=", "=", "!=", "==?", "<|>"):
             print('lower 1', verbose=4)
             ct = OP
         elif word.lower() in ('and', 'or'):
