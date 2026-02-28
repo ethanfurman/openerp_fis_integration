@@ -1203,9 +1203,7 @@ class product_online_order(osv.Model):
         # when the order was created in OpenERP
         'create_date': fields.datetime('Created', readonly=True),
         # the names/timestamps of the *archived* files
-        'erp_file_name': fields.char('openerp file name', size=24),
         'erp_file_date': fields.datetime('openerp file timestamp'),
-        'eoe_file_name': fields.char('eoe file name', size=24),
         'eoe_file_date': fields.datetime('eoe file timestamp'),
         }
 
