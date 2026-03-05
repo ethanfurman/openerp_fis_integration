@@ -1252,6 +1252,7 @@ class product_online_order(osv.Model):
                     'no items listed',
                     )
         transmitter = self.pool.get('fis.transmitter_code').browse(cr, SU, vals['transmitter_id'])
+        vals['transmitter_no'] = transmitter.transmitter_no
         lines = ['%s-%s' % (vals['partner_xml_id'], transmitter.transmitter_no)]
         po_number = vals.get('po_number')
         req_ship_date = vals.get('req_ship_date')
@@ -1294,7 +1295,6 @@ class product_online_order(osv.Model):
         new_id = super(product_online_order, self).create(cr, uid, vals, context=context)
         filename = '/home/openerp/sandbox/openerp/var/fis_integration/orders/%s.txt' % new_id
         Path(f.name).move(filename)
-        self.write(cr, SU, [new_id], {'erp_file_name': '%s.txt' % new_id}, context=context)
         return new_id
 
     def onchange_transmitter_id(self, cr, uid, ids, transmitter_id, context=None):
