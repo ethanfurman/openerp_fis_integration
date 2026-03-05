@@ -51,13 +51,14 @@ class PlainEnum(Enum):
 #
 
 class Char(str, PlainEnum):
-    _order_ = 'SINGLE_QUOTE COMMA BACKSLASH LPAREN RPAREN'
+    _order_ = 'SINGLE_QUOTE COMMA BACKSLASH LPAREN RPAREN EQUALS'
     SINGLE_QUOTE = "'"
     COMMA = ","
     BACKSLASH = "\\"
     LPAREN = '('
     RPAREN = ')'
-SINGLE_QUOTE, COMMA, BACKSLASH, LPAREN, RPAREN = Char
+    EQUALS = '='
+SINGLE_QUOTE, COMMA, BACKSLASH, LPAREN, RPAREN, EQUALS = Char
 
 
 class SQLState(PlainEnum):
@@ -995,7 +996,7 @@ def write_txt(table, query, fields, file, separator=False, wrap=None,):
         if separator:
             lines.append(None)
         print(r, verbose=5)
-        er = ExpandedRow(fields, r, query.orientation)
+        er = ExpandedRow(fields, r, getattr(query, 'orientation', 'row'))
         [print(r, verbose=5) for r in er]
         for row in er:
             print('post pre-process row ->', row, verbose=5)
@@ -1139,7 +1140,7 @@ class Table(object):
         Extract command and primary table, then call cls.sql_* to process.
         """
         try:
-            cmd, table_name = re.match(cls.command_table_pat, command, re.I).groups()
+            cmd, table_name = re.search(cls.command_table_pat, command, re.I).groups()
         except AttributeError:
             raise SQLError('command and/or table missing from query')
         print('%r  %r' % (cmd, table_name), verbose=3)
@@ -1429,6 +1430,21 @@ class OpenERPTable(Table):
     @property
     def fields(self):
         return self.table._all_columns.copy()
+
+    def get_records(self, select, where=None, order_by=None):
+        domain = where
+        if isinstance(where, basestring):
+            domain, _ = convert_where(where)
+        fields = select
+        if isinstance(select, basestring):
+            fields = select.replace(',',' ').split()
+        order = order_by
+        if isinstance(order_by, basestring):
+            order = order_by.replace(',',' ').split()
+        sq = SimpleQuery(fields)
+        sq.records = get_records(self.table, domain=domain, fields=fields, order=order)
+        sq.finalize(fields)
+        return sq
 
     def sql_count(self, command):
         """
@@ -1822,16 +1838,12 @@ class OpenERPTable(Table):
         except ValueError:
             if command.lower().endswith(' where'):
                 raise SQLError('malformed command -- missing WHERE parameters')
-            where_clause = []
-            set_clause = command
+            raise SQLError('malformed command - missing where clause')
         print('where clause: %r' % (where_clause, ), verbose=3)
         values = convert_set(set_clause)
         if isinstance(values, dict) and not values:
             raise SQLError('malformed command -- no changes specified')
-        if where_clause:
-            domain, constraints = convert_where(where_clause)
-        else:
-            domain = constraints = []
+        domain, constraints = convert_where(where_clause)
         if constraints:
             raise SQLError('constraints not supported in UPDATE command')
         #
@@ -1852,6 +1864,10 @@ class OpenERPTable(Table):
         sq.records.append(AttrDict(table=self.table.model_name, updated=len(ids)))
         sq.status = 'UPDATE %d' % len(ids)
         return sq
+
+    def update_records(self, ids, values):
+        return self.table.write(ids, values)
+
 
 class GenericTable(Table):
     """
@@ -3786,6 +3802,83 @@ class SQL(object):
             raise SQLError('extra TO parameters')
         self.complete = True
         return
+
+    def q_update(self):
+        """
+        update fields in table
+        """
+        print('Q_UPDATE', verbose=3)
+        # valid end state
+        # oe tables will have periods in them
+        self.complete = False
+        tables = self.tables
+        table_acquired = False
+        allowed_words = ('SET', )
+        i = 0
+        for i, word in enumerate(self.words[self.offset:], start=1):
+            print('%d: %r' % (i, word), verbose=4)
+            self._final_statement.append(word)
+            if word.upper() in allowed_words:
+                print('   single: %r' % word, verbose=4)
+                self._final_statement[-1] = self._final_statement[-1].upper()
+                break
+            elif word == COMMA:
+                print('   comma', verbose=4)
+                raise SQLError('only one table supported in UPDATE clause')
+            else:
+                print('   table: %r' % word, verbose=4)
+                # this is a table
+                tp = tables.setdefault(word, SQLTableParams(word))
+                tp.table_name = word
+                tables[word] = tp
+                self.primary_table = word
+                table_acquired = True
+        else:
+            # loop exhausted, SET not seen
+            print('   loop exhausted, no SET', verbose=4)
+            raise SQLError('no SET clause found')
+        if not table_acquired:
+            raise SQLError('no table specified')
+        self.offset += i
+        #
+        # handle assignments, e.g. field1='a string', field2=123, field3=2024-07-04
+        #
+        allowed_words = ('WHERE', )
+        expected = 'field'       # then '=', then value, then ','
+        i = 0
+        for i, word in enumerate(self.words[self.offset:], start=1):
+            print('%d: %r' % (i, word), verbose=4)
+            self._final_statement.append(word)
+            if word.upper() in allowed_words:
+                print('   single: %r' % word, verbose=4)
+                self._final_statement[-1] = self._final_statement[-1].upper()
+                break
+            elif word == COMMA:
+                print('   comma', verbose=4)
+                if expected != COMMA:
+                    raise SQLError('expected %r, got COMMA' % expected)
+                expected = 'field'
+            elif word == EQUALS:
+                print('   equals', verbose=4)
+                if expected != EQUALS:
+                    raise SQLError('expected %r, got EQUALS' % expected)
+                expected = 'value'
+            elif expected == 'field':
+                print('   field', verbose=4)
+                expected = EQUALS
+            elif expected == 'value':
+                print('   value', verbose=4)
+                expected = COMMA
+            else:
+                raise SQLError('expected %r, got %r' % (expected, word))
+        else:
+            # loop exhausted, WHERE not seen
+            print('   loop exhausted, no WHERE')
+            raise SQLError('no WHERE clause found')
+        if expected != COMMA:
+            raise SQLError('incomplete SET clause, expecting %r' % expected)
+        next_method = getattr(self, 'q_%s' % word.lower())
+        next_method(peos=True)
 
     def q_where(self, peos):
         """
