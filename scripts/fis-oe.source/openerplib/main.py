@@ -795,10 +795,9 @@ class Model(object):
         fields.extend(list(other))
         res = AttrDict()
         for key in fields:
-
-            # if '.' in key:
-            #     # TODO: ignoring mirrored fields
-            #     continue
+            if '.' in key:
+                # ignoring mirrored fields
+                continue
             value = d[key]
             try:
                 if isinstance(value, dict):

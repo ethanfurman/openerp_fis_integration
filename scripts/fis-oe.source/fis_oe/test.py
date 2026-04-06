@@ -425,7 +425,20 @@ class TestSQL(TestCase):
                 primary_table = 'product.product',
                 table_by_field_alias = {'xml_id':'product.product', 'name':'product.product', 'fis_name':'product.product'},
                 ),
-            # SQLParams(  # 15
+            SQLParams(  # 15
+                input="select emp_id, datediff(check_in, check_out) as hours from timesheet",
+                statement="SELECT emp_id, DATEDIFF ( check_in, check_out ) hours FROM timesheet",
+                header=['emp_id','hours'],
+                tables={'timesheet': SQLTableParams(
+                                                    alias='timesheet',
+                                                    table_name='timesheet',
+                                                    fields={'emp_id':['emp_id'], 'check_in':[], 'check_out':[]},
+                                                    query="SELECT emp_id, check_in, check_out FROM timesheet",
+                                                    )},
+                primary_table='timesheet',
+                table_by_field_alias={'emp_id':'timesheet', 'check_in':'timesheet', 'check_out':'timesheet'},
+                ),
+            # SQLParams(  # xx
             #     input="select n.item, p.formula, d.item ingred from 135 n left join "
             #             "(322 p left join 323 d on d.formula_id=p.formula_id) "
             #             "on n.item_id=p.formula_id and n.item_id like '1000' "
@@ -977,6 +990,24 @@ Table.from_data(
             dict(desc='drop cloth', product_id='DC', price=13.39),
             dict(desc='wax', product_id='WAX', price=12.99),
             dict(desc='oil', product_id='OIL', price=17.99),
+            ])
+
+Table.from_data(
+        name='timesheet',
+        fields=['emp_id','check_in','check_out'],
+        types=[str, dbf.DateTime, dbf.DateTime],
+        data=[
+            dict(emp_id='E-101', check_in='2026-03-01 07:59:33', check_out='2026-03-01 17:02:33'),
+            dict(emp_id='E-102', check_in='2026-03-01 07:58:43', check_out='2026-03-01 17:00:12'),
+            dict(emp_id='E-103', check_in='2026-03-01 08:05:15', check_out='2026-03-01 17:03:55'),
+            dict(emp_id='E-101', check_in='2026-03-01 07:55:55', check_out='2026-03-01 16:59:41'),
+            dict(emp_id='E-102', check_in='2026-03-01 07:59:00', check_out='2026-03-01 16:45:01'),
+            dict(emp_id='E-103', check_in='2026-03-01 08:06:38', check_out='2026-03-01 17:07:00'),
+            dict(emp_id='E-101', check_in='2026-03-01 07:51:45', check_out='2026-03-01 17:04:09'),
+            dict(emp_id='E-102', check_in='2026-03-01 07:58:52', check_out='2026-03-01 16:55:47'),
+            dict(emp_id='E-103', check_in='2026-03-01 07:53:11', check_out='2026-03-01 16:58:18'),
+            dict(emp_id='E-101', check_in='2026-03-01 07:59:02', check_out='2026-03-01 17:00:00'),
+            dict(emp_id='E-102', check_in='2026-03-01 07:57:44', check_out='2026-03-01 17:01:22'),
             ])
 
 Table.from_data(

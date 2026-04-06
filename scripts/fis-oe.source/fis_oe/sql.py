@@ -4,6 +4,7 @@ from aenum import Enum, NamedTuple, auto
 from antipathy import Path
 from ast import literal_eval as eval
 from collections import OrderedDict
+from datetime import timedelta
 from dbf import Date, DateTime, Time
 from dbf.bridge import execute
 from enhlib.itertools import all_equal
@@ -12,7 +13,7 @@ from fislib.BBxXlate.schema import table_keys
 from fislib.utils import fix_date
 from itertools import cycle
 from openerplib import get_connection, get_records, AttrDict, Binary, Query, Many2One, CSV
-from scription import OrmFile, Singleton, Var, echo, error, print
+from scription import OrmFile, Singleton, Var, ViewProgress, echo, error, print
 from traceback import print_exc
 
 import dbf
@@ -299,6 +300,11 @@ def convert_set(clausa):
         #      id=201
         #      blah = null, this = 'that'
         #      file = id + '.txt'
+
+
+        # set erp_file_name=str(id)+'.txt'
+        # set transmitter_no='150'+partner_xml_id[:2]
+
         print('set', clausa, verbose=4)
         need_func = False
         try:
@@ -1843,7 +1849,7 @@ class OpenERPTable(Table):
         values = convert_set(set_clause)
         if isinstance(values, dict) and not values:
             raise SQLError('malformed command -- no changes specified')
-        domain, constraints = convert_where(where_clause)
+        domain, constraints = convert_where(where_clause, openerp=True)
         if constraints:
             raise SQLError('constraints not supported in UPDATE command')
         #
@@ -1857,7 +1863,7 @@ class OpenERPTable(Table):
         else:
             func, desc = values
             print('using\n\n%s\n\nto %s for ids\n%r' % (desc, table._name, ids), verbose=3)
-            for rec_id in ids:
+            for rec_id in ViewProgress(ids):
                 record = table.read(rec_id)
                 table.write(rec_id, func(**record))
         sq = SimpleQuery(('table', 'updated'))
@@ -2771,6 +2777,22 @@ class TrackingDict(object):
         else:
             setattr(self.data, name, value)
 
+def substr(text, start=0, length=None):
+    """
+    returns a segment of text
+    """
+    stop = None
+    if length is not None:
+        stop = start + length
+    return text[start:stop]
+
+def datediff(d1, d2):
+    """
+    return difference of two dates, time, datetimes
+    """
+    return TimeDelta(d1-d2)
+
+
 class SQL(object):
     """
     Holds all the bits for an SQL query.
@@ -2790,7 +2812,10 @@ class SQL(object):
     """
     transforms = {
             'date':       lambda t: fix_date(t, format='ymd'),
+            'datediff':   datediff,
             'strip_html': lambda t: '\n'.join(re.sub('<.+?>', '', t).split()),
+            'join':       lambda *a: ''.join(a),
+            'substr':     substr,
             }
     aggregates = {
             'avg':   lambda field, records: (sum([r[field] for r in records]) / len(records)) if records else None,
@@ -3621,6 +3646,10 @@ class SQL(object):
         # - as
         # - comma
         # - star
+        # - func(a_field)
+        # - func(a_field, n1, n2)
+        # - func(a_field, b_field)
+        #
         print('Q_SELECT', verbose=3)
         self.complete = False
         fields_acquired = False
@@ -3630,6 +3659,16 @@ class SQL(object):
         comma_needed = False
         tables = self.tables
         tables[None] = tp = SQLTableParams(None)
+        func = None
+        #
+        def _add_field(table, field, header=True):
+            field_name = split_fn(field)
+            tables[table].fields.setdefault(field_name, []).append(field)
+            self.fields.add(field)
+            self.table_by_field_alias[field] = table
+            if header:
+                self.header.append(field)
+        #
         i = 0
         if self.words[self.offset+i].upper() == 'DISTINCT':
             self._final_statement.append('DISTINCT')
@@ -3644,14 +3683,10 @@ class SQL(object):
                 print('FROM', verbose=4)
                 if last_field is not None:
                     # last_field -> [table.]field_name
-                    field_name = split_fn(last_field)
-                    tables[last_table].fields.setdefault(field_name, []).append(last_field)
-                    self.fields.add(last_field)
+                    _add_field(last_table, last_field)
                     if last_table is None:
                         if tp.alias is not None:
                             raise ValueError("tp.alias should be None (%r)" % tp)
-                    self.header.append(last_field)
-                    self.table_by_field_alias[last_field] = last_table
                 self._final_statement[-1] = self._final_statement[-1].upper()
                 break
             if comma_needed and word != COMMA:
@@ -3662,12 +3697,7 @@ class SQL(object):
                     raise SQLError('missing alias for %r' % last_field)
                 if last_field is not None:
                     # last_field -> [table.]field_name
-
-                    field_name = split_fn(last_field)
-                    tables[last_table].fields.setdefault(field_name, []).append(last_field)
-                    self.fields.add(last_field)
-                    self.table_by_field_alias[last_field] = last_table
-                    self.header.append(last_field)
+                    _add_field(last_table,  last_field)
                 last_field = None
                 last_table = None
                 alias = False
@@ -3675,6 +3705,8 @@ class SQL(object):
             elif word == LPAREN:
                 print('LPAREN', verbose=4)
                 print('moving %r from field to func' % last_field, verbose=4)
+                self._final_statement[-1] = self._final_statement[-1].upper()
+                func_params = []
                 func = last_field
                 last_field = None
                 alias = False
@@ -3725,12 +3757,7 @@ class SQL(object):
                 # last_field -> [table.]field_name
                 print('alias is %r' % alias, verbose=4)
                 print('1 tbfa: %r' % self.table_by_field_alias, verbose=4)
-                field_name = split_fn(last_field)
-                self.table_by_field_alias[word] = last_table
-                tables[last_table].fields.setdefault(field_name, []).append(word)
-                self.fields.add(last_field)
-                self.field_aliases[word] = last_field
-                self.header.append(word)
+                _add_field(last_table, last_field)
                 # update functions, if any
                 if last_field in tp.transforms:
                     tpt = tp.transforms
@@ -3751,6 +3778,9 @@ class SQL(object):
                 print('saving name %r' % word, verbose=4)
                 if last_table is not None and func is None:
                     raise SQLError('cannot mix table.field syntax with plain field syntax')
+                if func is not None:
+                    _add_field(last_table, word, header=False)
+                    func_params.append(word)
                 last_field = word
                 alias = None
                 fields_acquired=True
@@ -4033,6 +4063,107 @@ def split_tbl_fn(field):
     """
     table, field = field.rsplit('.',1)
     return table, field
+
+
+class TimeDelta(object):
+    """
+    adds null capable datetime.timedelta constructs
+
+    also handles repr of negative values sanely
+    """
+
+    __slots__ = ['days','seconds','microseconds','_str','_repr','_total_seconds']
+    time_units = {'d':86400, 'h':3600, 'm':60, 's':1}
+
+    def __new__(cls, days=0, seconds=0, microseconds=0, milliseconds=0, minutes=0, hours=0, weeks=0):
+        if isinstance(days, timedelta):
+            if seconds or microseconds or milliseconds or minutes or hours or weeks:
+                raise ValueError('cannot specify other arguments when days is a timedelta')
+            microseconds = days.microseconds
+            seconds = days.seconds
+            days = days.days
+        elif isinstance(days, basestring):
+            if seconds or microseconds or milliseconds or minutes or hours or weeks:
+                raise ValueError('cannot specify other arguments when days is a string')
+            seconds = cls.time2seconds(days)
+            days, seconds = divmod(seconds, 86400)
+        self = object.__new__(cls)
+        self.days = (weeks*7+days)
+        self.seconds = hours*3600 + minutes*60 + seconds
+        self.microseconds = milliseconds*10**3 + microseconds
+        self._total_seconds = self.days*86400 + seconds + self.microseconds*10**-6
+        vals = []
+        if self.days:
+            vals.append("days=%d" % self.days)
+        if hours:
+            vals.append('hours=%d' % hours)
+        if minutes:
+            vals.append('minutes=%d' % minutes)
+        if seconds:
+            vals.append("seconds=%d" % seconds)
+        if self.microseconds:
+            vals.append("microseconds=%d" % self.microseconds)
+        self._repr = "TimeDelta(%s)" % ', '.join(vals)
+        self._str = self.seconds2time(self._total_seconds)
+        return self
+
+    def __repr__(self):
+        return self._repr
+
+    def __str__(self):
+        return self._str
+
+    def time2seconds(self, time):
+        "convert time to seconds (e.g. 2m -> 120)"
+        # if all digits, must be seconds already
+        if not time:
+            return 0
+        elif isinstance(time, (int, long)):
+            return time
+        text = time
+        if text[0] == '-':
+            sign = -1
+            text = text[1:]
+        else:
+            sign = +1
+        text = ''.join(text.split())
+        if text.isdigit():
+            return sign * int(text)
+        moment = 0
+        digits = []
+        for c in text:
+            if c.isdigit():
+                digits.append(c)
+                continue
+            number = int(''.join(digits))
+            c = c.lower()
+            if c not in ('dhms'):
+                raise ValueError('invalid time: %r' % time)
+            moment += self.time_units[c] * number
+            digits = []
+        else:
+            if digits:
+                # didn't specify a unit, abort
+                raise ValueError('missing trailing time unit of d, h, m, or s in %r' % time)
+        return moment
+
+    def seconds2time(self, seconds):
+        if seconds < 0:
+            result = '-'
+            seconds *= -1
+        else:
+            result = ''
+        use_if_empty = False
+        for unit in 'dhms':
+            size = self.time_units[unit]
+            if seconds < size and not use_if_empty:
+                continue
+            use_if_empty = True
+            amount, seconds = divmod(seconds, size)
+            result = ('%s %2i%s' % (result, amount, unit)).strip()
+            if seconds == 0:
+                break
+        return result or ' 0s'
 
 
 ## SQL Query examples
