@@ -7,9 +7,9 @@ from antipathy import Path
 from datetime import datetime
 from dbf import DateTime
 from collections import deque
-from epithets import App, Frame, Pipe, Queue, QueueEmpty, sched, switch
-from epithets import SINGLE, InsufficientSpace
-from fis_oe.sql import SQL, TimeDelta
+from epithets import App, Frame, Pipe, Queue, QueueEmpty, sched, switch, Signal
+from epithets import SINGLE, InsufficientSpace, NS
+from fis_oe.sql import SQL, Table, TimeDelta
 from pytz import UTC
 import time
 
@@ -53,25 +53,29 @@ def check_status(q):
         else:
             o = q.get(block=False)
         if o is not QueueEmpty:
-            orders[o] = 'PLACED'
-        for o, state in orders.items():
+            orders[o] = 'PLACED', None
+        for o, (state, ts) in orders.items():
             error('thread: checking order', o)
             if state == 'PLACED':
                 # see if it has been prepped
                 error('thread: checking if prepped')
-                if (ARCHIVE/'%s.txt' % o).exists():
-                    orders[o] = 'PREPPED'
+                target = ARCHIVE/'%s.txt' % o
+                if target.exists():
+                    ts = DateTime.fromtimestamp(target.stat().st_mtime)
+                    orders[o] = 'PREPPED', ts
             if state == 'PREPPED':
                 error('thread: checking if submitted')
                 seq = BASE_SEQ + int(o) % 10000
                 extfile = EOE_PATH / 'archive' / "%s.ext" % seq
                 error('thread:   file', extfile)
                 if extfile.exists():
-                    orders[o] = 'SUBMITTED'
-                    error('thread: done with', o)
+                    sts = DateTime.fromtimestamp(extfile.stat().st_mtime)
+                    if sts > ts:
+                        orders[o] = 'SUBMITTED', sts
+                        error('thread: done with', o)
             if orders[o] != state:
                 q.put((o, orders[o]))
-            time.sleep(1)
+        time.sleep(10)
         for o, s in list(orders.items()):
             if s == 'SUBMITTED':
                 del orders[o]
@@ -107,10 +111,122 @@ def get_files_to_process(path, target_period=None):
 # - current wait time
 
 
+class CompletedOrders(Frame):
+    """
+    Show most recent completed orders.
+    """
+    size = 10, 35
+    sticky = NS
+
+    def __init__(self):
+        super().__init__()
+        self.value = []
+        error('self.value is', self.value)
+
+    def on_order_complete(self, order):
+        rows = self.inner_size.height - 2
+        self.value.insert(0, order)
+        while len(self.value) > rows:
+            self.value.pop()
+        self.paint()
+        self.refresh()
+
+    def paint(self):
+        super().paint()
+        self.add_string(0, 1, 'FIS ID     items   submitted')
+        self.add_string(1, 1, '---------- ----- -----------')
+        for i, o in enumerate(self.value, start=2):
+            self.add_string(i, 1, '%-10s %4s  %s' % (o.xml_id, o.items, o.completed.strftime('%m-%d %H:%M')))
+        self.refresh()
+
+
+class OrderInfo(Frame):
+    border_style = SINGLE
+    size = 3, 40
+    visible = False
+    oe_order = False
+
+    def __init__(self, oe_id):
+        super().__init__(title=oe_id)
+        error('  initial setup of', oe_id)
+        for xml_id, created, items, new_items in SQL(
+                "SELECT partner_xml_id, create_date, item_ids, new_item_ids "
+                "FROM fis_integration.online_order "
+                "WHERE id=%s" % oe_id
+                ).execute():
+            self.oe_order = True
+            break
+        else:
+            # nothing found, examine file
+            with open(BASE_PATH/'%s.txt' % oe_id) as fh:
+                order_lines = fh.read().strip().split('\n')
+            xml_id, trans = order_lines[0].strip().rsplit("-", 1)
+            items = []
+            new_items = []
+            created = DateTime()
+            for line in order_lines[1:]:
+                if line.startswith(('RSD','PON')):
+                    continue
+                item, qty = [val.strip() for val in line.strip().split('-')][:2]
+                if qty != "0":
+                    items.append(1)
+        self.xml_id = xml_id
+        self.created = created
+        self.items = len(items) + len(new_items)
+        self.oe_id = oe_id
+        self.state = 'PLACED'
+        self.oe_table = Table('fis_integration.online_order')
+        
+
+    async def __call__(self):
+        """
+        Ascertain current state.
+        """
+        sched.new_task(self.display, label='display-%s' % self.oe_id)
+        while self.state != 'SUBMITTED':
+            status, timestamp = await sched.wait_notify(self.oe_id)
+            error('received %r and %r' % (status, timestamp))
+            self.state = status
+            if status == 'PREPPED':
+                if self.oe_order:
+                    error('updating %r with %r' % (self.oe_id, {'erp_file_date':timestamp}))
+                    self.oe_table.update_records(self.oe_id, {'erp_file_date':timestamp})
+            if status == 'SUBMITTED':
+                if self.oe_order:
+                    error('updating %r with %r' % (self.oe_id, {'eoe_file_date':timestamp}))
+                    self.oe_table.update_records(self.oe_id, {'eoe_file_date':timestamp})
+                sched.call_later(11, app.remove_order, self, timestamp)
+                break
+        sched.current = None
+
+    async def display(self):
+        while True:
+            error('display: self.visible =', self.visible)
+            self.paint()
+            if self.state == 'SUBMITTED':
+                break
+            await sched.sleep(1)
+
+    def paint(self):
+        if self.visible:
+            super().paint()
+            self.add_string(0, 0, self.xml_id)
+            # self.add_string(0, 26, 'oe-id# %6s' % self.oe_id)
+            # self.add_string(1, 0, str(self.created))
+            self.add_string(1, 0, 'items: %d' % self.items)
+            self.add_string(0, 29, '%10s' % self.state)
+            if self.created:
+                # fancy-footwork for deficency in dbf.DateTime
+                now = DateTime(datetime.utcnow(), tzinfo=UTC)
+                self.add_string(2, 20, '%19s' % TimeDelta(now-self.created))
+            self.refresh()
+
+
 class MonitorApp(App):
     title = "OpenERP portal orders to EOE Submission Monitor"
     border_style = SINGLE
     size = 13, 88
+    layout = [CompletedOrders]
 
     def __init__(self):
         super().__init__()
@@ -126,7 +242,7 @@ class MonitorApp(App):
         while "user hasn't quit":
             for order in get_files_to_process(ORDERS):
                 error('processing', order)
-                oe_id = order.stem
+                oe_id = int(order.stem)
                 if oe_id not in self.order_ids:
                     error('  creating')
                     self.order_ids.add(oe_id)
@@ -149,10 +265,12 @@ class MonitorApp(App):
                 error('display_order() grid:', self.grid)
                 # sched.call_soon(w.paint)
 
-    def remove_order(self, w):
+    def remove_order(self, w, ts):
         """
         Remove order from data structures and move other orders to fill the gap.
         """
+        w.completed = ts
+        sched.call_soon(Signal('OrderComplete').send, w)
         if not w.visible:
             w.dismiss()
             return
@@ -177,74 +295,8 @@ class MonitorApp(App):
 
     async def update_order_status(self, q):
         while True:
-            order_id, msg = await q.get()
-            sched.notify(order_id, msg)
+            order_id, msg, timestamp = await q.get()
+            sched.notify(order_id, (msg, timestamp))
 
 
-class OrderInfo(Frame):
-    border_style = SINGLE
-    size = 3, 40
-    visible = False
-
-    def __init__(self, oe_id):
-        super().__init__(title=oe_id)
-        error('  initial setup of', oe_id)
-        for xml_id, created, items, new_items in SQL(
-                "SELECT partner_xml_id, create_date, item_ids, new_item_ids "
-                "FROM fis_integration.online_order "
-                "WHERE id=%s" % oe_id
-                ).execute():
-            break
-        else:
-            # nothing found, examine file
-            with open(BASE_PATH/'%s.txt' % oe_id) as fh:
-                order_lines = fh.read().strip().split('\n')
-            xml_id, trans = order_lines[0].strip().rsplit("-", 1)
-            items = new_items = 0
-            created = DateTime()
-            for line in order_lines[1:]:
-                if line.startswith(('RSD','PON')):
-                    continue
-                item, qty = [val.strip() for val in line.strip().split('-')][:2]
-                if qty != "0":
-                    items += 1
-        self.xml_id = xml_id
-        self.created = created
-        self.items = len(items) + len(new_items)
-        self.oe_id = oe_id
-        self.state = 'PLACED'
-
-    async def __call__(self):
-        """
-        Ascertain current state.
-        """
-        sched.new_task(self.display, label='display-%s'%self.oe_id)
-        while self.state != 'SUBMITTED':
-            status = await sched.wait_notify(self.oe_id)
-            error('received %r' % status)
-            self.state = status
-            if status == 'SUBMITTED':
-                sched.call_later(3, app.remove_order, self)
-                break
-        sched.current = None
-
-    async def display(self):
-        while self.state != 'SUBMITTED':
-            error('display: self.visible =', self.visible)
-            self.paint()
-            await sched.sleep(1)
-
-    def paint(self):
-        if self.visible:
-            super().paint()
-            self.add_string(0, 0, self.xml_id)
-            # self.add_string(0, 26, 'oe-id# %6s' % self.oe_id)
-            # self.add_string(1, 0, str(self.created))
-            self.add_string(1, 0, 'items: %d' % self.items)
-            self.add_string(0, 29, '%10s' % self.state)
-            if self.created:
-                # fancy-footwork for deficency in dbf.DateTime
-                now = DateTime(datetime.utcnow(), tzinfo=UTC)
-                self.add_string(2, 20, '%19s' % TimeDelta(now-self.created))
-            self.refresh()
 

@@ -675,8 +675,8 @@ class Scheduler:
     """
     def __init__(self):
         self.ready = deque()                    # tasks, callbacks ready to run
-        self.sleeping = []                      # await sched.sleep()
-        self.every = {}                         # call_every(1, func)  -- calls func every second
+        self.sleeping = []                      # await sched.sleep(int)
+        self.every = {}                         # call_every(int, func)  -- calls func every int seconds
         self.waiting = {}                       # await sched.wait_notify(c_id)
         self.sequence = 0
         self._read_waiting = {}                 # await sched.readable(file_no) | wait_read(file_no, func)
