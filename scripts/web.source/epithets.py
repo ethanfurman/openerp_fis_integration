@@ -2353,7 +2353,7 @@ class TextBox(Frame):
     read_only = False
     _cursor = 0, 0
     _cursor_state = INSERT
-    _value = ()
+    _value = ''
 
     def __init__(self, *args, read_only=None, **kwds):
         super().__init__(*args, **kwds)

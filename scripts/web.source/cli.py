@@ -531,6 +531,48 @@ def web_ingredients(reset):
                 self._rec_no = -1
                 self.load_next_record()
 
+        def display_record(self, rec_no):
+            if rec_no is None:
+                rec_no = -1
+                rec = self.table.create_template()
+            else:
+                rec = self.current_index[rec_no]
+            #
+            self.meta.xml_id = rec.xml_id
+            self.meta.product_name = rec.name
+            self.meta.web_parent = rec.parent_id
+            self.meta.web_active = rec.web_active
+            self.meta.current_recno = rec_no
+            self.initial.value = '\n'.join(['', rec.c_source])
+            self.ingredients.value = rec.c_ingred
+            self.allergens.value = rec.c_allrgn
+            self.equipment.value = rec.c_equip
+            self.warnings.value = rec.c_warns
+            self.web_ingredients.value = rec.f_ingred
+            self.web_allergens.value = rec.f_allrgn
+            self.web_equipment.value = rec.f_equip
+            self.web_warnings.value = rec.f_warns
+            for tb in (
+                    self.ingredients, self.allergens, self.equipment, self.warnings,
+                    self.web_ingredients, self.web_allergens, self.web_equipment, self.web_warnings,
+                ):
+                tb.border_style = SINGLE
+            # highlight differences
+            if rec.c_ingred != rec.f_ingred:
+                self.ingredients.border_style = '*'
+                self.web_ingredients.border_style = ' '
+            if rec.c_allrgn != rec.f_allrgn:
+                self.allergens.border_style = '*'
+                self.web_allergens.border_style = ' '
+            if rec.c_equip != rec.f_equip:
+                self.equipment.border_style = '*'
+                self.web_equipment.border_style = ' '
+            if rec.c_warns != rec.f_warns:
+                self.warnings.border_style = '*'
+                self.web_warnings.border_style = ' '
+            self.main.paint()
+            self.main.refresh()
+
         def on_filter(self, msg):
             """
             Change to selected filter.
@@ -603,48 +645,6 @@ def web_ingredients(reset):
                     db.query(mysql_warning % (rec.f_warns, int(rec.parent_id)))
                     db.commit()
 
-        def display_record(self, rec_no):
-            if rec_no is None:
-                rec_no = -1
-                rec = self.table.create_template()
-            else:
-                rec = self.current_index[rec_no]
-            #
-            self.meta.xml_id = rec.xml_id
-            self.meta.product_name = rec.name
-            self.meta.web_parent = rec.parent_id
-            self.meta.web_active = rec.web_active
-            self.meta.current_recno = rec_no
-            self.initial.value = '\n'.join(['', rec.c_source])
-            self.ingredients.value = rec.c_ingred
-            self.allergens.value = rec.c_allrgn
-            self.equipment.value = rec.c_equip
-            self.warnings.value = rec.c_warns
-            self.web_ingredients.value = rec.f_ingred
-            self.web_allergens.value = rec.f_allrgn
-            self.web_equipment.value = rec.f_equip
-            self.web_warnings.value = rec.f_warns
-            for tb in (
-                    self.ingredients, self.allergens, self.equipment, self.warnings,
-                    self.web_ingredients, self.web_allergens, self.web_equipment, self.web_warnings,
-                ):
-                tb.border_style = SINGLE
-            # highlight differences
-            if rec.c_ingred != rec.f_ingred:
-                self.ingredients.border_style = '*'
-                self.web_ingredients.border_style = ' '
-            if rec.c_allrgn != rec.f_allrgn:
-                self.allergens.border_style = '*'
-                self.web_allergens.border_style = ' '
-            if rec.c_equip != rec.f_equip:
-                self.equipment.border_style = '*'
-                self.web_equipment.border_style = ' '
-            if rec.c_warns != rec.f_warns:
-                self.warnings.border_style = '*'
-                self.web_warnings.border_style = ' '
-            self.main.paint()
-            self.main.refresh()
-
         @on_key(KEY_CTRL_L, limit_scope=('#ingredients','#allergens','#equipment','#warnings'))
         def load_from_labeltime(self):
             """
@@ -659,8 +659,8 @@ def web_ingredients(reset):
                 ):
                 break
             # and parse
-            self.initial.value = oe_rec.c_source
-            values = self.parse_source(oe_rec.c_source)
+            self.initial.value = value = oe_rec.fis_web_ingredients or ''
+            values = self.parse_source(value)
             cid = sched.focus.css_id
             if cid == '#ingredients':
                 self.ingredients.value = values['c_ingred']
