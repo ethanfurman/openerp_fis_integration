@@ -43,7 +43,7 @@ class TestCase(unittest.TestCase):
 def ensure_oe(test):
     def wrapper(*args, **kwds):
         if oe is None:
-            raise RuntimeError('OpenERP is not running')
+            raise ConnectionError('OpenERP is not running')
         return test(*args, **kwds)
     return wrapper
 

@@ -590,7 +590,7 @@ def ensure_fis():
         init_fis()
         if fd is None:
             # no files
-            raise RuntimeError('FIS files not available')
+            raise ConnectionError('FIS files not available')
 
 
 def ensure_oe():
@@ -612,7 +612,7 @@ def ensure_oe():
                     password=config.openerp.pw,
                     )
         except socket.error:
-            raise RuntimeError('OpenERP not accessible')
+            raise ConnectionError('OpenERP not accessible')
 
 class ExpandedRow(object):
     "converts an ordered dict into an ordered list of lists"
@@ -1047,10 +1047,24 @@ def write_txt(table, query, fields, file, separator=False, wrap=None,):
         with open(file, 'w') as out:
             echo(lines, border='table', file=out)
 
-class SQLError(Exception):
+
+class SQLException(Exception):
+    """
+    Base exception.
+    """
+
+
+class SQLError(SQLException):
     """
     Error in SQL statement.
     """
+
+
+class ConnectionError(SQLException):
+    """
+    Unable to access source data.
+    """
+
 
 class Table(object):
     """
