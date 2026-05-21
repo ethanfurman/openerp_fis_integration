@@ -872,7 +872,7 @@ class RecordTemplate(object):
     Provides routines to mimic a dbf record.
     """
 
-    __slots__ = ('_meta', '_data', '_old_data', '_memos', '_write_to_disk', '__weakref__')
+    __slots__ = ('_meta', '_data', '_old_data', '_memos', '_recnum', '_write_to_disk', '__weakref__')
 
     def _commit_flux(self):
         """
@@ -973,6 +973,7 @@ class RecordTemplate(object):
                     )._meta
         layout = dbf._Template_Records[sig]
         record = object.__new__(cls)
+        record._recnum = -1
         record._write_to_disk = True
         record._meta = layout
         record._memos = {}
@@ -2177,12 +2178,12 @@ class Index(_Navigation):
     non-persistent index for a table
     """
 
-    def __init__(self, table, key):
+    def __init__(self, table, key, doc=None):
         self._table = table
         self._values = []             # ordered list of values
         self._rec_by_val = []         # matching record numbers
         self._records = {}            # record numbers:values
-        self.__doc__ = key.__doc__ or 'unknown'
+        self.__doc__ = (doc or key.__doc__ or '').strip() or None
         self._key = key
         self._previous_status = []
         for record in table:
@@ -2219,7 +2220,7 @@ class Index(_Navigation):
 
     def __contains__(self, data):
         if not isinstance(data, (Record, RecordTemplate, tuple, dict)):
-            raise TypeError("%r is not a record, templace, tuple, nor dict" % (data, ))
+            raise TypeError("%r is not a record, template, tuple, nor dict" % (data, ))
         try:
             value = self.key(data)
             return value in self._values
@@ -2281,6 +2282,9 @@ class Index(_Navigation):
 
     def __len__(self):
         return len(self._records)
+
+    def __repr__(self):
+        return "Index(table=%r, doc=%r, key=%r, records=%r)" % (self._table.filename, self.__doc__, self._key.__name__, len(self))
 
     def _clear(self):
         """
@@ -5035,7 +5039,7 @@ class List(_Navigation):
     def __contains__(self, data):
         self._still_valid_check()
         if not isinstance(data, (Record, RecordTemplate, tuple, dict)):
-            raise TypeError("%r is not a record, templace, tuple, nor dict" % (data, ))
+            raise TypeError("%r is not a record, template, tuple, nor dict" % (data, ))
         try:    # attempt quick method
             item = self.key(data)
             if not isinstance(item, tuple):
