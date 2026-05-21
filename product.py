@@ -1533,9 +1533,9 @@ def get_LLC(method):
             _logger.error('bad LabelLinkCtl format; should be "row#, file-pattern, left|right|center, [%width]"')
             llc_override = True
             LabelLinks = (
-                ("1","%sB.bmp","left"),
-                ("1","%sNI.bmp","right"),
-                ("2","%sMK.bmp","center"),
+                ("1","%sB.bmp","left",None),
+                ("1","%sNI.bmp","right",None),
+                ("2","%sMK.bmp","center",None),
                 )
     if label_link_lines != LLC_text and not llc_override:
         # store current lines at module level
