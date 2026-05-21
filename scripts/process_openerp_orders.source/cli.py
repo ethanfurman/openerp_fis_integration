@@ -6,7 +6,7 @@ from __future__ import print_function
 import sys; sys.path.insert(0, '/usr/local/bin/fis-oe')
 
 from scription import *
-from fis_oe.sql import SQL
+from fis_oe.sql import Table
 from fnx_script_support import *
 from antipathy import Path
 from collections import defaultdict
@@ -15,8 +15,10 @@ from tarfile import TarFile
 from traceback import format_exception_only
 import re
 
-# all order numbers must be in the 10000-19999 range or we have collisions
-# with other FIS-feeding processes
+## globals
+
+    # all order numbers must be in the 10000-19999 range or we have collisions
+    # with other FIS-feeding processes
 
 BASE_SEQ = 10000
 CUT_OFF = 10
@@ -154,6 +156,7 @@ def daily_digest(date, email):
         else:
             echo('\n'.join(lines))
 
+
 @Command(
         )
 def process_openerp_orders():
@@ -253,43 +256,48 @@ def test_mail(recipients, subject, message):
 
 
 @Command(
-        order_id=('which order to update [default: ALL]', OPTION, None),
+        order_id=Spec('which order to update [default: ALL]', OPTION, None, type=int),
+        erp_timestamp=Spec('timestamp to use for OperERP file', OPTION, None, type=DateTime),
+        eoe_timestamp=Spec('timestamp to use for EOE file', OPTION, None, type=DateTime),
         )
-def update_timestamps(order_id):
+def update_timestamps(order_id, erp_timestamp, eoe_timestamp):
     """
-    populate the (erp|eoe)_file_name and (erp|eoe)_file_date fields
+    populate the (erp|eoe)_file_date fields
     """
-    command = """
-        SELECT id, partner_id, transmitter_id, erp_file_date, eoe_file_date
-        FROM fis_integration.online_order
-        """
+    online_order = Table('fis_integration.online_order')
     if order_id:
-        command += "WHERE id=%s" % order_id
+        where = "id=%s" % order_id
     else:
-        command = "WHERE erp_file_date is null OR eoe_file_date is null AND id >= 80000"
-    records = SQL(command).execute()
+        where = "erp_file_date is null OR eoe_file_date is null AND id >= 91000"
+    print('searching records for %r' % where, verbose=2)
+    records = online_order.get_records(
+            select=['id','partner_xml_id','transmitter_no','erp_file_date','eoe_file_date'],
+            where=where,
+            )
+    print('%d records found' % len(records), verbose=2)
     for rec in ViewProgress(records):
         values = {}
-        erp_file_name = ARCHIVE/"%s.txt" % rec.id
-        eoe_file_name = EOE_PATH/"%s.ext" % (rec.id % 10000)
-        if not rec.erp_file_date:
-            if erp_file_name.exists():
-                values['erp_file_date'] = DateTime.fromtimestamp(
-                        erp_file_name.stat().st_mtime
-                        ).strftime('%Y-%m-%d_%H:%M:%S')
-        if not rec.eoe_file_date:
-            if eoe_file_name.exists():
-                values['erp_file_date'] = DateTime.fromtimestamp(
-                        eoe_file_name.stat().st_mtime
-                        ).strftime('%Y-%m-%d_%H:%M:%S')
+        erp_file = ARCHIVE/"%s.txt" % rec.id
+        eoe_file = EOE_PATH/"archive/%s.ext" % (rec.id % 10000 + 10000)
+        if erp_timestamp:
+            values['erp_file_date'] = erp_timestamp
+        else:
+            header = '%s-' % (rec.partner_xml_id, )
+            if not rec.erp_file_date and verify(erp_file, header):
+                values['erp_file_date'] = DateTime.fromtimestamp(erp_file.stat().st_mtime)
+        if eoe_timestamp:
+            values['eoe_file_date'] = eoe_timestamp
+        else:
+            # get transmitter # from erp file
+            with open(erp_file) as fh:
+                t_no = fh.read().split('\n')[0].rsplit('-',1)[-1]
+            header = 'C%s+' % t_no
+            if not rec.eoe_file_date and verify(eoe_file, header):
+                values['eoe_file_date'] = DateTime.fromtimestamp(eoe_file.stat().st_mtime)
         if values:
-            SQL("""
-                UPDATE fis_integration.online_order
-                SET %s
-                WHERE id=%s
-                """ % (
-                    ', '.join(["%s=%r" % (k, v) for k, v in values.items()])
-                    )).execute()
+            print('updating %r with %r' % (rec.id, values), verbose=2)
+            online_order.update_records(rec.id, values)
+        print('-' * 75, verbose=2)
 
 
 ## helpers
@@ -370,6 +378,20 @@ def timestamp(filename):
     stat = filename.stat().st_mtime
     stamp = DateTime.fromtimestamp(stat)
     return stamp
+
+def verify(filename, leader):
+    """
+    returns True if filename exists and starts with leader
+    """
+    e = filename.exists()
+    print("%s %s exist" % (filename, ('does not','does')[e]), verbose=2)
+    if e:
+        with open(filename) as fh:
+            data = fh.read(32)
+        print('looking for %s:%r in %s:%r  [%r]' % (type(leader), leader, type(data), data, data.startswith(leader)), verbose=2)
+        return data.startswith(leader)
+    return False
+
 
 
 Run()
