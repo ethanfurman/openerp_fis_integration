@@ -51,7 +51,8 @@ log_file = Path('/var/web-ingredients/web-ingredients.log')
 corrections_file = Path('/var/web-ingredients/words.txt')
 
 logger = logging.getLogger('web-ingredients')
-logging.basicConfig(filename=log_file, level=logging.DEBUG)
+logging.basicConfig(filename=log_file, level=logging.INFO)
+logger.info(str(dbf.DateTime))
 
 ## Commands
 
@@ -362,7 +363,7 @@ def web_ingredients(reset):
         """
         border_style = SINGLE
         current_index = None
-        status = True
+        status = 2
         title = 'Web Data Updates'
         _rec_no = -1
 
@@ -692,7 +693,7 @@ def web_ingredients(reset):
         @on_key(KEY_NPAGE)
         def load_next_record(self):
             """
-            PgDn=Next Record
+            PgDn=Next
             """
             if self._rec_no != -1:
                 self.save_to_dbf()
@@ -706,7 +707,7 @@ def web_ingredients(reset):
         @on_key(KEY_PPAGE)
         def load_prev_record(self):
             """
-            PgUp=Prev Record
+            PgUp=Prev
             """
             if self._rec_no != -1:
                 self.save_to_dbf()
@@ -834,6 +835,9 @@ def web_ingredients(reset):
 
         @on_key(KEY_CTRL_S)
         def save_to_dbf(self, values=None, force_save=False):
+            """
+            ^S=Save
+            """
             # called by parse_record with values, and by
             # load_(next|prev)_record with no values
             #
@@ -882,6 +886,9 @@ def web_ingredients(reset):
 
         @on_key(KEY_CTRL_U)
         def upload_record(self):
+            """
+            ^U=Upload
+            """
             self.on_save_and_publish(xml_id=self.meta.xml_id)
             self.paint()
 
