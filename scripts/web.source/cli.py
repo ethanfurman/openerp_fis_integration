@@ -11,6 +11,7 @@ try:
 except ImportError:
     _mysql = None
 import logging
+import re
 from scription import *
 
 ## globals
@@ -51,8 +52,9 @@ log_file = Path('/var/web-ingredients/web-ingredients.log')
 corrections_file = Path('/var/web-ingredients/words.txt')
 
 logger = logging.getLogger('web-ingredients')
-logging.basicConfig(filename=log_file, level=logging.INFO)
-logger.info(str(dbf.DateTime))
+logging.basicConfig(filename=log_file, level=logging.DEBUG)
+logging.getLogger('openerplib').setLevel(logging.INFO)
+logger.info(str(dbf.DateTime()))
 
 ## Commands
 
@@ -272,6 +274,12 @@ def web_ingredients(reset):
                     )
         size = 4, 75
 
+    class Search(Entry):
+        border_style = DOUBLE
+        label = 'Find'
+        size = 1, 50
+        sticky = EW
+
     class Meta(Frame):
         border_style=SINGLE
         # css_id = '#meta'
@@ -368,7 +376,7 @@ def web_ingredients(reset):
         _rec_no = -1
 
         layout = [
-                CommandButton, Filter, Meta,
+                CommandButton, Filter, Search, Meta,
                 InitialData(id='initial', title='Initial Data'),
                 FixedData(id='ingredients', title='LabelTime Ingredients'), FixedData(id='web_ingredients', title='Web Ingredients', read_only=True),
                 FixedData(id='allergens', title='LabelTime Allergens'), FixedData(id='web_allergens', title='Web Allergens', read_only=True),
@@ -405,6 +413,7 @@ def web_ingredients(reset):
                         dbf_type='clp',
                         default_data_types='enhanced',
                         ).open(dbf.READ_WRITE)
+            self.search = self.query_one(cls=Search)
             self.meta = self.query_one(cls=Meta)
             self.meta.total_count = len(t)
             self.initial = self.query_one('#initial')
@@ -489,6 +498,28 @@ def web_ingredients(reset):
             self.indices[()] = self.primary_index = dbf.Index(t, lambda rec: rec.xml_id, doc='xml_id')
             self.current_index = self.primary_index
             self.meta.total_records = len(self.table)
+
+        def _search(self, offset, regex, direction):
+            """
+            Search records in the current filter for regex.
+
+            Returns offset if found, or None.
+            """
+            logger.debug('searching from %r for %r going %s', offset, regex, ('backwards','forwards')[direction==1])
+            if not regex:
+                return None
+            while "searching records":
+                offset += direction
+                if offset < 0 or offset >= len(self.current_index):
+                    return None
+                rec = self.current_index[offset]
+                for fld in (
+                        'xml_id','name','c_source','c_ingred','c_allrgn','c_equip','c_warns',
+                        'f_source','f_ingred','f_allrgn','f_equip','f_warns',
+                    ):
+                    if re.search(regex, rec[fld], re.I):
+                        return offset
+            
 
         @on_key(KEY_CTRL_A, limit_scope=('#ingredients','#allergens','#equipment','#warnings'))
         def add_words(self):
@@ -883,6 +914,26 @@ def web_ingredients(reset):
                     values.pop('c_warns')
                 # at this point, at least c_source is getting saved
                 dbf.write(rec, **values)
+
+        @on_key(KEY_F4)
+        def search_next(self):
+            """
+            F4=Search Next
+            """
+            offset = self._search(self._rec_no, self.search.entry.value, +1)
+            if offset is not None:
+                self._rec_no = offset
+                self.display_record(offset)
+
+        @on_key(KEY_F3)
+        def search_previous(self):
+            """
+            F3=Search Prev
+            """
+            offset = self._search(self._rec_no, self.search.entry.value, -1)
+            if offset is not None:
+                self._rec_no = offset
+                self.display_record(offset)
 
         @on_key(KEY_CTRL_U)
         def upload_record(self):
