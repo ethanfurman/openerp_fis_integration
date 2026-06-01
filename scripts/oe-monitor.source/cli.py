@@ -8,8 +8,9 @@ from datetime import datetime
 from dbf import DateTime
 from collections import deque
 from epithets import App, Frame, Pipe, Queue, QueueEmpty, sched, switch, Signal
-from epithets import SINGLE, InsufficientSpace, NS
+from epithets import SINGLE, InsufficientSpace, NS, A_NORMAL, HORIZONTAL, NSEW
 from fis_oe.sql import SQL, Table, TimeDelta
+import logging
 from pytz import UTC
 import time
 
@@ -26,10 +27,16 @@ BASE_PATH = Path("/home/openerp/sandbox/openerp/var/fis_integration/orders")
 ORDERS = BASE_PATH
 ARCHIVE = BASE_PATH / "archive"
 
+logger = logging.getLogger('web-ingredients')
+logging.basicConfig(filename='/var/log/oe-monitor.log', level=logging.DEBUG)
+logging.getLogger('openerplib').setLevel(logging.INFO)
+logger.info(str(DateTime.now()))
+
 ## API
 
 
 @Command()
+@Alias('oe-monitor')
 def orders():
     """
     Show orders waiting to be submitted to EOE.
@@ -45,35 +52,36 @@ def check_status(q):
     """
     Thread to access local and network drives.
     """
+    logger = logging.getLogger('thread')
     orders = {}
     while True:
         if not orders:
-            error('thread: check_status: waiting for an order')
+            logger.info('check_status: waiting for an order')
             o = q.get()
         else:
             o = q.get(block=False)
         if o is not QueueEmpty:
             orders[o] = 'PLACED', None
         for o, (state, ts) in orders.items():
-            error('thread: checking order', o)
+            logger.info('checking order %r', o)
             if state == 'PLACED':
                 # see if it has been prepped
-                error('thread: checking if prepped')
+                logger.info('checking if prepped')
                 target = ARCHIVE/'%s.txt' % o
                 if target.exists():
                     ts = DateTime.fromtimestamp(target.stat().st_mtime)
                     orders[o] = 'PREPPED', ts
             if state == 'PREPPED':
-                error('thread: checking if submitted')
+                logger.info('checking if submitted')
                 seq = BASE_SEQ + int(o) % 10000
                 extfile = EOE_PATH / 'archive' / "%s.ext" % seq
-                error('thread:   file', extfile)
+                logger.info('file %r', extfile)
                 if extfile.exists():
                     sts = DateTime.fromtimestamp(extfile.stat().st_mtime)
                     if sts > ts:
                         orders[o] = 'SUBMITTED', sts
-                        error('thread: done with', o)
-            if orders[o] != state:
+                        logger.info('done with %r', o)
+            if orders[o][0] != state:
                 q.put((o, orders[o]))
         time.sleep(10)
         for o, s in list(orders.items()):
@@ -121,7 +129,6 @@ class CompletedOrders(Frame):
     def __init__(self):
         super().__init__()
         self.value = []
-        error('self.value is', self.value)
 
     def on_order_complete(self, order):
         rows = self.inner_size.height - 2
@@ -131,8 +138,8 @@ class CompletedOrders(Frame):
         self.paint()
         self.refresh()
 
-    def paint(self):
-        super().paint()
+    def paint(self, attr=A_NORMAL, cascade=True):
+        super().paint(attr=attr, cascade=cascade)
         self.add_string(0, 1, 'FIS ID     items   submitted')
         self.add_string(1, 1, '---------- ----- -----------')
         for i, o in enumerate(self.value, start=2):
@@ -140,15 +147,24 @@ class CompletedOrders(Frame):
         self.refresh()
 
 
+class CurrentOrders(Frame):
+    """
+    Show processing orders.
+    """
+    sticky = NSEW
+
+
 class OrderInfo(Frame):
     border_style = SINGLE
-    size = 3, 40
+    size = 3, 37
     visible = False
     oe_order = False
+    logger = logging.getLogger('order-info')
+    layout = HORIZONTAL
 
     def __init__(self, oe_id):
         super().__init__(title=oe_id)
-        error('  initial setup of', oe_id)
+        self.logger.info('  initial setup of %r', oe_id)
         for xml_id, created, items, new_items in SQL(
                 "SELECT partner_xml_id, create_date, item_ids, new_item_ids "
                 "FROM fis_integration.online_order "
@@ -185,15 +201,15 @@ class OrderInfo(Frame):
         sched.new_task(self.display, label='display-%s' % self.oe_id)
         while self.state != 'SUBMITTED':
             status, timestamp = await sched.wait_notify(self.oe_id)
-            error('received %r and %r' % (status, timestamp))
+            self.logger.info('received %r and %r', status, timestamp)
             self.state = status
             if status == 'PREPPED':
                 if self.oe_order:
-                    error('updating %r with %r' % (self.oe_id, {'erp_file_date':timestamp}))
+                    self.logger.info('updating %r with %r', self.oe_id, {'erp_file_date':timestamp})
                     self.oe_table.update_records(self.oe_id, {'erp_file_date':timestamp})
             if status == 'SUBMITTED':
                 if self.oe_order:
-                    error('updating %r with %r' % (self.oe_id, {'eoe_file_date':timestamp}))
+                    self.logger.info('updating %r with %r', self.oe_id, {'eoe_file_date':timestamp})
                     self.oe_table.update_records(self.oe_id, {'eoe_file_date':timestamp})
                 sched.call_later(11, app.remove_order, self, timestamp)
                 break
@@ -201,24 +217,24 @@ class OrderInfo(Frame):
 
     async def display(self):
         while True:
-            error('display: self.visible =', self.visible)
+            self.logger.info('display: self.visible = %r', self.visible)
             self.paint()
             if self.state == 'SUBMITTED':
                 break
             await sched.sleep(1)
 
-    def paint(self):
+    def paint(self, attr=A_NORMAL, cascade=True):
         if self.visible:
-            super().paint()
-            self.add_string(0, 0, self.xml_id)
+            super().paint(attr=attr, cascade=cascade)
+            self.add_string(0, 0, self.xml_id or '')
             # self.add_string(0, 26, 'oe-id# %6s' % self.oe_id)
             # self.add_string(1, 0, str(self.created))
             self.add_string(1, 0, 'items: %d' % self.items)
-            self.add_string(0, 29, '%10s' % self.state)
+            self.add_string(0, 26, '%10s' % self.state)
             if self.created:
                 # fancy-footwork for deficency in dbf.DateTime
                 now = DateTime(datetime.utcnow(), tzinfo=UTC)
-                self.add_string(2, 20, '%19s' % TimeDelta(now-self.created))
+                self.add_string(2, 17, '%19s' % TimeDelta(now-self.created))
             self.refresh()
 
 
@@ -226,7 +242,8 @@ class MonitorApp(App):
     title = "OpenERP portal orders to EOE Submission Monitor"
     border_style = SINGLE
     size = 13, 88
-    layout = [CompletedOrders]
+    layout = [CompletedOrders, CurrentOrders]
+    logger = logging.getLogger('app')
 
     def __init__(self):
         super().__init__()
@@ -235,67 +252,68 @@ class MonitorApp(App):
         self.status_comm = Pipe()
         self.order_ids = set()
         sched.new_task(self.add_orders, label='add orders')
-        sched.new_task(self.update_order_status, self.status_comm.one, label='update order status')
-        sched.new_thread(check_status, self.status_comm.two, label='check order status', daemon=True)
+        sched.new_task(self.update_order_status, self.status_comm.conn1, label='update order status')
+        sched.new_thread(check_status, self.status_comm.conn2, label='check order status', daemon=True)
 
     async def add_orders(self):
+        current_frame = self.query_one(cls=CurrentOrders)
         while "user hasn't quit":
             for order in get_files_to_process(ORDERS):
-                error('processing', order)
+                self.logger.info('processing %r', order)
                 oe_id = int(order.stem)
                 if oe_id not in self.order_ids:
-                    error('  creating')
+                    self.logger.info('  creating')
                     self.order_ids.add(oe_id)
-                    w = self.main.add_widget(OrderInfo(oe_id))
+                    w = current_frame.add_widget(OrderInfo(oe_id))
                     sched.new_task(self.display_order, w, label='display order')
                     sched.new_task(w, label='order-%s'%oe_id)
-                    await self.status_comm.one.put(oe_id)
+                    await self.status_comm.conn1.put(oe_id)
             await sched.sleep(5)
 
     async def display_order(self, w):
         while not w.visible:
             try:
-                self.main.build_contained(w)
+                w.build()
             except InsufficientSpace:
+                self.logger.info('no space, in display queue')
                 self.waiting.append(sched.current)
                 sched.current = None
                 await switch()
             else:
                 self.grid.append(w)
-                error('display_order() grid:', self.grid)
+                self.logger.info('display_order() grid: %r', self.grid)
                 # sched.call_soon(w.paint)
 
     def remove_order(self, w, ts):
         """
         Remove order from data structures and move other orders to fill the gap.
         """
+        current_frame = self.query_one(cls=CurrentOrders)
         w.completed = ts
-        sched.call_soon(Signal('OrderComplete').send, w)
+        sched.call_soon(Signal('OrderComplete').notify, w)
         if not w.visible:
             w.dismiss()
             return
         i = self.grid.index(w)
         self.grid.pop(i)
-        empty = w.get_parent_yx()
-        error('initial coordinates:', empty)
-        error('saved coordinates:', w.saved_origin)
+        empty = w.origin
         w.dismiss()
         while i < len(self.grid):
             w = self.grid[i]
-            error('moving widget', w)
-            current = w.get_parent_yx()
+            self.logger.info('moving widget %r', w)
+            current = w.origin
             w.move_window(*empty)
             empty = current
             i += 1
-        self.main.clear_primary = empty
-        self.main.clear()
-        self.main.refresh()
+        current_frame.clear_primary = empty
+        current_frame.clear()
+        current_frame.refresh()
         if self.waiting:
             sched.ready.append(self.waiting.popleft())
 
     async def update_order_status(self, q):
         while True:
-            order_id, msg, timestamp = await q.get()
+            order_id, (msg, timestamp) = await q.get()
             sched.notify(order_id, (msg, timestamp))
 
 
