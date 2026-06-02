@@ -37,7 +37,6 @@ def init_fis():
     try:
         from fislib.BBxXlate import fisData as fd
         from fislib.BBxXlate.bbxfile import TableError
-        fd.init()
     except IOError as e:
         error(e)
         fd = TableError = None
@@ -1224,11 +1223,6 @@ class FISTable(Table):
             self.num = table['filenum']
             self.name = table['name']
             self.pat = ''
-            # count = 0
-            # for _, _, _, spec, _ in table['fields']:
-            #     if spec.startswith('An$'):
-            #         count += int(spec.split(',')[1].strip(')'))
-            # self.pat = '.' * count
         self.table = fd.fisData(self.num or self.name)
         print('   found %s with %d records using pattern %r'
                 % (self.table.filename, len(self.table), self.pat),

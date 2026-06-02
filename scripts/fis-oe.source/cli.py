@@ -5,41 +5,6 @@ from __future__ import print_function, unicode_literals
 
 from scription import *
 
-from antipathy import Path
-from ast import literal_eval
-from collections import defaultdict
-from enhlib.text import translator
-from enhlib.misc import baseinteger
-from fislib import schema as fis_schema
-from fislib.schema import F135
-from fis_oe.sql import ALL_ACTIVE, Fault, FISTable, SQL, SQLError, Table, convert_name
-from fis_oe import sql as sequel
-from openerplib import get_connection, get_records, AttrDict, Query, MissingTable
-import threading
-from traceback import format_exception
-
-import dbf
-import io
-import os
-import re
-import shutil
-import socket
-import sys
-import time
-
-
-virtual_env = os.environ.get('VIRTUAL_ENV', '/opt/openerp')
-PRODUCT_FORECAST = Path('/FIS/data/product_forecast.txt')
-oe = None
-
-## Globals
-
-SHOW_ID = False
-
-__version__ = "0.9"
-
-## API
-
 @Script(
         hostname=Spec('host to connect to', OPTION, ('host',)),
         database=Spec('database to query', OPTION, ('db', )),
@@ -88,6 +53,42 @@ def main(hostname, database, show_ids, fis_location):
     sequel.SHOW_ID = SHOW_ID
     sequel.ensure_oe = ensure_oe
     from fis_oe.sql import fd, TableError
+
+from antipathy import Path
+from ast import literal_eval
+from collections import defaultdict
+from enhlib.text import translator
+from enhlib.misc import baseinteger
+from fislib import schema as fis_schema
+from fislib.schema import F135
+from fis_oe.sql import ALL_ACTIVE, Fault, FISTable, SQL, SQLError, Table, convert_name
+# from fis_oe.sql import fd, TableError
+from fis_oe import sql as sequel
+from openerplib import get_connection, get_records, AttrDict, Query, MissingTable
+import threading
+from traceback import format_exception
+
+import dbf
+import io
+import os
+import re
+import shutil
+import socket
+import sys
+import time
+
+
+virtual_env = os.environ.get('VIRTUAL_ENV', '/opt/openerp')
+PRODUCT_FORECAST = Path('/FIS/data/product_forecast.txt')
+oe = None
+
+## Globals
+
+SHOW_ID = False
+
+__version__ = "0.9"
+
+## API
 
 @Command(
         command=('sql command', REQUIRED),

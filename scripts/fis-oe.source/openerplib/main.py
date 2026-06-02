@@ -139,7 +139,7 @@ class XmlRPCConnector(Connector):
                     # exc2 = exc2(msg)
                     # exc2.__cause__ = None
                     # raise exc2
-                    raise_exc(exc2(msg), cause=None)
+                    raise_exc(exc2(msg)) #, cause=None)
             raise
 
 

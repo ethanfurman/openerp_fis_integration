@@ -2,9 +2,12 @@
 table_keys = {
           8: (  8, 'CNVZD0', br'D010(.)'),                        # customer terms
          11: ( 11, 'CNVZas', br'as10(..)'),                       # product category
+         27: ( 27, 'CNVZSV', br'SV10(..)'),                       # carrier
          33: ( 33, 'CSMS', br'10(......) '),                      # customer
          34: ( 34, 'CSMSS', br'10(......)1...'),                  # customer ship-to
-         27: ( 27, 'CNVZSV', br'SV10(..)'),                       # carrier
+         35: ( 35, 'RDER2', br'10(......)..0001'),                # open order header ship-to
+         36: ( 36, 'RDERH', br'10(......)..0000'),                # open order header master
+         37: ( 37, 'RDERD', br'10(......)..1'),                   # open order header detail
          47: ( 47, 'CNVZZ', br'Z(...)'),                          # sales rep
          74: ( 74, 'EMP1', br'10(.....)'),                        # employee
          65: ( 65, 'VNMS', br'10(......)'),                       # purchasers
@@ -38,6 +41,9 @@ table_keys = {
         'ifpp1' : (329, 'IFPP1', br'10(......)000011...'),        # production order ingredients
         'nvty'  : (135, 'NVTY', br'(......)101000    101\*\*'),   # products
         'posm'  : (163, 'POSM', br'10(......)'),                  # vendors
+        'rderd' : ( 37, 'RDERD', br'10(......)..1'),              # open order header detail
+        'rderh' : ( 36, 'RDERH', br'10(......)..0000'),           # open order header
+        'rder2' : ( 35, 'RDER2', br'10(......)..0001'),           # open order header ship-to
         'vnms'  : ( 65, 'VNMS', br'10(......)'),                  # purchasers
         }
 
