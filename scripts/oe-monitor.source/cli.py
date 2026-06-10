@@ -4,7 +4,7 @@ import sys; sys.path.insert(0, '/usr/local/bin/fis-oe3')
 
 from scription import *
 from antipathy import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from dbf import DateTime
 from collections import deque
 from epithets import App, Frame, Pipe, Queue, QueueEmpty, sched, switch, Signal
@@ -21,6 +21,7 @@ import time
     # with other FIS-feeding processes
 
 BASE_SEQ = 10000
+ONE_DAY = timedelta(days=1)
 
 EOE_PATH = Path("/mnt/11-111/home/eoe/")
 BASE_PATH = Path("/home/openerp/sandbox/openerp/var/fis_integration/orders")
@@ -48,6 +49,11 @@ def orders():
 
 ## helpers
 
+def age_of(file):
+    """
+    Return a timedelta of last modification to file.
+    """
+
 def check_status(q):
     """
     Thread to access local and network drives.
@@ -56,26 +62,27 @@ def check_status(q):
     orders = {}
     while True:
         if not orders:
-            logger.info('check_status: waiting for an order')
+            logger.info('waiting for an order')
             o = q.get()
         else:
             o = q.get(block=False)
         if o is not QueueEmpty:
             orders[o] = 'PLACED', None
+        logger.info('processing order %r', o)
         for o, (state, ts) in orders.items():
-            logger.info('checking order %r', o)
+            logger.debug('checking %r', o)
             if state == 'PLACED':
                 # see if it has been prepped
-                logger.info('checking if prepped')
+                logger.debug('checking if prepped')
                 target = ARCHIVE/'%s.txt' % o
                 if target.exists():
                     ts = DateTime.fromtimestamp(target.stat().st_mtime)
                     orders[o] = 'PREPPED', ts
             if state == 'PREPPED':
-                logger.info('checking if submitted')
+                logger.debug('checking if submitted')
                 seq = BASE_SEQ + int(o) % 10000
                 extfile = EOE_PATH / 'archive' / "%s.ext" % seq
-                logger.info('file %r', extfile)
+                logger.debug('file %r', extfile)
                 if extfile.exists():
                     sts = DateTime.fromtimestamp(extfile.stat().st_mtime)
                     if sts > ts:
@@ -161,38 +168,40 @@ class OrderInfo(Frame):
     oe_order = False
     logger = logging.getLogger('order-info')
     layout = HORIZONTAL
+    xml_id = None
 
     def __init__(self, oe_id):
         super().__init__(title=oe_id)
-        self.logger.info('  initial setup of %r', oe_id)
-        for xml_id, created, items, new_items in SQL(
-                "SELECT partner_xml_id, create_date, item_ids, new_item_ids "
+        self.logger.info('setting up %r', oe_id)
+        self.oe_id = oe_id
+        # get file contents
+        data = self.read_file()
+        if data is None:
+            return
+        order_lines = data.strip().split('\n')
+        xml_id, trans = order_lines[0].strip().rsplit("-", 1)
+        items = []
+        new_items = []
+        for line in order_lines[1:]:
+            if line.startswith(('RSD','PON')):
+                continue
+            item, qty = [val.strip() for val in line.strip().split('-')][:2]
+            if qty != "0":
+                items.append(1)
+        for created in SQL(
+                "SELECT create_date "
                 "FROM fis_integration.online_order "
-                "WHERE id=%s" % oe_id
+                "WHERE id=%s and partner_xml_id=%r" % (oe_id, xml_id)
                 ).execute():
             self.oe_order = True
             break
         else:
-            # nothing found, examine file
-            with open(BASE_PATH/'%s.txt' % oe_id) as fh:
-                order_lines = fh.read().strip().split('\n')
-            xml_id, trans = order_lines[0].strip().rsplit("-", 1)
-            items = []
-            new_items = []
             created = DateTime()
-            for line in order_lines[1:]:
-                if line.startswith(('RSD','PON')):
-                    continue
-                item, qty = [val.strip() for val in line.strip().split('-')][:2]
-                if qty != "0":
-                    items.append(1)
         self.xml_id = xml_id
         self.created = created
         self.items = len(items) + len(new_items)
-        self.oe_id = oe_id
         self.state = 'PLACED'
         self.oe_table = Table('fis_integration.online_order')
-        
 
     async def __call__(self):
         """
@@ -201,15 +210,15 @@ class OrderInfo(Frame):
         sched.new_task(self.display, label='display-%s' % self.oe_id)
         while self.state != 'SUBMITTED':
             status, timestamp = await sched.wait_notify(self.oe_id)
-            self.logger.info('received %r and %r', status, timestamp)
+            self.logger.debug('received %r and %r', status, timestamp)
             self.state = status
             if status == 'PREPPED':
                 if self.oe_order:
-                    self.logger.info('updating %r with %r', self.oe_id, {'erp_file_date':timestamp})
+                    self.logger.debug('updating %r with %r', self.oe_id, {'erp_file_date':timestamp})
                     self.oe_table.update_records(self.oe_id, {'erp_file_date':timestamp})
             if status == 'SUBMITTED':
                 if self.oe_order:
-                    self.logger.info('updating %r with %r', self.oe_id, {'eoe_file_date':timestamp})
+                    self.logger.debug('updating %r with %r', self.oe_id, {'eoe_file_date':timestamp})
                     self.oe_table.update_records(self.oe_id, {'eoe_file_date':timestamp})
                 sched.call_later(11, app.remove_order, self, timestamp)
                 break
@@ -217,7 +226,7 @@ class OrderInfo(Frame):
 
     async def display(self):
         while True:
-            self.logger.info('display: self.visible = %r', self.visible)
+            self.logger.debug('display: self.visible = %r', self.visible)
             self.paint()
             if self.state == 'SUBMITTED':
                 break
@@ -236,6 +245,24 @@ class OrderInfo(Frame):
                 now = DateTime(datetime.utcnow(), tzinfo=UTC)
                 self.add_string(2, 17, '%19s' % TimeDelta(now-self.created))
             self.refresh()
+
+    def read_file(self):
+        """
+        Attempts to read the file in `.../orders`, with fallback to `.../orders/archive`
+        """
+        fh = None
+        try:
+            fh = open(ORDERS/'%s.txt' % self.oe_id)
+            return fh.read()
+        except FileNotFoundError:
+            fp = ARCHIVE/'%s.txt' % self.oe_id
+            if not fp.exists() or age_of(fp) > ONE_DAY:
+                return
+            fh = open(fp)
+            return fh.read()
+        finally:
+            if fh is not None:
+                fh.close()
 
 
 class MonitorApp(App):
@@ -259,12 +286,17 @@ class MonitorApp(App):
         current_frame = self.query_one(cls=CurrentOrders)
         while "user hasn't quit":
             for order in get_files_to_process(ORDERS):
-                self.logger.info('processing %r', order)
+                self.logger.info('adding order %r', order)
                 oe_id = int(order.stem)
                 if oe_id not in self.order_ids:
-                    self.logger.info('  creating')
+                    self.logger.debug('  creating')
                     self.order_ids.add(oe_id)
-                    w = current_frame.add_widget(OrderInfo(oe_id))
+                    w = OrderInfo(oe_id)
+                    if w.xml_id is None:
+                        # bad file, skip
+                        self.order_ids.remove(oe_id)
+                        continue
+                    current_frame.add_widget(w)
                     sched.new_task(self.display_order, w, label='display order')
                     sched.new_task(w, label='order-%s'%oe_id)
                     await self.status_comm.conn1.put(oe_id)
@@ -275,13 +307,13 @@ class MonitorApp(App):
             try:
                 w.build()
             except InsufficientSpace:
-                self.logger.info('no space, in display queue')
+                self.logger.debug('no space, in display queue')
                 self.waiting.append(sched.current)
                 sched.current = None
                 await switch()
             else:
                 self.grid.append(w)
-                self.logger.info('display_order() grid: %r', self.grid)
+                self.logger.debug('display_order() grid: %r', self.grid)
                 # sched.call_soon(w.paint)
 
     def remove_order(self, w, ts):
@@ -291,6 +323,7 @@ class MonitorApp(App):
         current_frame = self.query_one(cls=CurrentOrders)
         w.completed = ts
         sched.call_soon(Signal('OrderComplete').notify, w)
+        self.order_ids.remove(w.oe_id)
         if not w.visible:
             w.dismiss()
             return
@@ -300,12 +333,16 @@ class MonitorApp(App):
         w.dismiss()
         while i < len(self.grid):
             w = self.grid[i]
-            self.logger.info('moving widget %r', w)
+            self.logger.debug('moving widget %r', w)
             current = w.origin
             w.move_window(*empty)
             empty = current
             i += 1
-        current_frame.clear_primary = empty
+        if not self.grid:
+            current_frame.clear_horizontal = current_frame.clear_vertical = (0, 0)
+        else:
+            current_frame.clear_horizontal = empty
+            current_frame.clear_vertical = w.outer_size.height, 0
         current_frame.clear()
         current_frame.refresh()
         if self.waiting:
