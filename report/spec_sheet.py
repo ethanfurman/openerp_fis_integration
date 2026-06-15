@@ -96,7 +96,7 @@ class report_spec_sheet(report_int):
                 except (LabelAcquisitionError, MissingImageFile):
                     images.append(ImageLayout(None, width, align, False))
             if xml_id != '000000':
-                images = images[:3]
+                images = images[:4]
             #
             # sort images into rows
             #
@@ -117,28 +117,32 @@ class report_spec_sheet(report_int):
                     row.append(layout)
             requested_rows.append(row)
             page = Area(*letter)
-            viewable_area = Area(page.width - 1.5*inch, page.height - 1.25*inch)
-            left_margin = 0.75*inch
+            viewable_area = Area(page.width - 1.25*inch, page.height - 1.0*inch)
+            left_margin = 0.50*inch
             bottom_margin = 0.50*inch
             right_margin = page.width - 0.75*inch
-            top_margin = page.height - 0.75*inch
+            top_margin = page.height - 0.50*inch
             top_left = Point(left_margin, top_margin)
             anchor = top_left
-            # draw header
+            # draw header (now sider)
             display.setFontSize(10)
-            display.drawString(left_margin-0.25*inch, top_margin+0.25*inch, today)
-            display.setFontSize(19)
-            lines = format_lines(data['name'], 50, split=('nongmo','organic','eco-farmed','sunridge'))
-            display.drawString(left_margin, top_margin-0.25*inch, lines[0])
+            display.drawRightString(right_margin+0.5*inch, bottom_margin-0.375*inch, today)
+            display.setFontSize(12)
+            display.saveState()
+            display.rotate(270)
+            display.drawString(-top_margin, right_margin+0.375*inch, '%s:' % xml_id)
+            lines = format_lines(data['name'], 75, split=('nongmo','organic','eco-farmed','sunridge'))
+            display.drawString(-top_margin+0.75*inch, right_margin+0.375*inch, lines[0])
             if len(lines) > 1:
-                display.drawString(left_margin, top_margin-0.5*inch, lines[1])
-            display.drawRightString(right_margin, top_margin+0.125*inch, xml_id)
+                display.drawString(-top_margin+0.75*inch, right_margin+0.1875*inch, lines[1])
             upc = data['ean13']
             upc = upc[:1], upc[1:6], upc[6:11], upc[11:12]  # discard 13th digit
-            display.drawString(left_margin, top_margin-0.875*inch, 'UPC Code: %s-%s-%s-%s' % upc)
-            anchor = Point(left_margin, top_margin - 1.25*inch)
+            display.drawRightString(-bottom_margin, right_margin+0.375*inch, 'UPC Code: %s-%s-%s-%s' % upc)
+            display.restoreState()
+            # now process images
+            anchor = Point(left_margin, top_margin)
             max_height = 0
-            # now sort into final rows and pages
+            # sort into final rows and pages
             pages = []
             page = []
             for row in requested_rows:
@@ -285,6 +289,11 @@ def format_lines(line, cpl, split=()):
     split = [s.lower() for s in split]
     line = ' '.join(line.split())
     words = line.split()
+    width = sum([_width(w) for w in words], len(words)-1)
+    _logger.info('%r takes %s characters', line, width)
+    if width <= cpl:
+        # fast path if it all fits on one line
+        return (line, )
     width = 0
     lines = []
     line = []
