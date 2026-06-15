@@ -119,9 +119,9 @@ class report_spec_sheet(report_int):
             page = Area(*letter)
             viewable_area = Area(page.width - 1.25*inch, page.height - 1.0*inch)
             left_margin = 0.50*inch
-            bottom_margin = 0.50*inch
+            bottom_margin = 0.25*inch
             right_margin = page.width - 0.75*inch
-            top_margin = page.height - 0.50*inch
+            top_margin = page.height - 0.25*inch
             top_left = Point(left_margin, top_margin)
             anchor = top_left
             # draw header (now sider)
