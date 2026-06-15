@@ -61,6 +61,7 @@ NamedLock = NamedLock()
 # CC - Case
 # MK - Markem
 # N1 - Nutritional / NFP
+# KY - Keyence (using zpl)
 #
 # http://labeltime:9000/labelutils?opt=ingred&prodCd=000001
 
