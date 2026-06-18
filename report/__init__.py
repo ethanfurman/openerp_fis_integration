@@ -2,6 +2,7 @@ from antipathy import Path as _Path
 from xaml import Xaml as _Xaml
 import spec_sheet
 import spec_sheet_image
+import spec_sheet_ky
 
 src_dir = _Path(__file__).dirname or _Path('.')
 
