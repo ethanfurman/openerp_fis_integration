@@ -2,7 +2,6 @@
 
 -view = 'ir.ui.view'
 -action = 'ir.actions.act_window'
--url = 'ir.actions.act_url'
 -wiki = 'product.wiki'
 
 ~openerp
@@ -626,14 +625,6 @@
 
         ~menuitem @Wiki #menu_product_wiki parent='base.menu_product' action='action_product_wiki'
 
-        // Markem Labels
-
-        ~record model=url #action_product_markem_labels
-            @name: Markem Images
-            @url: /fis/markem/status
-            @target: new
-
-        ~menuitem @Markem #menu_product_markem_labels parent='base.menu_product' action='action_product_markem_labels' groups='fis_integration.purchase_cost'
 
     ~data noupdate='1'
 
