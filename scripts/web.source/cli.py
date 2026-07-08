@@ -89,7 +89,7 @@ def update(dry_run, *items):
             from product.product
             where fis_web_active=true %s
             """ % extra
-    print('OpenERP:', oe_q, verbose=v)
+    # print('OpenERP:', oe_q, verbose=v)
     print(verbose=v)
 
     oe_data = list(SQL(oe_q))
@@ -253,7 +253,8 @@ def web_ingredients(reset):
         def __init__(self):
             super().__init__()
             l = self.add_widget(Button('Load initial data', '#load', on_click=Signal('LoadInitial')))
-            s = self.add_widget(Button('Save to OpenERP/Web Store', '#save', on_click=Signal('SaveAndPublish')))
+            s_text = ('Save to OpenERP','Save to OpenERP/WebStore')[_mysql is not None]
+            s = self.add_widget(Button(s_text, '#save', on_click=Signal('SaveAndPublish')))
             self.sizes = []
             self.layouts = [HORIZONTAL, VERTICAL]
             # first configuration: all on one "line"
@@ -269,14 +270,14 @@ def web_ingredients(reset):
         orient = VERTICAL
         border_style = SPACE
         choices = ( 'Source Changed', 'Source Empty', 'Fields Changed', 'AutoModified',
-                    'Empty Equipment', 'Allergens', 'Warnings',
+                    'Empty Equipment', 'Allergens', 'Warnings', 'No Parent',
                     'Web Inactive', 'SRF Removed', 'Typos',
                     )
         size = 4, 75
 
     class Search(Entry):
         border_style = DOUBLE
-        label = 'Find'
+        label = 'Find:'
         size = 1, 50
         sticky = EW
 
@@ -484,6 +485,16 @@ def web_ingredients(reset):
                         return rec.xml_id
                 else:
                     return dbf.DoNotIndex
+            def bad_parent(rec):
+                """
+                Parent id is missing or invalid.
+                """
+                try:
+                    int(rec.parent_id)
+                except ValueError:
+                    return rec.xml_id
+                else:
+                    return dbf.DoNotIndex
             self.indices = {}
             self.indices['Fields Changed'] = dbf.Index(t, changed_field)
             self.indices['Source Changed'] = dbf.Index(t, changed_source)
@@ -495,6 +506,7 @@ def web_ingredients(reset):
             self.indices['SRF Removed'] = dbf.Index(t, srf_removed)
             self.indices['Typos'] = dbf.Index(t, typos)
             self.indices['Source Empty'] = dbf.Index(t, source_empty)
+            self.indices['No Parent'] = dbf.Index(t, bad_parent)
             self.indices[()] = self.primary_index = dbf.Index(t, lambda rec: rec.xml_id, doc='xml_id')
             self.current_index = self.primary_index
             self.meta.total_records = len(self.table)
@@ -644,22 +656,27 @@ def web_ingredients(reset):
             if self._rec_no == -1:
                 self.load_next_record()
 
-        def on_save_and_publish(self, xml_id=None):
+        async def on_save_and_publish(self, xml_id=None):
             xml_ids = set()
             if _mysql is not None:
                 db = _mysql.connect(host="72.32.164.247", user="sunridgeDB", passwd="us3l3ssr!s3S3t")
             # save all labeltime fields to their web* field equivalents
-            for rec in dbf.Process(self.table):
+            for rec in ProgressMeter(self.table, lambda r: 'Processing FIS ID: %s' % r.xml_id):
                 if xml_id is None or rec.xml_id == xml_id:
                     xml_ids.add(rec.xml_id)
-                    rec.f_source = rec.c_source
-                    rec.f_ingred = rec.c_ingred
-                    rec.f_allrgn = rec.c_allrgn
-                    rec.f_equip = rec.c_equip
-                    rec.f_warns = rec.c_warns
+                    with rec:
+                        rec.f_source = rec.c_source
+                        rec.f_ingred = rec.c_ingred
+                        rec.f_allrgn = rec.c_allrgn
+                        rec.f_equip = rec.c_equip
+                        rec.f_warns = rec.c_warns
+            await switch()
             # then for each record, save to OpenERP and save to MySQL
             oe_table = SQLTable('product.product').table
-            for d in oe_table.read(domain=[('xml_id','in',list(xml_ids))], fields=['id','xml_id']):
+            for d in ProgressMeter(
+                    oe_table.read(domain=[('xml_id','in',list(xml_ids))], fields=['id','xml_id']),
+                    lambda d: 'Processing FIS ID: %s' % d['xml_id'],
+                ):
                 xml_id = d['xml_id']
                 rec ,= self.primary_index[xml_id,]
                 values = {
@@ -671,11 +688,17 @@ def web_ingredients(reset):
                 oe_table.write(d['id'], values)
                 #
                 if _mysql is not None:
-                    db.query(mysql_ingred % (rec.f_ingred, int(rec.parent_id)))
-                    db.query(mysql_allergen % (rec.f_allgrn, int(rec.parent_id)))
-                    db.query(mysql_shared % (rec.f_equip, int(rec.parent_id)))
-                    db.query(mysql_warning % (rec.f_warns, int(rec.parent_id)))
-                    db.commit()
+                    try:
+                        p_id = int(rec.parent_id)
+                    except ValueError as e:
+                        logger.warning('skipping %r with parent id %r', xml_id, rec.parent_id)
+                    else:
+                        db.query(mysql_ingred % (rec.f_ingred, int(rec.parent_id or 0)))
+                        db.query(mysql_allergen % (rec.f_allrgn, int(rec.parent_id or 0)))
+                        db.query(mysql_shared % (rec.f_equip, int(rec.parent_id or 0)))
+                        db.query(mysql_warning % (rec.f_warns, int(rec.parent_id or 0)))
+                        db.commit()
+            await switch()
 
         @on_key(KEY_CTRL_L, limit_scope=('#ingredients','#allergens','#equipment','#warnings'))
         def load_from_labeltime(self):
