@@ -76,7 +76,7 @@ def check_status(q):
                 logger.debug('checking if prepped')
                 target = ARCHIVE/'%s.txt' % o
                 if target.exists():
-                    ts = DateTime.fromtimestamp(target.stat().st_mtime)
+                    ts = DateTime.fromtimestamp(target.stat().st_mtime).replace(minute=-30)
                     orders[o] = 'PREPPED', ts
             if state == 'PREPPED':
                 logger.debug('checking if submitted')
@@ -188,7 +188,7 @@ class OrderInfo(Frame):
             item, qty = [val.strip() for val in line.strip().split('-')][:2]
             if qty != "0":
                 items.append(1)
-        for created in SQL(
+        for created, in SQL(
                 "SELECT create_date "
                 "FROM fis_integration.online_order "
                 "WHERE id=%s and partner_xml_id=%r" % (oe_id, xml_id)
