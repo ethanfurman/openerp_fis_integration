@@ -53,6 +53,7 @@ def age_of(file):
     """
     Return a timedelta of last modification to file.
     """
+    return DateTime.now() - DateTime.fromtimestamp(file.stat().st_mtime)
 
 def check_status(q):
     """
