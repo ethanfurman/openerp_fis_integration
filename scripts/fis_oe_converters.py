@@ -1180,13 +1180,16 @@ class IFDT(Synchronize):
             )
     def fis_ignore_record(self, rec):
         if super(IFDT, self).fis_ignore_record(rec):
+            self._logger.debug('%r ignored by key_filter', rec[F322.formula_id])
             return True
-        elif (
-                not IFMS.ProductFormula('%s-%s' % (rec[F322.formula_id], rec[F322.rev_no]))
-                or rec[F322.ingr_code_batch_1] in ignored_ingredients
-                or rec[F322.qty_batch_1] <= 0
-                or not NVTY.Product(rec[F322.ingr_code_batch_1])
-            ):
+        ignored = dict(
+                missing_formula=not IFMS.ProductFormula('%s-%s' % (rec[F322.formula_id], rec[F322.rev_no])),
+                ignored_ingredient=rec[F322.ingr_code_batch_1] in ignored_ingredients,
+                negative_qty=rec[F322.qty_batch_1] <= 0,
+                missing_product=not NVTY.Product(rec[F322.ingr_code_batch_1]),
+                )
+        if any(ignored.values()):
+            self._logger.debug('ingredient %r ignored: %s', ', '.join([k for k,v in sorted(ignored.items()) if v]))
             return True
         else:
             return False
