@@ -7,7 +7,7 @@ from scription import *
 from fislib.fis_oe_converters import *
 from antipathy import Path
 from collections import defaultdict
-from logging import getLogger
+from logging import getLogger, DEBUG, INFO, handlers, Formatter
 from openerplib import get_connection, get_records
 from openerplib import AttrDict, Many2One
     # from traceback import format_exception
@@ -67,7 +67,16 @@ def main(dryrun, list_records, raise_on_exception):
     VIEW_TYPE = 'none' if LIST_RECORDS else 'percent'
     BORDER = 'box' if LIST_RECORDS and script_verbosity > 1 else None
     global logger
-    logger = getLogger('orders')
+    logger = getLogger()
+    logger.setLevel(DEBUG)
+    _handler = handlers.RotatingFileHandler(
+            '%s/var/log/openerp/fis_conversion.log' % os.environ['VIRTUAL_ENV'],
+            maxBytes=1024*1024*1024,
+            backupCount=3,
+            )
+    _formatter = Formatter('%(process)06d %(asctime)s %(name)-25s %(message)s')
+    _handler.setFormatter(_formatter)
+    logger.addHandler(_handler)
 
 @Command(
         files=Spec('changed FIS files', type=lambda f: f.lower()),

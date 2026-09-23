@@ -419,6 +419,7 @@ def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False
                 raise ValueError('only one field can be returned from subqueries')
     if alias is None:
         alias = {}
+    og_clausa = clausa
     print('subquery: %r,  clausa: %r' % (subquery, clausa), verbose=3)
     clausa = re.sub(r"\(.*\)", subquery, clausa)
     print('after subquery: %r' % (clausa, ), verbose=3)
@@ -451,7 +452,7 @@ def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False
             field, op, condition, clausa = std_match().groups()
             print('\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (field, op, condition, clausa), verbose=4)
             if not (field and op and condition):
-                raise ValueError('std: malformed WHERE clause')
+                raise ValueError('std: malformed WHERE clause %r' % og_clausa)
             if op == '==':
                 op = '='
             elif openerp and op in ('elike', 'eilike'):
@@ -507,7 +508,7 @@ def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False
             function, field, op, condition, clausa = enh_match().groups()
             print('\nfunction: %r\nfield: %r\nop: %r\ncond: %r\nwhere: %r\n' % (function, field, op, condition, clausa), verbose=4)
             if not (function and field and op and condition):
-                raise ValueError('enh: malformed WHERE clause')
+                raise ValueError('enh: malformed WHERE clause %r' % og_clausa)
             func = function.lower()
             if func.startswith('count'):
                 if op == '=':
@@ -516,9 +517,9 @@ def convert_where(clausa, alias=None, infix=False, strip_quotes=True, null=False
                 constraints.append(func)
                 donde.append((1,'=',1))
             else:
-                raise ValueError('unknown command in WHERE clause: %r' % function)
+                raise ValueError('unknown command in WHERE clause %r -> %r' % (og_clausa, function))
         else:
-            raise ValueError('malformed WHERE clause')
+            raise ValueError('malformed WHERE clause %r' % og_clausa)
     return donde, constraints
 
 class counter(object):
@@ -2564,25 +2565,33 @@ class Join(object):
         print('left field: %r   right field: %r' % (left_name, right_name), verbose=3)
         right_sq.records.sort(key=lambda r: r[right_name])
         left_sq.records.sort(key=lambda r: r[left_name])
+        print('left_sq: %r   right_sq: %r' % ((len(left_sq), len(left_sq.records)), (len(right_sq), len(right_sq.records))), verbose=3)
         i = j = 0
         last_left_index = last_right_index = None
-        while i < len(left_sq):
+        while i < len(left_sq) and j < len(right_sq):
+            print('i: %d   left_sq: %r     j: %d   right_sq: %r' % (i, (len(left_sq), len(left_sq.records)), j, (len(right_sq), len(right_sq.records))), verbose=3)
             left_rec = left_sq.records[i]
             right_rec = right_sq.records[j]
-            print('%r  vs  %r' % (left_rec, right_rec), verbose=4)
+            print('%r  vs  %r' % (left_rec, right_rec), verbose=3)
             if left_rec[left_name] < right_rec[right_name]:
+                print(1, verbose=3)
                 i += 1
                 if last_right_index is not None:
+                    print(1.1, verbose=3)
                     j = last_right_index
             elif left_rec[left_name] > right_rec[right_name]:
+                print(2, verbose=3)
                 if last_left_index is None:
+                    print(2.1, verbose=3)
                     # haven't found a match yet
                     j += 1
                 elif i == last_left_index + 1:
+                    print(2.2, verbose=3)
                     # only one match on left side
                     j += 1
                     last_left_index = last_right_index = None
                 elif last_right_index is not None:
+                    print(2.3, verbose=3)
                     # left record is same as previous left record and matched right record
                     i = last_left_index + 1  # record after first match on left
                     j = last_right_index     # record of first match on right
@@ -2590,9 +2599,11 @@ class Join(object):
                     pass
 
             else:
+                print(3, verbose=3)
                 # they are equal
                 last_left_index = i
                 if last_right_index is None:
+                    print(3.1, verbose=3)
                     last_right_index = j
                 new_rec = left_rec.copy()
                 for field, value in right_rec.items():
@@ -2601,6 +2612,7 @@ class Join(object):
                 j += 1
                 # check if right_rec is worn out; if yes, increment i instead
                 if j == len(right_sq):
+                    print(3.2, verbose=3)
                     j -= 1
                     i += 1
         return sq
