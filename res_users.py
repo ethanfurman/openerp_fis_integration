@@ -6,9 +6,11 @@ from fnx_fs.fields import files
 import re
 
 class res_users(osv.Model):
-    """ Update of res.users class
-        - add link to the FIS partner account
-        - add link to the FIS transmitter accounts
+    """
+    Update of res.users class
+
+    - add link to the FIS partner account
+    - add link to the FIS transmitter accounts
     """
     _name = 'res.users'
     _inherit = ['res.users', 'fnx_fs.fs']
@@ -73,9 +75,11 @@ class res_users(osv.Model):
                 value['fis_transmitter_id'] = False
             if ship_to_id:
                 value['fis_ship_to_id'] = False
+            value['fis_partner_online_ordering_enabled'] = False
         else:
             res_partner = self.pool.get('res.partner')
             partner = res_partner.browse(cr, SUPERUSER_ID, partner_id, context=context)
+            value['fis_partner_online_ordering_enabled'] = partner.fis_online_ordering_enabled
             if re.match('HE\d\d\d', partner.xml_id):
                 crossref_code = 'HE447'
             else:
@@ -145,6 +149,7 @@ class res_users(osv.Model):
                     value['fis_partner_id'] = False
                 if ship_to_id:
                     value['fis_ship_to_id'] = False
+                value['fis_partner_online_ordering_enabled'] = False
         else:
             transmitter_code = self.pool.get('fis.transmitter_code')
             transmitter = transmitter_code.browse(cr, uid, transmitter_id, context=context)
@@ -163,6 +168,7 @@ class res_users(osv.Model):
                     if ship_to_id:
                         value['fis_ship_to_id'] = False
                 domain['fis_ship_to_id'] = [('id','=',False)]
+            value['fis_partner_online_ordering_enabled'] = True
         return res
 
 
